@@ -2,24 +2,39 @@
   "name": "@chongmuya/api",
   "version": "0.0.0",
   "private": true,
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
     "lint": "eslint . --max-warnings 0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "db:migration:generate": "pnpm build && typeorm migration:generate -d dist/database/data-source.js",
+    "db:migration:show": "typeorm migration:show -d dist/database/data-source.js",
+    "db:migration:run": "typeorm migration:run -d dist/database/data-source.js",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "test:integration": "tsc -p tsconfig.test.json && node --test dist-test/test/integration/*.test.js"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",
     "@nestjs/core": "12.2.0",
     "@nestjs/platform-express": "12.2.0",
+    "@nestjs/swagger": "12.0.4",
+    "@nestjs/typeorm": "12.0.2",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.15.1",
+    "dotenv": "18.0.9",
+    "pg": "8.23.1",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "typeorm": "1.1.2",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@nestjs/cli": "12.0.10",
+    "@nestjs/testing": "12.2.0",
+    "@types/express": "5.0.6",
     "@types/node": "24.19.2",
     "eslint": "9.39.5",
     "globals": "17.13.0",
