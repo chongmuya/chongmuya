@@ -1,5 +1,6 @@
 # 작업 원칙
 
+- 커밋·브랜치·PR은 [협업 규칙](docs/CONTRIBUTING.md)을 따른다. 커밋과 PR 제목은 `type(scope): 한국어 설명`, PR 본문은 `.github/pull_request_template.md`를 기준으로 작성한다.
 - 패키지 관리는 pnpm만 사용한다. 루트 `packageManager`의 버전과 `.nvmrc`를 따른다.
 - 의존성은 실제 사용하는 앱에 선언한다. 루트에는 저장소 관리 도구를 둔다.
 - `apps/web`은 Next.js 웹, `apps/api`는 NestJS 표준 모드 API다. 다른 앱의 소스 코드를 직접 import하지 않는다.
