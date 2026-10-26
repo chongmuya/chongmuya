@@ -3,6 +3,7 @@ node_modules/
 .next/
 apps/web/next-env.d.ts
 dist/
+dist-test/
 .turbo/
 coverage/
 *.tsbuildinfo

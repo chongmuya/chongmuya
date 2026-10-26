@@ -4,28 +4,59 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["API_URL", "API_PORT"]
+      "passThroughEnv": [
+        "API_URL",
+        "API_PORT",
+        "DATABASE_URL",
+        "API_DOCS_ENABLED",
+        "NODE_ENV"
+      ]
     },
     "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ]
     },
     "@chongmuya/web#build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "env": ["API_URL"],
-      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "env": [
+        "API_URL"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "!.next/dev/**"
+      ]
     },
     "@chongmuya/api#build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "lint": {
       "cache": false
     },
     "typecheck": {
       "cache": false,
-      "passThroughEnv": ["API_URL"]
+      "passThroughEnv": [
+        "API_URL"
+      ]
+    },
+    "test": {
+      "cache": false
     }
   }
 }
