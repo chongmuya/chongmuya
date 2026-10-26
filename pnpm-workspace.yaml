@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+
+allowBuilds:
+  # Native resolver used by Next.js ESLint configuration.
+  unrs-resolver@1.12.2: true
+
+engineStrict: true
