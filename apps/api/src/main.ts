@@ -14,6 +14,8 @@ async function bootstrap() {
 }
 
 bootstrap().catch(() => {
-  console.error("API startup failed. Check environment configuration and port availability.");
+  console.error(
+    "API startup failed. Check environment configuration and port availability.",
+  );
   process.exitCode = 1;
 });

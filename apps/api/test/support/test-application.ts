@@ -22,20 +22,40 @@ class ProbeDto {
 @Controller("test")
 class ProbeController {
   @Post("validate")
-  validate(@Body() body: ProbeDto) { return body; }
+  validate(@Body() body: ProbeDto) {
+    return body;
+  }
 
   @Get("error")
-  error() { throw new Error("private-database-password"); }
+  error() {
+    throw new Error("private-database-password");
+  }
 
   @Get("secret/:token")
-  secret() { return { ok: true }; }
+  secret() {
+    return { ok: true };
+  }
 }
 
-export async function startTestApplication(databaseUrl: string, docsEnabled = true) {
-  const environment = parseEnvironment({ NODE_ENV: "test", DATABASE_URL: databaseUrl, API_DOCS_ENABLED: String(docsEnabled) });
-  const module = await Test.createTestingModule({ imports: [AppModule], controllers: [ProbeController] })
-    .overrideProvider(ConfigService).useValue({ environment }).compile();
-  const app = module.createNestApplication<NestExpressApplication>({ logger: false });
+export async function startTestApplication(
+  databaseUrl: string,
+  docsEnabled = true,
+) {
+  const environment = parseEnvironment({
+    NODE_ENV: "test",
+    DATABASE_URL: databaseUrl,
+    API_DOCS_ENABLED: String(docsEnabled),
+  });
+  const module = await Test.createTestingModule({
+    imports: [AppModule],
+    controllers: [ProbeController],
+  })
+    .overrideProvider(ConfigService)
+    .useValue({ environment })
+    .compile();
+  const app = module.createNestApplication<NestExpressApplication>({
+    logger: false,
+  });
   const logs: RequestLog[] = [];
   configureHttp(app, environment, (entry) => logs.push(entry));
   await app.listen(0, "127.0.0.1");

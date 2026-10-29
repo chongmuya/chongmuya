@@ -24,14 +24,14 @@ pnpm dev
 
 기존 `.env`가 있다면 덮어쓰지 말고 필요한 값만 반영하세요. API `.env`는 Git에서 제외됩니다. `pnpm dev`는 API와 웹을 함께 실행합니다. 별도의 ORM 코드 생성 단계는 없습니다. 실제 DB 테이블이나 마이그레이션은 만들지 않습니다.
 
-| 주소 | 의미 |
-| --- | --- |
-| <http://localhost:3000> | 서비스명·API 연결 상태 |
-| <http://localhost:3001/health> | 프로세스 liveness, DB 상태와 독립 |
-| <http://localhost:3001/ready> | TypeORM의 실제 DB 쿼리; 정상 200, 장애 503 |
-| <http://localhost:3000/api/health> | Next.js rewrite를 거친 liveness |
-| <http://localhost:3001/docs> | 개발용 Swagger UI |
-| <http://localhost:3001/docs-json> | OpenAPI JSON |
+| 주소                               | 의미                                       |
+| ---------------------------------- | ------------------------------------------ |
+| <http://localhost:3000>            | 서비스명·API 연결 상태                     |
+| <http://localhost:3001/health>     | 프로세스 liveness, DB 상태와 독립          |
+| <http://localhost:3001/ready>      | TypeORM의 실제 DB 쿼리; 정상 200, 장애 503 |
+| <http://localhost:3000/api/health> | Next.js rewrite를 거친 liveness            |
+| <http://localhost:3001/docs>       | 개발용 Swagger UI                          |
+| <http://localhost:3001/docs-json>  | OpenAPI JSON                               |
 
 웹은 활성 탭에서 5초마다 API를 확인하고, 요청 제한 시간은 3초입니다. API 중단 시 실패, 재시작 시 성공으로 복구합니다. **화면의 연결 성공은 DB 정상 여부를 의미하지 않습니다.** DB는 `/ready`로 확인합니다.
 
@@ -39,13 +39,13 @@ pnpm dev
 
 ## 환경변수
 
-| 변수 | 위치 | 기본값/필수 여부 |
-| --- | --- | --- |
-| `DATABASE_URL` | API `.env` 또는 실행 환경 | 필수, PostgreSQL URL |
-| `API_PORT` | API `.env` 또는 실행 환경 | 3001 |
-| `NODE_ENV` | API 실행 환경 | development; development/test/production 허용 |
-| `API_DOCS_ENABLED` | API `.env` 또는 실행 환경 | true/false; production에서는 기본 false |
-| `API_URL` | 웹 `.env.local` 또는 실행 환경 | `http://127.0.0.1:3001` |
+| 변수               | 위치                           | 기본값/필수 여부                              |
+| ------------------ | ------------------------------ | --------------------------------------------- |
+| `DATABASE_URL`     | API `.env` 또는 실행 환경      | 필수, PostgreSQL URL                          |
+| `API_PORT`         | API `.env` 또는 실행 환경      | 3001                                          |
+| `NODE_ENV`         | API 실행 환경                  | development; development/test/production 허용 |
+| `API_DOCS_ENABLED` | API `.env` 또는 실행 환경      | true/false; production에서는 기본 false       |
+| `API_URL`          | 웹 `.env.local` 또는 실행 환경 | `http://127.0.0.1:3001`                       |
 
 API는 `apps/api/.env`를 읽고 이미 지정된 셸 환경변수를 우선합니다. Zod가 필수 값·포트 범위·PostgreSQL URL·true/false 설정을 검증하고, 오류가 있으면 시작을 거부합니다. 오류에는 변수 이름만 표시합니다. `.env.example`의 문서 활성화 값은 개발용이며 production에 그대로 복사하지 마세요.
 
@@ -69,19 +69,19 @@ docs/         아키텍처·협업 문서
 
 ## 주요 명령
 
-| 루트에서 실행 | 내용 |
-| --- | --- |
-| `pnpm dev` | 웹·API 동시 개발 실행 |
-| `pnpm build` | 두 앱 빌드; API는 TypeScript → ESM |
-| `pnpm lint` | 린트·의존 경계 검사 |
-| `pnpm typecheck` | 앱 및 테스트 타입 검사 |
-| `pnpm test` | 경계·HTTP·설정·프론트 오류 처리 테스트, DB 불필요 |
-| `pnpm test:integration` | 실제 PostgreSQL 테스트, `TEST_DATABASE_URL` 필수 |
-| `pnpm --filter @chongmuya/web dev` | 웹만 실행 |
-| `pnpm --filter @chongmuya/api dev` | API만 실행 |
-| `pnpm --filter @chongmuya/api db:migration:show` | 빌드 후 DB 마이그레이션 상태 확인 |
-| `pnpm db:up` / `pnpm db:down` | 로컬 DB 실행·종료, 데이터 보존 |
-| `pnpm db:logs` | DB 로그 확인 |
+| 루트에서 실행                                    | 내용                                              |
+| ------------------------------------------------ | ------------------------------------------------- |
+| `pnpm dev`                                       | 웹·API 동시 개발 실행                             |
+| `pnpm build`                                     | 두 앱 빌드; API는 TypeScript → ESM                |
+| `pnpm lint`                                      | 린트·의존 경계 검사                               |
+| `pnpm typecheck`                                 | 앱 및 테스트 타입 검사                            |
+| `pnpm test`                                      | 경계·HTTP·설정·프론트 오류 처리 테스트, DB 불필요 |
+| `pnpm test:integration`                          | 실제 PostgreSQL 테스트, `TEST_DATABASE_URL` 필수  |
+| `pnpm --filter @chongmuya/web dev`               | 웹만 실행                                         |
+| `pnpm --filter @chongmuya/api dev`               | API만 실행                                        |
+| `pnpm --filter @chongmuya/api db:migration:show` | 빌드 후 DB 마이그레이션 상태 확인                 |
+| `pnpm db:up` / `pnpm db:down`                    | 로컬 DB 실행·종료, 데이터 보존                    |
+| `pnpm db:logs`                                   | DB 로그 확인                                      |
 
 빌드 후 각 앱의 `start` 스크립트로 실행할 수 있습니다. API는 같은 환경변수 설정이 필요합니다.
 
