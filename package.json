@@ -14,9 +14,18 @@
     "test:integration": "pnpm --filter @chongmuya/api test:integration",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres"
+    "db:logs": "docker compose logs -f postgres",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "prepare": "node .husky/install.mjs"
   },
   "devDependencies": {
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
+    "prettier": "3.9.10",
     "turbo": "2.11.10"
+  },
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
   }
 }

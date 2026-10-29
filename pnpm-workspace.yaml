@@ -3,7 +3,7 @@ packages:
 
 allowBuilds:
   # Optional install analytics from Swagger UI are not needed.
-  '@scarf/scarf': false
+  "@scarf/scarf": false
   # Native resolver used by Next.js ESLint configuration.
   unrs-resolver@1.12.2: true
   # Native binary required by tsx (web tests).

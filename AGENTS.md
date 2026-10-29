@@ -18,6 +18,7 @@
 - JWT 인증 방향만 정해졌으며 토큰 보관·갱신·게스트 링크는 미정이다. worker·큐·파일 저장소·배포는 후속 작업이다. 별도 요청 없이 GitHub 설정 변경, commit·push·PR을 수행하지 않는다.
 
 <!-- context7 -->
+
 Use Context7 MCP to fetch current documentation whenever the user asks about a library, framework, SDK, API, CLI tool, or cloud service — even well-known ones like React, Next.js, Prisma, Express, Tailwind, Django, or Spring Boot. This includes API syntax, configuration, version migration, library-specific debugging, setup instructions, and CLI tool usage. Use even when you think you know the answer — your training data may not reflect recent changes. Prefer this over web search for library docs.
 
 Do not use for: refactoring, writing scripts from scratch, debugging business logic, code review, or general programming concepts.
@@ -28,4 +29,5 @@ Do not use for: refactoring, writing scripts from scratch, debugging business lo
 2. Pick the best match (ID format: `/org/project`) by: exact name match, description relevance, code snippet count, source reputation (High/Medium preferred), and benchmark score (higher is better). If results don't look right, try alternate names or queries (e.g., "next.js" not "nextjs", or rephrase the question). Use version-specific IDs when the user mentions a version
 3. `query-docs` with the selected library ID and what to look up in the library's documentation (not single words), scoped to a single concept. If the question spans multiple distinct concepts (e.g. routing and auth and caching), make a separate `query-docs` call per concept with the same library ID, unless the question is about how the concepts interact — combined queries dilute ranking and return shallow results for each topic
 4. Answer using the fetched docs
+
 <!-- context7 -->

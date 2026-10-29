@@ -46,11 +46,11 @@ compose.yaml            로컬 PostgreSQL만 실행
 
 실제 서버와 E2E 모두 `configureHttp`를 호출합니다. 앱 루트 prefix를 새로 붙이지 않아 기존 `/health`와 웹 rewrite 계약을 유지합니다.
 
-| 경로 | 의미 | 결과 |
-| --- | --- | --- |
-| `GET /health` | 프로세스 liveness, DB와 독립 | 200, `{"status":"ok","service":"chongmuya-api"}` |
-| `GET /ready` | TypeORM으로 PostgreSQL에 `SELECT 1` 실행 | 정상 200 + `database: "up"`, 장애 503 |
-| `GET /docs`, `/docs-json` | Swagger UI·OpenAPI | 개발 기본 활성, production 기본 비활성 |
+| 경로                      | 의미                                     | 결과                                             |
+| ------------------------- | ---------------------------------------- | ------------------------------------------------ |
+| `GET /health`             | 프로세스 liveness, DB와 독립             | 200, `{"status":"ok","service":"chongmuya-api"}` |
+| `GET /ready`              | TypeORM으로 PostgreSQL에 `SELECT 1` 실행 | 정상 200 + `database: "up"`, 장애 503            |
+| `GET /docs`, `/docs-json` | Swagger UI·OpenAPI                       | 개발 기본 활성, production 기본 비활성           |
 
 웹의 연결 화면은 **liveness**를 보여줍니다. DB까지 정상이라는 의미가 아니며 DB 상태는 `/ready`로 확인합니다.
 
@@ -124,18 +124,18 @@ pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolv
 
 2026-10-26 ESM·TypeORM·Zod 전환 이후 실제 실행한 결과입니다.
 
-| 검증 | 결과 |
-| --- | --- |
-| 기존 설치 산출물 정리 후 frozen 설치 | 성공, 제거한 ORM의 의존성·생성 코드·설치 허용 항목 없음 |
-| 루트 lint·typecheck·build·test | 모두 통과 |
-| API dist 제거 후 Turbo 캐시 빌드 | ESM 산출물 복원 및 Node 구문 검사 성공 |
-| Zod 및 실제 API 시작 실패 검사 | 잘못된 필수 값·포트·문서 설정 거부, 비밀값 노출 없음 |
-| 실제 HTTP·OpenAPI 계약 | 정상·오류 상태 및 requestId 유지 |
-| 실제 PostgreSQL 통합 테스트 | 6개 동시 readiness 요청 성공, 종료 후 DataSource 연결 해제 |
-| DB가 꺼진 상태의 API 시작 및 DB 복구 | liveness 200, readiness 503 → 200; API 재시작 불필요 |
-| 연결된 DB 중단·복구 | readiness 503 → 200, liveness 200 유지 |
-| 루트 dev·프로덕션 ESM start | 실행 성공; production에서 명시적으로 끈 docs-json은 404 |
-| 브라우저 웹 연결 | 성공 → API 종료 시 실패 → API 재시작 후 새로고침 없이 성공 |
+| 검증                                             | 결과                                                             |
+| ------------------------------------------------ | ---------------------------------------------------------------- |
+| 기존 설치 산출물 정리 후 frozen 설치             | 성공, 제거한 ORM의 의존성·생성 코드·설치 허용 항목 없음          |
+| 루트 lint·typecheck·build·test                   | 모두 통과                                                        |
+| API dist 제거 후 Turbo 캐시 빌드                 | ESM 산출물 복원 및 Node 구문 검사 성공                           |
+| Zod 및 실제 API 시작 실패 검사                   | 잘못된 필수 값·포트·문서 설정 거부, 비밀값 노출 없음             |
+| 실제 HTTP·OpenAPI 계약                           | 정상·오류 상태 및 requestId 유지                                 |
+| 실제 PostgreSQL 통합 테스트                      | 6개 동시 readiness 요청 성공, 종료 후 DataSource 연결 해제       |
+| DB가 꺼진 상태의 API 시작 및 DB 복구             | liveness 200, readiness 503 → 200; API 재시작 불필요             |
+| 연결된 DB 중단·복구                              | readiness 503 → 200, liveness 200 유지                           |
+| 루트 dev·프로덕션 ESM start                      | 실행 성공; production에서 명시적으로 끈 docs-json은 404          |
+| 브라우저 웹 연결                                 | 성공 → API 종료 시 실패 → API 재시작 후 새로고침 없이 성공       |
 | CLI migration:generate --check 및 migration:show | ESM DataSource 로딩 성공, 변경할 Entity·실행할 마이그레이션 없음 |
 
 마이그레이션이 아직 없어 업무 SQL 적용은 대상이 없습니다. 위 표는 로컬 검증 결과이며, 원격 CI 결과는 PR의 Checks 또는 Actions에서 확인합니다. GitHub Ruleset 등 저장소 설정은 변경하지 않았습니다.
