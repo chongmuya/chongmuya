@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        source: "/api/v1/:path*",
+        destination: new URL("/api/v1/:path*", apiUrl).toString(),
+      },
+      {
         source: "/api/health",
         destination: new URL("/health", apiUrl).toString(),
       },

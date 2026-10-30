@@ -129,3 +129,9 @@ GitHub Actions는 같은 명령과 격리된 PostgreSQL 서비스를 사용하�
 - [PR 템플릿](.github/pull_request_template.md): 변경 내용·확인 방법·관련 이슈
 
 다음 기능은 웹 `features/<업무>`와 API `modules/<업무>`에 필요한 만큼 추가합니다. 첫 업무 모델·마이그레이션, JWT 세부 정책, 정산·파일·알림 정책과 실제 배포는 후속 범위입니다.
+
+## 인증 개발
+
+이메일 가입·로그인·내 정보·갱신·로그아웃은 `/auth`에서 확인합니다. 가입 후 `/onboarding`은 다음 단계 안내만 제공합니다. API 환경변수 `AUTH_SECRET`(32자 이상 난수), `WEB_ORIGIN`을 설정하고, API 빌드 후 대상 DB를 확인해 `pnpm --filter @chongmuya/api db:migration:run`으로 첫 마이그레이션을 별도 적용하세요. 서버 시작은 마이그레이션을 자동 실행하지 않습니다.
+
+쿠키/CSRF·Passport 책임·세션 정책·테스트·후속 작업은 [인증과 개발 기준](docs/authentication.md)을 참고하세요. Swagger는 `/docs`, 업무 API는 `/api/v1`입니다.

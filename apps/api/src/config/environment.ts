@@ -23,10 +23,35 @@ const environmentSchema = z
         return false;
       }
     }),
+    AUTH_SECRET: z.string().min(32),
+    WEB_ORIGIN: z.url().refine((value) => {
+      try {
+        const url = new URL(value);
+        return (
+          ["http:", "https:"].includes(url.protocol) && url.origin === value
+        );
+      } catch {
+        return false;
+      }
+    }),
     // Boolean("false") is true; accept only these two explicit strings.
     API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
   })
+  .superRefine((env, ctx) => {
+    if (
+      env.NODE_ENV === "production" &&
+      !env.WEB_ORIGIN.startsWith("https://")
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["WEB_ORIGIN"],
+        message: "HTTPS required",
+      });
+    }
+  })
   .transform((env) => ({
+    authSecret: env.AUTH_SECRET,
+    webOrigin: env.WEB_ORIGIN,
     nodeEnv: env.NODE_ENV,
     port: env.API_PORT,
     databaseUrl: env.DATABASE_URL,

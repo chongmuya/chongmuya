@@ -29,8 +29,13 @@ export function configureHttp(
   if (environment.docsEnabled) {
     const definition = new DocumentBuilder()
       .setTitle("총무야 API")
-      .setDescription("기본 HTTP 계약. 인증 및 업무 API는 후속 구현입니다.")
-      .setVersion("0.1.0")
+      .setDescription(
+        "인증 API /api/v1/auth. 변경 요청은 Origin 및 X-CSRF-Protection: 1 필수.",
+      )
+      .setVersion("0.2.0")
+      .addCookieAuth(
+        environment.nodeEnv === "production" ? "__Host-access" : "access",
+      )
       .build();
     SwaggerModule.setup(
       "docs",

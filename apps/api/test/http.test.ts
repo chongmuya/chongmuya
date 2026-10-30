@@ -52,7 +52,11 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   const post = (body: string) =>
     fetch(`${url}/test/validate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://localhost:3000",
+        "X-CSRF-Protection": "1",
+      },
       body,
     });
   const valid = await post(JSON.stringify({ name: "참석자", count: 1 }));

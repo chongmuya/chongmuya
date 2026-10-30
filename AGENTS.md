@@ -15,7 +15,7 @@
 - API 환경변수는 Zod로 시작 시 검증한다. false 문자열을 참으로 강제 변환하지 않고 오류에는 변수 이름만 노출한다. HTTP DTO 검증은 class-validator를 사용한다.
 - DB 접근 전 DatabaseService.connect()를 기다린다. 초기 DB 장애에도 liveness를 제공하며 readiness는 실제 쿼리로 확인한다.
 - 실제 서버와 E2E는 configureHttp를 공유한다. 요청/오류 로그에 body·인증 헤더·query·DB URL을 포함하지 않는다.
-- JWT 인증 방향만 정해졌으며 토큰 보관·갱신·게스트 링크는 미정이다. worker·큐·파일 저장소·배포는 후속 작업이다. 별도 요청 없이 GitHub 설정 변경, commit·push·PR을 수행하지 않는다.
+- 인증은 [인증 기준](docs/authentication.md)의 Passport JWT·HttpOnly 쿠키·Refresh 세션 정책을 따른다. 업무 API는 /api/v1이며 자원 권한은 Nest에서 별도 검증한다. 게스트 링크는 미정이다. worker·큐·파일 저장소·배포는 후속 작업이다. 별도 요청 없이 GitHub 설정 변경, commit·push·PR을 수행하지 않는다.
 
 <!-- context7 -->
 

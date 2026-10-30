@@ -33,10 +33,25 @@ export class HttpExceptionFilter implements ExceptionFilter {
           ? "서버 오류가 발생했습니다."
           : "요청을 처리할 수 없습니다.",
     };
+    const detail =
+      exception instanceof HttpException ? exception.getResponse() : null;
+    const authCode =
+      statusCode === 401 &&
+      typeof detail === "object" &&
+      detail !== null &&
+      "code" in detail &&
+      ["ACCESS_EXPIRED", "SESSION_INVALID", "INVALID_CREDENTIALS"].includes(
+        String(detail.code),
+      )
+        ? String(detail.code)
+        : undefined;
     // Exception messages can contain SQL, credentials or request values.
     response.setHeader("Cache-Control", "no-store");
-    response
-      .status(statusCode)
-      .json({ statusCode, ...error, requestId: request.requestId });
+    response.status(statusCode).json({
+      statusCode,
+      ...error,
+      ...(authCode ? { code: authCode } : {}),
+      requestId: request.requestId,
+    });
   }
 }

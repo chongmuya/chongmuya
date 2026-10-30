@@ -1,5 +1,9 @@
 # 기본 아키텍처
 
+2026-10-30 인증 추가: 현재 인증·개발 기준은 [authentication.md](authentication.md)를 따른다. 아래 2026-10-26 기반 설명과 검증 표는 당시 기록이며, 인증 관련 변경은 다음 문단과 인증 문서가 우선한다.
+
+현재 `features/auth`, `modules/auth`, 계정·세션·Refresh 이력·로그인 시도 테이블 및 첫 마이그레이션이 추가됐다. Passport Strategy/Guard/JwtService, 5분 Access HttpOnly 쿠키, 14일 서버 Refresh 세션을 사용한다. 웹/Nest 업무 경로는 `/api/v1`이며 health 운영 경로는 유지한다. 모임·온보딩 완료 상태는 계정과 분리할 예정이며 이번에는 안내 화면만 제공한다.
+
 확인일: 2026-10-26. 기준 원격 main: `530a2c51584bc92895536e01011652739f0df1d2`.
 
 이 문서는 현재 코드로 구현한 기반과 후속 설계를 구분합니다. 현재 작업 지시에서 PostgreSQL·TypeORM 사용과 JWT 인증 방향이 확정됐으며, 인증 구현·토큰 보관·갱신·게스트 링크 정책은 아직 없습니다. Notion Architecture 페이지는 확인 당시 목차 수준이었습니다. 제품 정책은 제공된 인수인계를 참고하되 미결정 사항을 확정하지 않았습니다.
