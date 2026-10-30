@@ -5,7 +5,12 @@ export type Account = { id: string; email: string };
 export type Session = { authenticated: boolean; account: Account | null };
 export type AuthState = {
   status:
-    "loading" | "anonymous" | "authenticated" | "unavailable" | "logging-out";
+    | "loading"
+    | "anonymous"
+    | "authenticated"
+    | "unavailable"
+    | "logging-out"
+    | "logout-failed";
   account: Account | null;
 };
 type Transport = typeof requestJson;
@@ -81,15 +86,29 @@ export class SessionClient {
         if (generation !== this.generation || this.ending)
           throw new ApiError("세션이 종료되었습니다.", 401, "SESSION_INVALID");
         // Another tab may have refreshed while this tab waited for the Web Lock.
+        let session: Session;
         try {
-          await this.transport<Account>("/api/v1/auth/me");
+          const account = await this.transport<Account>("/api/v1/auth/me");
+          session = { authenticated: true, account };
         } catch (error) {
           if (!(error instanceof ApiError) || error.code !== "ACCESS_EXPIRED")
             throw error;
-          await this.transport<Session>("/api/v1/auth/refresh", {
+          // Logout or another account change can happen while /me is in flight.
+          if (generation !== this.generation || this.ending)
+            throw new ApiError(
+              "세션이 변경되었습니다.",
+              401,
+              "SESSION_INVALID",
+            );
+          session = await this.transport<Session>("/api/v1/auth/refresh", {
             method: "POST",
           });
         }
+        if (generation !== this.generation || this.ending)
+          throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");
+        // Apply identity before allowing retries. A different account advances
+        // generation and clears user data, so every old request stops below.
+        this.apply(session);
         this.revision++;
       }).finally(() => {
         this.refreshing = undefined;
@@ -112,6 +131,8 @@ export class SessionClient {
       } catch (error) {
         if (!(error instanceof ApiError) || error.code !== "ACCESS_EXPIRED")
           throw error;
+        if (generation !== this.generation || this.ending)
+          throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");
         if (revision === this.revision) await this.refresh();
         if (generation !== this.generation || this.ending)
           throw new ApiError("세션이 종료되었습니다.", 401, "SESSION_INVALID");
@@ -158,7 +179,7 @@ export class SessionClient {
       this.ending = false;
     } catch (error) {
       // Keep ending=true: a failed logout must not silently restore authentication.
-      this.set({ status: "unavailable", account: null });
+      this.set({ status: "logout-failed", account: null });
       throw error;
     }
   }

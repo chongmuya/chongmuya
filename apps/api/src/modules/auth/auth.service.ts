@@ -31,23 +31,12 @@ export class AuthService {
     if (signup) {
       const passwordHash = await hashPassword(input.password);
       if (account) throw new ConflictException();
-      account = await this.repository.run(async (db) => {
-        const value = db.getRepository(Account).create({
-          id: randomUUID(),
-          email: input.email,
-          passwordHash,
-          createdAt: new Date(),
-        });
-        const result = await db
-          .createQueryBuilder()
-          .insert()
-          .into(Account)
-          .values(value)
-          .orIgnore()
-          .returning("id")
-          .execute();
-        if (!result.raw.length) throw new ConflictException();
-        return value;
+      // Hashing stays outside the transaction; persistence is all-or-nothing below.
+      account = Object.assign(new Account(), {
+        id: randomUUID(),
+        email: input.email,
+        passwordHash,
+        createdAt: new Date(),
       });
     } else {
       // Equal-cost work for unknown accounts avoids a fast account-existence oracle.
@@ -64,17 +53,30 @@ export class AuthService {
       revokedAt: null,
     });
     const refresh = randomBytes(32).toString("base64url");
-    await this.repository.run((db) =>
+    const authenticatedAccount = account;
+    return this.repository.run((db) =>
       db.transaction(async (manager) => {
+        if (signup) {
+          const result = await manager
+            .createQueryBuilder()
+            .insert()
+            .into(Account)
+            .values(authenticatedAccount)
+            .orIgnore()
+            .returning("id")
+            .execute();
+          if (!result.raw.length) throw new ConflictException();
+        }
         await manager.save(session);
         await manager.insert(RefreshToken, {
           hash: tokenHash(refresh),
           sessionId: session.id,
           usedAt: null,
         });
+        // A signing failure also rolls back; no cookies are sent before commit.
+        return this.issue(session, authenticatedAccount, refresh);
       }),
     );
-    return this.issue(session, account, refresh);
   }
   private async issue(
     session: AuthSession,

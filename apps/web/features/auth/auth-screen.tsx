@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/shared/http/api-error";
 import { notifySessionChange, useAuth } from "./auth-provider";
+import { AuthRecovery } from "./auth-recovery";
 import type { Account } from "./session";
 
 export function AuthScreen({ onboarding = false }: { onboarding?: boolean }) {
@@ -43,31 +44,21 @@ export function AuthScreen({ onboarding = false }: { onboarding?: boolean }) {
     <section aria-label="계정">
       <h2>{onboarding ? "가입 완료 · 다음 단계" : "계정"}</h2>
       {message && <p role="alert">{message}</p>}
-      {status === "unavailable" || status === "logging-out" ? (
-        <div>
-          <p role="status">
-            {status === "logging-out"
-              ? "로그아웃 처리 중…"
-              : "인증 서버에 연결하지 못했습니다. 세션 종료 여부는 아직 확인되지 않았습니다."}
-          </p>
-          <button
-            disabled={pending || status === "logging-out"}
-            onClick={() => void act(() => client.restore())}
-          >
-            연결 재확인
-          </button>
-          <button
-            disabled={pending || status === "logging-out"}
-            onClick={() =>
-              void act(async () => {
-                await client.logout();
-                notifySessionChange();
-              })
-            }
-          >
-            로그아웃 다시 시도
-          </button>
-        </div>
+      {status === "unavailable" ||
+      status === "logging-out" ||
+      status === "logout-failed" ? (
+        <AuthRecovery
+          status={status}
+          pending={pending}
+          onRestore={() => void act(() => client.restore())}
+          onLogout={() =>
+            void act(async () => {
+              await client.logout();
+              notifySessionChange();
+              router.refresh();
+            })
+          }
+        />
       ) : status === "authenticated" ? (
         <div>
           <p>{account?.email} 계정으로 로그인했습니다.</p>

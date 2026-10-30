@@ -1,8 +1,8 @@
 # 기본 아키텍처
 
-2026-10-30 인증 추가: 현재 인증·개발 기준은 [authentication.md](authentication.md)를 따른다. 아래 2026-10-26 기반 설명과 검증 표는 당시 기록이며, 인증 관련 변경은 다음 문단과 인증 문서가 우선한다.
+2026-10-31 인증 리뷰 반영: 현재 인증·개발 기준은 [authentication.md](authentication.md)를 따른다. 아래 2026-10-26 기반 설명과 검증 표는 당시 기록이며, 인증 관련 변경은 다음 문단과 인증 문서가 우선한다.
 
-현재 `features/auth`, `modules/auth`, 계정·세션·Refresh 이력·로그인 시도 테이블 및 첫 마이그레이션이 추가됐다. Passport Strategy/Guard/JwtService, 5분 Access HttpOnly 쿠키, 14일 서버 Refresh 세션을 사용한다. 웹/Nest 업무 경로는 `/api/v1`이며 health 운영 경로는 유지한다. 모임·온보딩 완료 상태는 계정과 분리할 예정이며 이번에는 안내 화면만 제공한다.
+현재 `features/auth`, `modules/auth`, 계정·세션·Refresh 이력·로그인 시도 테이블 및 첫 마이그레이션이 추가됐다. Passport Strategy/Guard/JwtService, 5분 Access HttpOnly 쿠키, 14일 서버 Refresh 세션을 사용한다. 웹/Nest 업무 경로는 `/api/v1`이며 health 운영 경로는 유지한다. 가입 계정·세션·최초 Refresh 생성은 단일 트랜잭션이며, 프론트는 갱신 시 계정 변경을 감지해 이전 요청의 재시도를 중단한다. 일반 연결 장애와 로그아웃 실패 복구 UI를 구분한다. 모임·온보딩 완료 상태는 계정과 분리할 예정이며 이번에는 안내 화면만 제공한다.
 
 확인일: 2026-10-26. 기준 원격 main: `530a2c51584bc92895536e01011652739f0df1d2`.
 

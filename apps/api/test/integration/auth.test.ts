@@ -10,6 +10,7 @@ import {
   Account,
   AuthSession,
   AuthAttempt,
+  RefreshToken,
 } from "../../src/modules/auth/auth.entity.js";
 
 const origin = "http://localhost:3000";
@@ -79,8 +80,17 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     (await post("signup", "", { ...credentials, password: "short" })).status,
     400,
   );
-  const signup = await post("signup", "", credentials);
+  const signup = await post("signup", "", credentials, {
+    "X-Forwarded-For": "198.51.100.77",
+  });
   assert.equal(signup.status, 201);
+  assert.equal(
+    await db
+      .getRepository(AuthAttempt)
+      .countBy({ key: tokenHash("ip:198.51.100.77") }),
+    0,
+    "untrusted forwarded headers must not choose the rate-limit IP",
+  );
   const first = cookies(signup);
   const identity = await signup.json();
   assert.deepEqual(Object.keys(identity.account).sort(), ["email", "id"]);
@@ -209,4 +219,106 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     "session/restore",
   ])
     assert(spec.paths[`/api/v1/auth/${path}`]);
+});
+
+test("signup rolls back account, session and refresh token on either insert failure, then permits retry", async (t) => {
+  assert(
+    process.env.TEST_DATABASE_URL,
+    "TEST_DATABASE_URL must point to an isolated test database",
+  );
+  const { app, url } = await startTestApplication(
+    process.env.TEST_DATABASE_URL,
+  );
+  t.after(() => app.close());
+  const db = await app.get(DatabaseService).connect();
+  await db.runMigrations();
+  await db
+    .getRepository(AuthAttempt)
+    .delete({ key: tokenHash("ip:127.0.0.1") });
+  const post = (email: string) =>
+    fetch(`${url}/api/v1/auth/signup`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email, password: "rollback-test-password-123" }),
+    });
+  for (const table of ["auth_sessions", "refresh_tokens"] as const) {
+    const email = `${randomUUID()}@example.com`;
+    const beforeSessions = await db.getRepository(AuthSession).count();
+    const beforeTokens = await db.getRepository(RefreshToken).count();
+    // Real PostgreSQL failure, scoped to this test account. Never used by production code.
+    const condition =
+      table === "auth_sessions"
+        ? 'SELECT 1 FROM accounts WHERE id = NEW."accountId"'
+        : 'SELECT 1 FROM accounts a JOIN auth_sessions s ON s."accountId" = a.id WHERE s.id = NEW."sessionId"';
+    await db.query(`CREATE FUNCTION auth_test_reject_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF EXISTS (${condition} AND email = '${email}') THEN
+          RAISE EXCEPTION 'injected test insert failure';
+        END IF;
+        RETURN NEW;
+      END $$`);
+    try {
+      await db.query(`CREATE TRIGGER auth_test_insert_failure BEFORE INSERT ON ${table}
+        FOR EACH ROW EXECUTE FUNCTION auth_test_reject_insert()`);
+      const failure = await post(email);
+      assert.equal(failure.status, 503);
+      assert.equal(failure.headers.getSetCookie().length, 0);
+      assert.equal(
+        await db.getRepository(Account).countBy({ email }),
+        0,
+        "failed signup must not leave a registered account",
+      );
+      assert.equal(await db.getRepository(AuthSession).count(), beforeSessions);
+      assert.equal(await db.getRepository(RefreshToken).count(), beforeTokens);
+    } finally {
+      await db.query(
+        `DROP TRIGGER IF EXISTS auth_test_insert_failure ON ${table}`,
+      );
+      await db.query("DROP FUNCTION auth_test_reject_insert()");
+    }
+    const retry = await post(email);
+    assert.equal(
+      retry.status,
+      201,
+      "same email can retry after the storage failure",
+    );
+    const account = await db.getRepository(Account).findOneByOrFail({ email });
+    const sessions = await db
+      .getRepository(AuthSession)
+      .findBy({ accountId: account.id });
+    assert.equal(sessions.length, 1);
+    assert.equal(
+      await db
+        .getRepository(RefreshToken)
+        .countBy({ sessionId: sessions[0].id }),
+      1,
+    );
+    assert.equal(
+      (
+        await fetch(`${url}/api/v1/auth/me`, {
+          headers: { Cookie: cookies(retry) },
+        })
+      ).status,
+      200,
+    );
+  }
+  const email = `${randomUUID()}@example.com`;
+  const concurrent = await Promise.all([post(email), post(email)]);
+  assert.deepEqual(
+    concurrent.map((response) => response.status).sort(),
+    [201, 409],
+  );
+  const account = await db.getRepository(Account).findOneByOrFail({ email });
+  const sessions = await db
+    .getRepository(AuthSession)
+    .findBy({ accountId: account.id });
+  assert.equal(
+    sessions.length,
+    1,
+    "duplicate signup must not create another session",
+  );
+  assert.equal(
+    await db.getRepository(RefreshToken).countBy({ sessionId: sessions[0].id }),
+    1,
+  );
 });

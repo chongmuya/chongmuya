@@ -149,8 +149,163 @@ test("failed logout remains blocked until logout retry succeeds", async () => {
   await assert.rejects(client.logout());
   await assert.rejects(client.request("/api/v1/resource"));
   await client.restore();
-  assert.equal(client.getSnapshot().status, "unavailable");
+  assert.equal(client.getSnapshot().status, "logout-failed");
   fail = false;
   await client.logout();
   assert.equal(client.getSnapshot().status, "anonymous");
+});
+
+for (const source of ["me", "refresh"] as const) {
+  test(`account switch from ${source} clears user cache and cancels all old-account retries`, async () => {
+    const other: Session = {
+      authenticated: true,
+      account: { id: "b", email: "b@example.com" },
+    };
+    let clears = 0;
+    let mutations = 0;
+    let refreshes = 0;
+    let switched = false;
+    const client = new SessionClient(
+      () => clears++,
+      transport(async (path) => {
+        if (path.endsWith("restore")) return session;
+        if (path.endsWith("/me")) {
+          if (source === "refresh") throw expired();
+          switched = true;
+          return other.account;
+        }
+        if (path.endsWith("/refresh")) {
+          refreshes++;
+          switched = true;
+          return other;
+        }
+        mutations++;
+        if (!switched) throw expired();
+        return "must not replay an old account's mutation";
+      }),
+    );
+    await client.restore();
+    const results = await Promise.allSettled([
+      client.request("/api/v1/resource", { method: "POST" }),
+      client.request("/api/v1/resource", { method: "POST" }),
+    ]);
+    assert(results.every((result) => result.status === "rejected"));
+    assert.equal(mutations, 2, "neither old-account mutation is retried");
+    assert.equal(clears, 1);
+    assert.equal(refreshes, source === "refresh" ? 1 : 0);
+    assert.deepEqual(client.getSnapshot(), {
+      status: "authenticated",
+      account: other.account,
+    });
+  });
+}
+
+test("same account found by me after another tab refreshes still retries once", async () => {
+  let calls = 0;
+  let clears = 0;
+  const client = new SessionClient(
+    () => clears++,
+    transport(async (path) => {
+      if (path.endsWith("restore")) return session;
+      if (path.endsWith("/me")) return session.account;
+      if (++calls === 1) throw expired();
+      return "ok";
+    }),
+  );
+  await client.restore();
+  assert.equal(await client.request("/api/v1/resource"), "ok");
+  assert.equal(calls, 2);
+  assert.equal(clears, 0);
+});
+
+test("ordinary restore outage can recover without logging out", async () => {
+  let offline = true;
+  const client = new SessionClient(
+    () => {},
+    transport(async () => {
+      if (offline) throw network();
+      return session;
+    }),
+  );
+  await assert.rejects(client.restore());
+  assert.equal(client.getSnapshot().status, "unavailable");
+  offline = false;
+  await client.restore();
+  assert.deepEqual(client.getSnapshot(), {
+    status: "authenticated",
+    account: session.account,
+  });
+});
+
+for (const source of ["me", "refresh"] as const) {
+  test(`late ${source} response cannot restore identity after logout starts`, async () => {
+    let release!: (value: unknown) => void;
+    let started!: () => void;
+    const began = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let mutations = 0;
+    let refreshes = 0;
+    const snapshots: string[] = [];
+    const client = new SessionClient(
+      () => {},
+      transport(async (path) => {
+        if (path.endsWith("restore")) return session;
+        if (path.endsWith("logout")) return;
+        if (path.endsWith("/me") && source === "refresh") throw expired();
+        if (path.endsWith(`/${source}`)) {
+          if (source === "refresh") refreshes++;
+          started();
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        }
+        mutations++;
+        throw expired();
+      }),
+    );
+    await client.restore();
+    const rejected = assert.rejects(
+      client.request("/api/v1/resource", { method: "POST" }),
+    );
+    await began;
+    client.subscribe(() => snapshots.push(client.getSnapshot().status));
+    const logout = client.logout();
+    release(source === "me" ? session.account : session);
+    await logout;
+    await rejected;
+    assert.deepEqual(snapshots, ["logging-out", "anonymous"]);
+    assert.equal(mutations, 1);
+    assert.equal(refreshes, source === "refresh" ? 1 : 0);
+  });
+}
+
+test("late expiry from an old account neither starts refresh nor replays the request", async () => {
+  let rejectRequest!: (reason: unknown) => void;
+  let current = session;
+  let probes = 0;
+  const client = new SessionClient(
+    () => {},
+    transport(async (path) => {
+      if (path.endsWith("restore")) return current;
+      if (path.endsWith("/me") || path.endsWith("/refresh")) {
+        probes++;
+        return current;
+      }
+      return new Promise((_, reject) => {
+        rejectRequest = reject;
+      });
+    }),
+  );
+  await client.restore();
+  const rejected = assert.rejects(client.request("/api/v1/resource"));
+  current = {
+    authenticated: true,
+    account: { id: "b", email: "b@example.com" },
+  };
+  await client.restore();
+  rejectRequest(expired());
+  await rejected;
+  assert.equal(probes, 0);
+  assert.equal(client.getSnapshot().account?.id, "b");
 });
