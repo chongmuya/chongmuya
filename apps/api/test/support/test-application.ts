@@ -42,6 +42,8 @@ export async function startTestApplication(
   docsEnabled = true,
 ) {
   const environment = parseEnvironment({
+    AUTH_SECRET: "test-secret-with-at-least-32-characters",
+    WEB_ORIGIN: "http://localhost:3000",
     NODE_ENV: "test",
     DATABASE_URL: databaseUrl,
     API_DOCS_ENABLED: String(docsEnabled),

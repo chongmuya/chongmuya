@@ -2,13 +2,26 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { test } from "node:test";
-import { parseEnvironment } from "../src/config/environment.js";
+import { parseEnvironment as parse } from "../src/config/environment.js";
+
+const authSecret = "test-secret-with-at-least-32-characters";
+const webOrigin = "http://localhost:3000";
+const parseEnvironment = (env: NodeJS.ProcessEnv) =>
+  parse({ AUTH_SECRET: authSecret, WEB_ORIGIN: webOrigin, ...env });
 
 const databaseUrl = "postgresql://local:local@127.0.0.1:15432/chongmuya";
 
 test("configuration rejects missing/invalid required values without exposing values", () => {
   for (const env of [
     {},
+    { DATABASE_URL: databaseUrl, AUTH_SECRET: "short" },
+    { DATABASE_URL: databaseUrl, AUTH_SECRET: undefined },
+    { DATABASE_URL: databaseUrl, WEB_ORIGIN: "not-a-url" },
+    {
+      DATABASE_URL: databaseUrl,
+      NODE_ENV: "production",
+      WEB_ORIGIN: "http://example.com",
+    },
     { DATABASE_URL: "https://private-password@example.com/database" },
     { DATABASE_URL: databaseUrl, API_PORT: "3001oops" },
     { DATABASE_URL: databaseUrl, API_PORT: "65536" },
@@ -31,8 +44,11 @@ test("configuration rejects missing/invalid required values without exposing val
     );
   }
   assert.equal(
-    parseEnvironment({ DATABASE_URL: databaseUrl, NODE_ENV: "production" })
-      .docsEnabled,
+    parseEnvironment({
+      DATABASE_URL: databaseUrl,
+      NODE_ENV: "production",
+      WEB_ORIGIN: "https://example.com",
+    }).docsEnabled,
     false,
   );
   assert.deepEqual(
@@ -41,6 +57,8 @@ test("configuration rejects missing/invalid required values without exposing val
       UNRELATED_VARIABLE: "allowed",
     }),
     {
+      authSecret,
+      webOrigin,
       nodeEnv: "development",
       port: 3001,
       databaseUrl,
@@ -56,6 +74,7 @@ test("configuration rejects missing/invalid required values without exposing val
     parseEnvironment({
       DATABASE_URL: databaseUrl,
       NODE_ENV: "production",
+      WEB_ORIGIN: "https://example.com",
       API_DOCS_ENABLED: "true",
     }).docsEnabled,
     true,

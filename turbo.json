@@ -9,7 +9,9 @@
         "API_PORT",
         "DATABASE_URL",
         "API_DOCS_ENABLED",
-        "NODE_ENV"
+        "NODE_ENV",
+        "AUTH_SECRET",
+        "WEB_ORIGIN"
       ]
     },
     "build": {
