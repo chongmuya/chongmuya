@@ -250,25 +250,3 @@ ESLint 로컬 규칙으로 의존 경계를 검사합니다. 상대 경로·웹 
 CI는 고정된 Node·pnpm과 커밋 SHA로 고정한 공식 Actions를 사용합니다. 외부 비밀 없이 임시 PostgreSQL 서비스에서 frozen 설치·lint·빌드·typecheck·일반 테스트·DB 통합 테스트를 실행합니다. PR 및 main push가 트리거이며 실행 결과는 PR Checks와 Actions에서 확인합니다.
 
 pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolver의 정확한 버전만 허용합니다. Swagger의 선택적 Scarf 설치 분석은 비활성화합니다.
-
-## 공식 근거
-
-프레임워크 동작은 공식 문서와 설치된 버전의 소스를 기준으로 확인합니다. 프론트 구조 참고 범위는 위 게더 문단에 명시합니다.
-
-- [Nest 12 ESM 전환 가이드](https://docs.nestjs.com/migration-guide), [@nestjs/typeorm 12 릴리스](https://github.com/nestjs/typeorm/releases)
-- [TypeORM 1.1.2 릴리스](https://github.com/typeorm/typeorm/releases/tag/1.1.2), [TypeORM 메타데이터](https://registry.npmjs.org/typeorm/1.1.2), [마이그레이션 실행](https://typeorm.io/docs/migrations/executing/)
-- [Zod API](https://zod.dev/api), [Zod 4.6.7 메타데이터](https://registry.npmjs.org/zod/4.6.7)
-- [Nest Validation](https://docs.nestjs.com/techniques/validation), [OpenAPI](https://docs.nestjs.com/openapi/introduction), [lifecycle](https://docs.nestjs.com/fundamentals/lifecycle-events)
-- [Next Server/Client 경계](https://nextjs.org/docs/app/getting-started/server-and-client-components); 설치된 Next 16.4.3의 `dist/docs`도 확인
-- [TanStack Query v5 SSR](https://tanstack.com/query/v5/docs/framework/react/guides/advanced-ssr), [요청 취소](https://tanstack.com/query/v5/docs/framework/react/guides/query-cancellation)
-- [PostgreSQL 공식 이미지 목록](https://github.com/docker-library/official-images/blob/master/library/postgres)
-- [actions/checkout](https://github.com/actions/checkout/releases/tag/v7.0.1), [actions/setup-node](https://github.com/actions/setup-node/releases/tag/v7.1.0), [pnpm/action-setup](https://github.com/pnpm/action-setup/releases/tag/v6.1.0)
-
-- [Tailwind Next.js 설정](https://tailwindcss.com/docs/installation/framework-guides/nextjs), [theme 토큰](https://tailwindcss.com/docs/theme)
-- [React Hook Form Zod 연동](https://react-hook-form.com/docs/useform), [resolver](https://github.com/react-hook-form/resolvers)
-- [TanStack mutation 콜백](https://tanstack.com/query/latest/docs/framework/react/guides/mutations), [Devtools](https://tanstack.com/query/latest/docs/framework/react/devtools)
-- [tailwind-merge](https://github.com/dcastil/tailwind-merge), [clsx](https://github.com/lukeed/clsx)
-
-## 참고 문서
-
-제품 의도는 [정책](https://app.notion.com/p/3ec8d571d6de810ca37bfa1ba7d5e90c)·[기능 명세](https://app.notion.com/p/3ec8d571d6de816fb87ce39531e0d531)·[화면별 결정사항](https://app.notion.com/p/3ec8d571d6de816386e1fa2b1154e5f9)·[Decision Log](https://app.notion.com/p/3ec8d571d6de81f99af7f417c0b0d228)에서 확인합니다. [Architecture](https://app.notion.com/p/3ec8d571d6de81c7a1f9ca0b1dc083b1)·[ERD](https://app.notion.com/p/3ec8d571d6de818ba06cd91d5a75d24b)·[API 정책](https://app.notion.com/p/3ec8d571d6de814d83a3dddb49957583)은 설계 참고안이며 전체 테이블·API를 구현 범위로 간주하지 않습니다. 이 문서는 실제 코드의 계약을 설명합니다.

@@ -216,6 +216,7 @@ test("failed group save retains input and retries only on another submit", async
 
 test("event form submits Korean time and refreshes the account list plus only its group list", async () => {
   let body: unknown;
+  const groups = deferred<{ id: string; name: string }[]>();
   const event = {
     id: "e1",
     ownerId: "a",
@@ -228,7 +229,7 @@ test("event form submits Korean time and refreshes the account list plus only it
     _path: string,
     options?: RequestInit,
   ) => {
-    if (!options?.method) return [] as T;
+    if (!options?.method) return (await groups.promise) as T;
     body = JSON.parse(String(options?.body));
     return event as T;
   };
@@ -248,8 +249,18 @@ test("event form submits Korean time and refreshes the account list plus only it
     cache,
   );
   try {
+    const select = view.container.querySelector("select")!;
+    assert.match(select.selectedOptions[0].textContent!, /모임 확인/);
+    assert.notEqual(select.value, event.groupId);
     await fill(view.container, "name", " 새 행사 ");
     await fill(view.container, "date", "2026-11-14T18:30");
+    await submit(view.container);
+    assert.equal(body, undefined);
+    await act(async () => {
+      groups.resolve([{ id: event.groupId, name: "내 모임" }]);
+    });
+    await until(() => assert.equal(select.value, event.groupId));
+    assert.equal(select.selectedOptions[0].textContent, "내 모임");
     await submit(view.container);
     await until(() => assert.deepEqual(view.navigations, ["/events?event=e1"]));
     assert.deepEqual(body, {
@@ -422,6 +433,109 @@ async function selectGroup(container: HTMLElement, value: string) {
     select.dispatchEvent(new window.Event("change", { bubbles: true }));
   });
 }
+
+test("an unavailable URL group blocks submission and refetch preserves an explicit personal choice", async () => {
+  const groupId = "00000000-0000-4000-8000-000000000001";
+  let failed = true;
+  const writes: unknown[] = [];
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (!options?.method) {
+      if (failed) throw new ApiError("offline", 503, "SERVICE_UNAVAILABLE");
+      return [{ id: groupId, name: "내 모임" }] as T;
+    }
+    writes.push(JSON.parse(String(options.body)));
+    return { id: "e1", groupId: null } as T;
+  };
+  const view = await render(
+    createElement(EventForm, { accountId: "a", groupId, request }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /모임을 불러오지 못했습니다/),
+    );
+    const select = view.container.querySelector("select")!;
+    assert.match(select.selectedOptions[0].textContent!, /다시 선택/);
+    await fill(view.container, "name", "개인 행사");
+    await submit(view.container);
+    assert.deepEqual(writes, []);
+    await selectGroup(view.container, "");
+    failed = false;
+    await act(async () => {
+      await view.cache.refetchQueries({ queryKey: ["user", "a", "groups"] });
+    });
+    await until(() => assert.equal(select.options.length, 2));
+    assert.equal(select.value, "");
+    assert.equal(select.selectedOptions[0].textContent, "모임 없이 개인 행사");
+    await submit(view.container);
+    await until(() => assert.deepEqual(writes, [{ name: "개인 행사" }]));
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("refetch failure or missing options blocks a chosen group without replacing it", async () => {
+  const groups = [
+    { id: "00000000-0000-4000-8000-000000000001", name: "모임 A" },
+    { id: "00000000-0000-4000-8000-000000000002", name: "모임 B" },
+  ];
+  let result = groups;
+  let failed = false;
+  const writes: unknown[] = [];
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (!options?.method) {
+      if (failed) throw new ApiError("offline", 503, "SERVICE_UNAVAILABLE");
+      return result as T;
+    }
+    writes.push(JSON.parse(String(options.body)));
+    return { id: "e1", groupId: groups[1].id } as T;
+  };
+  const view = await render(
+    createElement(EventForm, {
+      accountId: "a",
+      groupId: groups[0].id,
+      request,
+    }),
+  );
+  try {
+    const select = view.container.querySelector("select")!;
+    await until(() => assert.equal(select.value, groups[0].id));
+    await fill(view.container, "name", "모임 행사");
+    await selectGroup(view.container, groups[1].id);
+    for (const failure of [true, false]) {
+      failed = failure;
+      result = [];
+      await act(async () => {
+        await view.cache.refetchQueries({ queryKey: ["user", "a", "groups"] });
+      });
+      await until(() =>
+        assert.match(select.selectedOptions[0].textContent!, /다시 선택/),
+      );
+      assert.equal(select.value, groups[1].id);
+      await submit(view.container);
+      assert.deepEqual(writes, []);
+    }
+    result = groups;
+    await act(async () => {
+      await view.cache.refetchQueries({ queryKey: ["user", "a", "groups"] });
+    });
+    await until(() =>
+      assert.equal(select.selectedOptions[0].textContent, "모임 B"),
+    );
+    assert.equal(select.value, groups[1].id);
+    await submit(view.container);
+    await until(() =>
+      assert.deepEqual(writes, [{ name: "모임 행사", groupId: groups[1].id }]),
+    );
+  } finally {
+    await view.unmount();
+  }
+});
 
 test("personal event creation works while groups fail and server field errors retain input for retry", async () => {
   let calls = 0;

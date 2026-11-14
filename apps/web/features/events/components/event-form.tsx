@@ -1,8 +1,8 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { SessionRequest } from "@/features/auth/types";
 import { applyFormError } from "@/shared/lib/apply-form-error";
@@ -19,6 +19,8 @@ import {
 } from "../schemas/event.schema";
 import { useCreateEvent } from "../hooks/use-create-event";
 
+const unconfirmedGroup = "unconfirmed";
+
 export function EventForm({
   accountId,
   groupId = "",
@@ -32,23 +34,57 @@ export function EventForm({
   const router = useRouter();
   const {
     register,
+    control,
     handleSubmit,
     reset,
+    setValue,
     setError,
     clearErrors,
     formState: { errors },
   } = useForm<EventFormValues>({
     resolver: zodResolver(eventSchema),
-    defaultValues: { name: "", date: "", groupId },
+    defaultValues: {
+      name: "",
+      date: "",
+      groupId: groupId ? unconfirmedGroup : "",
+    },
   });
+  const { field: groupField } = useController({ name: "groupId", control });
   const create = useCreateEvent(accountId, request);
   const groups = useGroups(accountId, request);
+  const unavailableGroup =
+    groupField.value !== "" &&
+    (groups.isError ||
+      !groups.data?.some((group) => group.id === groupField.value));
+
+  useEffect(() => {
+    if (
+      groupField.value === unconfirmedGroup &&
+      !groups.isError &&
+      groups.data?.some((group) => group.id === groupId)
+    ) {
+      setValue("groupId", groupId, { shouldValidate: true });
+    }
+  }, [groupId, groupField.value, groups.data, groups.isError, setValue]);
+
   return (
     <form
       noValidate
       className="form-panel"
       onSubmit={handleSubmit((values) => {
         if (create.isPending) return;
+        if (
+          values.groupId &&
+          (groups.isError ||
+            !groups.data?.some((group) => group.id === values.groupId))
+        ) {
+          setError("groupId", {
+            type: "validate",
+            message:
+              "모임을 다시 확인하거나 ‘모임 없이 개인 행사’를 선택해 주세요.",
+          });
+          return;
+        }
         clearErrors();
         create.mutate(eventInput(values), {
           onError: (error) =>
@@ -94,11 +130,18 @@ export function EventForm({
         <label htmlFor={`${id}-group`}>모임 (선택)</label>
         <Select
           id={`${id}-group`}
-          {...register("groupId")}
+          {...groupField}
           disabled={create.isPending}
           aria-invalid={!!errors.groupId}
           aria-describedby={errors.groupId ? `${id}-group-error` : undefined}
         >
+          {unavailableGroup && (
+            <option value={groupField.value} disabled>
+              {!groups.data && !groups.isError
+                ? "모임 확인 중…"
+                : "모임을 다시 선택해 주세요."}
+            </option>
+          )}
           <option value="">모임 없이 개인 행사</option>
           {!groups.isError &&
             groups.data?.map((group) => (

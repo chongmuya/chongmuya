@@ -91,8 +91,3 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 - 사용자 Query key는 `user / accountId` 범위를 유지하고 상세는 `events / detail / eventId`로 식별한다. 행사 생성·모임 연결은 내 행사·해당 모임 목록과 상세를 갱신한다. 계정 전환·로그아웃·화면 이탈 후 늦은 응답을 반영하지 않는다.
 
 API 입력·응답·캐시·fieldErrors의 정확한 형식과 migration 적용·복구 제한은 [아키텍처](architecture.md)를 따른다. 입력 오류는 허용된 필드에, 업무 오류는 폼 전체에 표시하며 작성한 입력을 유지한다. 서버의 임의 message는 출력하지 않는다.
-
-## 참고
-
-- [정책](https://app.notion.com/p/3ec8d571d6de810ca37bfa1ba7d5e90c), [기능 명세](https://app.notion.com/p/3ec8d571d6de816fb87ce39531e0d531): 제품 의도와 접근 조건
-- [Nest Passport](https://docs.nestjs.com/recipes/passport), [Next 인증](https://nextjs.org/docs/app/guides/authentication), [Next cookies](https://nextjs.org/docs/app/api-reference/functions/cookies)
