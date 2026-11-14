@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { HealthStatus } from "@/features/health/health-status";
+import { HealthStatus } from "@/features/health/client";
 
 export default function HomePage() {
   return (

@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { SessionClient } from "./session";
+import { SessionClient } from "../lib/session-client";
 
 const Context = createContext<SessionClient | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {

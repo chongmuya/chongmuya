@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { QueryClient } from "@tanstack/react-query";
 import { getApiJson } from "../shared/http/browser-api";
 import { ApiError } from "../shared/http/api-error";
-import { healthQueryOptions } from "../features/health/queries";
+import { healthQueryOptions } from "../features/health/api/health.queries";
 
 test("browser transport handles real HTTP errors, invalid data, cancellation and recovery", async (t) => {
   let mode = "healthy";

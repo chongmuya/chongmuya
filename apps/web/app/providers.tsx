@@ -1,8 +1,9 @@
 "use client";
 
-import { AuthProvider } from "@/features/auth/auth-provider";
+import { AuthProvider } from "@/features/auth/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import type { ReactNode } from "react";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -13,6 +14,9 @@ export function Providers({ children }: { children: ReactNode }) {
       <AuthProvider>
         <Suspense fallback={null}>{children}</Suspense>
       </AuthProvider>
+      {process.env.NODE_ENV === "development" && (
+        <ReactQueryDevtools initialIsOpen={false} />
+      )}
     </QueryClientProvider>
   );
 }

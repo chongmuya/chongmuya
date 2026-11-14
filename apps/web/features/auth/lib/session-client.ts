@@ -1,18 +1,7 @@
-import { ApiError } from "../../shared/http/api-error";
-import { requestJson } from "../../shared/http/request";
+import { ApiError } from "../../../shared/http/api-error";
+import { requestJson } from "../../../shared/http/request";
 
-export type Account = { id: string; email: string };
-export type Session = { authenticated: boolean; account: Account | null };
-export type AuthState = {
-  status:
-    | "loading"
-    | "anonymous"
-    | "authenticated"
-    | "unavailable"
-    | "logging-out"
-    | "logout-failed";
-  account: Account | null;
-};
+import type { Account, AuthState, Session } from "../types/auth.types";
 type Transport = typeof requestJson;
 type Lock = <T>(action: () => Promise<T>) => Promise<T>;
 

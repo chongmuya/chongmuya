@@ -10,6 +10,9 @@
 - 실제 필요가 생기기 전 공통 패키지, 빈 업무 모듈, 과도한 추상화를 추가하지 않는다.
 - Next.js와 NestJS의 TypeScript 요구사항을 각각 유지한다. 검증을 통과시키기 위한 가짜 성공 스크립트나 오류 무시는 금지한다.
 - [아키텍처](docs/architecture.md)의 책임·의존 방향을 따른다. 웹은 app → features → shared, API 업무 코드는 modules 안에 둔다. common에는 기술 공통 처리만 둔다.
+- 웹의 다른 feature는 명시적인 `client.ts`(훅·컴포넌트)·`types.ts`(타입) 공개 진입점으로 사용한다. 서버 전용 기능이 실제로 필요할 때만 `server.ts`와 `server-only` 경계를 추가한다. 내부 파일 직접 참조와 feature 간 순환 의존은 금지하며 서버·클라이언트 export를 한 진입점에 섞지 않는다.
+- 웹 서버 상태는 TanStack Query, 폼은 React Hook Form + Zod, 단순 UI 상태는 useState로 관리한다. 기능별 API·query options/key는 api, mutation 훅은 hooks, 화면은 components, 검증은 schemas, 계약은 types, 순수 로직은 lib 폴더에 실제 필요할 때만 두고, 사용자 query key는 `user / accountId / ...` 범위를 유지한다. 저장 후 캐시 변경과 이동은 계정·화면 이탈 이후 실행되지 않도록 검증한다.
+- 웹 스타일은 Tailwind 토큰과 실제 사용하는 shared UI를 사용한다. `cn`으로 className을 합치고 Devtools는 개발 환경에서만 표시한다. 하위 폴더·공용 UI·상태 라이브러리는 실제 사용처가 있을 때만 추가한다.
 - DB는 PostgreSQL, ORM은 TypeORM이다. Entity는 API modules/<업무>/*.entity.ts, 연결 설정과 마이그레이션은 src/database에 둔다. API DTO와 Entity를 구분하고 Next.js에서 업무 DB를 직접 수정하지 않는다.
 - API는 네이티브 ESM이다. NodeNext를 유지하고 상대 import에 .js 확장자를 쓴다. Entity와 마이그레이션은 컴파일한 JS만 로드한다. synchronize·migrationsRun·dropSchema는 false로 유지한다. 컴파일·마이그레이션 생성·적용을 구분한다. install/build/서버 시작에 마이그레이션을 자동 적용하지 않는다. 운영 DB reset/drop을 수행하지 않는다.
 - API 환경변수는 Zod로 시작 시 검증한다. false 문자열을 참으로 강제 변환하지 않고 오류에는 변수 이름만 노출한다. HTTP DTO 검증은 class-validator를 사용한다.

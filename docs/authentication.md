@@ -120,7 +120,7 @@ Access 메모리 방식 대신 쿠키를 선택했다. Next Server Component에�
 
 모임·행사 이름은 앞뒤 공백 제거 후 1~100자다. 행사는 이름만으로 생성 가능하며 `scheduledAt`은 생략/null 또는 시간대를 포함한 ISO 8601 날짜·시각이다. 화면 입력·표시는 한국 시간이며 DB에는 timestamptz로 저장한다. 명단·예약·참석·정산은 추가하지 않았다.
 
-선택 모임은 `/events?group=<id>`와 `/mypage?group=<id>`의 URL로 관리한다. 모임을 지정하지 않은 새 진입은 가장 먼저 만든 소유 모임을 선택한다. 상세 주소는 `/events?group=<id>&event=<id>`다. 브라우저 저장소에 계정 공통 선택 값을 남기지 않는다. Query key는 `user / accountId / groups / groupId / events / eventId`로 분리하고 이전 query의 데이터를 placeholder로 재사용하지 않는다. 기존 세션 종료·계정 교체 시 사용자 캐시 취소·제거를 그대로 사용한다. 화면이 바뀐 뒤 늦게 끝난 저장 요청은 이전 화면으로 이동시키거나 캐시를 복원하지 않는다.
+선택 모임은 `/events?group=<id>`와 `/mypage?group=<id>`의 URL로 관리한다. 모임을 지정하지 않은 새 진입은 가장 먼저 만든 소유 모임을 선택한다. 상세 주소는 `/events?group=<id>&event=<id>`다. 브라우저 저장소에 계정 공통 선택 값을 남기지 않는다. 프론트 파일 배치와 폼·캐시 구현 기준은 [아키텍처](architecture.md#프론트엔드)를 따른다. Query key는 `user / accountId / groups / groupId / events / eventId`로 분리하고 이전 query의 데이터를 placeholder로 재사용하지 않는다. 기존 세션 종료·계정 교체 시 사용자 캐시 취소·제거를 그대로 사용한다. 화면이 바뀐 뒤 늦게 끝난 저장 요청은 이전 화면으로 이동시키거나 캐시를 복원하지 않는다.
 
 추가 마이그레이션 `1793664000000-GroupEvents`는 groups와 events 및 FK/index만 만든다. accounts·auth_sessions·refresh_tokens는 변경하지 않는다. events.group_id와 groups.owner_id는 NOT NULL FK이며 자동 마이그레이션 정책은 변경하지 않았다. 배포 시 대상 DB 확인 → API build → 명시적 db:migration:run 순서로 적용한다.
 
