@@ -13,6 +13,11 @@
 - 웹의 다른 feature는 명시적인 `client.ts`(훅·컴포넌트)·`types.ts`(타입) 공개 진입점으로 사용한다. 서버 전용 기능이 실제로 필요할 때만 `server.ts`와 `server-only` 경계를 추가한다. 내부 파일 직접 참조와 feature 간 순환 의존은 금지하며 서버·클라이언트 export를 한 진입점에 섞지 않는다.
 - 웹 서버 상태는 TanStack Query, 폼은 React Hook Form + Zod, 단순 UI 상태는 useState로 관리한다. 기능별 API·query options/key는 api, mutation 훅은 hooks, 화면은 components, 검증은 schemas, 계약은 types, 순수 로직은 lib 폴더에 실제 필요할 때만 두고, 사용자 query key는 `user / accountId / ...` 범위를 유지한다. 저장 후 캐시 변경과 이동은 계정·화면 이탈 이후 실행되지 않도록 검증한다.
 - 웹 스타일은 Tailwind 토큰과 실제 사용하는 shared UI를 사용한다. `cn`으로 className을 합치고 Devtools는 개발 환경에서만 표시한다. 하위 폴더·공용 UI·상태 라이브러리는 실제 사용처가 있을 때만 추가한다.
+- API는 auth·groups·events·health 업무 모듈로 구성한다. 모임 소유권은 GroupsService, 행사 처리는 EventsService가 담당하며 기존 중첩 URL을 모듈 구조와 혼동하지 않는다.
+- 다른 모듈은 Nest imports/exports로 공개한 Service·Guard 및 명시적 공개 타입·데코레이터를 직접 import할 수 있다. 공개 항목은 tools/eslint-boundaries.mjs의 apiPublicImports와 함께 관리한다. .module.ts 재수출, 타 모듈 내부 Repository·Entity 참조, 순환 의존과 common/config/database의 업무 역참조를 금지한다. 편의상 forwardRef·전역 모듈을 추가하지 않는다.
+- 단순 CRUD는 Service에서 TypeORM Repository를 사용한다. 반복·복잡한 조회나 잠금만 의미 있는 Repository/QueryService로 분리한다. Service가 업무 트랜잭션을 열고, 그 안의 권한 확인·조회·저장은 같은 EntityManager를 전달받아 사용한다. BaseService·단순 위임 계층을 추가하지 않는다.
+- 요청·응답 DTO는 업무별 *-request.dto.ts / *-response.dto.ts로 나누고, 필드 유사성만으로 다른 업무 DTO를 상속하지 않는다. 인증 사용자는 AccessGuard + @CurrentUser()로 읽고 자원 권한은 Service에서 별도 검사한다. 간단한 응답 변환은 함수로 둔다.
+- 예상한 입력·권한·중복 오류는 해당 HTTP 예외로, 알려진 DB 가용성 장애는 공통 필터에서 503으로, 그 외 코드·스키마 오류는 500으로 처리한다. 모든 예외를 503으로 감싸지 않는다. 오류 응답·인증 코드 계약을 유지하고 서버 로그에는 requestId와 허용된 오류 분류·코드·소스 위치만 남긴다. 예외 원문·원본 stack·SQL/파라미터·비밀번호·토큰·쿠키·DB URL을 기록하지 않는다.
 - DB는 PostgreSQL, ORM은 TypeORM이다. Entity는 API modules/<업무>/*.entity.ts, 연결 설정과 마이그레이션은 src/database에 둔다. API DTO와 Entity를 구분하고 Next.js에서 업무 DB를 직접 수정하지 않는다.
 - API는 네이티브 ESM이다. NodeNext를 유지하고 상대 import에 .js 확장자를 쓴다. Entity와 마이그레이션은 컴파일한 JS만 로드한다. synchronize·migrationsRun·dropSchema는 false로 유지한다. 컴파일·마이그레이션 생성·적용을 구분한다. install/build/서버 시작에 마이그레이션을 자동 적용하지 않는다. 운영 DB reset/drop을 수행하지 않는다.
 - API 환경변수는 Zod로 시작 시 검증한다. false 문자열을 참으로 강제 변환하지 않고 오류에는 변수 이름만 노출한다. HTTP DTO 검증은 class-validator를 사용한다.

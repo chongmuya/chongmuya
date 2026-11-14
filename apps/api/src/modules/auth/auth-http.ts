@@ -7,9 +7,9 @@ import {
 import type { Request } from "express";
 import { ConfigService } from "../../config/config.service.js";
 
-import type { AccountDto } from "./auth.dto.js";
+import type { AuthUser } from "./auth-user.js";
 
-export type AuthRequest = Request & { user: AccountDto | false };
+export type AuthRequest = Request & { user?: AuthUser | false };
 export function cookie(request: Request, name: string): string | undefined {
   const matches = (request.headers.cookie ?? "")
     .split(";")
