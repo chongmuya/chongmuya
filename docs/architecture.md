@@ -1,19 +1,47 @@
 # 기본 아키텍처
 
-2026-11-14 백엔드 모듈 분리 반영. 기준 원격 main과 독립 worktree HEAD는 `3ccdedb5f3a2a7330e76a12d6dde64e5d2682bbd`이며 시작 시 변경 파일은 없었다. 인증·제품 계약은 [authentication.md](authentication.md)를 따른다. 프론트 설명과 2026-10-26 검증 표는 당시 기록이며, 이번 변경은 백엔드 구조와 의존 경계에 한정한다.
-
-현재 `features/auth`, `modules/auth`, 계정·세션·Refresh 이력·로그인 시도 테이블 및 첫 마이그레이션이 추가됐다. Passport Strategy/Guard/JwtService, 5분 Access HttpOnly 쿠키, 14일 서버 Refresh 세션을 사용한다. 웹/Nest 업무 경로는 `/api/v1`이며 health 운영 경로는 유지한다. 가입 계정·세션·최초 Refresh 생성은 단일 트랜잭션이며, 프론트는 갱신 시 계정 변경을 감지해 이전 요청의 재시도를 중단한다. 일반 연결 장애와 로그아웃 실패 복구 UI를 구분한다. 모임·온보딩 상태는 계정과 분리한다. 현재 `modules/groups`는 소유 모임, `modules/events`는 소속 행사 생성·조회를 담당하며 `features/groups`는 인증 세션 요청 함수를 app에서 전달받는다. feature 사이 직접 import를 추가하지 않았다. 모임·행사의 상세 계약과 검증은 [인증 기준의 모임·행사 절](authentication.md#모임행사-api와-검증-2026-11-03)을 따른다.
-
-이 문서는 구현된 기반과 후속 설계를 구분합니다. PostgreSQL·TypeORM·Passport JWT 인증과 모임·행사 API가 구현되어 있습니다. 게스트 링크, 카카오 로그인, 이메일·휴대폰 검증과 운영 배포는 이번 구조 변경에서 결정하지 않습니다.
+총무야는 Next.js App Router 웹과 NestJS API로 구성한다. 프론트는 라우팅·기능·공용 코드의 책임을 나누고, 인증 계약은 [authentication.md](authentication.md)를 따른다. 현재 모임·행사 화면은 소유 모임을 기준으로 동작하며 이메일·비밀번호 인증을 사용한다. 제품 정책이나 API·DB 모델 변경은 구조 정리와 별도 작업으로 다룬다.
 
 ## 책임과 폴더
 
 ```text
 apps/web/
-  app/                  라우팅, 페이지 조립, 레이아웃, Provider
-  features/health/      health 응답 검증, query 정책, 연결 상태 UI
-  shared/http/          브라우저 HTTP 처리, ApiError
-  test/                 실제 HTTP 통신·오류·복구 테스트
+  app/                       라우트, 레이아웃, Provider, 페이지 조합
+    workspace-screen.tsx     인증 화면과 모임·행사 화면 조합, URL별 화면 key
+  features/
+    auth/
+      api/                   profile 요청·query options
+      components/            Provider, 인증·복구 화면, 로그인·가입 폼
+      hooks/                 인증 mutation
+      lib/                   SessionClient 생명주기·갱신·잠금
+      schemas/               credentials.schema.ts
+      types/                 계정·인증 상태·요청 타입
+      client.ts / types.ts   외부 공개 진입점
+    groups/
+      api/                   groups.api.ts, groups.queries.ts
+      components/            GroupBoundary, GroupSettings, GroupForm
+      hooks/                 use-save-group.ts
+      schemas/               group.schema.ts
+      types/                 group.types.ts
+      client.ts              외부 컴포넌트 공개
+    events/
+      api/                   events.api.ts, events.queries.ts
+      components/            EventList, EventDetail, EventForm
+      hooks/                 use-create-event.ts
+      lib/                   한국 시간 표시
+      schemas/               event.schema.ts
+      types/                 event.types.ts
+      client.ts              외부 컴포넌트 공개
+    health/
+      api/                   health 요청·응답 검증·polling options
+      components/            연결 상태 UI
+      client.ts              외부 컴포넌트 공개
+  shared/
+    http/                    JSON 전송, 취소·타임아웃, ApiError
+    hooks/use-active-screen  화면 이탈 후 지연 저장 응답 방어
+    lib/cn                   조건부 className과 Tailwind 충돌 병합
+    ui/                      Button, Input, FormError, 로딩·오류·빈 상태
+  test/                      세션·HTTP·렌더링·폼 DOM 회귀 테스트
 apps/api/
   src/
     main.ts             앱 실행과 정상 종료 훅
@@ -32,18 +60,80 @@ compose.yaml            로컬 PostgreSQL만 실행
 .github/workflows/ci.yml 검증 워크플로
 ```
 
-`features`, `shared`, `common`은 앱 내부 폴더입니다. pnpm 패키지는 기존 루트·웹·API 세 개이며 별도 `packages`는 없습니다. 빈 업무 모듈이나 정식 FSD의 entities/widgets 계층을 만들지 않았습니다.
+별도 entities/widgets 계층, 공통 패키지, 빈 폴더는 만들지 않는다. feature 내부는 게더와 같이 역할별 폴더로 구분한다. `api/`에는 API 함수와 query key/options, `hooks/`에는 mutation 등 React 훅, `components/`에는 화면과 폼, `schemas/`에는 입력 검증, `types/`에는 데이터 계약, `lib/`에는 React와 무관한 로직을 둔다. health에는 폼이나 mutation이 없으므로 schemas/hooks 폴더를 만들지 않는다. API 함수가 단순해도 경로·HTTP 계약을 화면에서 분리한다. query options를 감싸기만 하는 조회 훅은 만들지 않는다.
 
 ## 프론트엔드
 
-- 의존 방향은 `app → features → shared`입니다. app이 화면을 조합하며, features는 shared를 사용할 수 있습니다. 서로 다른 feature 내부를 직접 참조하지 않습니다.
-- 현재 page/layout은 Server Component이고, Query Provider와 health UI만 Client Component입니다. Server Component가 브라우저 store나 프로세스 전역 사용자 상태에 의존하지 않습니다.
-- TanStack Query 5는 **실제 health 서버 데이터**를 관리합니다. Provider마다 QueryClient를 생성하고 하위 Suspense 경계를 둡니다. SSR prefetch/hydration이나 사용자별 인증 데이터 캐시는 아직 없습니다.
-- health query만 `staleTime: 0`, `retry: false`, 5초 polling을 지정합니다. 비활성 탭에서는 polling하지 않습니다. 향후 예약·참석의 캐시·갱신 정책은 각 기능에서 정합니다.
-- 재조회 실패 시 이전 성공 데이터가 남을 수 있으므로 UI는 `isError`를 우선합니다. 타임아웃 3초, 요청 취소, HTTP 실패, JSON·health 계약 오류를 처리하며 API 재시작 후 복구합니다.
-- `shared/http/browser-api.ts`는 브라우저의 동일 출처 `/api/` GET만 처리합니다. `client-only` 경계를 사용하며 API_URL·서버 쿠키·토큰 보관 코드를 넣지 않습니다. 서버용 통신이 실제로 필요해지면 별도로 설계합니다.
-- ApiError의 status/code/requestId로 통신 오류를 표현합니다. 프록시가 HTML/텍스트 오류를 반환해도 실패로 처리하고 원문 오류를 화면에 출력하지 않습니다.
-- 폼·공유 UI 상태가 없어 React Hook Form·Zustand는 설치하지 않았습니다. Query 캐시를 클라이언트 UI 상태 store로 사용하지 않습니다.
+### 공개 경계와 페이지 조합
+
+`app → features → shared`가 기본 방향이다. app은 페이지를 조합하고 `GroupBoundary`가 소유 모임 조회·선택·첫 모임 생성 조건을 처리한다. 선택된 모임에 대해 app이 `GroupSettings`, `EventList`, `EventDetail`을 조합한다. 모임과 행사 사이에 불필요한 직접 의존을 만들지 않는다.
+
+app과 다른 feature에서 접근하는 공개 경로는 다음과 같다.
+
+- `features/<name>/client`: `use client` 진입점. 실제로 외부에서 사용하는 훅·컴포넌트만 이름을 명시해 export한다.
+- `features/<name>/types`: 다른 feature에서 실제 사용하는 타입만 재공개하는 루트 `types.ts`. 내부 타입 정의는 `types/` 폴더에 둔다. 예를 들어 groups/events API는 auth의 공개 `SessionRequest` 타입을 사용한다.
+- `features/<name>/server`: 서버 기능이 실제로 생기면 추가하고 `server-only`로 보호한다. 현재는 필요하지 않아 만들지 않았다.
+
+서버·클라이언트 코드를 공통 index에서 재공개하지 않는다. feature 내부는 상대 경로를 사용하고 자신의 공개 진입점을 역으로 참조하지 않는다. 다른 feature 내부를 직접 import하지 않으며 타입 의존도 feature 간 순환 검사에 포함한다. shared가 업무 feature를 참조하거나 웹이 API 앱 소스를 import하는 것은 금지한다.
+
+페이지/layout은 Server Component를 유지하고 상호작용 경계만 Client Component로 둔다. 인증 상태와 QueryClient는 Provider의 마운트 인스턴스에 속하며 서버 전역 사용자 상태를 만들지 않는다. 현재 업무 API는 클라이언트 세션 요청을 사용한다. SSR prefetch/hydration이나 Next에서 DB를 직접 다루는 코드는 없다.
+
+### API와 캐시
+
+컴포넌트 → query options / mutation → feature API → SessionClient.request → shared JSON 전송 → Nest API 순서다. 세션의 Access 만료 갱신, 한 번 재시도, 계정 변경 감지, 로그아웃 대기·실패 복구는 기존 SessionClient를 유지한다. 업무 API 함수를 단독 fetch로 우회하지 않는다. profile은 인증 feature가 소유한다.
+
+| 데이터    | Query key                                      | 정책                                      |
+| --------- | ---------------------------------------------- | ----------------------------------------- |
+| profile   | `user / accountId / profile`                   | 인증 상태에서만 조회                      |
+| 내 모임   | `user / accountId / groups`                    | 계정마다 별도 목록                        |
+| 행사 목록 | `user / accountId / groups / groupId / events` | 모임마다 별도 목록                        |
+| 행사 상세 | 위 목록 key + `eventId`                        | 목록과 상세 데이터를 구분                 |
+| health    | `health`                                       | 비활성 탭 제외 5초 polling, 3초 요청 제한 |
+
+업무 query는 `staleTime: 0`, `retry: false`이며 Query 기본 마운트·포커스·재연결 재조회를 사용한다. 실패는 오류 UI와 사용자의 다시 시도로 복구한다. placeholder로 이전 계정·모임 데이터를 재사용하지 않는다. `isError`를 잔존 성공 데이터보다 우선한다. Query의 AbortSignal을 API까지 전달한다.
+
+mutation은 자동 재시도하지 않는다. 모임 저장 성공 시 진행 중인 목록 조회를 취소하고 응답으로 해당 계정 목록을 갱신한 뒤 stale로 표시한다. 첫 생성의 캐시 갱신과 이동은 같은 보호된 콜백에서 처리해 온보딩 폼 unmount와 경쟁하지 않는다. 행사 저장은 해당 모임의 조회를 취소하고 상세 응답을 저장한 뒤 그 목록만 무효화한다. 저장 성공 뒤 재조회 실패 때문에 생성 요청을 자동 반복하지 않는다.
+
+계정·모드·URL이 바뀌면 app의 화면 key가 달라진다. mutation의 캐시 처리에는 화면 생존 검사를 두고, 행사 생성 후 이동은 마운트된 observer의 per-call callback에서 실행한다. 이전 화면의 늦은 응답이 캐시나 navigation을 복원하면 안 된다. 계정 전환·로그아웃 시 `user` query 취소·제거와 mutation cache 정리는 기존 AuthProvider가 담당한다.
+
+### 폼과 공용 UI
+
+폼은 React Hook Form + Zod resolver로 관리하고 제출된 유효 값만 mutation에 보낸다. 모임·행사명은 공백 제거 후 1~100자, 인증은 기존 이메일·12~128자 비밀번호 계약을 유지한다. 비밀번호를 trim하거나 Query mutation 변수에 저장하지 않는다. 일정은 선택 입력이며 유효한 한국 시각을 UTC ISO 문자열로 변환한다. 서버 DTO와 권한 검증은 최종 검증으로 유지한다.
+
+서버 상태는 Query, 폼 입력·오류는 RHF, 로그인/가입 탭은 useState다. 공용 UI에는 도메인 타입이나 API 호출을 넣지 않는다. Button은 기본 `type="button"`이며 제출 버튼만 submit을 명시한다. Input은 ref와 표준 속성을 그대로 전달하고 오류 텍스트는 label·aria-invalid·aria-describedby와 연결한다. 로딩·오류 메시지는 status/alert로 전달한다.
+
+Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 루트 CSS에서 import한다. 색상·radius는 CSS `@theme`로 정의하며 기존 화면의 색상과 폭을 유지한다. 컴포넌트 스타일은 utility, 공통 문서 기본값은 base layer, 폼 패널은 components layer에 둔다. `cn`은 clsx와 tailwind-merge를 합쳐 호출부의 className 재정의를 허용한다. 대규모 UI 디자인이나 별도 컴포넌트 라이브러리는 이번 범위가 아니다.
+
+### 의존성 선택 (2026-11-14)
+
+의존성은 모두 `apps/web/package.json`에 정확한 버전으로 선언한다. Next 16.4.3 / React 19.3.1 / TanStack Query 5.104.5는 유지한다.
+
+| 추가 항목                             | 버전            | 용도                                         |
+| ------------------------------------- | --------------- | -------------------------------------------- |
+| react-hook-form / @hookform/resolvers | 7.92.0 / 7.0.6  | 폼 상태와 Zod 연동                           |
+| zod                                   | 4.6.7           | 기능별 입력 스키마, 타입 추론                |
+| clsx / tailwind-merge                 | 2.1.1 / 3.7.0   | 공통 cn                                      |
+| tailwindcss / @tailwindcss/postcss    | 4.3.5 / 4.3.5   | CSS 토큰과 Next PostCSS 빌드                 |
+| postcss                               | 8.5.32          | 배포 유예 예외가 필요 없는 호환 안정 버전    |
+| @tanstack/react-query-devtools        | 5.104.5         | 기존 Query와 peer 범위를 맞춘 개발 전용 도구 |
+| jsdom / @types/jsdom                  | 31.0.1 / 30.0.0 | Node 24.15.0에서 실제 React 폼 DOM 회귀 검사 |
+
+스타일 빌드·Devtools·DOM 테스트 의존성은 devDependencies다. Devtools는 `NODE_ENV === "development"`에서만 렌더링하며 패키지의 production 비활성 export도 사용한다. pnpm 단일 lockfile과 기존 설치 스크립트 허용 정책을 유지한다. Zustand·Axios·Vite·별도 라우터는 추가하지 않는다.
+
+게더 develop의 [아키텍처](https://github.com/KUIT-GATHER/gather-front/blob/develop/docs/architecture.md), [query options](https://github.com/KUIT-GATHER/gather-front/blob/develop/src/features/team/api/team.queries.ts), [mutation](https://github.com/KUIT-GATHER/gather-front/blob/develop/src/features/team/hooks/useCreateMeetingMutation.ts)을 읽고 책임별 파일·실사용 공용 UI·필요한 feature 간 의존 원칙을 참고했다. Vite, React Router, Zustand 인증, 게더의 제품 정책과 API는 옮기지 않았다.
+
+### 검증 범위
+
+루트의 frozen 설치·format:check·lint·typecheck·build·test를 기준으로 한다. 테스트는 기존 인증 갱신·계정 변경·로그아웃 복구와 함께 다음 동작을 검사한다.
+
+- 공개 feature 참조 허용, 내부 참조·역방향 의존·feature 순환 차단.
+- 첫 모임 생성 후 캐시 갱신과 이동, 이름 수정 실패 시 입력 유지와 수동 재시도.
+- 한국 시간 일정 변환, 해당 모임 목록만 무효화, 화면 이탈 후 늦은 저장 응답 차단.
+- 로그인·로그아웃 실패 복구 UI, 사용자 캐시 정리, 비밀번호의 mutation 변수 미포함.
+
+2026-11-14 기준 최신 백엔드 PR #7을 반영한 뒤 설치·포맷·lint·타입 검사·프로덕션 빌드와 테스트 35개(경계 3, 웹 26, API 6)가 통과했다. 빌드는 앱 소스가 같아 기존 Turbo 캐시를 사용했다. 백엔드 병합 전에는 격리된 임시 PostgreSQL과 `pnpm dev`에서 직접 API·Next rewrite 응답, 로그인 → 두 모임 생성 → 행사 생성·목록 분리·잘못된 모임/행사 조합 404 → 모임 이름 수정 → 로그아웃 및 401을 확인했다. 기존 마이그레이션을 임시 DB에만 명시적으로 적용했다. 이 프론트 변경에는 API·DB 변경이 없어 DB 통합 테스트 전체는 로컬에서 다시 실행하지 않았다. 병합할 코드의 전체 검증과 DB 통합 테스트 결과는 PR의 CI에서 확인한다.
+
+Chrome에서는 인증 화면 로딩과 개발용 Query Devtools 표시까지 확인했다. 전체 클릭 흐름·모바일 시각 검수는 사용자 브라우저 사용을 방해하지 않도록 중단했으며, DOM·HTTP 검증이 이를 대신했다고 보지 않는다.
 
 ## 백엔드와 HTTP 계약
 
@@ -100,7 +190,7 @@ Nest 12와 @nestjs/typeorm 12는 네이티브 ESM으로 배포됩니다. 공식 
 
 Zod **4.6.7**은 API 환경변수의 단일 스키마를 담당하며 설정 타입도 추론합니다. 포트는 숫자 문자열 → 정수 1~65535, DB는 호스트·DB 이름이 있는 PostgreSQL URL, 문서 노출 설정은 정확한 true/false 문자열만 허용합니다. `Boolean("false")` 같은 암묵 변환을 사용하지 않습니다. production 기본 문서 노출은 false입니다. Zod 오류 객체 전체를 로그로 출력하지 않고 잘못된 변수 이름만 표시합니다.
 
-HTTP DTO는 기존 class-validator/class-transformer 및 Swagger 연동을 유지합니다. 환경변수와 HTTP 입력은 다른 경계이므로 같은 입력을 두 도구로 중복 검증하지 않습니다. 웹에 Zod나 폼 라이브러리를 사용처 없이 추가하지 않았습니다.
+HTTP DTO는 기존 class-validator/class-transformer 및 Swagger 연동을 유지합니다. 환경변수와 HTTP 입력은 다른 경계이므로 같은 입력을 두 도구로 중복 검증하지 않습니다. 웹의 Zod는 실제 인증·모임·행사 폼 입력 검증에 별도로 사용합니다.
 
 ## PostgreSQL·TypeORM
 
@@ -124,6 +214,8 @@ Entity는 `modules/<업무>/*.entity.ts`에 실제로 필요한 모델만 추가
 
 이번 모듈 이동은 기존 마이그레이션과 DB 스키마를 변경하지 않습니다. `modules/**/*.entity.js`가 새 events 위치를 포함하며 격리 DB에서 기존 마이그레이션 적용 후 schema diff가 비어 있는지 검증합니다. Nest 빌드는 deleteOutDir를 사용하므로 이전 Entity 산출물을 남기지 않습니다.
 
+인증·모임·행사 마이그레이션은 CI의 격리된 PostgreSQL에서 검증합니다. 이번 프론트 기반 변경에는 새 DB 마이그레이션이 없습니다.
+
 TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수 있으므로 대상 DB를 확인합니다. 운영 DB reset/drop은 수행하지 않습니다.
 
 ## 의존 경계 검사와 CI
@@ -131,7 +223,7 @@ TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수
 기존 ESLint에 로컬 규칙을 추가했습니다. 상대 경로·웹 `@/` 별칭·`@chongmuya/` 패키지 경로의 정적 import/export, 문자열 리터럴 dynamic import/require를 검사합니다.
 
 - 앱 간 직접 소스 import 금지.
-- 웹 shared → features/app, features → app, feature 간 직접 import 금지.
+- 웹 shared → features/app, features → app 역방향 금지. app과 다른 feature는 client/types/server 공개 진입점만 사용하며, feature 간 순환 의존은 타입 참조까지 검사한다.
 - API common/config/database → 업무 modules 금지. 업무 module에서 bootstrap·app.module 역참조 금지.
 - API 업무 모듈 간 `.module` 및 명시적 공개 Service·Guard·타입·데코레이터 import를 허용합니다. `tools/eslint-boundaries.mjs`의 `apiPublicImports` 목록은 실제 Nest exports와 함께 관리합니다. 모든 `*.service`를 무조건 공개하지 않으며 내부 Repository·Entity·미공개 Service와 module 재수출을 차단합니다. 소스 정적 import/export 그래프의 순환은 테스트에서 검사하고, 실제 DI 연결은 HTTP/통합 테스트로 검증합니다. 편의상 forwardRef·전역 모듈을 추가하지 않습니다.
 
@@ -168,11 +260,11 @@ pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolv
 - 계정과 명단 구성원, 행사 당시 스냅샷과 현재 명단은 구분해야 합니다. 예약 없는 행사도 가능해야 합니다. 아직 이를 구현한 모델은 없습니다.
 - 매장 하나 선택과 나머지 문의 종료는 같은 트랜잭션 및 DB 제약을 포함해 설계해야 합니다. 알림은 향후 상태 변경과 발송할 기록을 같은 트랜잭션에 남기고 별도 worker가 처리하는 방향을 검토합니다. 현재 outbox 테이블·worker·큐는 없습니다.
 - JWT 로그인·쿠키·갱신과 현재 소유자 권한 검사는 구현되어 있습니다. 게스트 링크, 멤버십 확장, 정산 잔액 배분·버전 정책, 비공개 파일 접근, 데이터 삭제·인수인계 정책은 후속 작업입니다. Next.js가 업무 DB를 직접 수정하거나 Nest 업무 규칙을 중복 구현하지 않습니다.
-- React Hook Form·Zustand, infrastructure, 공유 패키지, API 클라이언트 생성, 클라우드 배포는 실제 필요가 생길 때 추가합니다.
+- Zustand, infrastructure, 공유 패키지, API 클라이언트 생성, 클라우드 배포는 실제 필요가 생길 때 추가합니다.
 
 ## 공식 근거
 
-아래 공식 자료, npm 패키지 메타데이터, 설치된 코드와 로컬 실행을 대조했습니다. 다른 개인 프로젝트를 복제하지 않았습니다.
+아래 공식 자료, npm 패키지 메타데이터와 설치된 코드를 확인했습니다. 프론트 구조 참고 범위는 위 게더 문단에 명시합니다.
 
 - [Nest 12 ESM 전환 가이드](https://docs.nestjs.com/migration-guide), [@nestjs/typeorm 12 릴리스](https://github.com/nestjs/typeorm/releases)
 - [TypeORM 1.1.2 릴리스](https://github.com/typeorm/typeorm/releases/tag/1.1.2), [TypeORM 메타데이터](https://registry.npmjs.org/typeorm/1.1.2), [마이그레이션 실행](https://typeorm.io/docs/migrations/executing/)
@@ -182,6 +274,11 @@ pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolv
 - [TanStack Query v5 SSR](https://tanstack.com/query/v5/docs/framework/react/guides/advanced-ssr), [요청 취소](https://tanstack.com/query/v5/docs/framework/react/guides/query-cancellation)
 - [PostgreSQL 공식 이미지 목록](https://github.com/docker-library/official-images/blob/master/library/postgres)
 - [actions/checkout](https://github.com/actions/checkout/releases/tag/v7.0.1), [actions/setup-node](https://github.com/actions/setup-node/releases/tag/v7.1.0), [pnpm/action-setup](https://github.com/pnpm/action-setup/releases/tag/v6.1.0)
+
+- [Tailwind Next.js 설정](https://tailwindcss.com/docs/installation/framework-guides/nextjs), [theme 토큰](https://tailwindcss.com/docs/theme)
+- [React Hook Form Zod 연동](https://react-hook-form.com/docs/useform), [resolver](https://github.com/react-hook-form/resolvers)
+- [TanStack mutation 콜백](https://tanstack.com/query/latest/docs/framework/react/guides/mutations), [Devtools](https://tanstack.com/query/latest/docs/framework/react/devtools)
+- [tailwind-merge](https://github.com/dcastil/tailwind-merge), [clsx](https://github.com/lukeed/clsx)
 
 ## 참고 저장소와 이번 구조의 선택 (2026-11-14)
 
@@ -196,6 +293,8 @@ pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolv
 근거: [Nest Modules](https://docs.nestjs.com/modules), [Custom decorators](https://docs.nestjs.com/custom-decorators), [TypeORM Transactions](https://typeorm.io/docs/advanced-topics/transactions/).
 
 ## 백엔드 구조 변경 검증 (2026-11-14)
+
+아래는 PR #7의 백엔드 작업 당시 검증 기록입니다. 현재 프론트 변경의 검증 결과는 해당 PR 본문에서 확인합니다.
 
 - Node 24.15.0 / pnpm 11.25.0에서 `pnpm install --frozen-lockfile`, 변경 파일만 Prettier 적용 후 `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` 통과. 빌드는 API를 실제 컴파일하고 변경 없는 웹은 Turbo 캐시를 사용했다.
 - 일반 테스트: 의존 경계·순환 검사 2개, API 설정/HTTP/오류 분류 6개, 기존 웹 20개 통과. API 오류 응답·Swagger 스키마와 모듈별 URL 등록을 확인했다.

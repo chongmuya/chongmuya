@@ -1,7 +1,93 @@
 import path from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const ts = createRequire(path.join(root, "apps/web/package.json"))(
+  "typescript",
+);
+const publicEntries = new Set(["client", "server", "types"]);
+
+function resolveImport(filename, specifier) {
+  const source = area(filename);
+  if (specifier.startsWith("."))
+    return path.resolve(path.dirname(filename), specifier);
+  if (specifier.startsWith("@/"))
+    return path.resolve(root, "apps", source.app, specifier.slice(2));
+  if (specifier.startsWith("@chongmuya/"))
+    return path.resolve(root, "apps", specifier.slice("@chongmuya/".length));
+}
+
+// Feature-level cycles include type-only edges: public types are still contracts.
+function featureGraph() {
+  const graph = new Map();
+  function scan(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        scan(file);
+        continue;
+      }
+      if (!/\.[cm]?[jt]sx?$/.test(file) || /\.(test|stories)\./.test(file))
+        continue;
+      const source = area(file);
+      const edges = graph.get(source.feature) ?? new Set();
+      graph.set(source.feature, edges);
+      const ast = ts.createSourceFile(
+        file,
+        readFileSync(file, "utf8"),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      function visit(node) {
+        const literal =
+          ts.isImportDeclaration(node) || ts.isExportDeclaration(node)
+            ? node.moduleSpecifier
+            : ts.isCallExpression(node) &&
+                (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+                  (ts.isIdentifier(node.expression) &&
+                    node.expression.text === "require"))
+              ? node.arguments[0]
+              : undefined;
+        if (literal && ts.isStringLiteralLike(literal)) {
+          const targetFile = resolveImport(file, literal.text);
+          const target = targetFile && area(targetFile);
+          if (
+            target?.app === "web" &&
+            target.layer === "features" &&
+            target.feature !== source.feature
+          )
+            edges.add(target.feature);
+        }
+        ts.forEachChild(node, visit);
+      }
+      visit(ast);
+    }
+  }
+  scan(path.join(root, "apps/web/features"));
+  return graph;
+}
+
+export function hasDependencyPath(graph, start, end, visited = new Set()) {
+  if (start === end) return true;
+  if (visited.has(start)) return false;
+  visited.add(start);
+  return [...(graph.get(start) ?? [])].some((next) =>
+    hasDependencyPath(graph, next, end, visited),
+  );
+}
+
+function isPublicEntry(file) {
+  const relative = path
+    .relative(path.join(root, "apps/web/features"), file)
+    .split(path.sep);
+  return (
+    relative.length === 2 &&
+    publicEntries.has(relative[1].replace(/\.[cm]?[jt]sx?$/, ""))
+  );
+}
 
 // Explicit public API, not a suffix-based allowance for every service/guard.
 // Providers must also be exported by the owning Nest module. Types/decorators
@@ -41,36 +127,42 @@ export default {
         const filename = context.filename;
         const source = area(filename);
         if (!source) return {};
+        let graph;
         function check(node, declaration) {
           if (typeof node?.value !== "string") return;
           const specifier = node.value;
-          let targetFile;
-          if (specifier.startsWith("."))
-            targetFile = path.resolve(path.dirname(filename), specifier);
-          else if (specifier.startsWith("@/"))
-            targetFile = path.resolve(
-              root,
-              "apps",
-              source.app,
-              specifier.slice(2),
-            );
-          else if (specifier.startsWith("@chongmuya/"))
-            targetFile = path.resolve(
-              root,
-              "apps",
-              specifier.slice("@chongmuya/".length),
-            );
-          else return;
+          const targetFile = resolveImport(filename, specifier);
+          if (!targetFile) return;
           const target = area(targetFile);
           if (!target) return;
           let invalid = source.app !== target.app;
           if (source.app === "web") {
             const rank = { app: 0, features: 1, shared: 2 };
             invalid ||= rank[source.layer] > rank[target.layer];
-            invalid ||=
-              source.layer === "features" &&
+            if (
               target.layer === "features" &&
-              source.feature !== target.feature;
+              (source.layer === "app" ||
+                (source.layer === "features" &&
+                  source.feature !== target.feature))
+            ) {
+              invalid ||= !isPublicEntry(targetFile);
+              if (source.layer === "features" && !invalid) {
+                graph ??= featureGraph();
+                invalid ||= hasDependencyPath(
+                  graph,
+                  target.feature,
+                  source.feature,
+                );
+              }
+            }
+            const clientModule = context.sourceCode.ast.body.some(
+              (item) =>
+                item.type === "ExpressionStatement" &&
+                item.expression.value === "use client",
+            );
+            invalid ||=
+              clientModule &&
+              /[/\\]server(?:\.[cm]?[jt]sx?)?$/.test(targetFile);
           }
           if (source.app === "api") {
             invalid ||=

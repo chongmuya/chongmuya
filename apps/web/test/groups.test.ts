@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { Workspace } from "../features/groups/workspace";
+import { WorkspaceContent } from "../app/workspace-screen";
 
 const router = {
   bfcacheId: "test",
@@ -33,7 +33,7 @@ function render(
       createElement(
         QueryClientProvider,
         { client: cache },
-        createElement(Workspace, {
+        createElement(WorkspaceContent, {
           accountId,
           request,
           groupId,

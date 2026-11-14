@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApiError } from "../shared/http/api-error";
-import { SessionClient } from "../features/auth/session";
-import type { Session } from "../features/auth/session";
+import { SessionClient } from "../features/auth/lib/session-client";
+import type { Session } from "../features/auth/types/auth.types";
 import type { requestJson } from "../shared/http/request";
 const session: Session = {
   authenticated: true,

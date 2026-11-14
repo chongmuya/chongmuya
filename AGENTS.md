@@ -10,6 +10,9 @@
 - 실제 필요가 생기기 전 공통 패키지, 빈 업무 모듈, 과도한 추상화를 추가하지 않는다.
 - Next.js와 NestJS의 TypeScript 요구사항을 각각 유지한다. 검증을 통과시키기 위한 가짜 성공 스크립트나 오류 무시는 금지한다.
 - [아키텍처](docs/architecture.md)의 책임·의존 방향을 따른다. 웹은 app → features → shared, API 업무 코드는 modules 안에 둔다. common에는 기술 공통 처리만 둔다.
+- 웹의 다른 feature는 명시적인 `client.ts`(훅·컴포넌트)·`types.ts`(타입) 공개 진입점으로 사용한다. 서버 전용 기능이 실제로 필요할 때만 `server.ts`와 `server-only` 경계를 추가한다. 내부 파일 직접 참조와 feature 간 순환 의존은 금지하며 서버·클라이언트 export를 한 진입점에 섞지 않는다.
+- 웹 서버 상태는 TanStack Query, 폼은 React Hook Form + Zod, 단순 UI 상태는 useState로 관리한다. 기능별 API·query options/key는 api, mutation 훅은 hooks, 화면은 components, 검증은 schemas, 계약은 types, 순수 로직은 lib 폴더에 실제 필요할 때만 두고, 사용자 query key는 `user / accountId / ...` 범위를 유지한다. 저장 후 캐시 변경과 이동은 계정·화면 이탈 이후 실행되지 않도록 검증한다.
+- 웹 스타일은 Tailwind 토큰과 실제 사용하는 shared UI를 사용한다. `cn`으로 className을 합치고 Devtools는 개발 환경에서만 표시한다. 하위 폴더·공용 UI·상태 라이브러리는 실제 사용처가 있을 때만 추가한다.
 - API는 auth·groups·events·health 업무 모듈로 구성한다. 모임 소유권은 GroupsService, 행사 처리는 EventsService가 담당하며 기존 중첩 URL을 모듈 구조와 혼동하지 않는다.
 - 다른 모듈은 Nest imports/exports로 공개한 Service·Guard 및 명시적 공개 타입·데코레이터를 직접 import할 수 있다. 공개 항목은 tools/eslint-boundaries.mjs의 apiPublicImports와 함께 관리한다. .module.ts 재수출, 타 모듈 내부 Repository·Entity 참조, 순환 의존과 common/config/database의 업무 역참조를 금지한다. 편의상 forwardRef·전역 모듈을 추가하지 않는다.
 - 단순 CRUD는 Service에서 TypeORM Repository를 사용한다. 반복·복잡한 조회나 잠금만 의미 있는 Repository/QueryService로 분리한다. Service가 업무 트랜잭션을 열고, 그 안의 권한 확인·조회·저장은 같은 EntityManager를 전달받아 사용한다. BaseService·단순 위임 계층을 추가하지 않는다.

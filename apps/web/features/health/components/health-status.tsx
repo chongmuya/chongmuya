@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { healthQueryOptions } from "./queries";
+import { healthQueryOptions } from "../api/health.queries";
 
 export function HealthStatus() {
   const query = useQuery(healthQueryOptions);

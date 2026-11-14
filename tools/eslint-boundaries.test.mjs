@@ -94,7 +94,46 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
     ["web", "features/health/probe.ts", 'import "../../app/providers";', true],
     ["web", "features/health/probe.ts", 'import("../other/internal");', true],
     ["web", "shared/probe.ts", 'import "../../api/src/app.module";', true],
-    ["web", "app/probe.ts", 'import "@/features/health/api";', false],
+    ["web", "app/probe.ts", 'import "@/features/health/client";', false],
+    ["web", "app/probe.ts", 'import "@/features/health/api";', true],
+    [
+      "web",
+      "features/groups/probe.ts",
+      'import { useAuth } from "@/features/auth/client";',
+      false,
+    ],
+    [
+      "web",
+      "features/groups/probe.ts",
+      'import type { Account } from "@/features/auth/types";',
+      false,
+    ],
+    [
+      "web",
+      "features/groups/probe.ts",
+      'export { useAuth } from "../auth/client";',
+      false,
+    ],
+    [
+      "web",
+      "features/groups/probe.ts",
+      'import("../auth/auth-provider");',
+      true,
+    ],
+    ["web", "features/groups/probe.ts", 'require("../auth/session");', true],
+    ["web", "features/auth/probe.ts", 'import "../groups/client";', true],
+    [
+      "web",
+      "features/groups/probe.ts",
+      '"use client"; import "../auth/server";',
+      true,
+    ],
+    [
+      "web",
+      "features/groups/probe.ts",
+      'import "@chongmuya/api/src/app.module";',
+      true,
+    ],
     [
       "web",
       "features/health/probe.ts",
@@ -152,6 +191,19 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
       `${app}/${file}: ${source}`,
     );
   }
+});
+
+test("feature cycles are rejected across multiple edges, including type dependencies", async () => {
+  const { hasDependencyPath } = await import("./eslint-boundaries.mjs");
+  const graph = new Map([
+    ["groups", new Set(["auth"])],
+    ["events", new Set(["groups"])],
+    ["profile", new Set(["events"])],
+  ]);
+  assert.equal(hasDependencyPath(graph, "profile", "auth"), true);
+  assert.equal(hasDependencyPath(graph, "auth", "profile"), false);
+  graph.set("auth", new Set(["profile"]));
+  assert.equal(hasDependencyPath(graph, "events", "health"), false);
 });
 
 test("API source imports form an acyclic graph", async () => {

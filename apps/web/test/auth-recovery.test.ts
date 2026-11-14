@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AuthRecovery } from "../features/auth/auth-recovery";
+import { AuthRecovery } from "../features/auth/components/auth-recovery";
 
 const render = (
   status: "unavailable" | "logout-failed" | "logging-out",
