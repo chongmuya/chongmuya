@@ -1,13 +1,10 @@
 import { HttpException, Injectable } from "@nestjs/common";
-import { createHash } from "node:crypto";
 import type { EntityManager } from "typeorm";
-
-export const tokenHash = (value: string) =>
-  createHash("sha256").update(value).digest("hex");
+import { tokenHash } from "../utils/token-hash.js";
 
 // Atomic rate-limit upsert is the only specialized query here. Caller owns connection/transaction.
 @Injectable()
-export class AuthRepository {
+export class AuthAttemptsRepository {
   async limit(manager: EntityManager, key: string, maximum: number) {
     const rows = await manager.query<{ count: number }[]>(
       `

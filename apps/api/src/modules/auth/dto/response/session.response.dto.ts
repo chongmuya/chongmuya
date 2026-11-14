@@ -1,9 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-
-export class AccountDto {
-  @ApiProperty({ format: "uuid" }) id!: string;
-  @ApiProperty() email!: string;
-}
+import { AccountDto } from "./account.response.dto.js";
 
 export class SessionDto {
   @ApiProperty() authenticated!: boolean;

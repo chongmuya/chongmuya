@@ -4,13 +4,14 @@ import { DatabaseModule } from "../../database/database.module.js";
 import { ConfigModule } from "../../config/config.module.js";
 import { AuthController } from "./auth.controller.js";
 import { AuthService } from "./auth.service.js";
-import { AuthRepository } from "./auth.repository.js";
-import { CsrfGuard } from "./auth-http.js";
+import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+import { CsrfGuard } from "./guards/csrf.guard.js";
 
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
-import { JwtAccessStrategy } from "./jwt-access.strategy.js";
-import { AccessGuard, OptionalAccessGuard } from "./jwt-access.guard.js";
+import { JwtAccessStrategy } from "./strategies/jwt-access.strategy.js";
+import { AccessGuard } from "./guards/jwt-access.guard.js";
+import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { AccessGuard, OptionalAccessGuard } from "./jwt-access.guard.js";
   controllers: [AuthController],
   providers: [
     AuthService,
-    AuthRepository,
+    AuthAttemptsRepository,
     JwtAccessStrategy,
     AccessGuard,
     OptionalAccessGuard,

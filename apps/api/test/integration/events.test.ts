@@ -99,7 +99,8 @@ test("EventsModule uses the exported GroupsService with the event transaction ma
     await startResourceApplication(t);
   const { GroupsService } =
     await import("../../src/modules/groups/groups.service.js");
-  const { Event } = await import("../../src/modules/events/event.entity.js");
+  const { Event } =
+    await import("../../src/modules/events/entities/event.entity.js");
   const groups = app.get(GroupsService);
   const original = groups.assertOwned.bind(groups);
   const authorize = t.mock.method(

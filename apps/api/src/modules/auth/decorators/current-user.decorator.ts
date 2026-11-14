@@ -1,7 +1,7 @@
 import { createParamDecorator, UnauthorizedException } from "@nestjs/common";
 import type { ExecutionContext } from "@nestjs/common";
-import type { AuthRequest } from "./auth-http.js";
-import type { AuthUser } from "./auth-user.js";
+import type { AuthRequest } from "../types/auth-request.js";
+import type { AuthUser } from "../types/auth-user.js";
 
 // Use with AccessGuard. This extracts identity; it does not authorize resources.
 export const CurrentUser = createParamDecorator(

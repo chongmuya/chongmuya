@@ -5,7 +5,8 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { ErrorResponseDto } from "../../common/http/error-response.dto.js";
-import { HealthDto, ReadinessDto } from "./health.dto.js";
+import { HealthDto } from "./dto/response/health.response.dto.js";
+import { ReadinessDto } from "./dto/response/readiness.response.dto.js";
 import { HealthService } from "./health.service.js";
 
 @ApiTags("health")

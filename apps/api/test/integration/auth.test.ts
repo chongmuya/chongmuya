@@ -4,14 +4,12 @@ import { test } from "node:test";
 import { DataSource } from "typeorm";
 import { JwtService } from "@nestjs/jwt";
 import { startTestApplication } from "../support/test-application.js";
-import { tokenHash } from "../../src/modules/auth/auth.repository.js";
+import { tokenHash } from "../../src/modules/auth/utils/token-hash.js";
 import { DatabaseService } from "../../src/database/database.service.js";
-import {
-  Account,
-  AuthSession,
-  AuthAttempt,
-  RefreshToken,
-} from "../../src/modules/auth/auth.entity.js";
+import { Account } from "../../src/modules/auth/entities/account.entity.js";
+import { AuthSession } from "../../src/modules/auth/entities/auth-session.entity.js";
+import { AuthAttempt } from "../../src/modules/auth/entities/auth-attempt.entity.js";
+import { RefreshToken } from "../../src/modules/auth/entities/refresh-token.entity.js";
 
 const origin = "http://localhost:3000";
 const headers = {
@@ -43,6 +41,18 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
   await db
     .getRepository(AuthAttempt)
     .delete({ key: tokenHash("ip:127.0.0.1") });
+  assert.deepEqual(
+    db.entityMetadatas.map((metadata) => metadata.tableName).sort(),
+    [
+      "accounts",
+      "auth_attempts",
+      "auth_sessions",
+      "events",
+      "groups",
+      "refresh_tokens",
+    ],
+    "nested entity discovery must register every table exactly once",
+  );
   assert.deepEqual(
     (await db.driver.createSchemaBuilder().log()).upQueries,
     [],

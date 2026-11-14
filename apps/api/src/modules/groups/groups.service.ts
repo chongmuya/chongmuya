@@ -2,9 +2,9 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
-import { Group } from "./group.entity.js";
-import type { GroupInput } from "./group-request.dto.js";
-import type { GroupDto } from "./group-response.dto.js";
+import { Group } from "./entities/group.entity.js";
+import type { GroupInput } from "./dto/request/group-name.request.dto.js";
+import type { GroupDto } from "./dto/response/group.response.dto.js";
 
 const groupDto = (group: Group): GroupDto => ({
   id: group.id,

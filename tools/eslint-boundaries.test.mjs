@@ -14,7 +14,7 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
     [
       "api",
       "src/modules/auth/probe.module.ts",
-      'import { AccessGuard } from "./jwt-access.guard.js"; export { AccessGuard };',
+      'import { AccessGuard } from "./guards/jwt-access.guard.js"; export { AccessGuard };',
       true,
     ],
     [
@@ -26,37 +26,37 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
     [
       "api",
       "src/modules/events/probe.ts",
-      'import { AccessGuard } from "../auth/jwt-access.guard.js";',
+      'import { AccessGuard } from "../auth/guards/jwt-access.guard.js";',
       false,
     ],
     [
       "api",
       "src/modules/events/probe.ts",
-      'import { OptionalAccessGuard } from "../auth/jwt-access.guard.js";',
+      'import { OptionalAccessGuard } from "../auth/guards/optional-access.guard.js";',
       true,
     ],
     [
       "api",
       "src/modules/events/probe.ts",
-      'import type { AuthUser } from "../auth/auth-user.js";',
+      'import type { AuthUser } from "../auth/types/auth-user.js";',
       false,
     ],
     [
       "api",
       "src/modules/events/probe.ts",
-      'import { CurrentUser } from "../auth/current-user.decorator.js";',
+      'import { CurrentUser } from "../auth/decorators/current-user.decorator.js";',
       false,
     ],
     [
       "api",
       "src/modules/events/probe.ts",
-      'import { AuthRepository } from "../auth/auth.repository.js";',
+      'import { AuthAttemptsRepository } from "../auth/repositories/auth-attempts.repository.js";',
       true,
     ],
     [
       "api",
       "src/modules/events/probe.ts",
-      'import { Group } from "../groups/group.entity.js";',
+      'import { Group } from "../groups/entities/group.entity.js";',
       true,
     ],
     [
@@ -80,7 +80,7 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
     [
       "api",
       "src/modules/auth/probe.module.ts",
-      'export { AccessGuard } from "./jwt-access.guard.js";',
+      'export { AccessGuard } from "./guards/jwt-access.guard.js";',
       true,
     ],
     [

@@ -1,11 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { PassportStrategy } from "@nestjs/passport";
 import { Strategy } from "passport-jwt";
-import { ConfigService } from "../../config/config.service.js";
-import { DatabaseService } from "../../database/database.service.js";
-import { Account, AuthSession } from "./auth.entity.js";
-import { AuthError } from "./auth-error.js";
-import { cookie, cookieNames } from "./auth-http.js";
+import { ConfigService } from "../../../config/config.service.js";
+import { DatabaseService } from "../../../database/database.service.js";
+import { Account } from "../entities/account.entity.js";
+import { AuthSession } from "../entities/auth-session.entity.js";
+import { AuthError } from "../exceptions/auth.exception.js";
+import { cookie, cookieNames } from "../utils/auth-cookies.js";
 import type { Request } from "express";
 
 @Injectable()

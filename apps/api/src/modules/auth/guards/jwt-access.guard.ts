@@ -1,9 +1,9 @@
 import { ExecutionContext, Injectable } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import type { Request } from "express";
-import { ConfigService } from "../../config/config.service.js";
-import { cookie, cookieNames } from "./auth-http.js";
-import { AuthError } from "./auth-error.js";
+import { ConfigService } from "../../../config/config.service.js";
+import { cookie, cookieNames } from "../utils/auth-cookies.js";
+import { AuthError } from "../exceptions/auth.exception.js";
 
 @Injectable()
 export class AccessGuard extends AuthGuard("jwt-access") {
@@ -26,14 +26,5 @@ export class AccessGuard extends AuthGuard("jwt-access") {
     throw new AuthError(
       expired || missingAccess ? "ACCESS_EXPIRED" : "SESSION_INVALID",
     );
-  }
-}
-
-// Bootstrap allows anonymous/expired credentials but propagates infrastructure errors.
-@Injectable()
-export class OptionalAccessGuard extends AuthGuard("jwt-access") {
-  handleRequest<TUser>(error: unknown, user: TUser | false): TUser {
-    if (error && !(error instanceof AuthError)) throw error;
-    return (error ? false : user) as TUser;
   }
 }
