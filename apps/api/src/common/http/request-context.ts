@@ -4,6 +4,14 @@ import type { NextFunction, Request, Response } from "express";
 
 export interface RequestWithId extends Request {
   requestId?: string;
+  failure?: FailureLog;
+}
+
+export interface FailureLog {
+  category: "http" | "database_unavailable" | "unexpected";
+  type: string;
+  databaseCode?: string;
+  locations: string[];
 }
 
 export interface RequestLog {
@@ -12,6 +20,7 @@ export interface RequestLog {
   route: string;
   statusCode: number;
   durationMs: number;
+  failure?: FailureLog;
 }
 
 export function requestContext(log: (entry: RequestLog) => void) {
@@ -29,6 +38,7 @@ export function requestContext(log: (entry: RequestLog) => void) {
         route: typeof route === "string" ? route : "unmatched",
         statusCode: response.statusCode,
         durationMs: Math.round(performance.now() - started),
+        ...(request.failure ? { failure: request.failure } : {}),
       });
     });
     next();

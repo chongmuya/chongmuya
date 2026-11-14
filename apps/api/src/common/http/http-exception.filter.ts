@@ -2,6 +2,11 @@ import { ArgumentsHost, Catch, HttpException } from "@nestjs/common";
 import type { ExceptionFilter } from "@nestjs/common";
 import type { Response } from "express";
 import type { RequestWithId } from "./request-context.js";
+import { QueryFailedError } from "typeorm";
+import {
+  databaseErrorCode,
+  isDatabaseUnavailable,
+} from "../../database/database-error.js";
 
 const errors: Record<number, { code: string; message: string }> = {
   400: { code: "BAD_REQUEST", message: "요청 형식이 올바르지 않습니다." },
@@ -23,8 +28,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const request = http.getRequest<RequestWithId>();
     const response = http.getResponse<Response>();
+    const unavailable =
+      !(exception instanceof HttpException) && isDatabaseUnavailable(exception);
     const candidate =
-      exception instanceof HttpException ? exception.getStatus() : 500;
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : unavailable
+          ? 503
+          : 500;
     const statusCode = candidate >= 400 && candidate <= 599 ? candidate : 500;
     const error = errors[statusCode] ?? {
       code: statusCode >= 500 ? "INTERNAL_SERVER_ERROR" : "HTTP_ERROR",
@@ -45,6 +56,45 @@ export class HttpExceptionFilter implements ExceptionFilter {
       )
         ? String(detail.code)
         : undefined;
+    // Keep causes traceable through the request log, without serializing errors.
+    // Only code-owned filenames/line numbers survive; messages, function names,
+    // arbitrary error.name, SQL, parameters and absolute paths never do.
+    request.failure = {
+      category: unavailable
+        ? "database_unavailable"
+        : exception instanceof HttpException
+          ? "http"
+          : "unexpected",
+      type:
+        exception instanceof QueryFailedError
+          ? "QueryFailedError"
+          : exception instanceof HttpException
+            ? "HttpException"
+            : exception instanceof TypeError
+              ? "TypeError"
+              : exception instanceof ReferenceError
+                ? "ReferenceError"
+                : exception instanceof Error
+                  ? "Error"
+                  : "Unknown",
+      ...(databaseErrorCode(exception)
+        ? { databaseCode: databaseErrorCode(exception) }
+        : {}),
+      locations:
+        exception instanceof Error
+          ? (exception.stack ?? "")
+              .split("\n")
+              .slice(1)
+              .flatMap((line) => {
+                const match =
+                  /^\s+at .*\/(?:dist|src)\/((?:modules|database|common|bootstrap)\/[\w/.-]+\.[jt]s:\d+:\d+)\)?$/.exec(
+                    line,
+                  );
+                return match ? [match[1]] : [];
+              })
+              .slice(0, 5)
+          : [],
+    };
     // Exception messages can contain SQL, credentials or request values.
     response.setHeader("Cache-Control", "no-store");
     response.status(statusCode).json({

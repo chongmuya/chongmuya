@@ -22,7 +22,10 @@ import {
 import type { Request, Response } from "express";
 import { ConfigService } from "../../config/config.service.js";
 import { AuthService, ACCESS_SECONDS } from "./auth.service.js";
-import { AccountDto, CredentialsDto, SessionDto } from "./auth.dto.js";
+import { AccountDto, SessionDto } from "./auth-response.dto.js";
+import { CredentialsDto } from "./credentials-request.dto.js";
+import { CurrentUser } from "./current-user.decorator.js";
+import type { AuthUser } from "./auth-user.js";
 import { cookie, cookieNames } from "./auth-http.js";
 import type { AuthRequest } from "./auth-http.js";
 import { AccessGuard, OptionalAccessGuard } from "./jwt-access.guard.js";
@@ -123,8 +126,8 @@ export class AuthController {
   @Header("Cache-Control", "no-store")
   @ApiCookieAuth()
   @ApiOkResponse({ type: AccountDto })
-  me(@Req() request: AuthRequest) {
-    return request.user;
+  me(@CurrentUser() user: AuthUser) {
+    return user;
   }
 
   @Post("refresh")

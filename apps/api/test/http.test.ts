@@ -82,6 +82,27 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   assert(spec.paths["/health"].get.responses["200"]);
   assert(spec.paths["/ready"].get.responses["503"]);
   assert(spec.components.schemas.ErrorResponseDto.properties.requestId);
+  for (const path of [
+    "/api/v1/groups",
+    "/api/v1/groups/{groupId}",
+    "/api/v1/groups/{groupId}/events",
+    "/api/v1/groups/{groupId}/events/{eventId}",
+  ])
+    assert(spec.paths[path], `registered module route: ${path}`);
+  for (const name of [
+    "GroupInput",
+    "GroupDto",
+    "EventInput",
+    "EventDto",
+    "CredentialsDto",
+    "AccountDto",
+    "SessionDto",
+  ])
+    assert(spec.components.schemas[name], `existing OpenAPI schema: ${name}`);
+  assert.deepEqual(
+    Object.keys(spec.components.schemas.EventDto.properties).sort(),
+    ["groupId", "id", "name", "scheduledAt"],
+  );
 });
 
 test("disabled OpenAPI routes are unavailable", async (t) => {

@@ -3,6 +3,17 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+// Explicit public API, not a suffix-based allowance for every service/guard.
+// Providers must also be exported by the owning Nest module. Types/decorators
+// are source imports and do not require a DI registration.
+const apiPublicImports = {
+  "auth/jwt-access.guard": ["AccessGuard"],
+  "auth/auth.service": ["AuthService"],
+  "auth/current-user.decorator": ["CurrentUser"],
+  "auth/auth-user": ["AuthUser"],
+  "groups/groups.service": ["GroupsService"],
+};
+
 function area(file) {
   const parts = path.relative(root, file).split(path.sep);
   if (parts[0] !== "apps") return null;
@@ -30,7 +41,7 @@ export default {
         const filename = context.filename;
         const source = area(filename);
         if (!source) return {};
-        function check(node) {
+        function check(node, declaration) {
           if (typeof node?.value !== "string") return;
           const specifier = node.value;
           let targetFile;
@@ -68,11 +79,34 @@ export default {
             invalid ||=
               source.layer === "modules" &&
               ["bootstrap", "app.module"].includes(target.layer);
-            invalid ||=
+            const crossModule =
               source.layer === "modules" &&
               target.layer === "modules" &&
-              source.feature !== target.feature &&
-              !/\.module(?:\.[cm]?[jt]s)?$/.test(targetFile);
+              source.feature !== target.feature;
+            if (crossModule) {
+              const publicPath = path
+                .relative(path.join(root, "apps/api/src/modules"), targetFile)
+                .replace(/\.[cm]?[jt]s$/, "");
+              const allowed = apiPublicImports[publicPath];
+              const publicImport =
+                declaration?.type === "ImportDeclaration" &&
+                declaration.specifiers.length > 0 &&
+                declaration.specifiers.every(
+                  (item) =>
+                    item.type === "ImportSpecifier" &&
+                    allowed?.includes(
+                      item.imported.name ?? item.imported.value,
+                    ),
+                );
+              invalid ||=
+                !/\.module(?:\.[cm]?[jt]s)?$/.test(targetFile) && !publicImport;
+            }
+            // A module file composes DI, it is not an internal-code barrel.
+            invalid ||=
+              /\.module\.[cm]?[jt]s$/.test(filename) &&
+              ["ExportNamedDeclaration", "ExportAllDeclaration"].includes(
+                declaration?.type,
+              );
           }
           if (invalid)
             context.report({
@@ -85,9 +119,23 @@ export default {
             });
         }
         return {
-          ImportDeclaration: (node) => check(node.source),
-          ExportNamedDeclaration: (node) => check(node.source),
-          ExportAllDeclaration: (node) => check(node.source),
+          ImportDeclaration: (node) => check(node.source, node),
+          ExportNamedDeclaration: (node) => {
+            if (
+              source.app === "api" &&
+              /\.module\.[cm]?[jt]s$/.test(filename) &&
+              !node.source &&
+              node.specifiers.length
+            ) {
+              context.report({
+                node,
+                messageId: "boundary",
+                data: { source: "api/module", target: "provider re-export" },
+              });
+            }
+            check(node.source, node);
+          },
+          ExportAllDeclaration: (node) => check(node.source, node),
           ImportExpression: (node) => check(node.source),
           CallExpression: (node) => {
             if (

@@ -8,5 +8,6 @@ import { GroupsService } from "./groups.service.js";
   imports: [DatabaseModule, AuthModule, ConfigModule],
   controllers: [GroupsController],
   providers: [GroupsService],
+  exports: [GroupsService],
 })
 export class GroupsModule {}
