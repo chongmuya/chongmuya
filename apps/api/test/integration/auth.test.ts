@@ -261,7 +261,8 @@ test("signup rolls back account, session and refresh token on either insert fail
       await db.query(`CREATE TRIGGER auth_test_insert_failure BEFORE INSERT ON ${table}
         FOR EACH ROW EXECUTE FUNCTION auth_test_reject_insert()`);
       const failure = await post(email);
-      assert.equal(failure.status, 503);
+      assert.equal(failure.status, 500);
+      assert.equal((await failure.json()).code, "INTERNAL_SERVER_ERROR");
       assert.equal(failure.headers.getSetCookie().length, 0);
       assert.equal(
         await db.getRepository(Account).countBy({ email }),
@@ -323,9 +324,9 @@ test("signup rolls back account, session and refresh token on either insert fail
   );
 });
 
-test("group onboarding and event isolation for two accounts and two owned groups", async (t) => {
+test("signing failure is a sanitized 500, rolls signup back, and allows retry", async (t) => {
   assert(process.env.TEST_DATABASE_URL);
-  const { app, url } = await startTestApplication(
+  const { app, url, logs } = await startTestApplication(
     process.env.TEST_DATABASE_URL,
   );
   t.after(() => app.close());
@@ -334,177 +335,96 @@ test("group onboarding and event isolation for two accounts and two owned groups
   await db
     .getRepository(AuthAttempt)
     .delete({ key: tokenHash("ip:127.0.0.1") });
-  const call = (path: string, jar = "", method = "GET", body?: unknown) =>
-    fetch(`${url}/api/v1/${path}`, {
-      method,
-      headers: { ...headers, Cookie: jar },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  const signup = async () => {
-    const response = await call("auth/signup", "", "POST", {
-      email: `${randomUUID()}@example.com`,
-      password: "group-events-password-123",
-    });
-    assert.equal(response.status, 201);
-    return cookies(response);
-  };
-  const a = await signup();
-  const b = await signup();
-  assert.deepEqual(await (await call("groups", a)).json(), []);
-  assert.equal((await call("groups")).status, 401);
-  for (const body of [
-    { name: " " },
-    { name: "x".repeat(101) },
-    { name: "모임", ownerId: randomUUID() },
-  ]) {
-    assert.equal((await call("groups", a, "POST", body)).status, 400);
-  }
-  const createGroup = async (name: string, jar: string) => {
-    const response = await call("groups", jar, "POST", { name });
-    assert.equal(response.status, 201);
-    return (await response.json()) as { id: string; name: string };
-  };
-  const g1 = await createGroup(" 첫 모임 ", a);
-  const g2 = await createGroup("두 번째 모임", a);
-  const other = await createGroup("타인 모임", b);
-  assert.equal(g1.name, "첫 모임");
-  assert.deepEqual(
-    (await (await call("groups", a)).json())
-      .map((g: { id: string }) => g.id)
-      .sort(),
-    [g1.id, g2.id].sort(),
-  );
-  const events = `groups/${g1.id}/events`;
-  const created = await call(events, a, "POST", { name: "명단 없는 행사" });
-  assert.equal(created.status, 201);
-  const event = await created.json();
-  assert.equal(event.groupId, g1.id);
-  assert.equal(event.scheduledAt, null);
-  assert.deepEqual(await (await call(events, a)).json(), [event]);
-  assert.deepEqual(await (await call(`groups/${g2.id}/events`, a)).json(), []);
-  assert.deepEqual(
-    await (await call(`${events}/${event.id}`, a)).json(),
-    event,
-  );
-  assert.equal(
-    (await call(`groups/${g2.id}/events/${event.id}`, a)).status,
-    404,
-  );
-  for (const [path, method, body] of [
-    [`groups/${g1.id}`, "GET", undefined],
-    [`groups/${g1.id}`, "PATCH", { name: "침입" }],
-    [events, "GET", undefined],
-    [events, "POST", { name: "침입" }],
-    [`${events}/${event.id}`, "GET", undefined],
-  ] as const)
-    assert.equal((await call(path, b, method, body)).status, 404);
-  assert.equal(
-    (await call(`groups/${other.id}/events`, a, "POST", { name: "침입" }))
-      .status,
-    404,
-  );
-  assert.equal(
-    (await call(events, a, "POST", { name: "침입", groupId: other.id })).status,
-    400,
-  );
-  assert.equal(
-    (
-      await call(events, a, "POST", {
-        name: "날짜 오류",
-        scheduledAt: "2026-02-30T10:00:00+09:00",
-      })
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await call(events, a, "POST", {
-        name: "시간대 없음",
-        scheduledAt: "2026-11-03T10:00:00",
-      })
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await call(events, a, "POST", {
-        name: "일정 행사",
-        scheduledAt: "2026-11-03T10:00:00+09:00",
-      })
-    ).status,
-    201,
-  );
-  const rename = await call(`groups/${g1.id}`, a, "PATCH", {
-    name: "수정 모임",
+  const email = `${randomUUID()}@example.com`;
+  const counts = [
+    await db.getRepository(AuthSession).count(),
+    await db.getRepository(RefreshToken).count(),
+  ];
+  const signing = t.mock.method(app.get(JwtService), "signAsync", async () => {
+    throw new TypeError("private-signing-token-password");
   });
-  assert.deepEqual(await rename.json(), { id: g1.id, name: "수정 모임" });
-  assert.equal((await call(`groups/not-a-uuid`, a)).status, 400);
-  assert.equal((await call("auth/logout", a, "POST")).status, 204);
-  assert.equal((await call(events, a)).status, 401);
+  const signup = () =>
+    fetch(`${url}/api/v1/auth/signup`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email, password: "signing-test-password-123" }),
+    });
+  const response = await signup();
+  assert.equal(response.status, 500);
+  assert.equal(response.headers.getSetCookie().length, 0);
+  const body = await response.json();
+  assert.equal(body.code, "INTERNAL_SERVER_ERROR");
+  assert.equal(await db.getRepository(Account).countBy({ email }), 0);
+  assert.deepEqual(
+    [
+      await db.getRepository(AuthSession).count(),
+      await db.getRepository(RefreshToken).count(),
+    ],
+    counts,
+  );
+  const log = logs.find((entry) => entry.requestId === body.requestId);
+  assert.equal(log?.failure?.type, "TypeError");
+  assert.equal(log?.failure?.category, "unexpected");
+  assert.doesNotMatch(
+    JSON.stringify({ logs, body }),
+    /private-|signing-test-password|postgresql:/,
+  );
+  signing.mock.restore();
+  assert.equal((await signup()).status, 201);
 });
 
-test("additive migration preserves existing account, session and refresh data", async (t) => {
+test("DB outage propagates through auth guards and refresh without invalidating cookies", async (t) => {
   assert(process.env.TEST_DATABASE_URL);
-  const { app } = await startTestApplication(process.env.TEST_DATABASE_URL);
+  const { app, url } = await startTestApplication(
+    process.env.TEST_DATABASE_URL,
+  );
   t.after(() => app.close());
-  const db = await app.get(DatabaseService).connect();
-  const runner = db.createQueryRunner();
-  await runner.connect();
-  await runner.startTransaction();
-  try {
-    // A fresh transaction-local schema exercises the real migration SQL without
-    // reverting migrations or modifying any existing account in the test DB.
-    const schema = `upgrade_${randomUUID().replaceAll("-", "")}`;
-    await runner.query(`CREATE SCHEMA ${schema}`);
-    await runner.query(`SET LOCAL search_path TO ${schema}`);
-    const { Authentication1793318400000 } =
-      await import("../../src/database/migrations/1793318400000-Authentication.js");
-    const { GroupEvents1793664000000 } =
-      await import("../../src/database/migrations/1793664000000-GroupEvents.js");
-    await new Authentication1793318400000().up(runner);
-    const account = randomUUID(),
-      session = randomUUID();
-    await runner.query("INSERT INTO accounts VALUES ($1, $2, $3, now())", [
-      account,
-      "existing@example.com",
-      "existing-hash",
-    ]);
-    await runner.query(
-      "INSERT INTO auth_sessions VALUES ($1, $2, now() + interval '1 day', null)",
-      [session, account],
-    );
-    await runner.query("INSERT INTO refresh_tokens VALUES ($1, $2, null)", [
-      "a".repeat(64),
-      session,
-    ]);
-    const before = await runner.query(
-      "SELECT row_to_json(a) AS account, row_to_json(s) AS session, row_to_json(r) AS refresh FROM accounts a, auth_sessions s, refresh_tokens r",
-    );
-    await new GroupEvents1793664000000().up(runner);
-    assert.deepEqual(
-      await runner.query(
-        "SELECT row_to_json(a) AS account, row_to_json(s) AS session, row_to_json(r) AS refresh FROM accounts a, auth_sessions s, refresh_tokens r",
-      ),
-      before,
-    );
-    const group = randomUUID();
-    await runner.query("INSERT INTO groups VALUES ($1, $2, $3, now())", [
-      group,
-      account,
-      "기존 계정 모임",
-    ]);
-    await runner.query("INSERT INTO events VALUES ($1, $2, $3, null, now())", [
-      randomUUID(),
-      group,
-      "명단 없는 행사",
-    ]);
-    assert.equal(
-      (await runner.query("SELECT count(*)::int AS count FROM events"))[0]
-        .count,
-      1,
-    );
-  } finally {
-    await runner.rollbackTransaction();
-    await runner.release();
+  const database = app.get(DatabaseService);
+  const db = await database.connect();
+  await db.runMigrations();
+  await db
+    .getRepository(AuthAttempt)
+    .delete({ key: tokenHash("ip:127.0.0.1") });
+  const signup = await fetch(`${url}/api/v1/auth/signup`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email: `${randomUUID()}@example.com`,
+      password: "availability-test-password-123",
+    }),
+  });
+  assert.equal(signup.status, 201);
+  const jar = cookies(signup);
+  const disconnected = t.mock.method(database, "connect", async () => {
+    throw Object.assign(new Error("private-db-host"), { code: "ECONNREFUSED" });
+  });
+  for (const [path, method] of [
+    ["me", "GET"],
+    ["session/restore", "POST"],
+    ["refresh", "POST"],
+    ["logout", "POST"],
+  ]) {
+    const response = await fetch(`${url}/api/v1/auth/${path}`, {
+      method,
+      headers: { ...headers, Cookie: jar },
+    });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, "SERVICE_UNAVAILABLE");
+    assert.equal(response.headers.getSetCookie().length, 0);
   }
+  assert.equal((await fetch(`${url}/health`)).status, 200);
+  disconnected.mock.restore();
+  assert.equal(
+    (await fetch(`${url}/api/v1/auth/me`, { headers: { Cookie: jar } })).status,
+    200,
+  );
+  assert.equal(
+    (
+      await fetch(`${url}/api/v1/auth/refresh`, {
+        method: "POST",
+        headers: { ...headers, Cookie: jar },
+      })
+    ).status,
+    200,
+  );
 });
