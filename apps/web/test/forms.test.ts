@@ -5,8 +5,12 @@ import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
+import {
+  SearchParamsContext,
+  PathnameContext,
+} from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { WorkspaceContent } from "../app/workspace-screen";
+import { LinkEventGroupForm } from "../features/events/components/link-event-group-form";
 import { EventForm } from "../features/events/components/event-form";
 import { GroupForm } from "../features/groups/components/group-form";
 import { AuthProvider } from "../features/auth/components/auth-provider";
@@ -22,7 +26,7 @@ function client() {
     },
   });
 }
-async function render(element: ReactElement, cache = client()) {
+async function render(element: ReactElement, cache = client(), next = "") {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -49,7 +53,11 @@ async function render(element: ReactElement, cache = client()) {
         createElement(
           PathnameContext.Provider,
           { value: "/auth" },
-          createElement(QueryClientProvider, { client: cache }, element),
+          createElement(
+            SearchParamsContext.Provider,
+            { value: new URLSearchParams(next ? { next } : {}) },
+            createElement(QueryClientProvider, { client: cache }, element),
+          ),
         ),
       ),
     ),
@@ -115,7 +123,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-test("first-group validation and creation update the account cache and navigate from a direct event URL", async () => {
+test("optional group management validates and creates a group without forcing event onboarding", async () => {
   const cache = client();
   cache.setQueryData(["user", "a", "groups"], []);
   const created = { id: "g-new", name: "첫 모임" };
@@ -134,9 +142,9 @@ test("first-group validation and creation update the account cache and navigate 
     createElement(WorkspaceContent, {
       accountId: "a",
       request,
-      groupId: "foreign",
-      eventId: "old",
-      mode: "events",
+      groupId: null,
+      eventId: null,
+      mode: "mypage",
     }),
     cache,
   );
@@ -148,7 +156,7 @@ test("first-group validation and creation update the account cache and navigate 
     await fill(view.container, "name", " 첫 모임 ");
     await submit(view.container);
     await until(() =>
-      assert.deepEqual(view.navigations, ["/events?group=g-new"]),
+      assert.deepEqual(view.navigations, ["/mypage?group=g-new"]),
     );
     assert.deepEqual(writes, [{ name: "첫 모임" }]);
     assert.deepEqual(cache.getQueryData(["user", "a", "groups"]), [created]);
@@ -206,11 +214,13 @@ test("failed group save retains input and retries only on another submit", async
   }
 });
 
-test("event form submits Korean time, updates detail and invalidates only its list", async () => {
+test("event form submits Korean time and refreshes the account list plus only its group list", async () => {
   let body: unknown;
   const event = {
     id: "e1",
-    groupId: "g1",
+    ownerId: "a",
+    version: 1,
+    groupId: "00000000-0000-4000-8000-000000000001",
     name: "새 행사",
     scheduledAt: "2026-11-14T09:30:00.000Z",
   };
@@ -218,31 +228,47 @@ test("event form submits Korean time, updates detail and invalidates only its li
     _path: string,
     options?: RequestInit,
   ) => {
+    if (!options?.method) return [] as T;
     body = JSON.parse(String(options?.body));
     return event as T;
   };
   const cache = client();
-  cache.setQueryData(["user", "a", "groups", "g1", "events"], []);
+  cache.setQueryData(["user", "a", "events", "list"], []);
+  cache.setQueryData(
+    ["user", "a", "groups", "00000000-0000-4000-8000-000000000001", "events"],
+    [],
+  );
   cache.setQueryData(["user", "a", "groups", "g2", "events"], []);
   const view = await render(
-    createElement(EventForm, { accountId: "a", groupId: "g1", request }),
+    createElement(EventForm, {
+      accountId: "a",
+      groupId: "00000000-0000-4000-8000-000000000001",
+      request,
+    }),
     cache,
   );
   try {
     await fill(view.container, "name", " 새 행사 ");
     await fill(view.container, "date", "2026-11-14T18:30");
     await submit(view.container);
-    await until(() =>
-      assert.deepEqual(view.navigations, ["/events?group=g1&event=e1"]),
-    );
-    assert.deepEqual(body, { name: "새 행사", scheduledAt: event.scheduledAt });
+    await until(() => assert.deepEqual(view.navigations, ["/events?event=e1"]));
+    assert.deepEqual(body, {
+      name: "새 행사",
+      scheduledAt: event.scheduledAt,
+      groupId: event.groupId,
+    });
     assert.deepEqual(
-      cache.getQueryData(["user", "a", "groups", "g1", "events", "e1"]),
+      cache.getQueryData(["user", "a", "events", "detail", "e1"]),
       event,
     );
     assert.equal(
-      cache.getQueryState(["user", "a", "groups", "g1", "events"])
-        ?.isInvalidated,
+      cache.getQueryState([
+        "user",
+        "a",
+        "groups",
+        "00000000-0000-4000-8000-000000000001",
+        "events",
+      ])?.isInvalidated,
       true,
     );
     assert.equal(
@@ -264,7 +290,11 @@ test("late group and event mutations after leaving the screen never recreate cac
       scheduledAt: null;
     }>();
     let called = false;
-    const request: SessionRequest = async <T>() => {
+    const request: SessionRequest = async <T>(
+      _path: string,
+      options?: RequestInit,
+    ) => {
+      if (!options?.method) return [] as T;
       called = true;
       return (await pending.promise) as T;
     };
@@ -279,7 +309,7 @@ test("late group and event mutations after leaving the screen never recreate cac
               created = true;
             },
           })
-        : createElement(EventForm, { accountId: "a", groupId: "g1", request });
+        : createElement(EventForm, { accountId: "a", request });
     const view = await render(element);
     await fill(view.container, "name", "지연 저장");
     await submit(view.container);
@@ -336,6 +366,8 @@ test("auth form preserves login and failed-logout recovery without caching crede
   };
   const view = await render(
     createElement(AuthProvider, null, createElement(AuthScreen)),
+    client(),
+    "/events?event=00000000-0000-4000-8000-000000000001",
   );
   try {
     await until(() => assert(view.container.querySelector("form")));
@@ -355,6 +387,11 @@ test("auth form preserves login and failed-logout recovery without caching crede
           .map((m) => m.state),
       ).includes("test-password-123"),
     );
+    assert(
+      view.navigations.includes(
+        "/events?event=00000000-0000-4000-8000-000000000001",
+      ),
+    );
     await click(view.container, "로그아웃");
     await until(() =>
       assert.match(view.container.textContent!, /로그아웃 다시 시도/),
@@ -373,4 +410,205 @@ test("auth form preserves login and failed-logout recovery without caching crede
     await view.unmount();
     globalThis.fetch = original;
   }
+});
+
+async function selectGroup(container: HTMLElement, value: string) {
+  const select = container.querySelector<HTMLSelectElement>(
+    'select[name="groupId"]',
+  );
+  assert(select);
+  await act(async () => {
+    select.value = value;
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+}
+
+test("personal event creation works while groups fail and server field errors retain input for retry", async () => {
+  let calls = 0;
+  const event = {
+    id: "e-new",
+    ownerId: "a",
+    groupId: null,
+    version: 1,
+    name: "개인 일정",
+    scheduledAt: null,
+  };
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (!options?.method)
+      throw new ApiError("unavailable", 503, "SERVICE_UNAVAILABLE");
+    calls++;
+    assert.deepEqual(JSON.parse(String(options.body)), { name: "개인 일정" });
+    if (calls === 1)
+      throw new ApiError("private", 400, "VALIDATION_FAILED", undefined, [
+        { field: "name", code: "INVALID_LENGTH" },
+      ]);
+    return event as T;
+  };
+  const view = await render(
+    createElement(EventForm, { accountId: "a", request }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /모임을 불러오지 못했습니다/),
+    );
+    await fill(view.container, "name", "개인 일정");
+    await submit(view.container);
+    await until(() =>
+      assert.equal(
+        view.container
+          .querySelector('input[name="name"]')
+          ?.getAttribute("aria-invalid"),
+        "true",
+      ),
+    );
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('input[name="name"]')!
+        .value,
+      "개인 일정",
+    );
+    assert.doesNotMatch(view.container.textContent!, /private/);
+    await submit(view.container);
+    await until(() =>
+      assert.deepEqual(view.navigations, ["/events?event=e-new"]),
+    );
+    assert.equal(calls, 2);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("linking shows safe field/business errors, preserves selection and refreshes only affected caches", async () => {
+  const groupId = "00000000-0000-4000-8000-000000000001";
+  const event = {
+    id: "e1",
+    ownerId: "a",
+    groupId: null,
+    version: 1,
+    name: "개인 일정",
+    scheduledAt: null,
+  };
+  const linked = { ...event, groupId, version: 2 };
+  let saves = 0,
+    refreshes = 0;
+  const request: SessionRequest = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    if (!options?.method) return [{ id: groupId, name: "내 모임" }] as T;
+    assert.equal(path, "/api/v1/events/e1/group");
+    assert.equal(options.method, "PUT");
+    assert.deepEqual(JSON.parse(String(options.body)), {
+      groupId,
+      expectedVersion: 1,
+    });
+    saves++;
+    if (saves === 1)
+      throw new ApiError("private", 400, "VALIDATION_FAILED", undefined, [
+        { field: "groupId", code: "INVALID_UUID" },
+      ]);
+    if (saves === 2) throw new ApiError("private", 409, "VERSION_CONFLICT");
+    return linked as T;
+  };
+  const cache = client();
+  cache.setQueryData(["user", "a", "events", "list"], [event]);
+  cache.setQueryData(["user", "a", "groups", groupId, "events"], []);
+  cache.setQueryData(["user", "a", "groups", "other", "events"], []);
+  cache.setQueryData(["user", "b", "events", "list"], []);
+  const view = await render(
+    createElement(LinkEventGroupForm, {
+      accountId: "a",
+      event,
+      request,
+      refresh: () => refreshes++,
+    }),
+    cache,
+  );
+  try {
+    await until(() => assert(view.container.querySelector("select")));
+    await selectGroup(view.container, groupId);
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /선택한 항목을 확인/),
+    );
+    assert.equal(view.container.querySelector("select")!.value, groupId);
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /행사가 변경되었습니다/),
+    );
+    await click(view.container, "최신 행사 확인");
+    assert.equal(refreshes, 1);
+    assert.doesNotMatch(view.container.textContent!, /private/);
+    await submit(view.container);
+    await until(() =>
+      assert.deepEqual(
+        cache.getQueryData(["user", "a", "events", "detail", "e1"]),
+        linked,
+      ),
+    );
+    assert.deepEqual(cache.getQueryData(["user", "a", "events", "list"]), [
+      linked,
+    ]);
+    for (const key of [
+      ["user", "a", "events", "list"],
+      ["user", "a", "groups", groupId, "events"],
+    ])
+      assert.equal(cache.getQueryState(key)?.isInvalidated, true);
+    assert.equal(
+      cache.getQueryState(["user", "a", "groups", "other", "events"])
+        ?.isInvalidated,
+      false,
+    );
+    assert.equal(
+      cache.getQueryState(["user", "b", "events", "list"])?.isInvalidated,
+      false,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("a pending link cannot recreate a cleared user cache after leaving the screen", async () => {
+  const groupId = "00000000-0000-4000-8000-000000000001";
+  const event = {
+    id: "e1",
+    ownerId: "a",
+    groupId: null,
+    version: 1,
+    name: "행사",
+    scheduledAt: null,
+  };
+  const pending = deferred<
+    Omit<typeof event, "groupId"> & { groupId: string }
+  >();
+  let saving = false;
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (!options?.method) return [{ id: groupId, name: "내 모임" }] as T;
+    saving = true;
+    return (await pending.promise) as T;
+  };
+  const view = await render(
+    createElement(LinkEventGroupForm, {
+      accountId: "a",
+      event,
+      request,
+      refresh() {},
+    }),
+  );
+  await until(() => assert(view.container.querySelector("select")));
+  await selectGroup(view.container, groupId);
+  await submit(view.container);
+  await until(() => assert(saving));
+  await view.unmount();
+  await act(async () => {
+    pending.resolve({ ...event, groupId, version: 2 });
+    await pending.promise;
+  });
+  assert.equal(view.cache.getQueryCache().getAll().length, 0);
+  assert.deepEqual(view.navigations, []);
 });

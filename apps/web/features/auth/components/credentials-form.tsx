@@ -1,5 +1,7 @@
 "use client";
 
+import { applyFormError } from "@/shared/lib/apply-form-error";
+import { ApiError } from "@/shared/http/api-error";
 import { useId } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,12 +20,14 @@ export function CredentialsForm({
 }: {
   mode: "login" | "signup";
   pending: boolean;
-  submit: (values: Credentials) => void;
+  submit: (values: Credentials, onError: (error: Error) => void) => void;
 }) {
   const id = useId();
   const {
     register,
     handleSubmit,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<Credentials>({
     resolver: zodResolver(credentialsSchema),
@@ -34,7 +38,15 @@ export function CredentialsForm({
       noValidate
       className="form-panel"
       onSubmit={handleSubmit((values) => {
-        if (!pending) submit(values);
+        if (pending) return;
+        clearErrors();
+        submit(values, (error) => {
+          if (error instanceof ApiError && error.code === "VALIDATION_FAILED")
+            applyFormError(error, setError, {
+              email: "email",
+              password: "password",
+            });
+        });
       })}
     >
       <div>
@@ -73,6 +85,7 @@ export function CredentialsForm({
           message={errors.password?.message}
         />
       </div>
+      <FormError message={errors.root?.server?.message} />
       <Button type="submit" disabled={pending} aria-busy={pending}>
         {pending ? "처리 중…" : mode === "signup" ? "가입하기" : "로그인"}
       </Button>

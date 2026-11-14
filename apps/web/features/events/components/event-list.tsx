@@ -5,7 +5,7 @@ import type { SessionRequest } from "@/features/auth/types";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { dateLabel } from "../lib/format-event-date";
 
-type Props = { accountId: string; groupId: string; request: SessionRequest };
+type Props = { accountId: string; groupId?: string; request: SessionRequest };
 
 import Link from "next/link";
 import { EmptyState } from "@/shared/ui/states";
@@ -14,12 +14,13 @@ import { EventForm } from "./event-form";
 
 export function EventList(props: Props) {
   const list = useQuery(
-    eventsQueryOptions(props.accountId, props.groupId, props.request),
+    eventsQueryOptions(props.accountId, props.request, props.groupId),
   );
   return (
     <>
       <EventForm {...props} />
-      <h2>행사 목록</h2>
+      <h2>{props.groupId ? "모임별 내 행사" : "내 행사 목록"}</h2>
+      {props.groupId && <Link href="/events">전체 내 행사 보기</Link>}
       {list.isError ? (
         <ErrorState retry={() => void list.refetch()} />
       ) : !list.data ? (
@@ -32,9 +33,7 @@ export function EventList(props: Props) {
         <ul>
           {list.data.map((event) => (
             <li key={event.id}>
-              <Link
-                href={`/events?group=${encodeURIComponent(props.groupId)}&event=${encodeURIComponent(event.id)}`}
-              >
+              <Link href={`/events?event=${encodeURIComponent(event.id)}`}>
                 {event.name}
               </Link>
               <p>{dateLabel(event.scheduledAt)}</p>

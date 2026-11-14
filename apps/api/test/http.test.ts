@@ -70,7 +70,10 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   ]) {
     const response = await post(body);
     assert.equal(response.status, 400);
-    assert.equal((await response.json()).code, "BAD_REQUEST");
+    assert.equal(
+      (await response.json()).code,
+      body === "{broken-json" ? "BAD_REQUEST" : "VALIDATION_FAILED",
+    );
   }
   await fetch(`${url}/test/secret/private-path?token=private-query`, {
     headers: { authorization: "private-header" },
@@ -85,10 +88,13 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   for (const path of [
     "/api/v1/groups",
     "/api/v1/groups/{groupId}",
-    "/api/v1/groups/{groupId}/events",
-    "/api/v1/groups/{groupId}/events/{eventId}",
+    "/api/v1/events",
+    "/api/v1/events/{eventId}/group",
+    "/api/v1/events/{eventId}",
   ])
     assert(spec.paths[path], `registered module route: ${path}`);
+  assert(!spec.paths["/api/v1/groups/{groupId}/events"]);
+  assert(spec.components.schemas.ErrorResponseDto.properties.fieldErrors);
   for (const name of [
     "GroupInput",
     "GroupDto",
@@ -101,7 +107,7 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
     assert(spec.components.schemas[name], `existing OpenAPI schema: ${name}`);
   assert.deepEqual(
     Object.keys(spec.components.schemas.EventDto.properties).sort(),
-    ["groupId", "id", "name", "scheduledAt"],
+    ["groupId", "id", "name", "ownerId", "scheduledAt", "version"],
   );
 });
 

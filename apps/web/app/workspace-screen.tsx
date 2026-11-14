@@ -1,21 +1,32 @@
 "use client";
-
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth, AuthScreen } from "@/features/auth/client";
 import type { SessionRequest } from "@/features/auth/types";
 import { GroupBoundary, GroupSettings } from "@/features/groups/client";
 import { EventList, EventDetail } from "@/features/events/client";
 
 type Mode = "events" | "mypage" | "onboarding";
-
 export function WorkspaceScreen({ mode }: { mode: Mode }) {
   const { client, status, account } = useAuth();
   const params = useSearchParams();
+  const pathname = usePathname();
   if (status !== "authenticated" || !account)
     return (
       <main>
-        <AuthScreen />
+        <Link href="/">홈</Link>
+        {status === "anonymous" ? (
+          <section>
+            <h1>로그인이 필요합니다</h1>
+            <Link
+              href={`/auth?next=${encodeURIComponent(`${pathname}${params.size ? `?${params}` : ""}`)}`}
+            >
+              로그인 · 회원가입
+            </Link>
+          </section>
+        ) : (
+          <AuthScreen />
+        )}
       </main>
     );
   return (
@@ -32,8 +43,6 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
     </main>
   );
 }
-
-// Page composition only: groups owns selection/onboarding, events owns event data.
 export function WorkspaceContent({
   accountId,
   request,
@@ -48,46 +57,41 @@ export function WorkspaceContent({
   mode: Mode;
 }) {
   return (
-    <GroupBoundary
-      accountId={accountId}
-      request={request}
-      groupId={groupId}
-      onboarding={mode === "onboarding"}
-    >
-      {(selected, groups) => (
-        <section>
-          <nav>
-            <Link href={`/events?group=${encodeURIComponent(selected.id)}`}>
-              행사 목록
-            </Link>
-            <Link href={`/mypage?group=${encodeURIComponent(selected.id)}`}>
-              마이페이지
-            </Link>
-          </nav>
-          <h1>{selected.name}</h1>
-          {mode === "mypage" ? (
+    <section>
+      <nav>
+        <Link href="/">홈</Link>
+        <Link href="/events">내 행사</Link>
+        <Link href="/mypage">마이페이지</Link>
+      </nav>
+      <h1>{mode === "mypage" ? "내 모임 관리" : "내 행사"}</h1>
+      {mode === "mypage" ? (
+        <GroupBoundary
+          accountId={accountId}
+          request={request}
+          groupId={groupId}
+        >
+          {(selected, groups) => (
             <GroupSettings
               accountId={accountId}
               request={request}
               selected={selected}
               groups={groups}
             />
-          ) : eventId ? (
-            <EventDetail
-              accountId={accountId}
-              request={request}
-              groupId={selected.id}
-              eventId={eventId}
-            />
-          ) : (
-            <EventList
-              accountId={accountId}
-              request={request}
-              groupId={selected.id}
-            />
           )}
-        </section>
+        </GroupBoundary>
+      ) : eventId ? (
+        <EventDetail
+          accountId={accountId}
+          request={request}
+          eventId={eventId}
+        />
+      ) : (
+        <EventList
+          accountId={accountId}
+          request={request}
+          groupId={groupId ?? undefined}
+        />
       )}
-    </GroupBoundary>
+    </section>
   );
 }

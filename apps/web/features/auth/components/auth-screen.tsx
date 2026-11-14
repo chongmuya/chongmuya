@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/shared/http/api-error";
 import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import { LoadingState } from "@/shared/ui/states";
+import { safeReturnPath } from "../lib/return-path";
 import { useAuth } from "./auth-provider";
 import { AuthRecovery } from "./auth-recovery";
 import { CredentialsForm } from "./credentials-form";
@@ -17,10 +18,12 @@ export function AuthScreen() {
   const { client, status, account } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const params = useSearchParams();
+  const returnTo = safeReturnPath(params?.get("next"));
   useEffect(() => {
     if (status === "authenticated" && pathname === "/auth")
-      router.replace("/events");
-  }, [status, pathname, router]);
+      router.replace(returnTo);
+  }, [status, pathname, router, returnTo]);
   const [mode, setMode] = useState<"login" | "signup">("login");
   const { login, logout, restore, signIn } = useAuthActions();
   const pending = login.isPending || logout.isPending || restore.isPending;
@@ -36,7 +39,10 @@ export function AuthScreen() {
       : status === "unavailable"
         ? restore.error
         : status === "anonymous"
-          ? login.error
+          ? login.error instanceof ApiError &&
+            login.error.code === "VALIDATION_FAILED"
+            ? null
+            : login.error
           : null;
   if (status === "loading")
     return <LoadingState>로그인 상태 확인 중…</LoadingState>;
@@ -93,7 +99,7 @@ export function AuthScreen() {
           <CredentialsForm
             mode={mode}
             pending={pending}
-            submit={(values) => signIn(mode, values)}
+            submit={(values, onError) => signIn(mode, values, onError)}
           />
         </>
       )}

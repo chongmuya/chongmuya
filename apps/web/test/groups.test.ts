@@ -70,11 +70,23 @@ function fixture() {
   cache.setQueryData(["user", "b", "groups"], []);
   return cache;
 }
-test("direct event URL with no owned groups renders onboarding, not events", () => {
+test("accounts without groups can view personal events and create one without onboarding", () => {
   const cache = fixture();
-  const html = render(cache, "g1", "b", "e1");
-  assert.match(html, /첫 모임을 만들어/);
-  assert.doesNotMatch(html, /첫 모임 비공개 행사|행사 만들기/);
+  cache.setQueryData(["user", "b", "events", "list"], []);
+  const html = render(cache, null, "b");
+  assert.match(html, /행사 만들기|개인 행사/);
+  assert.match(html, /아직 행사가 없어요/);
+  assert.doesNotMatch(html, /첫 모임을 만들어|첫 모임 비공개 행사/);
+  cache.setQueryData(["user", "b", "events", "detail", "e2"], {
+    id: "e2",
+    ownerId: "b",
+    groupId: null,
+    version: 1,
+    name: "개인 일정",
+    scheduledAt: null,
+  });
+  assert.match(render(cache, "unused-group", "b", "e2"), /개인 일정/);
+  assert.doesNotMatch(render(cache, null, "a", "e2"), /개인 일정/);
   cache.clear();
 });
 test("switching groups and accounts never renders another scope's cached events", () => {
@@ -83,11 +95,14 @@ test("switching groups and accounts never renders another scope's cached events"
   assert.doesNotMatch(render(cache, "g2"), /첫 모임 비공개 행사/);
   assert.match(render(cache, "g2"), /아직 행사가 없어요/);
   assert.doesNotMatch(render(cache, "g1", "b"), /첫 모임 비공개 행사/);
-  assert.match(render(cache, "foreign"), /접근할 수 없는 모임/);
+  assert.match(
+    render(cache, "foreign", "a", null, "mypage"),
+    /접근할 수 없는 모임/,
+  );
   const page = render(cache, "g1", "a", null, "mypage");
   assert.match(page, /모임 추가/);
   assert.match(page, /모임 이름 수정/);
-  assert.match(page, /events\?group=g2/);
+  assert.match(page, /mypage\?group=g2/);
   cache.clear();
 });
 test("query failure hides cached events and offers retry; recovery restores list", async () => {

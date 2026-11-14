@@ -309,3 +309,42 @@ test("late expiry from an old account neither starts refresh nor replays the req
   assert.equal(probes, 0);
   assert.equal(client.getSnapshot().account?.id, "b");
 });
+
+for (const transition of ["account switch", "logout"] as const) {
+  test(`a successful late event write is rejected after ${transition}`, async () => {
+    let release!: (value: unknown) => void;
+    let current = session;
+    let clears = 0;
+    const client = new SessionClient(
+      () => clears++,
+      transport(async (path) => {
+        if (path.endsWith("restore")) return current;
+        if (path.endsWith("logout")) return;
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      }),
+    );
+    await client.restore();
+    const rejected = assert.rejects(
+      client.request("/api/v1/events/e1/group", { method: "PUT" }),
+      (error: unknown) =>
+        error instanceof ApiError && error.code === "SESSION_INVALID",
+    );
+    if (transition === "logout") await client.logout();
+    else {
+      current = {
+        authenticated: true,
+        account: { id: "b", email: "b@example.com" },
+      };
+      await client.restore();
+    }
+    release({ id: "e1", ownerId: "a", groupId: "g1", version: 2 });
+    await rejected;
+    assert.equal(clears, 1);
+    assert.equal(
+      client.getSnapshot().account?.id,
+      transition === "logout" ? undefined : "b",
+    );
+  });
+}

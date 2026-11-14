@@ -3,6 +3,7 @@ import type { ExceptionFilter } from "@nestjs/common";
 import type { Response } from "express";
 import type { RequestWithId } from "./request-context.js";
 import { QueryFailedError } from "typeorm";
+import { DomainHttpException } from "./domain-http.exception.js";
 import {
   databaseErrorCode,
   isDatabaseUnavailable,
@@ -100,6 +101,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(statusCode).json({
       statusCode,
       ...error,
+      ...(exception instanceof DomainHttpException
+        ? {
+            code: exception.code,
+            message: exception.safeMessage,
+            ...(exception.fieldErrors
+              ? { fieldErrors: exception.fieldErrors }
+              : {}),
+          }
+        : {}),
       ...(authCode ? { code: authCode } : {}),
       requestId: request.requestId,
     });

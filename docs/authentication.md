@@ -1,18 +1,18 @@
 # 인증과 개발 기준
 
-2026-11-03 모임·행사 구현 반영. 기존 Passport JWT·HttpOnly 쿠키·Refresh 세션 정책은 유지한다. 계정 가입과 모임 생성은 별개이며 `accounts`에 모임 ID나 온보딩 boolean을 넣지 않는다. 로그인·가입 후 `/events`에서 소유 모임을 조회하고, 모임이 없으면 첫 모임 생성만 제공한다. 행사 URL 직접 접근과 `/onboarding`, `/mypage`에도 같은 조건을 적용한다. 첫 생성 후 해당 모임 행사 목록으로 이동하며 마이페이지에서 추가·이름 수정·전환을 제공한다.
+계정 인증과 모임·행사 소유권은 별개다. 공개 홈은 로그인 없이 볼 수 있으며 개인 행사 화면은 인증을 요구한다. 로그인한 사용자는 모임 없이 행사를 만들고 조회할 수 있다. 마이페이지에서 모임 생성·이름 수정·전환을 제공하고, 행사에 본인 모임을 연결해도 행사 소유자와 접근 범위는 바뀌지 않는다. accounts에 모임 ID나 온보딩 boolean을 두지 않는다.
 
 ## 책임
 
 - 웹 `app`: 라우팅·Provider 조립. `features/auth`: 인증 API 조정, 세션 상태, 사용자 Query, 화면. `shared/http`: 업무를 모르는 HTTP 전송과 안전한 오류. shared → features 역참조 금지.
 - Nest `AuthController`: HTTP DTO·쿠키·응답. `JwtAccessStrategy`: 쿠키 JWT 추출, 서명·알고리즘·issuer·audience·만료 검증, 필수 claim 검사, 현재 세션과 계정으로 인증 사용자 구성. `AccessGuard`: 인증 필수 요청, `OptionalAccessGuard`: 최초 복원에서 비회원 허용. `AuthService`: 가입·로그인·토큰 발급·세션 rotation/폐기, 연결 대기와 트랜잭션 범위 관리. `AuthAttemptsRepository`: 전달받은 EntityManager를 사용하는 원자적 시도 제한 조회. DB 오류 분류는 공통 HTTP 필터가 맡고 예상하지 못한 오류는 500으로 유지한다.
 - Controller는 Entity를 반환하지 않는다. `AccountDto`는 id/email만 노출한다. 비밀번호·Refresh·JWT를 JSON이나 로그에 넣지 않는다.
-- 인증과 자원 권한은 별개다. `/auth/me`는 `@CurrentUser()`로 읽은 검증된 사용자만 반환하고 사용자 ID 입력을 받지 않는다. JWT sub와 세션 accountId 일치를 확인한다. 이후 모임·행사 Service는 인증 계정의 소유/멤버십을 해당 자원 조회 조건으로 별도 검증해야 한다. 아직 없는 자원에 가짜 role/권한 모듈을 만들지 않는다.
+- 인증과 자원 권한은 별개다. `/auth/me`는 `@CurrentUser()`로 읽은 검증된 사용자만 반환하고 사용자 ID 입력을 받지 않는다. JWT sub와 세션 accountId 일치를 확인한다. 모임·행사 Service는 인증 계정의 소유권을 각 자원 조회 조건으로 검증한다. 모임 연결만으로 행사 권한을 얻지 않는다.
 - 업무 API는 웹/Nest 모두 `/api/v1`. Next rewrite는 동일 경로를 전달한다. 운영 확인용 `/health`, `/ready`, `/docs`와 기존 `/api/health`는 업무 API 밖에 유지한다.
 
 ## 패키지 선택
 
-Nest 12.2.0에서 `@nestjs/passport 12.0.0` (Nest 11/12 지원), `@nestjs/jwt 12.0.3` (Nest 8~12 지원), `passport 0.7.0`, `passport-jwt 4.0.1`을 사용한다. 2026-10-30 npm peerDependencies 및 실제 타입·실행 테스트로 확인한다. API 네이티브 ESM/NodeNext와 `.js` 상대 import를 유지한다. jose는 직접 의존성으로 사용하지 않는다.
+Nest 12.2.0에서 `@nestjs/passport 12.0.0` (Nest 11/12 지원), `@nestjs/jwt 12.0.3` (Nest 8~12 지원), `passport 0.7.0`, `passport-jwt 4.0.1`을 사용한다. API 네이티브 ESM/NodeNext와 `.js` 상대 import를 유지한다. jose는 직접 의존성으로 사용하지 않는다.
 
 ## 토큰·쿠키·CSRF
 
@@ -20,7 +20,7 @@ Access JWT는 5분, Refresh 세션은 로그인부터 절대 14일이다. Refres
 
 Access/Refresh 모두 HttpOnly, SameSite=Lax, Path=/, Domain 생략. production에서는 Secure 및 `__Host-access`/`__Host-refresh`; 로컬 HTTP에서는 `access`/`refresh`다. 삭제 시에도 같은 옵션을 사용한다. production WEB_ORIGIN은 HTTPS만 허용한다. AUTH_SECRET은 최소 32자이고 운영에서는 암호학적 난수로 생성한다. 환경 오류에는 변수 이름만 노출한다.
 
-Access 메모리 방식 대신 쿠키를 선택했다. Next Server Component에서 `await cookies()`로 요청별 Access 쿠키를 읽고 Nest로 전달할 수 있고, 새로고침마다 JS 메모리를 복원할 필요가 없다. Next가 JWT 서명/업무 권한을 중복 판단하지 않는다. 향후 서버 데이터 조회는 필요한 쿠키만 전달하고 `cache: no-store`를 사용해야 한다. Server Component 렌더 중 Refresh rotation은 하지 않는다. Set-Cookie를 브라우저에 전달할 수 있는 브라우저 요청/Route Handler 경계에서 갱신한다. 현재 화면은 Client에서 복원하며 SSR 보호 페이지는 아직 없다.
+Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에서 `await cookies()`로 요청별 Access 쿠키를 읽고 Nest로 전달할 수 있고, 새로고침마다 JS 메모리를 복원할 필요가 없다. Next가 JWT 서명/업무 권한을 중복 판단하지 않는다. 향후 서버 데이터 조회는 필요한 쿠키만 전달하고 `cache: no-store`를 사용해야 한다. Server Component 렌더 중 Refresh rotation은 하지 않는다. Set-Cookie를 브라우저에 전달할 수 있는 브라우저 요청/Route Handler 경계에서 갱신한다. 현재 화면은 Client에서 복원하며 SSR 보호 페이지는 아직 없다.
 
 쿠키 선택은 Passport와 독립이다. 전역 CSRF Guard가 GET/HEAD/OPTIONS 외 요청에 정확한 `Origin === WEB_ORIGIN`과 `X-CSRF-Protection: 1`을 요구하고 cross-site Fetch Metadata를 거부한다. 로그인/가입/복원/갱신/로그아웃 모두 적용한다. Origin 없는 변경 요청도 거부한다. CORS를 열지 않고 동일 출처 Next rewrite를 사용한다. 전용 헤더를 임의 사이트에서 추가하려면 preflight가 필요하므로 허용하지 않는 CORS와 Origin 검증을 함께 유지해야 한다. GET은 상태를 변경하지 않는다. Swagger/CLI POST에도 두 헤더가 필요하다.
 
@@ -36,7 +36,7 @@ Access 메모리 방식 대신 쿠키를 선택했다. Next Server Component에�
 
 시도 제한은 DB upsert로 15분 고정 창 동안 이메일당 10회, 직접 연결 IP당 50회(가입·로그인 합산)를 적용한다. 알 수 없는 계정도 동일 비용의 비밀번호 연산을 수행한다. `trust proxy`를 켜지 않아 임의 X-Forwarded-For로 제한을 우회하지 못한다. 실제 프록시 배포 시 신뢰할 프록시 목록과 IP 집계를 확정해야 한다. 현재 Next 프록시 요청은 같은 IP 제한을 공유하므로 운영 배포 전 조정 항목이다.
 
-만료 세션과 사용된 Refresh 이력은 만료 전 삭제하지 않는다. 운영 전 만료 세션(자식 토큰 cascade)과 오래된 시도 제한 행을 정리하는 보존·청소 작업을 추가해야 한다. 아직 worker/큐/운영 배포를 추가하지 않았다.
+만료 세션과 사용된 Refresh 이력은 만료 전 삭제하지 않는다. 운영 전 만료 세션(자식 토큰 cascade)과 오래된 시도 제한 행을 정리하는 보존·청소 작업을 추가해야 한다. 세션 정리 작업은 유효한 Refresh 재사용 감지 이력을 지우면 안 된다.
 
 ### 배포 전 IP 제한 설정
 
@@ -45,7 +45,7 @@ Access 메모리 방식 대신 쿠키를 선택했다. Next Server Component에�
 1. 클라이언트 → CDN/LB → Next → Nest의 실제 경로, 우회 경로, 각 홉의 주소와 변경 범위를 확정한다. Nest 직접 접근은 신뢰한 프록시로 제한한다.
 2. 외부 경계에서 클라이언트가 임의로 보낸 X-Forwarded-For/Host/Proto를 제거·덮어쓰고, Next를 포함한 각 홉이 검증된 체인을 어떻게 전달하는지 확인한다. 임의 X-Forwarded-For를 붙여도 사용자 IP를 바꿀 수 없어야 한다.
 3. Nest에서 신뢰할 주소/CIDR 범위를 최소한으로 지정하는 안을 배포 구성에 맞게 선택한다. 경로 길이가 달라질 수 있으면 고정 홉 수나 모든 프록시 신뢰를 사용하지 않는다. 실제 경로에서 서로 다른 클라이언트가 서로 다른 제한 키를 갖는지 검증한다.
-4. 프록시 우회·헤더 위조·IPv4/IPv6·여러 Next/API 인스턴스·공유 NAT 환경을 검증하고 IP 제한 수치를 조정한다. 이메일 제한과 DB 원자 집계는 유지한다. 이 설정은 배포 구성과 함께 변경하며 이번 리뷰에서 임의 활성화하지 않는다.
+4. 프록시 우회·헤더 위조·IPv4/IPv6·여러 Next/API 인스턴스·공유 NAT 환경을 검증하고 IP 제한 수치를 조정한다. 이메일 제한과 DB 원자 집계는 유지한다. 이 설정은 실제 배포 구성과 함께 검증한다.
 
 근거: [Express 5 프록시 설정](https://expressjs.com/en/5x/guide/behind-proxies/). 현재 통합 테스트는 위조 X-Forwarded-For가 제한 IP로 채택되지 않는 것까지 확인한다.
 
@@ -56,7 +56,7 @@ Access 메모리 방식 대신 쿠키를 선택했다. Next Server Component에�
 - `SESSION_INVALID`: 사용자 캐시 취소·삭제와 세션 종료. 네트워크/타임아웃/5xx는 로그인 정보를 보존하고 재시도 UI를 제공한다. 403은 권한 실패이며 갱신하지 않는다.
 - 로그아웃: generation을 올리고 사용자 캐시를 즉시 정리하며 진행 중 복원/갱신을 기다린 뒤 서버 폐기 요청을 보낸다. 오래된 요청은 결과를 적용하지 못한다. 실패하면 `logout-failed` 상태로 남아 **로그아웃 다시 시도**만 제공하고 자동 복원을 막는다. 동작하지 않는 연결 재확인 버튼은 표시하지 않는다. 일반 복원 통신 장애는 `unavailable` 상태에서 **연결 재확인**으로 세션 복원을 다시 요청한다. `logging-out`은 진행 표시만 제공한다.
 - `user`로 시작하는 Query key는 사용자 전용이다. 해당 Query를 취소·삭제하고 mutation cache도 정리한다. health 같은 공개 Query는 유지한다. 로그인·로그아웃은 BroadcastChannel로 다른 탭의 재확인을 요청한다.
-- 인증 상태는 Query cache와 분리하고 Provider 인스턴스에 둔다. 서버 프로세스 전역에 사용자 상태를 두지 않는다. 재사용되는 공용 UI가 아직 없어 인증 폼 내부에 유지한다.
+- 인증 상태는 Query cache와 분리하고 Provider 인스턴스에 둔다. 서버 프로세스 전역에 사용자 상태를 두지 않는다. 폼은 React Hook Form과 Zod, 공용 입력·오류 UI를 사용한다.
 
 ## API
 
@@ -71,7 +71,7 @@ Access 메모리 방식 대신 쿠키를 선택했다. Next Server Component에�
 | POST /refresh         | 200 SessionDto, rotation         |
 | POST /logout          | 204, 현재 세션 폐기·쿠키 삭제    |
 
-기존 안전한 오류 규격에 `ACCESS_EXPIRED`, `SESSION_INVALID`, `INVALID_CREDENTIALS`를 추가했다. 입력 오류 400, CSRF/권한 403, 이메일 충돌 409, 시도 제한 429, DB 장애 503을 구분한다. 원문 DB 오류를 노출하지 않는다.
+안전한 오류 규격은 `ACCESS_EXPIRED`, `SESSION_INVALID`, `INVALID_CREDENTIALS`를 보존한다. 입력 오류 400, CSRF/권한 403, 이메일 충돌 409, 시도 제한 429, DB 장애 503을 구분한다. 원문 DB 오류를 노출하지 않는다.
 
 ## 실행과 검증
 
@@ -81,54 +81,18 @@ Access 메모리 방식 대신 쿠키를 선택했다. Next Server Component에�
 
 통합 테스트는 회원가입/중복/DTO, 로그인 실패, 쿠키/CSRF, Access 만료·위조·세션 소유 불일치, rotation, 재사용 후 세션 전체 폐기, 동시 갱신, 갱신/로그아웃 경쟁, 절대 만료, 시도 제한, Swagger/로그 비밀정보 제외를 검증한다. 웹 테스트는 bootstrap 중복, 단일 갱신/1회 재시도, 장애와 무효 세션 구분, 로그아웃 경쟁·실패 후 재시도, `/me`·`/refresh`의 계정 변경 시 이전 요청 중단, 늦은 응답 무시, 복구 UI별 버튼 렌더링을 검증한다. 가입 원자성 테스트는 테스트 계정에만 작동하는 PostgreSQL 트리거로 세션/Refresh insert 실패를 각각 유발하여 계정까지 롤백되는지 확인하고 트리거를 제거한 뒤 같은 이메일 재가입을 확인한다. 트리거는 테스트 전용이며 finally에서 제거한다.
 
-## 확인한 설계와 참고
+## 개인 자원 접근과 화면 복귀
 
-- [Notion Architecture](https://app.notion.com/p/3ec8d571d6de81c7a1f9ca0b1dc083b1), [ERD](https://app.notion.com/p/3ec8d571d6de818ba06cd91d5a75d24b), [기능 명세](https://app.notion.com/p/3ec8d571d6de816fb87ce39531e0d531), [User Flow](https://app.notion.com/p/3ec8d571d6de81a1b35af20c55cdae2b): 2026-10-29 편집 설계 확인. 계정/명단 구성원 분리와 행사·예약 독립 방향을 유지하고 온보딩은 위의 2026-10-31 사용자 결정에 따라 다음 단계에서 구현한다.
-- [Gather develop 인증 생명주기](https://github.com/KUIT-GATHER/gather-front/blob/develop/docs/troubleshooting/auth-session-lifecycle.md), `fetchClient.ts`, `AuthProvider.tsx`, auth의 restore/refresh/clear 함수: 책임 분리·single-flight·한 번 재시도 참고. shared의 feature 역참조, 모든 refresh 실패 시 세션 삭제, 전체 공개 캐시 삭제는 그대로 복사하지 않았다.
-- [혼여족 develop auth](https://github.com/leedongkyu0701/honyeojok-backend/tree/develop/src/modules/auth): Strategy/Guard/Service와 쿠키 책임 참고. 사용자당 Refresh 해시 하나·Bearer 추출·Refresh JWT 구조는 복사하지 않았다.
-- [Nest Passport](https://docs.nestjs.com/recipes/passport), [Next 인증](https://nextjs.org/docs/app/guides/authentication), [Next cookies](https://nextjs.org/docs/app/api-reference/functions/cookies): Context7와 설치된 Next 16.4.3 문서를 확인했다.
+- `/api/v1/groups`는 모임 소유권, `/api/v1/events`는 행사 자체의 소유권으로 조회·수정 범위를 제한한다. 상세에 groupId를 요구하지 않는다. 타인 자원과 존재하지 않는 자원은 같은 404다.
+- 생성의 ownerId는 인증 계정에서 정한다. groupId를 지정하면 모임 소유권도 확인한다. 일반 행사 PATCH로 ownerId·groupId를 바꾸지 못한다.
+- `PUT /events/:eventId/group`은 expectedVersion·groupId를 받는다. 행사 잠금, 행사·모임 소유권, 요청 버전과 미연결 상태를 같은 트랜잭션·EntityManager에서 확인한다. 모임 연결은 다른 사람에게 권한을 주지 않는다.
+- `/events`는 전체 내 행사, `/events?event=<id>`는 개인 상세, `/events?group=<id>`는 모임별 내 행사다. 모임 없음과 행사 없음은 정상 상태이며 조회 실패와 구분한다. `/onboarding`도 모임 생성을 강제하지 않는다.
+- 비로그인 개인 화면의 로그인 링크는 `/auth?next=<내부 경로>`를 사용한다. safeReturnPath는 지원하는 페이지와 유효한 UUID query만 허용한다. 외부 URL·인증/API 경로는 `/events`로 대체하며 로그인 후 원래 요청한 화면으로 돌아간다. 클라이언트의 화면 보호는 API 권한 검사를 대체하지 않는다.
+- 사용자 Query key는 `user / accountId` 범위를 유지하고 상세는 `events / detail / eventId`로 식별한다. 행사 생성·모임 연결은 내 행사·해당 모임 목록과 상세를 갱신한다. 계정 전환·로그아웃·화면 이탈 후 늦은 응답을 반영하지 않는다.
 
-## 최초 인증 구현 검증 결과 (2026-10-30)
+API 입력·응답·캐시·fieldErrors의 정확한 형식과 migration 적용·복구 제한은 [아키텍처](architecture.md)를 따른다. 입력 오류는 허용된 필드에, 업무 오류는 폼 전체에 표시하며 작성한 입력을 유지한다. 서버의 임의 message는 출력하지 않는다.
 
-- frozen 설치·lint·typecheck·build·test 통과. 경계 검사 1개, API 단위/HTTP 4개, 웹 7개 통과.
-- 격리된 임시 PostgreSQL에서 인증/동시성·readiness 통합 테스트 2개 통과. 마이그레이션 적용 후 Entity metadata의 추가 변경 SQL이 없는 것도 확인.
-- `pnpm dev` 실행, 실제 Nest 및 Next rewrite에서 가입·내 정보·rotation·로그아웃·재로그인 정상 응답 확인.
-- 임시 DB 중단 시 liveness 200, readiness/인증 503. DB 재시작 후 API 재시작 없이 인증 정상 복구.
-- Chrome에서 로그인 폼과 최초 비회원 복원을 확인. 브라우저 연결 호스트 장애 및 다른 Chrome 작업과의 충돌로 폼 제출 이후 전체 흐름·화면의 실패/복구 전환은 미검증이다. 해당 흐름은 HTTP 및 SessionClient 자동 테스트로 검증했다.
-- 기존 개발/운영 DB에는 마이그레이션을 적용하지 않았다. 로컬 실행 전 AUTH_SECRET·WEB_ORIGIN 설정과 마이그레이션 적용이 필요하다.
+## 참고
 
-## 인증 리뷰 재현 및 보완 (2026-10-31)
-
-기준 main: `6052d03` (PR #4 병합). 수정 전 웹 테스트에서 `/me`·`/refresh` 계정 변경 후 이전 요청이 재시도되는 두 실패와 로그아웃 실패 상태 구분 실패를 확인했다. PostgreSQL insert 실패 테스트에서는 세션 저장 실패 후 계정이 1개 남는 것을 확인했다. 위 세 동작을 수정했고 스키마·의존성·모임 기능은 변경하지 않았다.
-
-- `pnpm install --frozen-lockfile`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` 모두 통과. 경계 검사 1개, API 4개, 웹 17개가 통과했다.
-- 격리된 임시 PostgreSQL에서 `pnpm test:integration` 3개 통과. 세션/Refresh 저장 실패 시 전체 롤백, 같은 이메일 재가입, 동시 중복 가입 중 한 건만 성공하는 것을 포함한다.
-- `pnpm dev`와 실제 Next rewrite HTTP 요청으로 가입·로그인·Access 만료 후 갱신·로그아웃·재로그인을 확인했다. 실제 SessionClient 두 인스턴스가 쿠키 저장소를 공유하는 검증에서 `/me`·`/refresh` 각각의 계정 변경, 사용자 캐시 정리, 이전 요청 재시도 중단을 확인했다.
-- 실제 브라우저 UI 및 다중 탭 Web Locks/BroadcastChannel 연동은 브라우저 연결 호스트 오류(`browser access host is unavailable`)로 실행하지 못했다. 위 HTTP 검증은 다중 탭 쿠키 공유를 모사한 것이며 실제 브라우저 검증을 대체했다고 보지 않는다. 복구 화면의 버튼 구분은 렌더링 회귀 테스트로 확인했다.
-- `trust proxy`는 활성화하지 않았다. 배포 전 필요한 설정은 위 IP 제한 설정 절에 기록했다. 기존 개발/운영 DB는 변경하지 않았으며 이번 보완에 추가 환경변수나 마이그레이션은 필요하지 않다.
-
-## 모임·행사 API와 검증 (2026-11-03)
-
-모든 경로는 `/api/v1/groups` 아래에 있고 AccessGuard와 기존 전역 CSRF 검사를 사용한다. 소유자 입력은 허용하지 않으며 로그인한 `accounts.id`로 서버가 지정한다. 타인 자원과 존재하지 않는 자원은 모두 404, 잘못된 UUID·DTO는 400이다. 응답은 별도 DTO이며 `Cache-Control: no-store`다.
-
-| 경로                                        | 동작                                   |
-| ------------------------------------------- | -------------------------------------- |
-| GET /, POST /                               | 내 모임 목록, 모임 생성                |
-| GET /:groupId, PATCH /:groupId              | 소유 모임 조회, 이름 수정              |
-| GET /:groupId/events, POST /:groupId/events | 해당 모임 행사 목록, 행사 생성         |
-| GET /:groupId/events/:eventId               | 모임과 행사 ID를 함께 검증한 상세 조회 |
-
-모임·행사 이름은 앞뒤 공백 제거 후 1~100자다. 행사는 이름만으로 생성 가능하며 `scheduledAt`은 생략/null 또는 시간대를 포함한 ISO 8601 날짜·시각이다. 화면 입력·표시는 한국 시간이며 DB에는 timestamptz로 저장한다. 명단·예약·참석·정산은 추가하지 않았다.
-
-선택 모임은 `/events?group=<id>`와 `/mypage?group=<id>`의 URL로 관리한다. 모임을 지정하지 않은 새 진입은 가장 먼저 만든 소유 모임을 선택한다. 상세 주소는 `/events?group=<id>&event=<id>`다. 브라우저 저장소에 계정 공통 선택 값을 남기지 않는다. 프론트 파일 배치와 폼·캐시 구현 기준은 [아키텍처](architecture.md#프론트엔드)를 따른다. Query key는 `user / accountId / groups / groupId / events / eventId`로 분리하고 이전 query의 데이터를 placeholder로 재사용하지 않는다. 기존 세션 종료·계정 교체 시 사용자 캐시 취소·제거를 그대로 사용한다. 화면이 바뀐 뒤 늦게 끝난 저장 요청은 이전 화면으로 이동시키거나 캐시를 복원하지 않는다.
-
-추가 마이그레이션 `1793664000000-GroupEvents`는 groups와 events 및 FK/index만 만든다. accounts·auth_sessions·refresh_tokens는 변경하지 않는다. events.group_id와 groups.owner_id는 NOT NULL FK이며 자동 마이그레이션 정책은 변경하지 않았다. 배포 시 대상 DB 확인 → API build → 명시적 db:migration:run 순서로 적용한다.
-
-검증 결과:
-
-- Node 24.15.0 / pnpm 11.25.0, install --frozen-lockfile, lint, typecheck, build, test 실행.
-- 전용 PostgreSQL 17.11 컨테이너(15433, group_events_test)에서 통합 테스트 5개 통과. 두 계정·한 계정의 두 모임으로 생성, 목록 분리, 타인 조회·수정·행사 생성 차단, 다른 모임 ID와 행사 ID 조합 차단, DTO 검증, 로그아웃 후 401 확인.
-- 격리 스키마에 인증 마이그레이션만 먼저 적용하고 계정·세션·Refresh 데이터를 넣은 뒤 실제 추가 마이그레이션 SQL을 적용했다. 기존 세 테이블의 행 전체가 그대로이며 기존 계정으로 모임·행사 삽입 가능함을 확인했다. Entity와 마이그레이션의 schema diff도 없음.
-- 웹 렌더링 테스트에서 행사 URL 직접 진입 시 모임 생성 강제, 모임·계정 간 캐시 노출 차단, 조회 오류 시 기존 목록 숨김과 재시도·복구 표시를 확인했다. 기존 세션 경쟁·로그아웃 회귀 테스트도 통과했다.
-- pnpm dev로 실제 Next/Nest 실행 후 Next rewrite 경유로 가입 → 두 모임 → 이름만으로 행사 생성 → 목록 분리 → 타인 접근 차단 → 로그아웃 흐름과 화면 URL HTTP 200을 확인했다.
-- 실제 브라우저 클릭 흐름·모바일 시각 검수·스크린샷은 미확인이다. 브라우저 연결 호스트가 사용할 수 없는 상태였고 Chrome 앱 제어 재시도도 시간 초과됐다. 렌더링 테스트는 실제 브라우저 상호작용 검증을 대체하지 않는다.
+- [정책](https://app.notion.com/p/3ec8d571d6de810ca37bfa1ba7d5e90c), [기능 명세](https://app.notion.com/p/3ec8d571d6de816fb87ce39531e0d531): 제품 의도와 접근 조건
+- [Nest Passport](https://docs.nestjs.com/recipes/passport), [Next 인증](https://nextjs.org/docs/app/guides/authentication), [Next cookies](https://nextjs.org/docs/app/api-reference/functions/cookies)

@@ -3,15 +3,18 @@ import type { SessionRequest } from "@/features/auth/types";
 import { getEvent, getEvents } from "./events.api";
 
 export const eventKeys = {
-  list: (accountId: string, groupId: string) =>
-    ["user", accountId, "groups", groupId, "events"] as const,
-  detail: (accountId: string, groupId: string, eventId: string) =>
-    [...eventKeys.list(accountId, groupId), eventId] as const,
+  all: (accountId: string) => ["user", accountId, "events"] as const,
+  list: (accountId: string, groupId?: string) =>
+    groupId
+      ? (["user", accountId, "groups", groupId, "events"] as const)
+      : (["user", accountId, "events", "list"] as const),
+  detail: (accountId: string, eventId: string) =>
+    ["user", accountId, "events", "detail", eventId] as const,
 };
 export const eventsQueryOptions = (
   accountId: string,
-  groupId: string,
   request: SessionRequest,
+  groupId?: string,
 ) =>
   queryOptions({
     queryKey: eventKeys.list(accountId, groupId),
@@ -21,13 +24,12 @@ export const eventsQueryOptions = (
   });
 export const eventQueryOptions = (
   accountId: string,
-  groupId: string,
   eventId: string,
   request: SessionRequest,
 ) =>
   queryOptions({
-    queryKey: eventKeys.detail(accountId, groupId, eventId),
-    queryFn: ({ signal }) => getEvent(request, groupId, eventId, signal),
+    queryKey: eventKeys.detail(accountId, eventId),
+    queryFn: ({ signal }) => getEvent(request, eventId, signal),
     staleTime: 0,
     retry: false,
   });

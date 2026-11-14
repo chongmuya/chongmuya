@@ -21,12 +21,15 @@ export function GroupSettings({
   return (
     <>
       <h2>관리할 모임 전환</h2>
+      <Link href={`/events?group=${encodeURIComponent(selected.id)}`}>
+        이 모임의 내 행사 보기
+      </Link>
       <ul>
         {groups.map((group) => (
           <li key={group.id}>
             <Link
               aria-current={group.id === selected.id ? "true" : undefined}
-              href={`/events?group=${encodeURIComponent(group.id)}`}
+              href={`/mypage?group=${encodeURIComponent(group.id)}`}
             >
               {group.name}
               {group.id === selected.id ? " (현재 모임)" : ""}
@@ -46,7 +49,7 @@ export function GroupSettings({
         request={request}
         title="모임 추가"
         onCreated={(group) =>
-          router.replace(`/events?group=${encodeURIComponent(group.id)}`)
+          router.replace(`/mypage?group=${encodeURIComponent(group.id)}`)
         }
       />
     </>

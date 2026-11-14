@@ -1,4 +1,20 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import type { FieldError } from "./domain-http.exception.js";
+
+class FieldErrorDto {
+  @ApiProperty({ example: "name" }) field!: string;
+  @ApiProperty({
+    enum: [
+      "INVALID_TYPE",
+      "INVALID_LENGTH",
+      "INVALID_EMAIL",
+      "INVALID_UUID",
+      "INVALID_FORMAT",
+      "INVALID_VALUE",
+    ],
+  })
+  code!: FieldError["code"];
+}
 
 export class ErrorResponseDto {
   @ApiProperty({ example: 503 })
@@ -12,4 +28,7 @@ export class ErrorResponseDto {
 
   @ApiProperty({ format: "uuid" })
   requestId!: string;
+
+  @ApiPropertyOptional({ type: [FieldErrorDto] })
+  fieldErrors?: FieldErrorDto[];
 }

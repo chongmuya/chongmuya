@@ -121,6 +121,12 @@ export default {
         messages: {
           boundary:
             "허용되지 않은 의존 방향입니다: {{source}} → {{target}}. docs/architecture.md를 확인하세요.",
+          featureInternal:
+            "다른 feature의 내부 파일은 직접 참조할 수 없습니다: {{source}} → {{specifier}}. features/{{feature}}의 client·types·server 공개 진입점을 사용하세요.",
+          featureCycle:
+            "feature 순환 의존이 생깁니다: {{source}} → {{target}}. 공개 진입점도 반대 방향의 의존 경로가 있으면 사용할 수 없습니다.",
+          clientServer:
+            "클라이언트 파일에서 서버 전용 진입점을 참조할 수 없습니다: {{specifier}}. 서버·클라이언트 공개 진입점을 분리하세요.",
         },
       },
       create(context) {
@@ -136,6 +142,7 @@ export default {
           const target = area(targetFile);
           if (!target) return;
           let invalid = source.app !== target.app;
+          let messageId = "boundary";
           if (source.app === "web") {
             const rank = { app: 0, features: 1, shared: 2 };
             invalid ||= rank[source.layer] > rank[target.layer];
@@ -145,14 +152,16 @@ export default {
                 (source.layer === "features" &&
                   source.feature !== target.feature))
             ) {
-              invalid ||= !isPublicEntry(targetFile);
+              if (!invalid && !isPublicEntry(targetFile)) {
+                invalid = true;
+                messageId = "featureInternal";
+              }
               if (source.layer === "features" && !invalid) {
                 graph ??= featureGraph();
-                invalid ||= hasDependencyPath(
-                  graph,
-                  target.feature,
-                  source.feature,
-                );
+                if (hasDependencyPath(graph, target.feature, source.feature)) {
+                  invalid = true;
+                  messageId = "featureCycle";
+                }
               }
             }
             const clientModule = context.sourceCode.ast.body.some(
@@ -160,9 +169,14 @@ export default {
                 item.type === "ExpressionStatement" &&
                 item.expression.value === "use client",
             );
-            invalid ||=
+            if (
+              !invalid &&
               clientModule &&
-              /[/\\]server(?:\.[cm]?[jt]sx?)?$/.test(targetFile);
+              /[/\\]server(?:\.[cm]?[jt]sx?)?$/.test(targetFile)
+            ) {
+              invalid = true;
+              messageId = "clientServer";
+            }
           }
           if (source.app === "api") {
             invalid ||=
@@ -203,10 +217,24 @@ export default {
           if (invalid)
             context.report({
               node,
-              messageId: "boundary",
+              messageId,
               data: {
-                source: `${source.app}/${source.layer}`,
-                target: `${target.app}/${target.layer}`,
+                source: [
+                  source.app,
+                  source.layer,
+                  ...(["features", "modules"].includes(source.layer)
+                    ? [source.feature]
+                    : []),
+                ].join("/"),
+                target: [
+                  target.app,
+                  target.layer,
+                  ...(["features", "modules"].includes(target.layer)
+                    ? [target.feature]
+                    : []),
+                ].join("/"),
+                specifier,
+                feature: target.feature,
               },
             });
         }

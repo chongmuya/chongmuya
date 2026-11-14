@@ -9,6 +9,10 @@ import {
 import { QueryFailedError } from "typeorm";
 import { HttpExceptionFilter } from "../src/common/http/http-exception.filter.js";
 import type { RequestWithId } from "../src/common/http/request-context.js";
+import {
+  DomainHttpException,
+  validationException,
+} from "../src/common/http/domain-http.exception.js";
 import { AuthError } from "../src/modules/auth/exceptions/auth.exception.js";
 
 function capture(error: unknown) {
@@ -50,6 +54,20 @@ test("expected HTTP/auth errors, DB outages and unexpected errors remain distinc
     [new BadRequestException("private-input"), 400, "BAD_REQUEST"],
     [new ForbiddenException(), 403, "FORBIDDEN"],
     [new ConflictException(), 409, "CONFLICT"],
+    [
+      new ConflictException({
+        code: "VERSION_CONFLICT",
+        message: "private-message",
+      }),
+      409,
+      "CONFLICT",
+    ],
+    [new DomainHttpException("VERSION_CONFLICT"), 409, "VERSION_CONFLICT"],
+    [
+      new DomainHttpException("EVENT_ALREADY_LINKED"),
+      409,
+      "EVENT_ALREADY_LINKED",
+    ],
     ...["ACCESS_EXPIRED", "SESSION_INVALID", "INVALID_CREDENTIALS"].map(
       (code) =>
         [new AuthError(code as "ACCESS_EXPIRED"), 401, code] as [
@@ -132,4 +150,29 @@ test("diagnostics keep only allowlisted codes and application stack locations", 
     locations: ["modules/groups/groups.service.js:21:7"],
   });
   assert.doesNotMatch(JSON.stringify(result), /private|TOKEN|leak/);
+});
+
+test("validation only exposes DTO field paths and allowed codes, never input or validator text", () => {
+  const error = validationException([
+    {
+      property: "name",
+      value: "private-value",
+      target: { password: "private-password" },
+      constraints: { isLength: "private-validator-text" },
+    },
+    {
+      property: "private-unknown-field",
+      constraints: { whitelistValidation: "private-text" },
+    },
+    { property: "constructor", constraints: { isString: "private-text" } },
+  ]);
+  const result = capture(error);
+  assert.equal(result.body.code, "VALIDATION_FAILED");
+  assert.deepEqual(result.body.fieldErrors, [
+    { field: "name", code: "INVALID_LENGTH" },
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /private-|target|password|constraints/,
+  );
 });
