@@ -1,15 +1,20 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/shared/http/api-error";
 import { notifySessionChange, useAuth } from "./auth-provider";
 import { AuthRecovery } from "./auth-recovery";
 import type { Account } from "./session";
 
-export function AuthScreen({ onboarding = false }: { onboarding?: boolean }) {
+export function AuthScreen() {
   const { client, status, account } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    if (status === "authenticated" && pathname === "/auth")
+      router.replace("/events");
+  }, [status, pathname, router]);
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -42,7 +47,7 @@ export function AuthScreen({ onboarding = false }: { onboarding?: boolean }) {
   if (status === "loading") return <p role="status">로그인 상태 확인 중…</p>;
   return (
     <section aria-label="계정">
-      <h2>{onboarding ? "가입 완료 · 다음 단계" : "계정"}</h2>
+      <h2>계정</h2>
       {message && <p role="alert">{message}</p>}
       {status === "unavailable" ||
       status === "logging-out" ||
@@ -69,12 +74,6 @@ export function AuthScreen({ onboarding = false }: { onboarding?: boolean }) {
             </p>
           )}
           {profile.data && <p>내 정보: {profile.data.email}</p>}
-          {onboarding && (
-            <p>
-              모임 생성은 다음 개발 단계에서 제공됩니다. 계정 가입은
-              완료되었습니다.
-            </p>
-          )}
           <button
             disabled={pending}
             onClick={() =>
@@ -109,7 +108,7 @@ export function AuthScreen({ onboarding = false }: { onboarding?: boolean }) {
                   String(form.get("password")),
                 );
                 notifySessionChange();
-                if (mode === "signup") router.push("/onboarding");
+                router.push("/events");
                 router.refresh();
               });
             }}
