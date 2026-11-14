@@ -3,11 +3,14 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { JwtService } from "@nestjs/jwt";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
-import { Account, AuthSession, RefreshToken } from "./auth.entity.js";
-import { AuthRepository, tokenHash } from "./auth.repository.js";
-import { AuthError } from "./auth-error.js";
-import { hashPassword, verifyPassword } from "./password.js";
-import type { CredentialsDto } from "./credentials-request.dto.js";
+import { Account } from "./entities/account.entity.js";
+import { AuthSession } from "./entities/auth-session.entity.js";
+import { RefreshToken } from "./entities/refresh-token.entity.js";
+import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+import { tokenHash } from "./utils/token-hash.js";
+import { AuthError } from "./exceptions/auth.exception.js";
+import { hashPassword, verifyPassword } from "./utils/password.js";
+import type { CredentialsDto } from "./dto/request/credentials.request.dto.js";
 
 export const ACCESS_SECONDS = 300;
 export const SESSION_SECONDS = 60 * 60 * 24 * 14;
@@ -20,7 +23,7 @@ const publicAccount = (account: Account) => ({
 export class AuthService {
   constructor(
     private readonly database: DatabaseService,
-    private readonly repository: AuthRepository,
+    private readonly repository: AuthAttemptsRepository,
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
   ) {}

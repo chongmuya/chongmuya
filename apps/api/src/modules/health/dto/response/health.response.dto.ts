@@ -7,8 +7,3 @@ export class HealthDto {
   @ApiProperty({ enum: ["chongmuya-api"] })
   service!: "chongmuya-api";
 }
-
-export class ReadinessDto extends HealthDto {
-  @ApiProperty({ enum: ["up"] })
-  database!: "up";
-}

@@ -46,7 +46,8 @@ test("group onboarding, validation and ownership for two accounts", async (t) =>
 
 test("group query failures distinguish unavailability from coding errors and recover", async (t) => {
   const { db, call, signup, logs } = await startResourceApplication(t);
-  const { Group } = await import("../../src/modules/groups/group.entity.js");
+  const { Group } =
+    await import("../../src/modules/groups/entities/group.entity.js");
   const jar = await signup();
   const repository = db.getRepository(Group);
   for (const [error, status, category] of [

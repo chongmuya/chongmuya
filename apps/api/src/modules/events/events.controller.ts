@@ -14,11 +14,11 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
 } from "@nestjs/swagger";
-import { AccessGuard } from "../auth/jwt-access.guard.js";
-import { CurrentUser } from "../auth/current-user.decorator.js";
-import type { AuthUser } from "../auth/auth-user.js";
-import { EventInput } from "./event-request.dto.js";
-import { EventDto } from "./event-response.dto.js";
+import { AccessGuard } from "../auth/guards/jwt-access.guard.js";
+import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
+import type { AuthUser } from "../auth/types/auth-user.js";
+import { EventInput } from "./dto/request/create-event.request.dto.js";
+import { EventDto } from "./dto/response/event.response.dto.js";
 import { EventsService } from "./events.service.js";
 
 @ApiTags("events")

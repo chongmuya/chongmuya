@@ -15,11 +15,11 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
 } from "@nestjs/swagger";
-import { AccessGuard } from "../auth/jwt-access.guard.js";
-import { CurrentUser } from "../auth/current-user.decorator.js";
-import type { AuthUser } from "../auth/auth-user.js";
-import { GroupInput } from "./group-request.dto.js";
-import { GroupDto } from "./group-response.dto.js";
+import { AccessGuard } from "../auth/guards/jwt-access.guard.js";
+import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
+import type { AuthUser } from "../auth/types/auth-user.js";
+import { GroupInput } from "./dto/request/group-name.request.dto.js";
+import { GroupDto } from "./dto/response/group.response.dto.js";
 import { GroupsService } from "./groups.service.js";
 @ApiTags("groups")
 @ApiCookieAuth()

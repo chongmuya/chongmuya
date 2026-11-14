@@ -2,9 +2,9 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { GroupsService } from "../groups/groups.service.js";
-import { Event } from "./event.entity.js";
-import type { EventInput } from "./event-request.dto.js";
-import type { EventDto } from "./event-response.dto.js";
+import { Event } from "./entities/event.entity.js";
+import type { EventInput } from "./dto/request/create-event.request.dto.js";
+import type { EventDto } from "./dto/response/event.response.dto.js";
 
 const eventDto = (event: Event): EventDto => ({
   id: event.id,

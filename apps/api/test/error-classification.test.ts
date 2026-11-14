@@ -9,7 +9,7 @@ import {
 import { QueryFailedError } from "typeorm";
 import { HttpExceptionFilter } from "../src/common/http/http-exception.filter.js";
 import type { RequestWithId } from "../src/common/http/request-context.js";
-import { AuthError } from "../src/modules/auth/auth-error.js";
+import { AuthError } from "../src/modules/auth/exceptions/auth.exception.js";
 
 function capture(error: unknown) {
   const request = { requestId: "test-request-id" } as RequestWithId;

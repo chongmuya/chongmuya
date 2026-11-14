@@ -48,10 +48,32 @@ apps/api/
     bootstrap/          실제 서버와 E2E가 공유하는 HTTP 설정
     config/             환경변수 로딩·검증, 타입이 있는 설정
     common/http/        공통 오류·requestId·요청 로그
-    modules/auth/       인증·세션·시도 제한, 공개 Guard/사용자 타입/데코레이터
-    modules/groups/     모임 CRUD·소유권 검증, GroupsService 공개
-    modules/events/     행사 생성·조회, GroupsService로 모임 소유권 확인
-    modules/health/     DB와 독립된 liveness·실제 쿼리 readiness
+    modules/
+      auth/
+        auth.module.ts / auth.controller.ts / auth.service.ts
+        dto/request/    credentials.request.dto.ts
+        dto/response/   account.response.dto.ts, session.response.dto.ts
+        entities/       account, auth-session, refresh-token, auth-attempt
+        guards/         jwt-access.guard.ts, optional-access.guard.ts, csrf.guard.ts
+        strategies/     jwt-access.strategy.ts
+        decorators/     current-user.decorator.ts
+        repositories/   auth-attempts.repository.ts — 원자적인 시도 제한
+        types/          auth-user.ts, auth-request.ts
+        utils/          password.ts, token-hash.ts, auth-cookies.ts
+        exceptions/     auth.exception.ts
+      groups/
+        groups.module.ts / groups.controller.ts / groups.service.ts
+        dto/request/    group-name.request.dto.ts — 생성·이름 수정
+        dto/response/   group.response.dto.ts
+        entities/       group.entity.ts
+      events/
+        events.module.ts / events.controller.ts / events.service.ts
+        dto/request/    create-event.request.dto.ts
+        dto/response/   event.response.dto.ts
+        entities/       event.entity.ts
+      health/
+        health.module.ts / health.controller.ts / health.service.ts
+        dto/response/   health.response.dto.ts, readiness.response.dto.ts
     database/           TypeORM 옵션·CLI DataSource·연결 생명주기·오류 분류
       migrations/       기존 Authentication·GroupEvents 마이그레이션
   test/                 설정·HTTP 계약 테스트와 DB 통합 테스트
@@ -139,7 +161,7 @@ Chrome에서는 인증 화면 로딩과 개발용 Query Devtools 표시까지 �
 
 하나의 Nest API에서 업무별 모듈을 추가하는 모듈형 모놀리스입니다. Controller는 HTTP 입출력, Service는 업무 처리·트랜잭션 조정을 맡습니다. Service는 DatabaseService.connect()로 초기화된 DataSource를 받아 Repository·EntityManager·트랜잭션 API를 사용합니다. DB Entity는 해당 modules/<업무> 안에 두고 외부 응답 DTO와 구분합니다. 단순 위임용 Repository·BaseService 계층은 없습니다.
 
-업무 모듈은 `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.entity.ts`와 `*-request.dto.ts` / `*-response.dto.ts`로 구성합니다. 현재 규모에서는 깊은 계층보다 파일의 업무 의미가 잘 드러나는 평평한 구성을 사용합니다. DTO가 많아질 때만 해당 모듈 안의 `dto/request`, `dto/response`로 옮깁니다. Event DTO는 Group DTO를 상속하지 않습니다. 응답은 작은 변환 함수로 만들고 Entity를 노출하지 않습니다. 기존 Swagger 스키마 클래스 이름은 유지합니다.
+업무 모듈 루트에는 `*.module.ts`, `*.controller.ts`, `*.service.ts`를 둡니다. 요청 DTO는 `dto/request/*.request.dto.ts`, 응답 DTO는 `dto/response/*.response.dto.ts`, Entity는 `entities/*.entity.ts`에 한 클래스씩 둡니다. 인증의 Guard·Strategy·Decorator·Repository·타입·순수 함수·예외도 역할별 하위 폴더로 분리합니다. 파일이 실제로 존재하는 폴더만 만들며 단순 CRUD를 위해 빈 Repository나 Mapper 계층을 추가하지 않습니다. Event DTO는 Group DTO를 상속하지 않습니다. 응답은 작은 변환 함수로 만들고 Entity를 노출하지 않습니다. 기존 Swagger 스키마 클래스 이름은 유지합니다.
 
 의존 방향은 `events → groups → auth`, `events → auth`입니다. GroupsModule은 GroupsService를, AuthModule은 AccessGuard·AuthService를 Nest `exports`에 공개합니다. 사용하는 쪽은 해당 Module을 `imports`에 넣고 실제 Service/Guard 파일에서 named import합니다. `AuthUser`와 `CurrentUser`는 공개 타입·데코레이터로 직접 사용합니다. `.module.ts`는 DI 조립만 맡으며 내부 구현을 TypeScript로 재수출하지 않습니다. 내부 Repository/Entity는 외부 모듈에서 직접 사용하지 않습니다. Event FK는 테이블 이름 `groups`로 지정해 Entity import 없이 기존 제약 이름과 스키마를 유지합니다.
 
@@ -147,7 +169,7 @@ Chrome에서는 인증 화면 로딩과 개발용 Query Devtools 표시까지 �
 
 ### DB 작업과 트랜잭션
 
-단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. AuthRepository는 원자적인 시도 제한 upsert만 담당하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
+단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. AuthAttemptsRepository는 원자적인 시도 제한 upsert만 담당하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
 
 업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 GroupsService.assertOwned에 같은 manager를 전달한 뒤 행사를 저장합니다. 현재 모임 소유자 변경·삭제 API는 없으며, 향후 추가 시 동시 권한 변경에 대한 잠금 정책도 함께 설계해야 합니다.
 
@@ -208,11 +230,11 @@ HTTP DTO는 기존 class-validator/class-transformer 및 Swagger 연동을 유�
 
 ORM Client 코드 생성 단계가 없습니다. API `build`는 Nest/TypeScript 컴파일이며 Turbo는 `dist/**`만 캐시합니다. Entity·마이그레이션·옵션 파일은 기본 입력에 포함됩니다. 런타임 DATABASE_URL은 빌드에 포함하지 않습니다. 웹의 API_URL·환경변수 캐시 규칙은 유지합니다.
 
-Entity는 `modules/<업무>/*.entity.ts`에 실제로 필요한 모델만 추가합니다. 개발 DB에서 `pnpm --filter @chongmuya/api db:migration:generate src/database/migrations/<변경이름>`을 실행하면 먼저 빌드한 후 Entity와 DB 차이를 비교해 TypeScript 파일을 만듭니다. 생성 SQL을 검토하고 **다시 build**한 후 `db:migration:show`, `db:migration:run`을 실행합니다.
+Entity는 `modules/<업무>/entities/*.entity.ts`에 실제로 필요한 모델만 추가합니다. 개발 DB에서 `pnpm --filter @chongmuya/api db:migration:generate src/database/migrations/<변경이름>`을 실행하면 먼저 빌드한 후 Entity와 DB 차이를 비교해 TypeScript 파일을 만듭니다. 생성 SQL을 검토하고 **다시 build**한 후 `db:migration:show`, `db:migration:run`을 실행합니다.
 
 배포에서는 검토·커밋된 마이그레이션을 포함한 빌드 결과에 `db:migration:run`을 별도 단계에서 한 번 적용합니다. CLI는 ESM `dist/database/data-source.js`를 사용합니다. ts-node/실험적 ESM 로더를 추가하지 않았으며, build와 migrate를 서버 replica 시작에 묶지 않습니다. CLI의 대상 DATABASE_URL은 실행 전에 확인합니다.
 
-이번 모듈 이동은 기존 마이그레이션과 DB 스키마를 변경하지 않습니다. `modules/**/*.entity.js`가 새 events 위치를 포함하며 격리 DB에서 기존 마이그레이션 적용 후 schema diff가 비어 있는지 검증합니다. Nest 빌드는 deleteOutDir를 사용하므로 이전 Entity 산출물을 남기지 않습니다.
+이번 모듈 이동은 기존 마이그레이션과 DB 스키마를 변경하지 않습니다. `modules/**/*.entity.js`가 새 events 위치를 포함하며 격리 DB에서 기존 마이그레이션 적용 후 schema diff가 비어 있는지 검증합니다. Nest 빌드는 deleteOutDir를 사용하므로 이전 Entity 산출물을 남기지 않습니다. 일반/통합 테스트의 test:compile도 dist-test를 먼저 비워 이동 전 Entity가 중복 로드되지 않도록 합니다. Entity 탐색은 기존 `modules/**/*.entity.js`를 유지하므로 entities 하위 폴더를 포함합니다.
 
 인증·모임·행사 마이그레이션은 CI의 격리된 PostgreSQL에서 검증합니다. 이번 프론트 기반 변경에는 새 DB 마이그레이션이 없습니다.
 
@@ -256,7 +278,7 @@ pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolv
 ## 다음 기능의 위치와 미구현 사항
 
 - 웹 화면을 추가할 때 `features/<업무>`에 실제 사용하는 파일만 만들고 `app`의 페이지에서 조합합니다. 공통 UI는 실제 재사용할 때 shared로 이동합니다.
-- API 업무는 `modules/<업무>`에 Controller·DTO·Service·Module을 추가합니다. DB Entity는 해당 모듈의 *.entity.ts에, 복잡한 계산은 해당 업무 내부 순수 함수나 서비스에 둡니다.
+- API 업무는 `modules/<업무>`에 Controller·DTO·Service·Module을 추가합니다. DB Entity는 해당 모듈의 entities/*.entity.ts에, 복잡한 계산은 해당 업무 내부 순수 함수나 서비스에 둡니다.
 - 계정과 명단 구성원, 행사 당시 스냅샷과 현재 명단은 구분해야 합니다. 예약 없는 행사도 가능해야 합니다. 아직 이를 구현한 모델은 없습니다.
 - 매장 하나 선택과 나머지 문의 종료는 같은 트랜잭션 및 DB 제약을 포함해 설계해야 합니다. 알림은 향후 상태 변경과 발송할 기록을 같은 트랜잭션에 남기고 별도 worker가 처리하는 방향을 검토합니다. 현재 outbox 테이블·worker·큐는 없습니다.
 - JWT 로그인·쿠키·갱신과 현재 소유자 권한 검사는 구현되어 있습니다. 게스트 링크, 멤버십 확장, 정산 잔액 배분·버전 정책, 비공개 파일 접근, 데이터 삭제·인수인계 정책은 후속 작업입니다. Next.js가 업무 DB를 직접 수정하거나 Nest 업무 규칙을 중복 구현하지 않습니다.
@@ -304,3 +326,13 @@ pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolv
 - 독립된 in-app 브라우저에서 가입 → 첫 모임 → 행사 생성·상세를 확인했다. 이번 작업 전용 DB 중단 시 오류·재시도 표시, 연결 복구 후 같은 API 프로세스에서 재시도로 행사 목록 복원을 확인했다. Docker 임의 포트가 재시작 시 바뀌어 테스트 전용 TCP 프록시로 원래 엔드포인트를 복원했으며 앱 코드는 수정하지 않았다. 자동화된 연결 복구 테스트도 별도 TCP 프록시로 기존 DB·다른 클라이언트에 영향 없이 수행한다.
 - 설치/소켓 검사는 최초 샌드박스의 네트워크·IPC 제한으로 실패한 뒤 필요한 권한으로 재실행해 통과했다. 요청된 로컬 검증 중 미실행 항목은 없다. 원격 CI·배포는 수행하지 않았다.
 - 다른 작업의 변경을 덮어쓰지 않았고 apps/web·루트 package.json·pnpm-lock.yaml·turbo.json은 변경하지 않았다. 병합 시 공통 변경은 AGENTS.md, docs/architecture.md, docs/authentication.md, tools/eslint-boundaries.mjs 및 그 테스트를 확인한다. 웹 규칙과 검증 사례는 유지했다. commit·push·PR은 생성하지 않았다.
+
+## 백엔드 역할별 폴더 분리 검증 (2026-11-15)
+
+PR #7 이후의 `main` c551d10을 기준으로 별도 worktree에서 보완했습니다. 혼여족의 모듈 루트 Module/Controller/Service와 dto/request·dto/response·entities 구성을 참고해 실제 파일을 이동했습니다. 인증 Entity와 Guard도 클래스별로 나누되 API 경로·DTO 클래스명·검증·인증/권한·트랜잭션 로직은 유지했습니다.
+
+- frozen 설치, 변경 파일만 포맷, 루트 format:check·lint·typecheck·build·test 통과. 일반 테스트는 의존 경계 3개, API 6개, 웹 26개입니다.
+- 이번 작업 전용 PostgreSQL 17.11 컨테이너에서 통합 테스트 11개 통과. 이동한 Entity 6개가 정확히 한 번씩 등록되는 회귀 검증을 추가했습니다. 프로덕션 ESM DataSource도 Entity 6개·schema diff 없음·미적용 마이그레이션 없음으로 확인했습니다.
+- `test:compile`은 이 worktree의 dist-test만 정리해 이동 전 Entity 산출물의 중복 로드를 방지합니다. 기존 DB 초기화·연결 설정·마이그레이션은 그대로입니다.
+- 이번 보완은 소스 폴더 이동이며 웹 연결 설정은 변경하지 않았습니다. 실제 AppModule을 통한 HTTP·OpenAPI·인증·권한·장애 복구는 자동 테스트로 확인했고, 브라우저 수동 시나리오는 재실행하지 않았습니다. 이전 수동 검증은 위 PR #7 기록을 참고합니다.
+- apps/web·루트 package.json·lockfile은 변경하지 않았습니다. 공통 파일 변경은 AGENTS.md, 이 문서, docs/authentication.md, tools/eslint-boundaries.mjs 및 API 경로에 해당하는 테스트뿐입니다. 터미널 작업 경로의 브랜치와 기존 DB·서버는 변경하지 않았습니다.

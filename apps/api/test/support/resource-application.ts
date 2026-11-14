@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { TestContext } from "node:test";
 import { startTestApplication } from "./test-application.js";
 import { DatabaseService } from "../../src/database/database.service.js";
-import { AuthAttempt } from "../../src/modules/auth/auth.entity.js";
-import { tokenHash } from "../../src/modules/auth/auth.repository.js";
+import { AuthAttempt } from "../../src/modules/auth/entities/auth-attempt.entity.js";
+import { tokenHash } from "../../src/modules/auth/utils/token-hash.js";
 
 export async function startResourceApplication(t: TestContext) {
   assert(

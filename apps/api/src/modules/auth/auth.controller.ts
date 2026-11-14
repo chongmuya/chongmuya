@@ -22,14 +22,16 @@ import {
 import type { Request, Response } from "express";
 import { ConfigService } from "../../config/config.service.js";
 import { AuthService, ACCESS_SECONDS } from "./auth.service.js";
-import { AccountDto, SessionDto } from "./auth-response.dto.js";
-import { CredentialsDto } from "./credentials-request.dto.js";
-import { CurrentUser } from "./current-user.decorator.js";
-import type { AuthUser } from "./auth-user.js";
-import { cookie, cookieNames } from "./auth-http.js";
-import type { AuthRequest } from "./auth-http.js";
-import { AccessGuard, OptionalAccessGuard } from "./jwt-access.guard.js";
-import { AuthError } from "./auth-error.js";
+import { AccountDto } from "./dto/response/account.response.dto.js";
+import { SessionDto } from "./dto/response/session.response.dto.js";
+import { CredentialsDto } from "./dto/request/credentials.request.dto.js";
+import { CurrentUser } from "./decorators/current-user.decorator.js";
+import type { AuthUser } from "./types/auth-user.js";
+import { cookie, cookieNames } from "./utils/auth-cookies.js";
+import type { AuthRequest } from "./types/auth-request.js";
+import { AccessGuard } from "./guards/jwt-access.guard.js";
+import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
+import { AuthError } from "./exceptions/auth.exception.js";
 
 @ApiTags("auth")
 @ApiHeader({

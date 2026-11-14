@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service.js";
-import type { ReadinessDto } from "./health.dto.js";
+import type { ReadinessDto } from "./dto/response/readiness.response.dto.js";
 
 @Injectable()
 export class HealthService {
