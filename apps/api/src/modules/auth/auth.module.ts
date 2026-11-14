@@ -31,3 +31,7 @@ import { AccessGuard, OptionalAccessGuard } from "./jwt-access.guard.js";
   exports: [AccessGuard, AuthService],
 })
 export class AuthModule {}
+
+// Public authentication boundary for resource modules.
+export { AccessGuard } from "./jwt-access.guard.js";
+export type { AuthRequest } from "./auth-http.js";

@@ -15,3 +15,55 @@ main {
   margin-inline: auto;
   padding: 3rem 1.25rem;
 }
+
+input,
+button {
+  font: inherit;
+}
+input {
+  display: block;
+  width: 100%;
+  margin: 0.4rem 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid #81929d;
+  border-radius: 0.5rem;
+}
+button {
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  border: 1px solid #197166;
+  border-radius: 0.5rem;
+  background: #197166;
+  color: white;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+form {
+  margin-block: 1.5rem;
+  padding: 1.25rem;
+  background: white;
+  border: 1px solid #dce3e5;
+  border-radius: 0.75rem;
+}
+nav {
+  display: flex;
+  gap: 1.5rem;
+}
+a {
+  color: #13675e;
+  overflow-wrap: anywhere;
+}
+h1,
+h2 {
+  overflow-wrap: anywhere;
+}
+li {
+  margin-block: 0.75rem;
+}
+:focus-visible {
+  outline: 3px solid #d38914;
+  outline-offset: 3px;
+}
