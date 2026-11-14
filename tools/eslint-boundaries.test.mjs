@@ -98,6 +98,18 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
     ["web", "app/probe.ts", 'import "@/features/health/api";', true],
     [
       "web",
+      "features/events/components/probe.ts",
+      '"use client"; import { useGroups } from "@/features/groups/client"; import type { SessionRequest } from "@/features/auth/types";',
+      false,
+    ],
+    [
+      "web",
+      "features/events/components/probe.ts",
+      '"use client"; import { useGroups } from "../../groups/client";',
+      false,
+    ],
+    [
+      "web",
       "features/groups/probe.ts",
       'import { useAuth } from "@/features/auth/client";',
       false,
@@ -189,6 +201,41 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
       ),
       blocked,
       `${app}/${file}: ${source}`,
+    );
+  }
+});
+
+test("boundary diagnostics distinguish internal imports, cycles and server-only entries", async () => {
+  const eslint = new ESLint({
+    cwd: path.join(root, "apps/web"),
+    overrideConfig: { settings: { react: { version: "19.3.1" } } },
+  });
+  const cases = [
+    [
+      "events",
+      'import { useGroups } from "@/features/groups/hooks/use-groups";',
+      "featureInternal",
+    ],
+    [
+      "auth",
+      'import { useGroups } from "@/features/groups/client";',
+      "featureCycle",
+    ],
+    [
+      "groups",
+      '"use client"; import "@/features/auth/server";',
+      "clientServer",
+    ],
+  ];
+  for (const [feature, source, messageId] of cases) {
+    const [result] = await eslint.lintText(source, {
+      filePath: path.join(root, "apps/web/features", feature, "probe.ts"),
+    });
+    assert.deepEqual(
+      result.messages
+        .filter((message) => message.ruleId === "boundaries/imports")
+        .map((message) => message.messageId),
+      [messageId],
     );
   }
 });

@@ -13,17 +13,22 @@
 - 웹의 다른 feature는 명시적인 `client.ts`(훅·컴포넌트)·`types.ts`(타입) 공개 진입점으로 사용한다. 서버 전용 기능이 실제로 필요할 때만 `server.ts`와 `server-only` 경계를 추가한다. 내부 파일 직접 참조와 feature 간 순환 의존은 금지하며 서버·클라이언트 export를 한 진입점에 섞지 않는다.
 - 웹 서버 상태는 TanStack Query, 폼은 React Hook Form + Zod, 단순 UI 상태는 useState로 관리한다. 기능별 API·query options/key는 api, mutation 훅은 hooks, 화면은 components, 검증은 schemas, 계약은 types, 순수 로직은 lib 폴더에 실제 필요할 때만 두고, 사용자 query key는 `user / accountId / ...` 범위를 유지한다. 저장 후 캐시 변경과 이동은 계정·화면 이탈 이후 실행되지 않도록 검증한다.
 - 웹 스타일은 Tailwind 토큰과 실제 사용하는 shared UI를 사용한다. `cn`으로 className을 합치고 Devtools는 개발 환경에서만 표시한다. 하위 폴더·공용 UI·상태 라이브러리는 실제 사용처가 있을 때만 추가한다.
-- API는 auth·groups·events·health 업무 모듈로 구성한다. 모임 소유권은 GroupsService, 행사 처리는 EventsService가 담당하며 기존 중첩 URL을 모듈 구조와 혼동하지 않는다.
+- API는 auth·groups·events·health 업무 모듈로 구성한다. 모임 소유권은 GroupsService, 행사 소유권·생성·연결은 EventsService가 담당한다. 행사는 필수 ownerId와 선택적 groupId를 가지며 /api/v1/events로 접근한다. 모임 연결은 소유자·기록·접근 범위를 바꾸지 않으며 같은 트랜잭션의 행사 잠금·버전 검사를 사용한다.
 - 다른 모듈은 Nest imports/exports로 공개한 Service·Guard 및 명시적 공개 타입·데코레이터를 직접 import할 수 있다. 공개 항목은 tools/eslint-boundaries.mjs의 apiPublicImports와 함께 관리한다. .module.ts 재수출, 타 모듈 내부 Repository·Entity 참조, 순환 의존과 common/config/database의 업무 역참조를 금지한다. 편의상 forwardRef·전역 모듈을 추가하지 않는다.
 - 단순 CRUD는 Service에서 TypeORM Repository를 사용한다. 반복·복잡한 조회나 잠금만 의미 있는 Repository/QueryService로 분리한다. Service가 업무 트랜잭션을 열고, 그 안의 권한 확인·조회·저장은 같은 EntityManager를 전달받아 사용한다. BaseService·단순 위임 계층을 추가하지 않는다.
-- 모듈 루트에는 Module·Controller·Service를 두고, 요청·응답 DTO는 `dto/request/*.request.dto.ts` / `dto/response/*.response.dto.ts`로 나눈다. 인증 Guard·Strategy·Decorator·Repository·타입·순수 함수는 각각 guards·strategies·decorators·repositories·types·utils에 두며 예외는 exceptions에 둔다. 실제 파일이 있는 폴더만 만들고, 필드 유사성만으로 다른 업무 DTO를 상속하지 않는다. 인증 사용자는 AccessGuard + @CurrentUser()로 읽고 자원 권한은 Service에서 별도 검사한다. 간단한 응답 변환은 함수로 둔다.
+- 모듈 루트에는 Module·Controller·Service를 두고 요청·응답 DTO는 dto/request/_.request.dto.ts와 dto/response/_.response.dto.ts로 나눈다. 인증의 Guard·Strategy·Decorator·Repository·타입·순수 함수·예외도 실제 파일이 있는 역할별 폴더에 둔다. 필드 유사성만으로 다른 업무 DTO를 상속하지 않는다. 인증 사용자는 AccessGuard + @CurrentUser()로 읽고 자원 권한은 Service에서 별도 검사한다. 간단한 응답 변환은 함수로 둔다.
+- 업무 오류는 명시적 DomainHttpException의 허용 코드·문구만 전달하고 DTO fieldErrors에는 안전한 필드 경로·검증 코드만 넣는다. 웹은 오류 형식·코드를 검증하고 알려진 필드는 RHF setError, 그 외는 폼 오류로 표시한다. 서버 message·validator 원문·입력을 그대로 출력하지 않는다.
 - 예상한 입력·권한·중복 오류는 해당 HTTP 예외로, 알려진 DB 가용성 장애는 공통 필터에서 503으로, 그 외 코드·스키마 오류는 500으로 처리한다. 모든 예외를 503으로 감싸지 않는다. 오류 응답·인증 코드 계약을 유지하고 서버 로그에는 requestId와 허용된 오류 분류·코드·소스 위치만 남긴다. 예외 원문·원본 stack·SQL/파라미터·비밀번호·토큰·쿠키·DB URL을 기록하지 않는다.
-- DB는 PostgreSQL, ORM은 TypeORM이다. Entity는 API `modules/<업무>/entities/*.entity.ts`, 연결 설정과 마이그레이션은 src/database에 둔다. API DTO와 Entity를 구분하고 Next.js에서 업무 DB를 직접 수정하지 않는다.
+- DB는 PostgreSQL, ORM은 TypeORM이다. Entity는 API modules/<업무>/entities/*.entity.ts, 연결 설정과 마이그레이션은 src/database에 둔다. API DTO와 Entity를 구분하고 Next.js에서 업무 DB를 직접 수정하지 않는다.
 - API는 네이티브 ESM이다. NodeNext를 유지하고 상대 import에 .js 확장자를 쓴다. Entity와 마이그레이션은 컴파일한 JS만 로드한다. synchronize·migrationsRun·dropSchema는 false로 유지한다. 컴파일·마이그레이션 생성·적용을 구분한다. install/build/서버 시작에 마이그레이션을 자동 적용하지 않는다. 운영 DB reset/drop을 수행하지 않는다.
 - API 환경변수는 Zod로 시작 시 검증한다. false 문자열을 참으로 강제 변환하지 않고 오류에는 변수 이름만 노출한다. HTTP DTO 검증은 class-validator를 사용한다.
 - DB 접근 전 DatabaseService.connect()를 기다린다. 초기 DB 장애에도 liveness를 제공하며 readiness는 실제 쿼리로 확인한다.
 - 실제 서버와 E2E는 configureHttp를 공유한다. 요청/오류 로그에 body·인증 헤더·query·DB URL을 포함하지 않는다.
-- 인증은 [인증 기준](docs/authentication.md)의 Passport JWT·HttpOnly 쿠키·Refresh 세션 정책을 따른다. 업무 API는 /api/v1이며 자원 권한은 Nest에서 별도 검증한다. 게스트 링크는 미정이다. worker·큐·파일 저장소·배포는 후속 작업이다. 별도 요청 없이 GitHub 설정 변경, commit·push·PR을 수행하지 않는다.
+- 인증은 [인증 기준](docs/authentication.md)의 Passport JWT·HttpOnly 쿠키·Refresh 세션 정책을 따른다. 업무 API는 /api/v1이며 자원 권한은 Nest에서 별도 검증한다. 별도 요청 없이 GitHub 설정 변경, commit·push·PR을 수행하지 않는다.
+
+## 제품 문서 참고
+
+[정책](https://app.notion.com/p/3ec8d571d6de810ca37bfa1ba7d5e90c)·[기능 명세](https://app.notion.com/p/3ec8d571d6de816fb87ce39531e0d531)·[화면 결정](https://app.notion.com/p/3ec8d571d6de816386e1fa2b1154e5f9)·[Decision Log](https://app.notion.com/p/3ec8d571d6de81f99af7f417c0b0d228)는 제품 의도 확인용이다. [Architecture](https://app.notion.com/p/3ec8d571d6de81c7a1f9ca0b1dc083b1)·[ERD](https://app.notion.com/p/3ec8d571d6de818ba06cd91d5a75d24b)·[API 정책](https://app.notion.com/p/3ec8d571d6de814d83a3dddb49957583)은 검토할 설계 참고안이며 전체 구조를 구현하지 않는다. 제목이 같은 문서 대신 지정 URL을 읽고, 정책 변경·미구현·오래된 설명을 구분한다. 접근 실패를 명시하며 Notion 수정은 별도 요청이 있을 때만 한다.
 
 <!-- context7 -->
 

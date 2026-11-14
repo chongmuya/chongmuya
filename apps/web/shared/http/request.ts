@@ -1,4 +1,5 @@
 import { ApiError } from "./api-error";
+import { parseApiError } from "./error-contract";
 
 export async function requestJson<T>(
   path: `/api/v1/${string}`,
@@ -23,23 +24,32 @@ export async function requestJson<T>(
         : timeout,
     });
     if (!response.ok) {
-      const body: unknown = await response.json().catch(() => null);
-      const code =
-        body &&
-        typeof body === "object" &&
-        "code" in body &&
-        typeof body.code === "string"
-          ? body.code
-          : "HTTP_ERROR";
-      throw new ApiError(
-        "요청을 처리하지 못했습니다.",
+      const raw = await response.text();
+      let body: unknown = null;
+      if (raw.length <= 32_768) {
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          /* Non-JSON errors use the fallback. */
+        }
+      }
+      throw parseApiError(
+        body,
         response.status,
-        code,
         response.headers.get("x-request-id") ?? undefined,
       );
     }
     if (response.status === 204) return undefined as T;
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      if (timeout.aborted || options.signal?.aborted) throw error;
+      throw new ApiError(
+        "응답 형식이 올바르지 않습니다.",
+        response.status,
+        "INVALID_RESPONSE",
+      );
+    }
   } catch (error) {
     if (options.signal?.aborted) throw error;
     if (error instanceof ApiError) throw error;

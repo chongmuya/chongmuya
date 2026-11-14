@@ -1,4 +1,5 @@
-import { BadRequestException, Logger, ValidationPipe } from "@nestjs/common";
+import { Logger, ValidationPipe } from "@nestjs/common";
+import { validationException } from "../common/http/domain-http.exception.js";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import type { Environment } from "../config/environment.js";
@@ -22,7 +23,7 @@ export function configureHttp(
       forbidUnknownValues: true,
       transformOptions: { enableImplicitConversion: false },
       validationError: { target: false, value: false },
-      exceptionFactory: () => new BadRequestException(),
+      exceptionFactory: validationException,
     }),
   );
   app.useGlobalFilters(new HttpExceptionFilter());

@@ -3,6 +3,8 @@ import { ApiProperty } from "@nestjs/swagger";
 export class EventDto {
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;
-  @ApiProperty() groupId!: string;
+  @ApiProperty() ownerId!: string;
+  @ApiProperty({ type: String, nullable: true }) groupId!: string | null;
+  @ApiProperty() version!: number;
   @ApiProperty({ type: String, nullable: true }) scheduledAt!: string | null;
 }
