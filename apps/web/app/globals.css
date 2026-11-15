@@ -1,18 +1,38 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #fafafa;
+  --color-brand: #f46224;
+  --color-brand-hover: #d94d12;
+  --color-brand-ink: #243b33;
+  --color-brand-ink-hover: #182c25;
+  --color-accent: #a0f6dc;
+  --color-background: #f9faf8;
   --color-surface: #ffffff;
-  --color-foreground: #17212b;
+  --color-foreground: #243b33;
   --color-muted: #52616b;
-  --color-primary: #197166;
   --color-link: #13675e;
   --color-border: #dce3e5;
   --color-input: #81929d;
+  --color-placeholder: #c0c0c0;
+  --color-kakao: #fbe300;
   --color-danger: #b42318;
-  --color-focus: #d38914;
+  --color-focus: #243b33;
   --radius-control: 0.5rem;
   --radius-panel: 0.75rem;
+  --radius-pill: 3.125rem;
+  --spacing-control: 2.75rem;
+  --spacing-input: 2.875rem;
+  --text-label: 1.25rem;
+  --text-label--line-height: 1.2;
+  --text-label--font-weight: 600;
+  --text-control: 1rem;
+  --text-control--line-height: 1.1875;
+  --text-caption: 0.875rem;
+  --text-caption--line-height: 1.3;
+}
+
+@theme inline {
+  --font-sans: var(--font-pretendard), Arial, "Apple SD Gothic Neo", sans-serif;
 }
 
 @layer base {
@@ -20,41 +40,41 @@
     @apply bg-background text-foreground font-sans;
     line-height: 1.6;
   }
-  main {
-    @apply mx-auto max-w-2xl px-5 py-12;
-  }
-  h1 {
-    @apply my-4 text-3xl font-bold;
-  }
-  h2 {
-    @apply my-3 text-2xl font-bold;
-  }
-  p {
-    @apply my-2;
-  }
-  nav {
-    @apply flex flex-wrap gap-6;
-  }
-  a {
-    @apply text-link underline;
-    overflow-wrap: anywhere;
-  }
-  h1,
-  h2 {
-    overflow-wrap: anywhere;
-  }
-  ul {
-    @apply list-disc pl-6;
-  }
-  li {
-    @apply my-3;
-  }
   :focus-visible {
     @apply outline-3 outline-offset-3 outline-focus;
   }
 }
 
 @layer components {
+  .app-page {
+    @apply mx-auto max-w-2xl px-5 py-12;
+  }
+  .app-page h1 {
+    @apply my-4 text-3xl font-bold;
+  }
+  .app-page h2 {
+    @apply my-3 text-2xl font-bold;
+  }
+  .app-page p {
+    @apply my-2;
+  }
+  .app-page nav {
+    @apply flex flex-wrap gap-6;
+  }
+  .app-page a {
+    @apply text-link underline;
+    overflow-wrap: anywhere;
+  }
+  .app-page h1,
+  .app-page h2 {
+    overflow-wrap: anywhere;
+  }
+  .app-page ul {
+    @apply list-disc pl-6;
+  }
+  .app-page li {
+    @apply my-3;
+  }
   .form-panel {
     @apply my-6 space-y-4 rounded-panel border border-border bg-surface p-5;
   }

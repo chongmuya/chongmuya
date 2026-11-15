@@ -13,7 +13,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
   const pathname = usePathname();
   if (status !== "authenticated" || !account)
     return (
-      <main>
+      <main className="app-page">
         <Link href="/">홈</Link>
         {status === "anonymous" ? (
           <section>
@@ -30,7 +30,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       </main>
     );
   return (
-    <main>
+    <main className="app-page">
       <WorkspaceContent
         key={`${account.id}:${mode}:${params.toString()}`}
         accountId={account.id}
