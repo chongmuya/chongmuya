@@ -54,7 +54,7 @@ export function GroupForm({
       })}
     >
       <h2>{title}</h2>
-      <div>
+      <div className="space-y-1">
         <label htmlFor={id}>모임 이름</label>
         <Input
           id={id}

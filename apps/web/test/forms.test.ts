@@ -14,6 +14,7 @@ import { LinkEventGroupForm } from "../features/events/components/link-event-gro
 import { EventForm } from "../features/events/components/event-form";
 import { GroupForm } from "../features/groups/components/group-form";
 import { AuthProvider } from "../features/auth/components/auth-provider";
+import { AuthEntryScreen } from "../features/auth/components/auth-entry-screen";
 import { AuthScreen } from "../features/auth/components/auth-screen";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
@@ -26,7 +27,12 @@ function client() {
     },
   });
 }
-async function render(element: ReactElement, cache = client(), next = "") {
+async function render(
+  element: ReactElement,
+  cache = client(),
+  next = "",
+  mode = "",
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -55,7 +61,7 @@ async function render(element: ReactElement, cache = client(), next = "") {
           { value: "/auth" },
           createElement(
             SearchParamsContext.Provider,
-            { value: new URLSearchParams(next ? { next } : {}) },
+            { value: new URLSearchParams({ next, mode }) },
             createElement(QueryClientProvider, { client: cache }, element),
           ),
         ),
@@ -725,4 +731,156 @@ test("a pending link cannot recreate a cleared user cache after leaving the scre
   });
   assert.equal(view.cache.getQueryCache().getAll().length, 0);
   assert.deepEqual(view.navigations, []);
+});
+
+test("start links preserve safe destinations and only the allowed signup mode opens registration", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json({ authenticated: false, account: null });
+  const destination = "/events?event=00000000-0000-4000-8000-000000000001";
+  try {
+    for (const next of [destination, "https://evil.example"]) {
+      const view = await render(
+        createElement(
+          AuthProvider,
+          null,
+          createElement(AuthEntryScreen, { screen: "start" }),
+        ),
+        client(),
+        next,
+      );
+      try {
+        await until(() => assert(view.container.querySelector('a[href="/"]')));
+        const links = [...view.container.querySelectorAll("a")];
+        const signup = new URL(
+          links.find((a) => a.textContent === "처음 가입해요")!.href,
+        );
+        const login = new URL(
+          links.find((a) => a.textContent === "이미 계정이 있어요")!.href,
+        );
+        assert.equal(signup.pathname, "/auth");
+        assert.equal(signup.searchParams.get("mode"), "signup");
+        assert.equal(login.searchParams.get("mode"), null);
+        assert.equal(
+          signup.searchParams.get("next"),
+          next === destination ? destination : "/events",
+        );
+        assert.equal(
+          login.searchParams.get("next"),
+          signup.searchParams.get("next"),
+        );
+      } finally {
+        await view.unmount();
+      }
+    }
+    for (const mode of ["signup", "unexpected"]) {
+      const view = await render(
+        createElement(
+          AuthProvider,
+          null,
+          createElement(AuthEntryScreen, { screen: "login" }),
+        ),
+        client(),
+        destination,
+        mode,
+      );
+      try {
+        await until(() => assert(view.container.querySelector("form")));
+        assert.equal(
+          view.container.querySelector("form")!.getAttribute("aria-label"),
+          mode === "signup" ? "회원가입" : "로그인",
+        );
+        const back = new URL(
+          view.container
+            .querySelector('a[href^="/start"]')!
+            .getAttribute("href")!,
+          "http://localhost",
+        );
+        assert.equal(back.searchParams.get("next"), destination);
+      } finally {
+        await view.unmount();
+      }
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("branded login distinguishes credentials and connection errors, retries, blocks duplicate submits and returns safely", async () => {
+  const original = globalThis.fetch;
+  let attempts = 0;
+  const pending = deferred<Response>();
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("restore"))
+      return Response.json({ authenticated: false, account: null });
+    attempts++;
+    if (attempts === 1) return pending.promise;
+    if (attempts === 2) throw new TypeError("offline");
+    return Response.json({
+      authenticated: true,
+      account: { id: "a", email: "user@example.com" },
+    });
+  };
+  const view = await render(
+    createElement(
+      AuthProvider,
+      null,
+      createElement(AuthEntryScreen, { screen: "login" }),
+    ),
+    client(),
+    "/mypage",
+  );
+  try {
+    await until(() => assert(view.container.querySelector("form")));
+    await fill(view.container, "email", "user@example.com");
+    await fill(view.container, "password", "test-password-123");
+    await submit(view.container);
+    await until(() => assert.equal(attempts, 1));
+    assert.equal(
+      view.container.querySelector<HTMLButtonElement>('button[type="submit"]')!
+        .disabled,
+      true,
+    );
+    await submit(view.container);
+    assert.equal(attempts, 1);
+    await act(async () => {
+      pending.resolve(
+        Response.json(
+          {
+            statusCode: 401,
+            code: "INVALID_CREDENTIALS",
+            message: "private",
+            requestId: "00000000-0000-4000-8000-000000000001",
+          },
+          { status: 401 },
+        ),
+      );
+    });
+    await until(() =>
+      assert.match(
+        view.container.textContent!,
+        /이메일과 비밀번호를 다시 확인/,
+      ),
+    );
+    await submit(view.container);
+    await until(() => assert.match(view.container.textContent!, /연결을 확인/));
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /이메일과 비밀번호를 다시 확인/,
+    );
+    await submit(view.container);
+    await until(() => assert(view.navigations.includes("/mypage")));
+    assert.equal(attempts, 3);
+    assert(
+      !JSON.stringify(
+        view.cache
+          .getMutationCache()
+          .getAll()
+          .map((m) => m.state),
+      ).includes("test-password-123"),
+    );
+  } finally {
+    await view.unmount();
+    globalThis.fetch = original;
+  }
 });

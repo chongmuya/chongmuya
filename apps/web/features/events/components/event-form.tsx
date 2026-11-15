@@ -101,7 +101,7 @@ export function EventForm({
       })}
     >
       <h2>행사 만들기</h2>
-      <div>
+      <div className="space-y-1">
         <label htmlFor={`${id}-name`}>행사명</label>
         <Input
           id={`${id}-name`}
@@ -114,7 +114,7 @@ export function EventForm({
         />
         <FormError id={`${id}-name-error`} message={errors.name?.message} />
       </div>
-      <div>
+      <div className="space-y-1">
         <label htmlFor={`${id}-date`}>일정 (선택 · 한국 시간)</label>
         <Input
           id={`${id}-date`}
