@@ -1,4 +1,5 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
+import type { EntityManager } from "typeorm";
 import { randomBytes, randomUUID } from "node:crypto";
 import { JwtService } from "@nestjs/jwt";
 import { DatabaseService } from "../../database/database.service.js";
@@ -12,12 +13,15 @@ import { AuthError } from "./exceptions/auth.exception.js";
 import { hashPassword, verifyPassword } from "./utils/password.js";
 import type { CredentialsDto } from "./dto/request/credentials.request.dto.js";
 
+import { publicAccount } from "./utils/public-account.js";
+import { DomainHttpException } from "../../common/http/domain-http.exception.js";
+import { AccountConsent } from "./entities/account-consent.entity.js";
+import { PhoneVerificationService } from "./phone-verification.service.js";
+import { SignupTermsService } from "./signup-terms.service.js";
+import type { SignupDto } from "./dto/request/signup.request.dto.js";
+
 export const ACCESS_SECONDS = 300;
 export const SESSION_SECONDS = 60 * 60 * 24 * 14;
-const publicAccount = (account: Account) => ({
-  id: account.id,
-  email: account.email,
-});
 
 @Injectable()
 export class AuthService {
@@ -26,61 +30,88 @@ export class AuthService {
     private readonly repository: AuthAttemptsRepository,
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly phone: PhoneVerificationService,
+    private readonly terms: SignupTermsService,
   ) {}
-  async credentials(input: CredentialsDto, ip: string, signup: boolean) {
+  private async limit(ip: string, email: string) {
     const db = await this.database.connect();
     await this.repository.limit(db.manager, `ip:${ip}`, 50);
-    await this.repository.limit(db.manager, `email:${input.email}`, 10);
-    let account = await db
+    await this.repository.limit(db.manager, `email:${email}`, 10);
+    return db;
+  }
+  async login(input: CredentialsDto, ip: string) {
+    const db = await this.limit(ip, input.email);
+    const account = await db
       .getRepository(Account)
       .findOneBy({ email: input.email });
-    if (signup) {
-      const passwordHash = await hashPassword(input.password);
-      if (account) throw new ConflictException();
-      // Hashing stays outside the transaction; persistence is all-or-nothing below.
-      account = Object.assign(new Account(), {
+    const valid = account
+      ? await verifyPassword(input.password, account.passwordHash)
+      : (await hashPassword(input.password), false);
+    if (!valid || !account) throw new AuthError("INVALID_CREDENTIALS");
+    return db.transaction((manager) => this.createSession(manager, account));
+  }
+  async signup(input: SignupDto, ip: string, requester?: string) {
+    this.terms.validate(input.consents);
+    const db = await this.limit(ip, input.email);
+    const passwordHash = await hashPassword(input.password);
+    return db.transaction(async (manager) => {
+      const phoneVerifiedAt = await this.phone.consume(
+        manager,
+        requester,
+        input.phoneVerificationId,
+        input.phone,
+      );
+      const account = Object.assign(new Account(), {
         id: randomUUID(),
         email: input.email,
+        accountType: input.accountType,
         passwordHash,
         createdAt: new Date(),
+        name: input.name,
+        nickname: input.nickname,
+        phone: input.phone,
+        phoneVerifiedAt,
+        emailVerifiedAt: null,
       });
-    } else {
-      // Equal-cost work for unknown accounts avoids a fast account-existence oracle.
-      const valid = account
-        ? await verifyPassword(input.password, account.passwordHash)
-        : (await hashPassword(input.password), false);
-      if (!valid || !account) throw new AuthError("INVALID_CREDENTIALS");
-    }
-    const session = new AuthSession();
-    Object.assign(session, {
+      const result = await manager
+        .createQueryBuilder()
+        .insert()
+        .into(Account)
+        .values(account)
+        .orIgnore()
+        .returning("id")
+        .execute();
+      if (!result.raw.length)
+        throw new DomainHttpException("EMAIL_ALREADY_REGISTERED");
+      await manager.insert(
+        AccountConsent,
+        input.consents.map((consent) => ({
+          accountId: account.id,
+          termId: consent.id,
+          version: consent.version,
+          accepted: consent.accepted,
+          recordedAt: account.createdAt,
+        })),
+      );
+      return this.createSession(manager, account);
+    });
+  }
+  private async createSession(manager: EntityManager, account: Account) {
+    const session = Object.assign(new AuthSession(), {
       id: randomUUID(),
       accountId: account.id,
       expiresAt: new Date(Date.now() + SESSION_SECONDS * 1000),
       revokedAt: null,
     });
     const refresh = randomBytes(32).toString("base64url");
-    const authenticatedAccount = account;
-    return db.transaction(async (manager) => {
-      if (signup) {
-        const result = await manager
-          .createQueryBuilder()
-          .insert()
-          .into(Account)
-          .values(authenticatedAccount)
-          .orIgnore()
-          .returning("id")
-          .execute();
-        if (!result.raw.length) throw new ConflictException();
-      }
-      await manager.save(session);
-      await manager.insert(RefreshToken, {
-        hash: tokenHash(refresh),
-        sessionId: session.id,
-        usedAt: null,
-      });
-      // A signing failure also rolls back; no cookies are sent before commit.
-      return this.issue(session, authenticatedAccount, refresh);
+    await manager.save(session);
+    await manager.insert(RefreshToken, {
+      hash: tokenHash(refresh),
+      sessionId: session.id,
+      usedAt: null,
     });
+    // A signing failure rolls back account, consents and verification consumption too.
+    return this.issue(session, account, refresh);
   }
   private async issue(
     session: AuthSession,

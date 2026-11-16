@@ -1,4 +1,15 @@
-export type Account = { id: string; email: string };
+import type { AccountType } from "./signup.types";
+
+export type Account = {
+  accountType: AccountType | null;
+  id: string;
+  email: string;
+  name: string | null;
+  nickname: string | null;
+  phone: string | null;
+  phoneVerifiedAt: string | null;
+  emailVerifiedAt: string | null;
+};
 export type Session = { authenticated: boolean; account: Account | null };
 export type AuthState = {
   status:

@@ -11,7 +11,9 @@ export function safeReturnPath(value: string | null | undefined): string {
   const url = new URL(value, "https://internal.invalid");
   if (
     url.origin !== "https://internal.invalid" ||
-    !["/", "/events", "/mypage", "/onboarding"].includes(url.pathname)
+    !["/", "/events", "/mypage", "/onboarding", "/getting-started"].includes(
+      url.pathname,
+    )
   )
     return "/events";
   const params = new URLSearchParams();

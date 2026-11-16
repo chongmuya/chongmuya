@@ -1,5 +1,8 @@
 import type { Request } from "express";
 
+export const signupCookieName = (production: boolean) =>
+  production ? "__Host-signup-requester" : "signup-requester";
+
 export function cookie(request: Request, name: string): string | undefined {
   const matches = (request.headers.cookie ?? "")
     .split(";")

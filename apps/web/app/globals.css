@@ -18,6 +18,8 @@
   --color-danger: #b42318;
   --color-focus: #243b33;
   --radius-control: 0.5rem;
+  --radius-card: 1.25rem;
+  --shadow-card: 0 2px 4px 0 rgb(0 0 0 / 0.15);
   --radius-panel: 0.75rem;
   --radius-pill: 3.125rem;
   --spacing-control: 2.75rem;

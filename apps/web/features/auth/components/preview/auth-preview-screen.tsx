@@ -10,6 +10,7 @@ import {
   type RecoveryLinkState,
 } from "../recovery/password-recovery";
 import {
+  previewTerms,
   previewSubmission,
   previewVerification,
   type PreviewOutcome,
@@ -131,11 +132,11 @@ export function AuthPreviewScreen() {
       {screen === "signup" && (
         <SignupFlow
           key={`signup:${revision}`}
+          terms={previewTerms}
           onExit={exit}
           onComplete={exit}
           onSubmit={(_values, signal) => previewSubmission(outcome, signal)}
           verification={{
-            email: previewVerification(verification),
             phone: previewVerification(verification),
           }}
         />

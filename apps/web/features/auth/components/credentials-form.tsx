@@ -16,13 +16,11 @@ import {
 } from "../schemas/credentials.schema";
 
 export function CredentialsForm({
-  mode,
   pending,
   submit,
   appearance = "default",
   formError,
 }: {
-  mode: "login" | "signup";
   pending: boolean;
   appearance?: "default" | "auth";
   formError?: string;
@@ -43,7 +41,7 @@ export function CredentialsForm({
   return (
     <form
       noValidate
-      aria-label={mode === "signup" ? "회원가입" : "로그인"}
+      aria-label="로그인"
       className={branded ? "mt-[36.7756px]" : "form-panel"}
       onSubmit={handleSubmit((values) => {
         if (pending) return;
@@ -106,9 +104,7 @@ export function CredentialsForm({
           <Input
             {...attributes}
             type="password"
-            autoComplete={
-              mode === "signup" ? "new-password" : "current-password"
-            }
+            autoComplete="current-password"
             placeholder={branded ? "비밀번호를 입력해주세요" : undefined}
             variant={branded ? "pill" : "default"}
             {...register("password")}
@@ -134,7 +130,7 @@ export function CredentialsForm({
         variant={branded ? "ink" : "solid"}
         className={branded ? "mt-[41px] w-full" : undefined}
       >
-        {pending ? "처리 중…" : mode === "signup" ? "가입하기" : "로그인"}
+        {pending ? "처리 중…" : "로그인"}
       </Button>
       {branded && (
         <>

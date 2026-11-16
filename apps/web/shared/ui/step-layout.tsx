@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import { IconButton } from "@/shared/ui/icon-button";
 
-export function EnrollmentLayout({
+export function StepLayout({
   title,
   onBack,
   busy,
@@ -23,7 +23,7 @@ export function EnrollmentLayout({
           className="absolute -left-2"
         >
           <Image
-            src="/images/auth/back.svg"
+            src="/images/ui/back.svg"
             alt=""
             width={10}
             height={18}
@@ -37,7 +37,7 @@ export function EnrollmentLayout({
   );
 }
 
-export function EnrollmentHeading({
+export function StepHeading({
   title,
   description,
 }: {

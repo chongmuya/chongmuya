@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { authEntryPath } from "../lib/auth-entry-path";
+import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/shared/http/api-error";
@@ -25,7 +27,6 @@ export function AuthScreen() {
     if (status === "authenticated" && pathname === "/auth")
       router.replace(returnTo);
   }, [status, pathname, router, returnTo]);
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const { login, logout, restore, signIn } = useAuthActions();
   const pending = login.isPending || logout.isPending || restore.isPending;
   const profile = useQuery(
@@ -77,30 +78,10 @@ export function AuthScreen() {
         </div>
       ) : (
         <>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => {
-                setMode("login");
-                login.reset();
-              }}
-              disabled={pending}
-            >
-              로그인
-            </Button>
-            <Button
-              onClick={() => {
-                setMode("signup");
-                login.reset();
-              }}
-              disabled={pending}
-            >
-              회원가입
-            </Button>
-          </div>
+          <Link href={authEntryPath("/auth/signup", returnTo)}>회원가입</Link>
           <CredentialsForm
-            mode={mode}
             pending={pending}
-            submit={(values, onError) => signIn(mode, values, onError)}
+            submit={(values, onError) => signIn(values, onError)}
           />
         </>
       )}

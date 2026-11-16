@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoadingState } from "@/shared/ui/states";
+import { authEntryPath } from "../lib/auth-entry-path";
 import { safeReturnPath } from "../lib/return-path";
 import { useAuth } from "./auth-provider";
 import { AuthScreen } from "./auth-screen";
@@ -15,11 +16,12 @@ export function AuthEntryScreen({ screen }: { screen: "start" | "login" }) {
   const params = useSearchParams();
   const router = useRouter();
   const returnTo = safeReturnPath(params.get("next"));
-  const mode = params.get("mode") === "signup" ? "signup" : "login";
+  const legacySignup = screen === "login" && params.get("mode") === "signup";
   useEffect(() => {
-    if (status === "authenticated") router.replace(returnTo);
-  }, [status, returnTo, router]);
-  if (status === "loading" || status === "authenticated")
+    if (legacySignup) router.replace(authEntryPath("/auth/signup", returnTo));
+    else if (status === "authenticated") router.replace(returnTo);
+  }, [status, returnTo, router, legacySignup]);
+  if (legacySignup || status === "loading" || status === "authenticated")
     return (
       <main className="app-page">
         <LoadingState>
@@ -38,6 +40,6 @@ export function AuthEntryScreen({ screen }: { screen: "start" | "login" }) {
   return screen === "start" ? (
     <StartScreen returnTo={returnTo} />
   ) : (
-    <LoginScreen key={`${mode}:${returnTo}`} mode={mode} returnTo={returnTo} />
+    <LoginScreen key={returnTo} returnTo={returnTo} />
   );
 }

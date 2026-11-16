@@ -2,6 +2,7 @@ import { ApiError } from "../../../shared/http/api-error";
 import { requestJson } from "../../../shared/http/request";
 
 import type { Account, AuthState, Session } from "../types/auth.types";
+import type { SignupRequest } from "../types/signup.types";
 type Transport = typeof requestJson;
 type Lock = <T>(action: () => Promise<T>) => Promise<T>;
 
@@ -11,6 +12,7 @@ export class SessionClient {
   private listeners = new Set<() => void>();
   private restoring?: Promise<void>;
   private refreshing?: Promise<void>;
+  private authenticating?: Promise<Session>;
   private generation = 0;
   private revision = 0;
   private ending = false;
@@ -140,18 +142,45 @@ export class SessionClient {
       throw error;
     }
   }
-  async login(kind: "signup" | "login", email: string, password: string) {
+  async login(email: string, password: string) {
+    await this.authenticate("login", { email, password });
+  }
+  async signup(input: SignupRequest, signal: AbortSignal) {
+    return this.authenticate("signup", input, signal);
+  }
+  private async authenticate(
+    kind: "login" | "signup",
+    input: object,
+    signal?: AbortSignal,
+  ) {
     const generation = ++this.generation;
-    const session = await this.lock(() =>
-      this.transport<Session>(`/api/v1/auth/${kind}`, {
+    const pending = this.lock(() => {
+      if (signal?.aborted || generation !== this.generation || this.ending)
+        throw new ApiError("요청이 취소되었습니다.", 401, "SESSION_INVALID");
+      return this.transport<Session>(`/api/v1/auth/${kind}`, {
         method: "POST",
-        body: JSON.stringify({ email, password }),
-      }),
-    );
-    if (generation !== this.generation) return;
-    this.ending = false;
-    this.clearUserCache();
-    this.apply(session);
+        body: JSON.stringify(input),
+        signal,
+      });
+    });
+    this.authenticating = pending;
+    try {
+      const session = await pending;
+      if (signal?.aborted || generation !== this.generation || this.ending)
+        throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");
+      if (!session.authenticated || !session.account)
+        throw new ApiError(
+          "응답 형식이 올바르지 않습니다.",
+          200,
+          "INVALID_RESPONSE",
+        );
+      this.ending = false;
+      this.clearUserCache();
+      this.apply(session);
+      return session.account;
+    } finally {
+      if (this.authenticating === pending) this.authenticating = undefined;
+    }
   }
   async logout() {
     this.ending = true;
@@ -160,7 +189,11 @@ export class SessionClient {
     this.set({ status: "logging-out", account: null });
     try {
       // Wait for cookie-setting work, then revoke the resulting session and clear cookies.
-      await Promise.allSettled([this.restoring, this.refreshing]);
+      await Promise.allSettled([
+        this.restoring,
+        this.refreshing,
+        this.authenticating,
+      ]);
       await this.lock(() =>
         this.transport<void>("/api/v1/auth/logout", { method: "POST" }),
       );

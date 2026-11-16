@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ApiError } from "@/shared/http/api-error";
+import type { SignupRequest, SignupTerm } from "../types/signup.types";
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import {
   signupDefaults,
@@ -15,17 +17,19 @@ import type { VerificationActions } from "../types/verification.types";
 import { useContactVerification } from "./use-contact-verification";
 
 export type SignupSubmission = (
-  values: SignupValues,
+  values: SignupRequest,
   signal: AbortSignal,
 ) => Promise<void>;
 export function useSignupFlow({
   onSubmit,
   onExit,
   verification,
+  terms,
 }: {
   onSubmit?: SignupSubmission;
   onExit: () => void;
-  verification?: { email?: VerificationActions; phone?: VerificationActions };
+  verification?: { phone?: VerificationActions };
+  terms: SignupTerm[];
 }) {
   const methods = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
@@ -33,7 +37,7 @@ export function useSignupFlow({
     shouldUnregister: false,
     mode: "onTouched",
   });
-  const [step, setStep] = useState<SignupStep>("terms");
+  const [step, setStep] = useState<SignupStep>("role");
   const [detail, setDetail] = useState<
     | keyof Pick<
         SignupValues,
@@ -48,11 +52,6 @@ export function useSignupFlow({
   const active = useRef(true);
   const request = useRef<AbortController | null>(null);
   const values = useWatch({ control: methods.control });
-  const email = useContactVerification(
-    values.email ?? "",
-    () => methods.getValues("email"),
-    verification?.email,
-  );
   const phone = useContactVerification(
     values.phone ?? "",
     () => methods.getValues("phone"),
@@ -82,6 +81,7 @@ export function useSignupFlow({
     setFocus(null);
     if (step === "nickname") setStep("information");
     else if (step === "information") setStep("terms");
+    else if (step === "terms") setStep("role");
     else onExit();
   };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -91,6 +91,14 @@ export function useSignupFlow({
     setFocus(null);
     methods.clearErrors("root");
     try {
+      if (["information", "nickname"].includes(step) && !phone.isVerified()) {
+        methods.setError("phone", {
+          message: "현재 전화번호의 휴대폰 인증을 완료해 주세요.",
+        });
+        setStep("information");
+        setFocus("phone");
+        return;
+      }
       if (step !== "nickname") {
         if (
           (await methods.trigger([...signupStepFields[step]], {
@@ -98,11 +106,18 @@ export function useSignupFlow({
           })) &&
           active.current
         )
-          setStep(step === "terms" ? "information" : "nickname");
+          setStep(
+            step === "role"
+              ? "terms"
+              : step === "terms"
+                ? "information"
+                : "nickname",
+          );
         return;
       }
       await methods.handleSubmit(
         async (input) => {
+          if (!input.accountType) return;
           if (!onSubmit) {
             methods.setError("root.server", {
               message: "회원가입 연결을 준비하고 있어요.",
@@ -113,22 +128,63 @@ export function useSignupFlow({
           const controller = new AbortController();
           request.current = controller;
           try {
-            await onSubmit(input, controller.signal);
+            await onSubmit(
+              {
+                accountType: input.accountType,
+                email: input.email.trim().toLowerCase(),
+                password: input.password,
+                name: input.name,
+                nickname: input.nickname,
+                phone: input.phone,
+                phoneVerificationId: phone.state.id!,
+                consents: terms.map((term) => ({
+                  id: term.id,
+                  version: term.version,
+                  accepted: input[term.id],
+                })),
+              },
+              controller.signal,
+            );
             if (!active.current || controller.signal.aborted) return;
             methods.reset(signupDefaults);
-            email.reset();
             phone.reset();
             setComplete(true);
           } catch (error) {
             if (!active.current || controller.signal.aborted) return;
-            applyFormError(error, methods.setError, {
-              email: "email",
-              name: "name",
-              phone: "phone",
-              nickname: "nickname",
-              password: "password",
-              passwordConfirm: "passwordConfirm",
-            });
+            if (
+              error instanceof ApiError &&
+              error.code === "EMAIL_ALREADY_REGISTERED"
+            ) {
+              methods.setError("email", {
+                message: "이미 가입한 이메일입니다.",
+              });
+            } else if (
+              error instanceof ApiError &&
+              error.code.startsWith("PHONE_VERIFICATION_")
+            ) {
+              phone.reset();
+              methods.setError("phone", {
+                message: "휴대폰 인증을 다시 진행해 주세요.",
+              });
+            } else if (
+              error instanceof ApiError &&
+              error.code === "SIGNUP_TERMS_CHANGED"
+            ) {
+              for (const term of terms) methods.setValue(term.id, false);
+              methods.setError("serviceTerms", {
+                message:
+                  "약관이 변경되었습니다. 새로고침 후 다시 동의해 주세요.",
+              });
+            } else
+              applyFormError(error, methods.setError, {
+                accountType: "accountType",
+                email: "email",
+                name: "name",
+                phone: "phone",
+                nickname: "nickname",
+                password: "password",
+                passwordConfirm: "passwordConfirm",
+              });
             const target = (Object.keys(signupStepFields) as SignupStep[]).find(
               (s) =>
                 signupStepFields[s].some((f) => methods.getFieldState(f).error),
@@ -168,7 +224,6 @@ export function useSignupFlow({
     complete,
     back,
     submit,
-    email,
     phone,
     focus,
   };

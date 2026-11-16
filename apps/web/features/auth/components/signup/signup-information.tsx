@@ -5,13 +5,12 @@ import { PasswordInput } from "@/shared/ui/password-input";
 import type { SignupValues } from "../../schemas/signup.schema";
 import type { useSignupFlow } from "../../hooks/use-signup-flow";
 import { ContactVerification } from "../contact-verification";
-import { EnrollmentHeading } from "../enrollment-layout";
+import { StepHeading } from "@/shared/ui/step-layout";
 
 export const enrollmentInputClass = "shadow-control aria-invalid:bg-brand/10";
 export function SignupInformation({
-  email,
   phone,
-}: Pick<ReturnType<typeof useSignupFlow>, "email" | "phone">) {
+}: Pick<ReturnType<typeof useSignupFlow>, "phone">) {
   const {
     register,
     trigger,
@@ -19,7 +18,7 @@ export function SignupInformation({
   } = useFormContext<SignupValues>();
   return (
     <div className="px-[17px]">
-      <EnrollmentHeading
+      <StepHeading
         title="총무야에 오신 걸 환영해요!"
         description="계정을 만들고 모임 준비를 시작해 보세요."
       />
@@ -35,7 +34,7 @@ export function SignupInformation({
             {(attributes) => (
               <Input
                 {...attributes}
-                {...register("email", { onChange: email.reset })}
+                {...register("email")}
                 variant="pill"
                 className={enrollmentInputClass}
                 type="email"
@@ -48,16 +47,6 @@ export function SignupInformation({
               />
             )}
           </FormField>
-          <ContactVerification
-            label="이메일"
-            {...email}
-            onRequest={() => {
-              void trigger("email", { shouldFocus: true }).then((valid) => {
-                if (valid) void email.request();
-              });
-            }}
-            onCheck={email.check}
-          />
         </div>
         <FormField
           required
@@ -134,7 +123,7 @@ export function SignupInformation({
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel"
-                placeholder="전화번호를 입력해 주세요"
+                placeholder="01012345678"
                 required
               />
             )}
@@ -162,7 +151,7 @@ export function SignupNickname({ disabled }: { disabled?: boolean }) {
   } = useFormContext<SignupValues>();
   return (
     <div className="px-[17px]">
-      <EnrollmentHeading
+      <StepHeading
         title="어떻게 불러드릴까요?"
         description="가입 정보의 이름과 별도로, 총무야에서 사용할 닉네임을 설정해 주세요."
       />

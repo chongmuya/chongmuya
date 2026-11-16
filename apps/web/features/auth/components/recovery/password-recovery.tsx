@@ -16,7 +16,7 @@ import {
   resetPasswordSchema,
   type ResetPasswordValues,
 } from "../../schemas/password.schema";
-import { EnrollmentHeading, EnrollmentLayout } from "../enrollment-layout";
+import { StepHeading, StepLayout } from "@/shared/ui/step-layout";
 
 const emailSchema = z.object({ email: signupEmailSchema });
 type EmailValues = z.infer<typeof emailSchema>;
@@ -76,9 +76,9 @@ export function RecoveryEmail({
     heading.current?.querySelector<HTMLElement>("h1")?.focus();
   }, [sent]);
   return (
-    <EnrollmentLayout title="비밀번호 재설정" onBack={onBack} busy={pending}>
+    <StepLayout title="비밀번호 재설정" onBack={onBack} busy={pending}>
       <div ref={heading} className="px-[17px]">
-        <EnrollmentHeading
+        <StepHeading
           title={sent ? "이메일을 확인해 주세요." : "비밀번호를 잊으셨나요?"}
           description={
             sent
@@ -164,7 +164,7 @@ export function RecoveryEmail({
           로그인으로 돌아가기
         </Link>
       </div>
-    </EnrollmentLayout>
+    </StepLayout>
   );
 }
 
@@ -207,9 +207,9 @@ function RecoveryPasswordForm({
     heading.current?.querySelector<HTMLElement>("h1")?.focus();
   }, [complete, linkState]);
   return (
-    <EnrollmentLayout title="비밀번호 재설정" onBack={onBack} busy={pending}>
+    <StepLayout title="비밀번호 재설정" onBack={onBack} busy={pending}>
       <div ref={heading} className="px-[17px]">
-        <EnrollmentHeading
+        <StepHeading
           title={
             complete
               ? "비밀번호를 변경했어요."
@@ -325,6 +325,6 @@ function RecoveryPasswordForm({
           </div>
         </form>
       )}
-    </EnrollmentLayout>
+    </StepLayout>
   );
 }

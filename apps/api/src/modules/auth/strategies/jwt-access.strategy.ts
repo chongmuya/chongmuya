@@ -8,6 +8,7 @@ import { AuthSession } from "../entities/auth-session.entity.js";
 import { AuthError } from "../exceptions/auth.exception.js";
 import { cookie, cookieNames } from "../utils/auth-cookies.js";
 import type { Request } from "express";
+import { publicAccount } from "../utils/public-account.js";
 
 @Injectable()
 export class JwtAccessStrategy extends PassportStrategy(
@@ -56,6 +57,6 @@ export class JwtAccessStrategy extends PassportStrategy(
       throw new AuthError("SESSION_INVALID");
     const account = await db.getRepository(Account).findOneBy({ id: sub });
     if (!account) throw new AuthError("SESSION_INVALID");
-    return { id: account.id, email: account.email };
+    return publicAccount(account);
   }
 }

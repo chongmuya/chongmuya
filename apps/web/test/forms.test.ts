@@ -15,6 +15,9 @@ import { EventForm } from "../features/events/components/event-form";
 import { GroupForm } from "../features/groups/components/group-form";
 import { AuthProvider } from "../features/auth/components/auth-provider";
 import { AuthEntryScreen } from "../features/auth/components/auth-entry-screen";
+import { GettingStartedScreen } from "../features/onboarding/components/getting-started-screen";
+import { SignupScreen } from "../features/auth/components/signup/signup-screen";
+import { previewTerms } from "../features/auth/components/preview/preview-fixtures";
 import { AuthScreen } from "../features/auth/components/auth-screen";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
@@ -733,7 +736,7 @@ test("a pending link cannot recreate a cleared user cache after leaving the scre
   assert.deepEqual(view.navigations, []);
 });
 
-test("start links preserve safe destinations and only the allowed signup mode opens registration", async () => {
+test("start links and legacy signup redirect preserve safe destinations without the simple signup form", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () =>
     Response.json({ authenticated: false, account: null });
@@ -758,8 +761,8 @@ test("start links preserve safe destinations and only the allowed signup mode op
         const login = new URL(
           links.find((a) => a.textContent === "이미 계정이 있어요")!.href,
         );
-        assert.equal(signup.pathname, "/auth");
-        assert.equal(signup.searchParams.get("mode"), "signup");
+        assert.equal(signup.pathname, "/auth/signup");
+        assert.equal(signup.searchParams.get("mode"), null);
         assert.equal(login.searchParams.get("mode"), null);
         assert.equal(
           signup.searchParams.get("next"),
@@ -785,10 +788,25 @@ test("start links preserve safe destinations and only the allowed signup mode op
         mode,
       );
       try {
+        if (mode === "signup") {
+          await until(() =>
+            assert(
+              view.navigations.some((url) => url.startsWith("/auth/signup?")),
+            ),
+          );
+          assert.equal(view.container.querySelector("form"), null);
+          assert.equal(
+            new URL(view.navigations[0], "http://localhost").searchParams.get(
+              "next",
+            ),
+            destination,
+          );
+          continue;
+        }
         await until(() => assert(view.container.querySelector("form")));
         assert.equal(
           view.container.querySelector("form")!.getAttribute("aria-label"),
-          mode === "signup" ? "회원가입" : "로그인",
+          "로그인",
         );
         const back = new URL(
           view.container
@@ -884,6 +902,234 @@ test("branded login distinguishes credentials and connection errors, retries, bl
     );
   } finally {
     await view.unmount();
+    globalThis.fetch = original;
+  }
+});
+
+test("real signup screen requires phone receipt, recovers errors, keeps secrets out of Query and completes before safe navigation", async () => {
+  const original = globalThis.fetch;
+  const paths: string[] = [];
+  const message = "총무야 가입 ABCDEF0123456789ABCDEF0123456789";
+  const id = "00000000-0000-4000-8000-000000000099";
+  let issued = 0;
+  let checks = 0;
+  let joined = 0;
+  const now = Date.now();
+  const proof = {
+    id,
+    phone: "01000000000",
+    status: "pending",
+    expiresAt: new Date(now + 300000).toISOString(),
+    retryAt: new Date(now - 1).toISOString(),
+    nextCheckAt: new Date(now - 1).toISOString(),
+    serverNow: new Date(now).toISOString(),
+    checksRemaining: 12,
+  };
+  const account = {
+    id: "00000000-0000-4000-8000-000000000098",
+    email: "real@example.test",
+    accountType: "organizer",
+    name: "가입 이름",
+    nickname: "별명",
+    phone: proof.phone,
+    phoneVerifiedAt: new Date(now).toISOString(),
+    emailVerifiedAt: null,
+  };
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    paths.push(path);
+    if (path.endsWith("restore"))
+      return Response.json({
+        authenticated: joined > 0,
+        account: joined ? account : null,
+      });
+    if (path.endsWith("/terms")) return Response.json({ terms: previewTerms });
+    if (path.endsWith("/context") || path.endsWith("/cancel"))
+      return new Response(null, { status: 204 });
+    if (path.endsWith("/phone-verifications")) {
+      if (++issued === 1)
+        return Response.json(
+          {
+            statusCode: 503,
+            code: "PHONE_VERIFICATION_UNAVAILABLE",
+            message: "private",
+            requestId: id,
+          },
+          { status: 503 },
+        );
+      return Response.json(
+        {
+          ...proof,
+          receiver: "16663538",
+          message,
+          qrCode: "data:image/png;base64,aGVsbG8=",
+        },
+        { status: 201 },
+      );
+    }
+    if (path.endsWith("/check")) {
+      checks++;
+      assert.deepEqual(JSON.parse(String(options?.body)), {
+        id,
+        phone: proof.phone,
+      });
+      return Response.json({
+        ...proof,
+        status: checks === 1 ? "pending" : "verified",
+        checksRemaining: 12 - checks,
+      });
+    }
+    assert(path.endsWith("/signup"));
+    joined++;
+    const body = JSON.parse(String(options?.body));
+    assert.equal(body.phoneVerificationId, id);
+    assert.equal(body.password, "test-pass-123");
+    assert.equal(body.name, account.name);
+    assert.equal(body.accountType, account.accountType);
+    assert.equal(body.nickname, account.nickname);
+    assert.equal(
+      body.consents.find((term: { id: string }) => term.id === "marketing")
+        .accepted,
+      false,
+    );
+    assert.equal(body.passwordConfirm, undefined);
+    assert.equal(body.verified, undefined);
+    return Response.json({ authenticated: true, account }, { status: 201 });
+  };
+  const view = await render(
+    createElement(AuthProvider, null, createElement(SignupScreen)),
+    client(),
+    "/mypage",
+  );
+  const noSecrets = () => {
+    const cached = JSON.stringify([
+      ...view.cache
+        .getQueryCache()
+        .getAll()
+        .map((q) => q.state),
+      ...view.cache
+        .getMutationCache()
+        .getAll()
+        .map((m) => m.state),
+    ]);
+    for (const secret of ["test-pass-123", message, id])
+      assert(!cached.includes(secret));
+  };
+  try {
+    await until(() =>
+      assert(view.container.querySelector('input[name="accountType"]')),
+    );
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[value="organizer"]')!
+        .click(),
+    );
+    await submit(view.container);
+    for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"]) {
+      await act(async () =>
+        view.container
+          .querySelector<HTMLInputElement>(`input[name="${name}"]`)!
+          .click(),
+      );
+    }
+    await submit(view.container);
+    for (const [name, value] of Object.entries({
+      email: account.email,
+      name: account.name,
+      password: "test-pass-123",
+      passwordConfirm: "test-pass-123",
+      phone: proof.phone,
+    }))
+      await fill(view.container, name, value);
+    assert.doesNotMatch(view.container.textContent!, /이메일 인증/);
+    await submit(view.container);
+    assert.match(view.container.textContent!, /휴대폰 인증을 완료/);
+    assert.equal(joined, 0);
+    await click(view.container, "휴대폰 인증 요청");
+    await until(() =>
+      assert.match(view.container.textContent!, /인증을 확인하지 못/),
+    );
+    assert.doesNotMatch(view.container.textContent!, /private/);
+    await click(view.container, "휴대폰 인증 요청");
+    await until(() => assert.match(view.container.textContent!, /16663538/));
+    assert.match(
+      view.container.querySelector('a[href^="sms:"]')!.getAttribute("href")!,
+      /body=/,
+    );
+    assert(
+      view.container.querySelector('img[alt="휴대폰 문자 앱을 여는 QR 코드"]'),
+    );
+    noSecrets();
+    await click(view.container, "인증 결과 확인");
+    await until(() => assert.equal(checks, 1));
+    await submit(view.container);
+    assert.equal(joined, 0);
+    await click(view.container, "인증 결과 확인");
+    await until(() =>
+      assert.match(view.container.textContent!, /휴대폰 인증이 완료/),
+    );
+    noSecrets();
+    await submit(view.container);
+    await fill(view.container, "nickname", account.nickname);
+    await submit(view.container);
+    await until(() => assert.match(view.container.textContent!, /가입을 축하/));
+    assert.equal(joined, 1);
+    assert.deepEqual(view.navigations, []);
+    noSecrets();
+    await click(view.container, "다음");
+    assert.deepEqual(view.navigations, ["/getting-started?next=%2Fmypage"]);
+    assert(!paths.some((path) => /email.*verif|group/.test(path)));
+  } finally {
+    await view.unmount();
+    globalThis.fetch = original;
+  }
+});
+
+test("post-signup entry requires a restored session and skipping rejects external return paths", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const authenticated of [false, true]) {
+      globalThis.fetch = async () =>
+        Response.json({
+          authenticated,
+          account: authenticated
+            ? {
+                id: "onboarding-user",
+                accountType: "organizer",
+                email: "test@example.test",
+              }
+            : null,
+        });
+      const view = await render(
+        createElement(AuthProvider, null, createElement(GettingStartedScreen)),
+        client(),
+        "https://evil.example",
+      );
+      try {
+        if (!authenticated) {
+          await until(() =>
+            assert.match(view.container.textContent!, /로그인이 필요/),
+          );
+          assert.equal(
+            view.container.querySelector("a")?.getAttribute("href"),
+            "/auth?next=%2Fgetting-started",
+          );
+          assert.equal(
+            view.container.querySelector('input[name="usage"]'),
+            null,
+          );
+        } else {
+          await until(() =>
+            assert(view.container.querySelector('input[name="usage"]')),
+          );
+          await click(view.container, "나중에 선택하기");
+          assert.deepEqual(view.navigations, ["/events"]);
+        }
+      } finally {
+        await view.unmount();
+      }
+    }
+  } finally {
     globalThis.fetch = original;
   }
 });

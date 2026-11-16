@@ -62,6 +62,9 @@ export function WorkspaceContent({
         <Link href="/">홈</Link>
         <Link href="/events">내 행사</Link>
         <Link href="/mypage">마이페이지</Link>
+        {mode === "mypage" && (
+          <Link href="/getting-started">이용 방식 선택</Link>
+        )}
       </nav>
       <h1>{mode === "mypage" ? "내 모임 관리" : "내 행사"}</h1>
       {mode === "mypage" ? (

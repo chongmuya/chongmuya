@@ -31,7 +31,7 @@ export function AuthLayout({
             className="absolute top-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))] left-2"
           >
             <Image
-              src="/images/auth/back.svg"
+              src="/images/ui/back.svg"
               alt=""
               width={10}
               height={18}
