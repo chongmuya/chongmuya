@@ -129,7 +129,7 @@ Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 �
 | tailwindcss / @tailwindcss/postcss    | 4.3.5 / 4.3.5   | CSS 토큰과 Next PostCSS 빌드                 |
 | postcss                               | 8.5.32          | 배포 유예 예외가 필요 없는 호환 안정 버전    |
 | @tanstack/react-query-devtools        | 5.104.5         | 기존 Query와 peer 범위를 맞춘 개발 전용 도구 |
-| jsdom / @types/jsdom                  | 31.0.1 / 30.0.0 | Node 24.15.0에서 실제 React 폼 DOM 회귀 검사 |
+| jsdom / @types/jsdom                  | 31.0.1 / 30.0.0 | Node 26.13.1에서 실제 React 폼 DOM 회귀 검사 |
 
 스타일 빌드·Devtools·DOM 테스트 의존성은 devDependencies다. Devtools는 `NODE_ENV === "development"`에서만 렌더링하며 패키지의 production 비활성 export도 사용한다. pnpm 단일 lockfile과 기존 설치 스크립트 허용 정책을 유지한다. Zustand·Axios·Vite·별도 라우터는 추가하지 않는다.
 
@@ -204,7 +204,7 @@ DTO 검증 오류는 선택적 `fieldErrors: Array<{ field: string; code: string
 
 ## ESM과 환경변수 검증
 
-API package.json은 `type: module`이며 기존 TypeScript `module/moduleResolution: NodeNext`를 유지합니다. 상대 import는 실행될 `.js` 확장자를 명시하고, 경로 계산에는 Node 24의 `import.meta.dirname`을 사용합니다. Nest CLI watch·프로덕션 실행·Node test runner·TypeORM CLI 모두 컴파일된 ESM을 사용합니다. 테스트는 tsc로 decorator metadata를 보존하며 별도 실험적 로더를 쓰지 않습니다.
+API package.json은 `type: module`이며 기존 TypeScript `module/moduleResolution: NodeNext`를 유지합니다. 상대 import는 실행될 `.js` 확장자를 명시하고, 경로 계산에는 Node 26의 `import.meta.dirname`을 사용합니다. Nest CLI watch·프로덕션 실행·Node test runner·TypeORM CLI 모두 컴파일된 ESM을 사용합니다. 테스트는 tsc로 decorator metadata를 보존하며 별도 실험적 로더를 쓰지 않습니다.
 
 Nest 12와 @nestjs/typeorm 12의 ESM 패키지를 사용합니다. API 환경은 Zod로 검증합니다. AUTH_SECRET은 32자 이상, WEB_ORIGIN은 경로 없는 http/https origin이며 production은 https만 허용합니다. DATABASE_URL은 호스트·DB 이름이 있는 PostgreSQL URL입니다. API_PORT는 정수 1~65535, API_DOCS_ENABLED는 정확한 true/false 문자열만 받으며 production 기본값은 false입니다. 오류에는 변수 이름만 표시합니다.
 
