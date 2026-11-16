@@ -6,7 +6,16 @@ import type { Session } from "../features/auth/types/auth.types";
 import type { requestJson } from "../shared/http/request";
 const session: Session = {
   authenticated: true,
-  account: { id: "a", email: "a@example.com" },
+  account: {
+    accountType: null,
+    name: null,
+    nickname: null,
+    phone: null,
+    phoneVerifiedAt: null,
+    emailVerifiedAt: null,
+    id: "a",
+    email: "a@example.com",
+  },
 };
 const expired = () => new ApiError("", 401, "ACCESS_EXPIRED");
 const invalid = () => new ApiError("", 401, "SESSION_INVALID");
@@ -159,7 +168,16 @@ for (const source of ["me", "refresh"] as const) {
   test(`account switch from ${source} clears user cache and cancels all old-account retries`, async () => {
     const other: Session = {
       authenticated: true,
-      account: { id: "b", email: "b@example.com" },
+      account: {
+        accountType: null,
+        name: null,
+        nickname: null,
+        phone: null,
+        phoneVerifiedAt: null,
+        emailVerifiedAt: null,
+        id: "b",
+        email: "b@example.com",
+      },
     };
     let clears = 0;
     let mutations = 0;
@@ -301,7 +319,16 @@ test("late expiry from an old account neither starts refresh nor replays the req
   const rejected = assert.rejects(client.request("/api/v1/resource"));
   current = {
     authenticated: true,
-    account: { id: "b", email: "b@example.com" },
+    account: {
+      accountType: null,
+      name: null,
+      nickname: null,
+      phone: null,
+      phoneVerifiedAt: null,
+      emailVerifiedAt: null,
+      id: "b",
+      email: "b@example.com",
+    },
   };
   await client.restore();
   rejectRequest(expired());
@@ -335,7 +362,16 @@ for (const transition of ["account switch", "logout"] as const) {
     else {
       current = {
         authenticated: true,
-        account: { id: "b", email: "b@example.com" },
+        account: {
+          accountType: null,
+          name: null,
+          nickname: null,
+          phone: null,
+          phoneVerifiedAt: null,
+          emailVerifiedAt: null,
+          id: "b",
+          email: "b@example.com",
+        },
       };
       await client.restore();
     }

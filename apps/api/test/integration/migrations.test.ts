@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { startTestApplication } from "../support/test-application.js";
 import { DatabaseService } from "../../src/database/database.service.js";
 
-test("personal event migration backfills owners without changing existing records and refuses lossy rollback", async (t) => {
+test("migrations preserve existing account, group, event and session records and refuse lossy rollback", async (t) => {
   assert(process.env.TEST_DATABASE_URL);
   const { app } = await startTestApplication(process.env.TEST_DATABASE_URL);
   t.after(() => app.close());
@@ -80,6 +80,64 @@ test("personal event migration backfills owners without changing existing record
       ),
       before,
     );
+    const { VerifiedSignup1794787200000 } =
+      await import("../../src/database/migrations/1794787200000-VerifiedSignup.js");
+    const signupMigration = new VerifiedSignup1794787200000();
+    const preserved = await runner.query("SELECT * FROM accounts");
+    const eventsBeforeSignup = await runner.query("SELECT * FROM events");
+    await signupMigration.up(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM accounts"),
+      preserved.map((row: object) => ({
+        ...row,
+        name: null,
+        nickname: null,
+        phone: null,
+        phone_verified_at: null,
+        email_verified_at: null,
+      })),
+    );
+    assert.deepEqual(await runner.query("SELECT * FROM groups"), beforeGroups);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM events"),
+      eventsBeforeSignup,
+    );
+    assert.deepEqual(await runner.query("SELECT * FROM account_consents"), []);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM phone_verifications"),
+      [],
+    );
+    const { AccountTypes1794790800000 } =
+      await import("../../src/database/migrations/1794790800000-AccountTypes.js");
+    const accountTypes = new AccountTypes1794790800000();
+    const beforeTypes = await runner.query("SELECT * FROM accounts");
+    await accountTypes.up(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM accounts"),
+      beforeTypes.map((row: object) => ({ ...row, account_type: null })),
+    );
+    assert.deepEqual(await runner.query("SELECT * FROM groups"), beforeGroups);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM events"),
+      eventsBeforeSignup,
+    );
+    await runner.query("SAVEPOINT types_rollback");
+    await runner.query(
+      "UPDATE accounts SET account_type = 'organizer' WHERE id = $1",
+      [account],
+    );
+    await assert.rejects(accountTypes.down(runner), /cannot be represented/);
+    await runner.query("ROLLBACK TO SAVEPOINT types_rollback");
+    await accountTypes.down(runner);
+    assert.deepEqual(await runner.query("SELECT * FROM accounts"), beforeTypes);
+    await runner.query("SAVEPOINT signup_rollback");
+    await runner.query("UPDATE accounts SET name = '가입 이름' WHERE id = $1", [
+      account,
+    ]);
+    await assert.rejects(signupMigration.down(runner), /cannot be represented/);
+    await runner.query("ROLLBACK TO SAVEPOINT signup_rollback");
+    await signupMigration.down(runner);
+    assert.deepEqual(await runner.query("SELECT * FROM accounts"), preserved);
     // Untouched pre-upgrade data can still round-trip without deletion.
     await migration.down(runner);
     assert.deepEqual(await runner.query("SELECT * FROM events"), beforeEvents);

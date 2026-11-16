@@ -1,3 +1,4 @@
+import { signupFixture } from "./signup-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { TestContext } from "node:test";
@@ -31,7 +32,9 @@ export async function startResourceApplication(t: TestContext) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   const signup = async () => {
-    const response = await call("auth/signup", "", "POST", {
+    const fixture = await signupFixture(db);
+    const response = await call("auth/signup", fixture.jar, "POST", {
+      ...fixture.body,
       email: `${randomUUID()}@example.com`,
       password: "group-events-123",
     });

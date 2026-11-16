@@ -10,13 +10,16 @@ apps/web/
     workspace-screen.tsx     인증 화면과 모임·행사 화면 조합, URL별 화면 key
   features/
     auth/
-      api/                   profile 요청·query options
+      api/                   profile·가입 약관 요청·query options·휴대폰 API
       components/            Provider, 인증·복구 화면, 로그인·가입 폼
       hooks/                 인증 mutation
       lib/                   SessionClient 생명주기·갱신·잠금
-      schemas/               credentials.schema.ts
+      schemas/               credentials·signup schema
       types/                 계정·인증 상태·요청 타입
       client.ts / types.ts   외부 공개 진입점
+    onboarding/
+      components/            가입 후 이용 방식·환영 화면, 인증 경계
+      client.ts              GettingStartedScreen 공개
     groups/
       api/                   groups.api.ts, groups.queries.ts
       components/            GroupBoundary(모임 관리), GroupSettings, GroupForm
@@ -61,7 +64,7 @@ apps/api/
       guards/ / strategies/ / decorators/
       repositories/ / types/ / utils/ / exceptions/
     database/           TypeORM 옵션·CLI DataSource·연결 생명주기·오류 분류
-      migrations/       Authentication·GroupEvents·PersonalEvents
+      migrations/       Authentication·GroupEvents·PersonalEvents·VerifiedSignup·AccountTypes
   test/                 설정·HTTP 계약 테스트와 DB 통합 테스트
 tools/                  ESLint 의존 경계 규칙과 회귀 테스트
 compose.yaml            로컬 PostgreSQL만 실행
@@ -74,7 +77,7 @@ compose.yaml            로컬 PostgreSQL만 실행
 
 ### 공개 경계와 페이지 조합
 
-`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?group=<id>`는 관리할 모임 선택이다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`에서도 내 행사로 시작할 수 있다.
+`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 가입 후 정기 모임/일회성 행사 안내를 제공한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`에서도 내 행사로 시작할 수 있다.
 
 공개 홈은 비로그인 접근을 허용한다. 개인 화면은 인증 상태를 확인하고 로그인 링크에 원래 경로를 전달한다. auth의 safeReturnPath는 지원하는 내부 페이지와 UUID query만 재구성하며 외부 URL·프로토콜 상대 URL·역슬래시·제어 문자·인증/API 경로를 반환하지 않는다. 기본 목적지는 `/events`다. 실제 자료 권한은 Nest에서 검사한다.
 
@@ -167,7 +170,7 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 연결 명령은 행사 id/ownerId 조건으로 행을 FOR UPDATE 잠금하고, 같은 manager로 모임 소유권을 확인한 뒤 expectedVersion과 미연결 상태를 검사합니다. groupId와 version만 갱신하며 소유자·일정·생성 시각은 그대로 둡니다. 일반 수정도 같은 행사 잠금·버전 검사를 사용합니다. 동시 연결 중 먼저 커밋한 요청만 반영되고 뒤의 요청은 VERSION_CONFLICT입니다. 최신 버전으로 이미 연결된 행사를 다시 연결하면 EVENT_ALREADY_LINKED입니다. 현재 모임 소유자 변경·삭제 API는 없으며, 향후 추가 시 동시 권한 변경에 대한 잠금 정책도 함께 설계해야 합니다.
 
-AuthService는 가입 계정·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
+AuthService는 휴대폰 인증 소비·가입 계정·동의·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
 
 실제 서버와 E2E 모두 `configureHttp`를 호출합니다. 앱 루트 prefix를 새로 붙이지 않아 기존 `/health`와 웹 rewrite 계약을 유지합니다.
 
@@ -206,7 +209,7 @@ DTO 검증 오류는 선택적 `fieldErrors: Array<{ field: string; code: string
 
 API package.json은 `type: module`이며 기존 TypeScript `module/moduleResolution: NodeNext`를 유지합니다. 상대 import는 실행될 `.js` 확장자를 명시하고, 경로 계산에는 Node 26의 `import.meta.dirname`을 사용합니다. Nest CLI watch·프로덕션 실행·Node test runner·TypeORM CLI 모두 컴파일된 ESM을 사용합니다. 테스트는 tsc로 decorator metadata를 보존하며 별도 실험적 로더를 쓰지 않습니다.
 
-Nest 12와 @nestjs/typeorm 12의 ESM 패키지를 사용합니다. API 환경은 Zod로 검증합니다. AUTH_SECRET은 32자 이상, WEB_ORIGIN은 경로 없는 http/https origin이며 production은 https만 허용합니다. DATABASE_URL은 호스트·DB 이름이 있는 PostgreSQL URL입니다. API_PORT는 정수 1~65535, API_DOCS_ENABLED는 정확한 true/false 문자열만 받으며 production 기본값은 false입니다. 오류에는 변수 이름만 표시합니다.
+Nest 12와 @nestjs/typeorm 12의 ESM 패키지를 사용합니다. API 환경은 Zod로 검증합니다. AUTH_SECRET은 32자 이상, WEB_ORIGIN은 경로 없는 http/https origin이며 production은 https만 허용합니다. DATABASE_URL은 호스트·DB 이름이 있는 PostgreSQL URL입니다. API_PORT는 정수 1~65535, API_DOCS_ENABLED는 정확한 true/false 문자열만 받으며 production 기본값은 false입니다. OCTOMO_API_KEY는 선택적이지만 설정되면 공백 없는 비어 있지 않은 문자열이어야 하며 서버에서만 사용합니다. SIGNUP_TERMS_JSON은 네 약관의 식별자·버전·HTTPS URL 배열을 검증합니다. 두 변수는 Turbo의 API dev 작업에만 전달합니다. 오류에는 변수 이름만 표시합니다.
 
 HTTP DTO는 기존 class-validator/class-transformer 및 Swagger 연동을 유지합니다. 환경변수와 HTTP 입력은 다른 경계이므로 같은 입력을 두 도구로 중복 검증하지 않습니다. 웹의 Zod는 실제 인증·모임·행사 폼 입력 검증에 별도로 사용합니다.
 
@@ -233,6 +236,10 @@ Entity는 `modules/<업무>/entities/*.entity.ts`에 실제로 필요한 모델�
 `PersonalEvents` migration은 하나의 트랜잭션에서 owner_id nullable 추가 → 연결된 groups.owner_id로 backfill → 누락 검증 → NOT NULL/FK/index 적용 → group_id nullable 변경과 version 추가를 수행합니다. 기존 인증·모임·행사 ID, 일정·생성 시각을 보존하며 기존 migration 파일은 수정하지 않습니다. DDL 잠금이 적용 중 쓰기를 막으므로 서비스 쓰기를 멈추고 migration과 호환되는 앱을 함께 배포합니다. 새 API는 owner_id를 필수로 쓰므로 구버전 서버와 혼합 실행하지 않습니다.
 
 `down`은 개인 행사, 모임 소유자와 다른 행사 소유자, version이 1이 아닌 기록이 있으면 중단합니다. 이러한 데이터는 이전 스키마에서 표현할 수 없습니다. 되돌리기 위해 데이터를 삭제하거나 모임을 만들지 않으며, 데이터가 생긴 뒤에는 보존 가능한 후속 migration과 앱 수정으로 복구합니다. 테스트는 격리 PostgreSQL의 빈 DB 전체 적용·기존 데이터 backfill·누락 검출·rollback 거부와 Entity schema diff를 검사합니다.
+
+`1794787200000-VerifiedSignup`은 기존 Account의 id/email/password_hash/created_at과 기존 모임·행사·세션을 보존하고 이름·닉네임·전화번호·휴대폰/이메일 인증 시각을 nullable로 추가합니다. 기존 계정은 미인증 상태(null)를 유지하며 임의 backfill을 하지 않습니다. account_consents와 phone_verifications를 추가하고 전화번호·닉네임 unique 제약은 만들지 않습니다. 새 가입 필드·동의·인증 기록이 존재하면 down은 데이터 손실을 막기 위해 거부합니다. 운영 DB를 지우지 말고 후속 migration으로 복구합니다. 새 계약을 사용하는 API와 웹을 함께 배포합니다. 만료된 휴대폰 요청과 오래된 시도 제한 기록의 운영 정리 정책은 별도로 적용해야 합니다.
+
+`1794790800000-AccountTypes`는 account_type nullable 컬럼과 organizer/owner 허용 제약을 추가합니다. 기존 계정의 이용 유형은 추측하지 않고 null로 유지하며 계정·모임·행사 ID를 보존합니다. 신규 가입은 유형을 필수로 받고 세션 응답으로 전달하지만 자원 권한에는 사용하지 않습니다. 유형 기록이 생긴 뒤 down은 데이터 손실을 막기 위해 거부합니다.
 
 TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수 있으므로 대상 DB를 확인합니다. 운영 DB reset/drop은 수행하지 않습니다.
 

@@ -4,15 +4,7 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": [
-        "API_URL",
-        "API_PORT",
-        "DATABASE_URL",
-        "API_DOCS_ENABLED",
-        "NODE_ENV",
-        "AUTH_SECRET",
-        "WEB_ORIGIN"
-      ]
+      "passThroughEnv": ["API_URL", "NODE_ENV"]
     },
     "build": {
       "dependsOn": ["^build"],
@@ -37,6 +29,20 @@
     },
     "test": {
       "cache": false
+    },
+    "@chongmuya/api#dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "API_PORT",
+        "DATABASE_URL",
+        "API_DOCS_ENABLED",
+        "NODE_ENV",
+        "AUTH_SECRET",
+        "WEB_ORIGIN",
+        "OCTOMO_API_KEY",
+        "SIGNUP_TERMS_JSON"
+      ]
     }
   }
 }

@@ -28,6 +28,39 @@ export const fieldErrorSchema = z
 export type FieldError = z.infer<typeof fieldErrorSchema>;
 
 const messages: Record<string, { status: number; message: string }> = {
+  EMAIL_ALREADY_REGISTERED: {
+    status: 409,
+    message: "이미 가입한 이메일입니다.",
+  },
+  SIGNUP_TERMS_CHANGED: {
+    status: 409,
+    message: "약관이 변경되었습니다. 다시 확인하고 동의해 주세요.",
+  },
+  PHONE_VERIFICATION_REQUIRED: {
+    status: 400,
+    message: "현재 전화번호의 휴대폰 인증을 완료해 주세요.",
+  },
+  PHONE_VERIFICATION_INVALID: {
+    status: 400,
+    message: "유효하지 않은 인증 요청입니다. 다시 인증해 주세요.",
+  },
+  PHONE_VERIFICATION_EXPIRED: {
+    status: 400,
+    message: "휴대폰 인증이 만료되었습니다. 다시 인증해 주세요.",
+  },
+  PHONE_VERIFICATION_LIMIT: {
+    status: 429,
+    message: "인증 확인 횟수를 초과했습니다. 새 인증을 요청해 주세요.",
+  },
+  PHONE_VERIFICATION_WAIT: {
+    status: 429,
+    message: "인증 요청 간격을 기다린 뒤 다시 시도해 주세요.",
+  },
+  PHONE_VERIFICATION_UNAVAILABLE: {
+    status: 503,
+    message:
+      "휴대폰 인증 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  },
   VALIDATION_FAILED: { status: 400, message: "입력한 항목을 확인해 주세요." },
   VERSION_CONFLICT: {
     status: 409,

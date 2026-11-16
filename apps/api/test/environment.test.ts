@@ -34,6 +34,10 @@ test("configuration rejects missing/invalid required values without exposing val
     { DATABASE_URL: databaseUrl, NODE_ENV: "staging" },
     { DATABASE_URL: databaseUrl, API_DOCS_ENABLED: "yes" },
     { DATABASE_URL: databaseUrl, API_DOCS_ENABLED: "" },
+    { DATABASE_URL: databaseUrl, OCTOMO_API_KEY: "" },
+    { DATABASE_URL: databaseUrl, OCTOMO_API_KEY: "private-password bad" },
+    { DATABASE_URL: databaseUrl, SIGNUP_TERMS_JSON: "private-password" },
+    { DATABASE_URL: databaseUrl, SIGNUP_TERMS_JSON: "[]" },
   ]) {
     assert.throws(
       () => parseEnvironment(env),
@@ -58,6 +62,8 @@ test("configuration rejects missing/invalid required values without exposing val
     }),
     {
       authSecret,
+      octomoApiKey: undefined,
+      signupTerms: undefined,
       webOrigin,
       nodeEnv: "development",
       port: 3001,

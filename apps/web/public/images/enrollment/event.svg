@@ -1,0 +1,15 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="58" height="58" viewBox="0 0 58 58" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Frame 110" clip-path="url(#clip0_0_4)">
+<path id="Rectangle 25" d="M15.1169 55.3625H42.8842C48.7673 55.3625 51.7089 55.3625 53.5366 53.5349C55.3642 51.7072 55.3642 48.7657 55.3642 42.8826V23.9032C55.3642 18.02 55.3642 15.0785 53.5366 13.2508C51.7089 11.4232 48.7673 11.4232 42.8842 11.4232H15.1169C9.23381 11.4232 6.29224 11.4232 4.46459 13.2508C2.63694 15.0785 2.63694 18.02 2.63694 23.9031V42.8825C2.63694 48.7657 2.63694 51.7072 4.46459 53.5349C6.29224 55.3625 9.23381 55.3625 15.1169 55.3625Z" stroke-width="3.9" stroke="#F46224"/>
+<path id="Vector 3" d="M2.63694 23.6295L55.3642 23.6295" stroke-width="3.9" stroke-linecap="round" stroke="#F46224"/>
+<path id="Vector 4" d="M21.4816 38.6667H36.5186" stroke-width="3.9" stroke-linecap="round" stroke="#F46224"/>
+<path id="Vector 5" d="M29 31.1483L29 46.1853" stroke-width="3.9" stroke-linecap="round" stroke="#F46224"/>
+<path id="Line 1" d="M17.2833 2.63631L17.2833 14.3535" stroke-width="3.9" stroke-linecap="round" stroke="#F46224"/>
+<path id="Line 2" d="M40.7167 2.63631L40.7167 14.3535" stroke-width="3.9" stroke-linecap="round" stroke="#F46224"/>
+</g>
+<defs>
+<clipPath id="clip0_0_4">
+<rect width="58" height="58" fill="white"/>
+</clipPath>
+</defs>
+</svg>

@@ -4,6 +4,10 @@ import { DatabaseModule } from "../../database/database.module.js";
 import { ConfigModule } from "../../config/config.module.js";
 import { AuthController } from "./auth.controller.js";
 import { AuthService } from "./auth.service.js";
+import { SignupController } from "./signup.controller.js";
+import { PhoneVerificationService } from "./phone-verification.service.js";
+import { OctomoService } from "./octomo.service.js";
+import { SignupTermsService } from "./signup-terms.service.js";
 import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
 import { CsrfGuard } from "./guards/csrf.guard.js";
 
@@ -20,9 +24,12 @@ import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
     PassportModule.register({ session: false }),
     JwtModule.register({}),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, SignupController],
   providers: [
     AuthService,
+    PhoneVerificationService,
+    OctomoService,
+    SignupTermsService,
     AuthAttemptsRepository,
     JwtAccessStrategy,
     AccessGuard,

@@ -13,17 +13,15 @@ export function useAuthActions() {
   const active = useActiveScreen();
   const submitting = useRef(false);
   // Passwords must not be retained in Query's mutation variables / Devtools.
-  const credentials = useRef<
-    (Credentials & { mode: "login" | "signup" }) | null
-  >(null);
+  const credentials = useRef<Credentials | null>(null);
   const login = useMutation({
     mutationFn: async () => {
       const input = credentials.current;
       credentials.current = null;
       if (!input) return;
       try {
-        const { mode, email, password } = input;
-        await client.login(mode, email, password);
+        const { email, password } = input;
+        await client.login(email, password);
         if (client.getSnapshot().status !== "authenticated") return;
         notifySessionChange();
         if (active.current) router.refresh();
@@ -46,14 +44,10 @@ export function useAuthActions() {
     mutationFn: () => client.restore(),
     retry: false,
   });
-  function signIn(
-    mode: "login" | "signup",
-    values: Credentials,
-    onError?: (error: Error) => void,
-  ) {
+  function signIn(values: Credentials, onError?: (error: Error) => void) {
     if (submitting.current || login.isPending || credentials.current) return;
     submitting.current = true;
-    credentials.current = { mode, ...values };
+    credentials.current = values;
     login.mutate(undefined, { onError });
   }
   return { login, logout, restore, signIn };

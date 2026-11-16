@@ -25,9 +25,10 @@ import { AuthService, ACCESS_SECONDS } from "./auth.service.js";
 import { AccountDto } from "./dto/response/account.response.dto.js";
 import { SessionDto } from "./dto/response/session.response.dto.js";
 import { CredentialsDto } from "./dto/request/credentials.request.dto.js";
+import { SignupDto } from "./dto/request/signup.request.dto.js";
 import { CurrentUser } from "./decorators/current-user.decorator.js";
 import type { AuthUser } from "./types/auth-user.js";
-import { cookie, cookieNames } from "./utils/auth-cookies.js";
+import { cookie, cookieNames, signupCookieName } from "./utils/auth-cookies.js";
 import type { AuthRequest } from "./types/auth-request.js";
 import { AccessGuard } from "./guards/jwt-access.guard.js";
 import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
@@ -99,13 +100,17 @@ export class AuthController {
     description: "15분 동안 이메일 10회/IP 50회 제한",
   })
   async signup(
-    @Body() body: CredentialsDto,
+    @Body() body: SignupDto,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
     return this.send(
       response,
-      await this.auth.credentials(body, request.ip ?? "unknown", true),
+      await this.auth.signup(
+        body,
+        request.ip ?? "unknown",
+        cookie(request, signupCookieName(this.production)),
+      ),
     );
   }
   @Post("login")
@@ -120,7 +125,7 @@ export class AuthController {
   ) {
     return this.send(
       response,
-      await this.auth.credentials(body, request.ip ?? "unknown", false),
+      await this.auth.login(body, request.ip ?? "unknown"),
     );
   }
   @Get("me")

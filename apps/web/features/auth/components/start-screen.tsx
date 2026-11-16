@@ -9,7 +9,7 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
       <div className="mt-auto pt-16">
         <div className="flex flex-col gap-2">
           <Link
-            href={authEntryPath("/auth", returnTo, "signup")}
+            href={authEntryPath("/auth/signup", returnTo)}
             className={buttonStyles({ variant: "ink" })}
           >
             처음 가입해요

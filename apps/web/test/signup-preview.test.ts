@@ -1,4 +1,6 @@
 import "./support/dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { previewTerms } from "../features/auth/components/preview/preview-fixtures";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement, type ReactElement } from "react";
@@ -20,20 +22,25 @@ import {
 } from "../features/auth/schemas/password.schema";
 import { credentialsSchema } from "../features/auth/schemas/credentials.schema";
 import { ApiError } from "../shared/http/api-error";
+import { GettingStartedFlow } from "../features/onboarding/components/getting-started-flow";
 import AuthPreviewPage from "../app/dev/auth/page";
 
 async function render(element: ReactElement) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(element));
+  const client = new QueryClient();
+  const wrap = (child: ReactElement) =>
+    createElement(QueryClientProvider, { client }, child);
+  await act(async () => root.render(wrap(element)));
   return {
     container,
     update: async (next: ReactElement) => {
-      await act(async () => root.render(next));
+      await act(async () => root.render(wrap(next)));
     },
     unmount: async () => {
       await act(async () => root.unmount());
+      client.clear();
       container.remove();
     },
   };
@@ -89,6 +96,7 @@ function deferred<T>() {
 const noop = () => {};
 const data = {
   ...signupDefaults,
+  accountType: "organizer",
   serviceTerms: true,
   privacyCollection: true,
   privacyPolicy: true,
@@ -100,6 +108,12 @@ const data = {
   nickname: "총무",
 };
 async function information(container: HTMLElement) {
+  await act(async () =>
+    container
+      .querySelector<HTMLInputElement>('input[value="organizer"]')!
+      .click(),
+  );
+  await submit(container);
   for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
     await agree(container, name);
   await submit(container);
@@ -111,6 +125,7 @@ async function information(container: HTMLElement) {
     "passwordConfirm",
   ] as const)
     await fill(container, name, data[name]);
+  await click(container, "휴대폰 인증 요청");
 }
 
 test("password policy is exact ASCII 8–16 across login, signup and recovery", () => {
@@ -166,11 +181,27 @@ test("signup keeps values and consent across details/back, validates steps and s
   let calls = 0;
   const view = await render(
     createElement(SignupFlow, {
+      terms: previewTerms,
+      verification: {
+        phone: {
+          request: async (value) => ({
+            value,
+            status: "verified",
+            id: "00000000-0000-4000-8000-000000000001",
+            expiresAt: Date.now() + 300000,
+          }),
+        },
+      },
       onExit: noop,
       onComplete: noop,
       onSubmit: async (values) => {
         calls++;
-        assert.equal(values.marketing, false);
+        assert.equal(
+          values.consents.find((term) => term.id === "marketing")?.accepted,
+          false,
+        );
+        assert(values.phoneVerificationId);
+        assert.equal(values.accountType, "organizer");
         assert.equal(values.nickname, data.nickname);
         await done.promise;
       },
@@ -179,7 +210,7 @@ test("signup keeps values and consent across details/back, validates steps and s
   try {
     assert.equal(view.container.querySelectorAll("input:checked").length, 0);
     await submit(view.container);
-    assert.match(view.container.textContent!, /필수 약관에 동의/);
+    assert.match(view.container.textContent!, /이용 유형을 선택/);
     await information(view.container);
     await fill(view.container, "passwordConfirm", "different");
     await submit(view.container);
@@ -187,7 +218,7 @@ test("signup keeps values and consent across details/back, validates steps and s
     await fill(view.container, "passwordConfirm", data.passwordConfirm);
     await click(view.container, "이전 단계로 돌아가기");
     await click(view.container, "이용약관 동의 상세 보기");
-    assert.match(view.container.textContent!, /약관 본문 미확정/);
+    assert.match(view.container.textContent!, /개발 미리보기 약관/);
     await click(view.container, "이전 단계로 돌아가기");
     assert.equal(view.container.querySelectorAll("input:checked").length, 3);
     await submit(view.container);
@@ -211,9 +242,23 @@ test("signup keeps values and consent across details/back, validates steps and s
     await view.unmount();
   }
   const fresh = await render(
-    createElement(SignupFlow, { onExit: noop, onComplete: noop }),
+    createElement(SignupFlow, {
+      terms: previewTerms,
+      verification: {
+        phone: {
+          request: async (value) => ({
+            value,
+            status: "verified",
+            id: "00000000-0000-4000-8000-000000000001",
+            expiresAt: Date.now() + 300000,
+          }),
+        },
+      },
+      onExit: noop,
+      onComplete: noop,
+    }),
   );
-  assert.match(fresh.container.textContent!, /전체 동의/);
+  assert.match(fresh.container.textContent!, /총무야를 어떻게/);
   assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
   await fresh.unmount();
 });
@@ -222,6 +267,17 @@ test("final field failure returns to the input, focuses it and permits retry wit
   let calls = 0;
   const view = await render(
     createElement(SignupFlow, {
+      terms: previewTerms,
+      verification: {
+        phone: {
+          request: async (value) => ({
+            value,
+            status: "verified",
+            id: "00000000-0000-4000-8000-000000000001",
+            expiresAt: Date.now() + 300000,
+          }),
+        },
+      },
       onExit: noop,
       onComplete: noop,
       onSubmit: async () => {
@@ -406,5 +462,65 @@ test("production preview route refuses direct access", async () => {
   } finally {
     if (previous === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
     else Reflect.set(process.env, "NODE_ENV", previous);
+  }
+});
+
+test("post-signup choices preserve selection on back, allow skipping and route group/event setup independently", async () => {
+  for (const usage of ["group", "event"] as const) {
+    const paths: string[] = [];
+    const view = await render(
+      createElement(GettingStartedFlow, {
+        accountType: "organizer",
+        returnTo: "/mypage",
+        onNavigate: (path) => paths.push(path),
+      }),
+    );
+    try {
+      await act(async () =>
+        view.container
+          .querySelector<HTMLInputElement>(`input[value="${usage}"]`)!
+          .click(),
+      );
+      assert.deepEqual(paths, []);
+      await click(view.container, "계속하기");
+      assert.match(view.container.textContent!, /환영해요/);
+      assert.equal(document.activeElement?.tagName, "H1");
+      await click(view.container, "이전 단계로 돌아가기");
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          `input[value="${usage}"]`,
+        )!.checked,
+        true,
+      );
+      await click(view.container, "계속하기");
+      await click(
+        view.container,
+        usage === "group" ? "모임 등록하기" : "행사 등록하기",
+      );
+      assert.deepEqual(paths, [usage === "group" ? "/mypage" : "/events"]);
+      await click(view.container, "나중에 시작하기");
+      assert.equal(paths.at(-1), "/mypage");
+    } finally {
+      await view.unmount();
+    }
+  }
+  const paths: string[] = [];
+  const owner = await render(
+    createElement(GettingStartedFlow, {
+      accountType: "owner",
+      returnTo: "/events",
+      onNavigate: (path) => paths.push(path),
+    }),
+  );
+  try {
+    assert.match(owner.container.textContent!, /매장 상세 등록은 준비 중/);
+    assert.equal(
+      owner.container.querySelectorAll('input[name="usage"]').length,
+      0,
+    );
+    await click(owner.container, "나중에 시작하기");
+    assert.deepEqual(paths, ["/events"]);
+  } finally {
+    await owner.unmount();
   }
 });

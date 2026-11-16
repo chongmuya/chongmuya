@@ -1,3 +1,4 @@
+import { signupFixture } from "../support/signup-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -44,11 +45,13 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
   assert.deepEqual(
     db.entityMetadatas.map((metadata) => metadata.tableName).sort(),
     [
+      "account_consents",
       "accounts",
       "auth_attempts",
       "auth_sessions",
       "events",
       "groups",
+      "phone_verifications",
       "refresh_tokens",
     ],
     "nested entity discovery must register every table exactly once",
@@ -90,9 +93,15 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     (await post("signup", "", { ...credentials, password: "short" })).status,
     400,
   );
-  const signup = await post("signup", "", credentials, {
-    "X-Forwarded-For": "198.51.100.77",
-  });
+  const fixture = await signupFixture(db);
+  const signup = await post(
+    "signup",
+    fixture.jar,
+    { ...fixture.body, ...credentials },
+    {
+      "X-Forwarded-For": "198.51.100.77",
+    },
+  );
   assert.equal(signup.status, 201);
   assert.equal(
     await db
@@ -103,7 +112,16 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
   );
   const first = cookies(signup);
   const identity = await signup.json();
-  assert.deepEqual(Object.keys(identity.account).sort(), ["email", "id"]);
+  assert.deepEqual(Object.keys(identity.account).sort(), [
+    "accountType",
+    "email",
+    "emailVerifiedAt",
+    "id",
+    "name",
+    "nickname",
+    "phone",
+    "phoneVerifiedAt",
+  ]);
   assert.equal(identity.account.email, email);
   assert(
     signup.headers
@@ -121,7 +139,12 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     .findOneByOrFail({ id: identity.account.id });
   assert.notEqual(stored.passwordHash, credentials.password);
   assert.match(stored.passwordHash, /^scrypt-v1\$/);
-  assert.equal((await post("signup", "", credentials)).status, 409);
+  const duplicate = await signupFixture(db);
+  assert.equal(
+    (await post("signup", duplicate.jar, { ...duplicate.body, ...credentials }))
+      .status,
+    409,
+  );
   assert.equal(
     (
       await post("login", "", {
@@ -245,12 +268,23 @@ test("signup rolls back account, session and refresh token on either insert fail
   await db
     .getRepository(AuthAttempt)
     .delete({ key: tokenHash("ip:127.0.0.1") });
-  const post = (email: string) =>
-    fetch(`${url}/api/v1/auth/signup`, {
+  const fixtures = new Map<string, Awaited<ReturnType<typeof signupFixture>>>();
+  const post = async (email: string) => {
+    let fixture = fixtures.get(email);
+    if (!fixture) {
+      fixture = await signupFixture(db);
+      fixtures.set(email, fixture);
+    }
+    return fetch(`${url}/api/v1/auth/signup`, {
       method: "POST",
-      headers,
-      body: JSON.stringify({ email, password: "rollback-pass123" }),
+      headers: { ...headers, Cookie: fixture.jar },
+      body: JSON.stringify({
+        ...fixture.body,
+        email,
+        password: "rollback-pass123",
+      }),
     });
+  };
   for (const table of ["auth_sessions", "refresh_tokens"] as const) {
     const email = `${randomUUID()}@example.com`;
     const beforeSessions = await db.getRepository(AuthSession).count();
@@ -353,11 +387,16 @@ test("signing failure is a sanitized 500, rolls signup back, and allows retry", 
   const signing = t.mock.method(app.get(JwtService), "signAsync", async () => {
     throw new TypeError("private-signing-token-password");
   });
+  const fixture = await signupFixture(db);
   const signup = () =>
     fetch(`${url}/api/v1/auth/signup`, {
       method: "POST",
-      headers,
-      body: JSON.stringify({ email, password: "signing-pass123" }),
+      headers: { ...headers, Cookie: fixture.jar },
+      body: JSON.stringify({
+        ...fixture.body,
+        email,
+        password: "signing-pass123",
+      }),
     });
   const response = await signup();
   assert.equal(response.status, 500);
@@ -395,10 +434,12 @@ test("DB outage propagates through auth guards and refresh without invalidating 
   await db
     .getRepository(AuthAttempt)
     .delete({ key: tokenHash("ip:127.0.0.1") });
+  const fixture = await signupFixture(db);
   const signup = await fetch(`${url}/api/v1/auth/signup`, {
     method: "POST",
-    headers,
+    headers: { ...headers, Cookie: fixture.jar },
     body: JSON.stringify({
+      ...fixture.body,
       email: `${randomUUID()}@example.com`,
       password: "available-pass12",
     }),
