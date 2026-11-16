@@ -4,7 +4,7 @@
 
 ## 개발 환경
 
-Node.js **24.15.0**과 pnpm **11.25.0**을 사용합니다. 버전은 `.nvmrc`와 루트 `packageManager`에 고정합니다. PostgreSQL 실행에는 Docker Engine 또는 Docker Desktop이 필요합니다.
+Node.js **26 LTS (26.13.1)**와 pnpm **11.25.0**을 사용합니다. 로컬·CI의 Node 패치 버전은 `.nvmrc`, pnpm 버전은 루트 `packageManager`에 고정합니다. 루트와 각 앱의 `engines.node`는 `26.x`이며 엔진 검사를 유지합니다. PostgreSQL 실행에는 Docker Engine 또는 Docker Desktop이 필요합니다.
 
 - 웹: Next.js App Router, React, TanStack Query, React Hook Form + Zod, Tailwind CSS
 - API: NestJS, Passport JWT, TypeORM, PostgreSQL, 네이티브 ESM
@@ -15,6 +15,8 @@ Node.js **24.15.0**과 pnpm **11.25.0**을 사용합니다. 버전은 `.nvmrc`�
 저장소 루트에서 실행합니다. 기존 `.env`가 있다면 덮어쓰지 말고 필요한 값만 반영하세요.
 
 ```bash
+node --version # v26.13.1
+pnpm --version # 11.25.0
 pnpm install --frozen-lockfile
 cp apps/api/.env.example apps/api/.env
 pnpm db:up
@@ -100,6 +102,8 @@ Entity 변경 시 로컬 개발 DB에서 `pnpm --filter @chongmuya/api db:migrat
 
 ## 검증
 
+`.nvmrc`의 Node 버전을 활성화한 뒤 실행합니다. GitHub Actions도 `node-version-file: .nvmrc`로 같은 패치를 사용합니다.
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm format:check
@@ -112,6 +116,12 @@ TEST_DATABASE_URL=<격리된_PostgreSQL_URL> pnpm test:integration
 ```
 
 통합 테스트는 migration·가입·세션 회전·소유권·동시 연결·장애 복구를 실행하며 실제 테스트 데이터를 씁니다. 개발 중인 계정이나 운영 데이터가 있는 DB를 지정하지 않습니다. GitHub Actions도 임시 PostgreSQL 서비스에서 같은 검증을 수행합니다. DOM·HTTP 테스트와 실제 브라우저의 전체 클릭·모바일 시각 검수는 구분합니다.
+
+## 배포 환경의 Node 버전
+
+Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 **26.x**로 맞추고 변경된 커밋을 재배포합니다. `package.json`의 `engines.node`가 프로젝트 설정보다 우선하며, Vercel은 26.x의 마이너·패치 업데이트를 자동 적용하므로 `.nvmrc`의 정확한 패치로 고정되지는 않습니다. 빌드와 Functions의 실제 패치 버전도 다를 수 있습니다. 자세한 정책은 [Vercel Node.js 버전 문서](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions)를 참고하세요.
+
+별도 API 호스팅 환경도 Node 26.x와 pnpm 11.25.0을 사용하고, 정확한 패치를 지정하는 환경은 `.nvmrc`에 맞춥니다. 이 저장소에는 앱 Dockerfile이 없으며 `compose.yaml`은 로컬 PostgreSQL만 실행합니다.
 
 ## 문서
 
