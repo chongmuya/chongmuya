@@ -33,7 +33,7 @@ export async function startResourceApplication(t: TestContext) {
   const signup = async () => {
     const response = await call("auth/signup", "", "POST", {
       email: `${randomUUID()}@example.com`,
-      password: "group-events-password-123",
+      password: "group-events-123",
     });
     assert.equal(response.status, 201);
     return response.headers

@@ -364,7 +364,7 @@ test("auth form preserves login and failed-logout recovery without caching crede
     if (path.endsWith("login")) {
       assert.deepEqual(JSON.parse(String(options?.body)), {
         email: "user@example.com",
-        password: "test-password-123",
+        password: "test-pass-123",
       });
       authenticated = true;
       return Response.json({
@@ -391,7 +391,7 @@ test("auth form preserves login and failed-logout recovery without caching crede
     await submit(view.container);
     assert.match(view.container.textContent!, /이메일을 확인/);
     await fill(view.container, "email", "USER@example.com");
-    await fill(view.container, "password", "test-password-123");
+    await fill(view.container, "password", "test-pass-123");
     await submit(view.container);
     await until(() =>
       assert.match(view.container.textContent!, /계정으로 로그인했습니다/),
@@ -402,7 +402,7 @@ test("auth form preserves login and failed-logout recovery without caching crede
           .getMutationCache()
           .getAll()
           .map((m) => m.state),
-      ).includes("test-password-123"),
+      ).includes("test-pass-123"),
     );
     assert(
       view.navigations.includes(
@@ -833,13 +833,16 @@ test("branded login distinguishes credentials and connection errors, retries, bl
   try {
     await until(() => assert(view.container.querySelector("form")));
     await fill(view.container, "email", "user@example.com");
-    await fill(view.container, "password", "test-password-123");
+    await fill(view.container, "password", "test-pass-123");
     await submit(view.container);
     await until(() => assert.equal(attempts, 1));
-    assert.equal(
-      view.container.querySelector<HTMLButtonElement>('button[type="submit"]')!
-        .disabled,
-      true,
+    await until(() =>
+      assert.equal(
+        view.container.querySelector<HTMLButtonElement>(
+          'button[type="submit"]',
+        )!.disabled,
+        true,
+      ),
     );
     await submit(view.container);
     assert.equal(attempts, 1);
@@ -877,7 +880,7 @@ test("branded login distinguishes credentials and connection errors, retries, bl
           .getMutationCache()
           .getAll()
           .map((m) => m.state),
-      ).includes("test-password-123"),
+      ).includes("test-pass-123"),
     );
   } finally {
     await view.unmount();

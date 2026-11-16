@@ -67,7 +67,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
   const me = (jar: string) =>
     fetch(`${url}/api/v1/auth/me`, { headers: { Cookie: jar } });
   const email = `${randomUUID()}@example.com`;
-  const credentials = { email, password: "test-password-long-123" };
+  const credentials = { email, password: "test-password-12" };
   const anonymous = await post("session/restore");
   assert.deepEqual(await anonymous.json(), {
     authenticated: false,
@@ -126,7 +126,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     (
       await post("login", "", {
         ...credentials,
-        password: "wrong-password-long",
+        password: "wrong-pass-123",
       })
     ).status,
     401,
@@ -249,7 +249,7 @@ test("signup rolls back account, session and refresh token on either insert fail
     fetch(`${url}/api/v1/auth/signup`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ email, password: "rollback-test-password-123" }),
+      body: JSON.stringify({ email, password: "rollback-pass123" }),
     });
   for (const table of ["auth_sessions", "refresh_tokens"] as const) {
     const email = `${randomUUID()}@example.com`;
@@ -357,7 +357,7 @@ test("signing failure is a sanitized 500, rolls signup back, and allows retry", 
     fetch(`${url}/api/v1/auth/signup`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ email, password: "signing-test-password-123" }),
+      body: JSON.stringify({ email, password: "signing-pass123" }),
     });
   const response = await signup();
   assert.equal(response.status, 500);
@@ -377,7 +377,7 @@ test("signing failure is a sanitized 500, rolls signup back, and allows retry", 
   assert.equal(log?.failure?.category, "unexpected");
   assert.doesNotMatch(
     JSON.stringify({ logs, body }),
-    /private-|signing-test-password|postgresql:/,
+    /private-|signing-pass|postgresql:/,
   );
   signing.mock.restore();
   assert.equal((await signup()).status, 201);
@@ -400,7 +400,7 @@ test("DB outage propagates through auth guards and refresh without invalidating 
     headers,
     body: JSON.stringify({
       email: `${randomUUID()}@example.com`,
-      password: "availability-test-password-123",
+      password: "available-pass12",
     }),
   });
   assert.equal(signup.status, 201);

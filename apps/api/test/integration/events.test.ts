@@ -171,7 +171,7 @@ test("personal events work without groups and event ownership is enforced for ev
   assert.equal((await call("events", a)).status, 401);
   assert.doesNotMatch(
     JSON.stringify(logs),
-    /private-input|private-value|group-events-password/,
+    /private-input|private-value|group-events/,
   );
 });
 

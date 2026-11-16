@@ -1,0 +1,17 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="82.649" height="68.8633" viewBox="0 0 82.649 68.8633" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Group 207">
+<mask id="stroke0_0_6" fill="white">
+<path d="M48.0784 44.9544C44.7413 48.2915 36.6255 45.5863 29.9513 38.912C23.277 32.2378 20.5718 24.122 23.9089 20.7849C27.246 17.4478 35.3618 20.1531 42.036 26.8273C48.7102 33.5015 51.4155 41.6173 48.0784 44.9544Z"/>
+</mask>
+<path id="Ellipse 102" d="M48.0784 44.9544C44.7413 48.2915 36.6255 45.5863 29.9513 38.912C23.277 32.2378 20.5718 24.122 23.9089 20.7849C27.246 17.4478 35.3618 20.1531 42.036 26.8273C48.7102 33.5015 51.4155 41.6173 48.0784 44.9544Z" stroke-width="5.49335" stroke="white" mask="url(#stroke0_0_6)"/>
+<path id="Subtract" d="M13.0036 58.2166C11.5322 58.7674 10.0959 57.3311 10.6468 55.8598L22.4978 24.2319C22.2414 28.2298 25.0067 33.9666 29.9521 38.912C34.8974 43.8572 40.6337 46.6219 44.6315 46.3656L13.0036 58.2166Z" fill="white"/>
+<circle id="Ellipse 104" cx="44.557" cy="29.6213" r="4.57779" fill="white"/>
+<circle id="Ellipse 105" opacity="0.8" cx="30.2134" cy="11.6153" r="3.05186" fill="white"/>
+<circle id="Ellipse 107" cx="61.3423" cy="39.6925" r="2.44149" fill="white"/>
+<circle id="Ellipse 106" opacity="0.6" cx="33.8756" cy="29.3161" r="2.44149" fill="white"/>
+<circle id="Ellipse 108" opacity="0.6" cx="56.8887" cy="6.91335" r="4.09157" fill="white"/>
+<circle id="Ellipse 109" opacity="0.6" cx="77.0398" cy="19.5893" r="2.37464" fill="white"/>
+<path id="Vector 137" opacity="0.8" d="M52.8903 36.5214C52.9981 36.2359 54.7642 28.0953 60.906 29.1075C67.0477 30.1196 75.739 42.5313 81.2753 24.3967" stroke-width="2.74667" stroke-linecap="round" stroke="white"/>
+<path id="Vector 138" d="M41.2419 20.9205C48.7929 16.1426 32.0088 5.9863 43.9713 1.37371" stroke-width="2.74667" stroke-linecap="round" stroke="white"/>
+</g>
+</svg>

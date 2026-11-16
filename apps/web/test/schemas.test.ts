@@ -8,6 +8,24 @@ import {
 import { credentialsSchema } from "../features/auth/schemas/credentials.schema";
 import { cn } from "../shared/lib/cn";
 
+test("cn preserves custom font sizes alongside colors and resolves size overrides", () => {
+  for (const size of ["text-control", "text-caption", "text-label"]) {
+    for (const color of ["text-white", "text-foreground"]) {
+      assert.equal(cn(size, color), `${size} ${color}`);
+      assert.equal(cn(color, size), `${color} ${size}`);
+    }
+    assert.equal(
+      cn("text-sm text-danger", size, "text-accent"),
+      `${size} text-accent`,
+    );
+    assert.equal(
+      cn(size, "text-foreground text-sm"),
+      "text-foreground text-sm",
+    );
+  }
+  assert.equal(cn("text-label text-control text-caption"), "text-caption");
+});
+
 test("form schemas preserve name, optional schedule and credential constraints", () => {
   assert.equal(groupSchema.safeParse({ name: "  " }).success, false);
   assert.equal(groupSchema.safeParse({ name: "x".repeat(101) }).success, false);
@@ -40,9 +58,9 @@ test("form schemas preserve name, optional schedule and credential constraints",
   assert.equal(
     credentialsSchema.parse({
       email: " A@example.com ",
-      password: " 0123456789 ",
+      password: "!0123456789~",
     }).password,
-    " 0123456789 ",
+    "!0123456789~",
   );
   assert.equal(
     cn("px-4 bg-primary", false && "hidden", "px-2"),
