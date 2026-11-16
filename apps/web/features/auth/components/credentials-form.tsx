@@ -90,7 +90,7 @@ export function CredentialsForm({
       </FormField>
       <FormField
         id={`${id}-password`}
-        label={branded ? "비밀번호" : "비밀번호 (12~128자)"}
+        label={branded ? "비밀번호" : "비밀번호 (8~16자)"}
         error={errors.password?.message}
         className={
           branded
@@ -113,8 +113,7 @@ export function CredentialsForm({
             variant={branded ? "pill" : "default"}
             {...register("password")}
             required
-            minLength={12}
-            maxLength={128}
+            minLength={8}
             disabled={pending}
           />
         )}

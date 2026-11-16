@@ -22,6 +22,7 @@
   --radius-pill: 3.125rem;
   --spacing-control: 2.75rem;
   --spacing-input: 2.875rem;
+  --shadow-control: 0 1px 2px 0 rgb(0 0 0 / 0.15);
   --text-label: 1.25rem;
   --text-label--line-height: 1.2;
   --text-label--font-weight: 600;

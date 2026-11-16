@@ -111,7 +111,7 @@ mutation은 자동 재시도하지 않는다. 모임 저장 성공 시 진행 �
 
 ### 폼과 공용 UI
 
-폼은 React Hook Form + Zod resolver로 관리하고 제출된 유효 값만 mutation에 보낸다. 모임·행사명은 공백 제거 후 1~100자, 인증은 기존 이메일·12~128자 비밀번호 계약을 유지한다. 비밀번호를 trim하거나 Query mutation 변수에 저장하지 않는다. 일정은 선택 입력이며 유효한 한국 시각을 UTC ISO 문자열로 변환한다. 서버 DTO와 권한 검증은 최종 검증으로 유지한다.
+폼은 React Hook Form + Zod resolver로 관리하고 제출된 유효 값만 mutation에 보낸다. 모임·행사명은 공백 제거 후 1~100자, 인증은 이메일과 공백 없는 ASCII 영문·숫자·특수문자 8~16자 비밀번호를 검증한다. 문자 종류별 필수 조합은 없다. 비밀번호를 trim하거나 Query mutation 변수에 저장하지 않는다. 일정은 선택 입력이며 유효한 한국 시각을 UTC ISO 문자열로 변환한다. 서버 DTO와 권한 검증은 최종 검증으로 유지한다.
 
 서버 상태는 Query, 폼 입력·오류는 RHF, 로그인/가입 탭은 useState다. 공용 UI에는 도메인 타입이나 API 호출을 넣지 않는다. fieldErrors는 허용한 서버 필드를 폼 필드에 매핑해 setError로 표시한다. 예를 들어 scheduledAt은 date 입력에 연결한다. 알 수 없는 필드·업무 오류는 root.server에 표시하고 입력을 보존한다. Button은 기본 `type="button"`이며 제출 버튼만 submit을 명시한다. Input은 ref와 표준 속성을 그대로 전달하고 오류 텍스트는 label·aria-invalid·aria-describedby와 연결한다. 로딩·오류 메시지는 status/alert로 전달한다.
 

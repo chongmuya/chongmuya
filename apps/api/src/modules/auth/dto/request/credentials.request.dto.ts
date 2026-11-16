@@ -1,6 +1,12 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsEmail, IsString, MaxLength, MinLength } from "class-validator";
+import {
+  IsEmail,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 
 export class CredentialsDto {
   @ApiProperty({ example: "user@example.com", maxLength: 254 })
@@ -12,13 +18,15 @@ export class CredentialsDto {
   email!: string;
 
   @ApiProperty({
-    minLength: 12,
-    maxLength: 128,
+    minLength: 8,
+    maxLength: 16,
+    pattern: "^[\\x21-\\x7e]+$",
     format: "password",
     writeOnly: true,
   })
   @IsString()
-  @MinLength(12)
-  @MaxLength(128)
+  @MinLength(8)
+  @MaxLength(16)
+  @Matches(/^[\x21-\x7e]+$/)
   password!: string;
 }

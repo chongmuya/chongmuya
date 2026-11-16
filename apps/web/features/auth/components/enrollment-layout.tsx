@@ -1,0 +1,60 @@
+import Image from "next/image";
+import type { ReactNode } from "react";
+import { IconButton } from "@/shared/ui/icon-button";
+
+export function EnrollmentLayout({
+  title,
+  onBack,
+  busy,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  busy?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-[17px] pt-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))] pb-[max(40px,env(safe-area-inset-bottom))]">
+      <header className="relative mb-[18px] flex min-h-control shrink-0 items-center justify-center">
+        <IconButton
+          onClick={onBack}
+          disabled={busy}
+          aria-label="이전 단계로 돌아가기"
+          className="absolute -left-2"
+        >
+          <Image
+            src="/images/auth/back.svg"
+            alt=""
+            width={10}
+            height={18}
+            style={{ width: "10.4142px", height: "auto" }}
+          />
+        </IconButton>
+        <p className="px-12 text-center text-label">{title}</p>
+      </header>
+      {children}
+    </main>
+  );
+}
+
+export function EnrollmentHeading({
+  title,
+  description,
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="mb-12">
+      <h1
+        tabIndex={-1}
+        className="focus:outline-none text-2xl leading-[1.2] font-bold wrap-break-word"
+      >
+        {title}
+      </h1>
+      {description && (
+        <p className="mt-1 text-xs leading-normal text-muted">{description}</p>
+      )}
+    </div>
+  );
+}

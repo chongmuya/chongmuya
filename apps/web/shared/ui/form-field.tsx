@@ -11,6 +11,7 @@ export function FormField({
   className,
   labelClassName,
   errorClassName,
+  required,
 }: {
   id: string;
   label: string;
@@ -19,6 +20,7 @@ export function FormField({
   className?: string;
   labelClassName?: string;
   errorClassName?: string;
+  required?: boolean;
   children: (attributes: {
     id: string;
     "aria-invalid": boolean;
@@ -32,6 +34,11 @@ export function FormField({
     <div className={cn("flex flex-col gap-1.5", className)}>
       <label htmlFor={id} className={labelClassName}>
         {label}
+        {required && (
+          <span aria-hidden="true" className="text-brand">
+            *
+          </span>
+        )}
       </label>
       {children({
         id,
