@@ -28,7 +28,7 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 
 시작 화면의 ‘처음 가입해요’는 `/auth/signup`으로 이동한다. `/auth?mode=signup`도 safeReturnPath로 정리한 next를 유지한다. 약관 동의 → 가입 정보와 이메일·휴대폰 인증 → 계정·세션 생성 → 가입 완료 순서다. 완료 화면의 다음 버튼은 `/getting-started?next=...`로 이동한다.
 
-가입과 첫 설정은 별개다. 신규 계정의 accountType/nickname은 null이며, 로그인된 본인의 `PATCH /first-setup`으로 이용 유형을 저장한다. 총무(organizer)는 닉네임 입력까지, 사장님(owner)은 유형 선택까지 첫 설정이다. 사장님에게 닉네임을 만들지 않으며 표시에 이름을 사용할 수 있다. 기존 닉네임은 보존한다. 확정된 유형 변경과 기존 닉네임 변경은 이 API에서 허용하지 않는다. 이용 유형은 매장 접근 권한이나 모임·행사 소유권을 부여하지 않는다.
+가입과 첫 설정은 별개다. 신규 계정의 accountType/nickname은 null이며, 로그인된 본인의 `PATCH /first-setup`으로 이용 유형을 저장한다. 유형 선택 뒤 확인창에서 변경 불가 안내를 확인해야 저장한다. 닫기·Escape는 선택을 보존하고 요청 없이 취소하며, 저장 중에는 중복 확인과 닫기를 막는다. 총무(organizer)는 닉네임 입력까지, 사장님(owner)은 유형 선택까지 첫 설정이다. 사장님에게 닉네임을 만들지 않으며 표시에 이름을 사용할 수 있다. 기존 닉네임은 보존한다. 확정된 유형 변경과 기존 닉네임 변경은 이 API에서 허용하지 않는다. 이용 유형은 매장 접근 권한이나 모임·행사 소유권을 부여하지 않는다.
 
 첫 설정 완료 여부는 accountType과 nickname으로 판단한다. 중단한 사용자는 다시 로그인할 때 누락된 단계로 이어지고, 설정한 사용자는 원래 next로 돌아간다. 공개 홈은 그대로 접근할 수 있고 개인 업무 진입점에서 필요한 설정을 안내한다. 로그인 실패로 처리하거나 모든 공개 페이지를 막지 않는다. `/getting-started`의 next는 안전한 내부 경로만 보존하고 중첩 설정 경로는 제거한다.
 
@@ -94,6 +94,7 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 - `SESSION_INVALID`: 사용자 캐시 취소·삭제와 세션 종료. 네트워크/타임아웃/5xx는 로그인 정보를 보존하고 재시도 UI를 제공한다. 403은 권한 실패이며 갱신하지 않는다.
 - 로그아웃: generation을 올리고 사용자 캐시를 즉시 정리하며 진행 중 복원/갱신/가입·로그인을 기다린 뒤 서버 폐기 요청을 보낸다. 오래된 요청은 결과를 적용하지 못한다. 실패하면 `logout-failed` 상태로 남아 **로그아웃 다시 시도**만 제공하고 자동 복원을 막는다. 동작하지 않는 연결 재확인 버튼은 표시하지 않는다. 일반 복원 통신 장애는 `unavailable` 상태에서 **연결 재확인**으로 세션 복원을 다시 요청한다. `logging-out`은 진행 표시만 제공한다.
 - `user`로 시작하는 Query key는 사용자 전용이다. 해당 Query를 취소·삭제하고 mutation cache도 정리한다. health 같은 공개 Query는 유지한다. 로그인·로그아웃은 BroadcastChannel로 다른 탭의 재확인을 요청한다.
+- 첫 설정 저장 성공은 프로필 revision을 증가시킨다. restore/me/refresh는 조회 시작 시의 revision과 비교해 같은 계정의 오래된 프로필로 저장 결과를 덮지 않는다. 로그인·로그아웃·계정 전환의 generation과 토큰 갱신 revision은 별도로 유지하므로 다른 계정·세션 폐기는 반영하고 정상 요청 재시도도 보존한다.
 - 인증 상태는 Query cache와 분리하고 Provider 인스턴스에 둔다. 서버 프로세스 전역에 사용자 상태를 두지 않는다. 폼은 React Hook Form과 Zod, 공용 입력·오류 UI를 사용한다.
 
 ## API
@@ -122,7 +123,7 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 
 ## 실행과 검증
 
-`apps/api/.env.example`의 AUTH_SECRET/WEB_ORIGIN/OCTOMO_API_KEY와 RESEND_API_KEY/RESEND_FROM/EMAIL_VERIFICATION_SECRET을 로컬 `.env`에 설정한다. Resend 세 변수는 함께 설정하며 발신 주소는 검증된 도메인의 주소 또는 `총무야 <account@auth.example.com>` 형식이다. 전용 EMAIL_VERIFICATION_SECRET은 AUTH_SECRET과 별도로 `openssl rand -hex 32`로 생성하고 서버 인스턴스들이 같은 값을 사용한다. 서버에서만 읽고 NEXT_PUBLIC로 노출하지 않는다. 세 변수가 모두 없으면 기존 로그인은 가능하지만 이메일 인증 발급은 503으로 실패한다. 일부만 설정하거나 잘못된 발신 주소·짧은 비밀키를 넣으면 API 시작을 거부한다. 키는 값이 있으면 공백 없는 비어 있지 않은 문자열인지 Zod로 검증하며 오류에 원문을 넣지 않는다. 키가 없으면 로그인은 동작하지만 휴대폰 인증 발급은 503으로 실패한다. 약관 외부 URL 설정은 선택이다. 환경변수 변경 후 API를 재시작한다. 기존 DB에는 자동으로 테이블을 만들지 않는다. `1794873600000-EmailVerification`은 이메일 인증 테이블만 추가한다. 기존 계정·모임·행사·세션·미인증 시각을 변경하지 않는다. API 빌드 후 **대상 DB를 확인하고** `pnpm --filter @chongmuya/api db:migration:run`을 명시적으로 실행한다. install/build/start에서는 마이그레이션을 적용하지 않는다.
+`apps/api/.env.example`의 AUTH_SECRET/WEB_ORIGIN/OCTOMO_API_KEY와 RESEND_API_KEY/RESEND_FROM/EMAIL_VERIFICATION_SECRET을 로컬 `.env`에 설정한다. Resend 세 변수는 함께 설정하며 발신 주소는 검증된 도메인의 주소 또는 `총무야 <account@auth.example.com>` 형식이다. 답장 주소는 RESEND_REPLY_TO로 설정하며 생략 시 support@chongmuya.com을 사용한다. Zod로 이메일 형식을 검증하고 ConfigService를 통해 SDK replyTo에 전달한다. RESEND_FROM 발신 주소는 바뀌지 않는다. 전용 EMAIL_VERIFICATION_SECRET은 AUTH_SECRET과 별도로 `openssl rand -hex 32`로 생성하고 서버 인스턴스들이 같은 값을 사용한다. 서버에서만 읽고 NEXT_PUBLIC로 노출하지 않는다. 세 변수가 모두 없으면 기존 로그인은 가능하지만 이메일 인증 발급은 503으로 실패한다. 일부만 설정하거나 잘못된 발신 주소·짧은 비밀키를 넣으면 API 시작을 거부한다. 키는 값이 있으면 공백 없는 비어 있지 않은 문자열인지 Zod로 검증하며 오류에 원문을 넣지 않는다. 키가 없으면 로그인은 동작하지만 휴대폰 인증 발급은 503으로 실패한다. 약관 외부 URL 설정은 선택이다. 환경변수 변경 후 API를 재시작한다. 기존 DB에는 자동으로 테이블을 만들지 않는다. `1794873600000-EmailVerification`은 이메일 인증 테이블만 추가한다. 기존 계정·모임·행사·세션·미인증 시각을 변경하지 않는다. API 빌드 후 **대상 DB를 확인하고** `pnpm --filter @chongmuya/api db:migration:run`을 명시적으로 실행한다. install/build/start에서는 마이그레이션을 적용하지 않는다.
 
 필수 검사: `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test`. 격리된 테스트 DB를 지정해 `TEST_DATABASE_URL=... pnpm test:integration`을 실행한다. 업무 통합 테스트가 명시적으로 마이그레이션을 적용하며 임의 이메일 계정을 생성한다. 운영 DB를 지정하지 않는다.
 

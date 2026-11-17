@@ -16,6 +16,8 @@ export class SessionClient {
   private authenticating?: Promise<Session>;
   private generation = 0;
   private revision = 0;
+  // Same-account profile writes do not rotate credentials or invalidate requests.
+  private profileRevision = 0;
   private ending = false;
   constructor(
     private readonly clearUserCache: () => void,
@@ -33,14 +35,20 @@ export class SessionClient {
     this.state = state;
     this.listeners.forEach((listener) => listener());
   }
-  private apply(session: Session) {
+  private apply(session: Session, readProfileRevision = this.profileRevision) {
+    const account =
+      session.authenticated &&
+      session.account?.id === this.state.account?.id &&
+      readProfileRevision !== this.profileRevision
+        ? this.state.account
+        : session.account;
     if (this.state.account?.id !== session.account?.id && this.state.account) {
       this.generation++;
       this.clearUserCache();
     }
     this.set({
       status: session.authenticated ? "authenticated" : "anonymous",
-      account: session.account,
+      account,
     });
   }
   private invalid() {
@@ -55,11 +63,13 @@ export class SessionClient {
       this.restoring = this.lock(async () => {
         if (generation !== this.generation) return;
         try {
+          const profileRevision = this.profileRevision;
           const session = await this.transport<Session>(
             "/api/v1/auth/session/restore",
             { method: "POST" },
           );
-          if (generation === this.generation) this.apply(session);
+          if (generation === this.generation)
+            this.apply(session, profileRevision);
         } catch (error) {
           if (generation === this.generation)
             this.set({ status: "unavailable", account: this.state.account });
@@ -79,6 +89,7 @@ export class SessionClient {
           throw new ApiError("세션이 종료되었습니다.", 401, "SESSION_INVALID");
         // Another tab may have refreshed while this tab waited for the Web Lock.
         let session: Session;
+        let profileRevision = this.profileRevision;
         try {
           const account = await this.transport<Account>("/api/v1/auth/me");
           session = { authenticated: true, account };
@@ -92,6 +103,7 @@ export class SessionClient {
               401,
               "SESSION_INVALID",
             );
+          profileRevision = this.profileRevision;
           session = await this.transport<Session>("/api/v1/auth/refresh", {
             method: "POST",
           });
@@ -100,7 +112,7 @@ export class SessionClient {
           throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");
         // Apply identity before allowing retries. A different account advances
         // generation and clears user data, so every old request stops below.
-        this.apply(session);
+        this.apply(session, profileRevision);
         this.revision++;
       }).finally(() => {
         this.refreshing = undefined;
@@ -172,6 +184,7 @@ export class SessionClient {
       throw new ApiError("", 401, "SESSION_INVALID");
     if (account.id !== accountId)
       throw new ApiError("", 200, "INVALID_RESPONSE");
+    this.profileRevision++;
     this.apply({ authenticated: true, account });
     return account;
   }

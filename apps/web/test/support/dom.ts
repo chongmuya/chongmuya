@@ -21,3 +21,19 @@ Object.defineProperty(globalThis, "self", {
   configurable: true,
   value: dom.window,
 });
+
+// JSDOM lacks the dialog lifecycle. Native modal inertness/Tab behavior needs a browser.
+Object.defineProperties(dom.window.HTMLDialogElement.prototype, {
+  showModal: {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    },
+  },
+  close: {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.removeAttribute("open");
+    },
+  },
+});

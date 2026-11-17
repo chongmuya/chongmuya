@@ -34,6 +34,7 @@ const environmentSchema = z
         return !!match && z.email().safeParse(match[1]).success;
       })
       .optional(),
+    RESEND_REPLY_TO: z.email().default("support@chongmuya.com"),
     EMAIL_VERIFICATION_SECRET: z.string().min(32).optional(),
     RESEND_DEBUG: z.enum(["false"]).optional(),
     OCTOMO_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
@@ -113,6 +114,7 @@ const environmentSchema = z
   .transform((env) => ({
     resendApiKey: env.RESEND_API_KEY,
     resendFrom: env.RESEND_FROM,
+    resendReplyTo: env.RESEND_REPLY_TO,
     emailVerificationSecret: env.EMAIL_VERIFICATION_SECRET,
     authSecret: env.AUTH_SECRET,
     octomoApiKey: env.OCTOMO_API_KEY,

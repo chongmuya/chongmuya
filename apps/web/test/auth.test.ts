@@ -446,3 +446,113 @@ test("simultaneous email and phone preparation shares one signup requester initi
   release();
   await Promise.all([email, phone]);
 });
+
+for (const lookup of ["restore", "me", "refresh"] as const) {
+  test(`first setup wins over an older same-account ${lookup} response without invalidating requests`, async () => {
+    let bootstrapped = false;
+    let release!: (value: unknown) => void;
+    let started!: () => void;
+    const began = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let reads = 0;
+    let clears = 0;
+    const updated = {
+      ...session.account!,
+      accountType: "organizer" as const,
+      nickname: "새 닉네임",
+    };
+    const client = new SessionClient(
+      () => {
+        clears++;
+      },
+      transport(async (path) => {
+        if (path.endsWith("/first-setup")) return updated;
+        if (path.endsWith("/restore") && !bootstrapped) {
+          bootstrapped = true;
+          return session;
+        }
+        if (path.endsWith("/events")) {
+          if (++reads === 1) throw expired();
+          return "events";
+        }
+        if (lookup === "refresh" && path.endsWith("/me")) throw expired();
+        assert(path.endsWith(`/${lookup}`));
+        started();
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      }),
+    );
+    await client.restore();
+    const oldRead =
+      lookup === "restore"
+        ? client.restore()
+        : client.request("/api/v1/events");
+    await began;
+    await client.saveFirstSetup(
+      { accountType: "organizer", nickname: updated.nickname },
+      new AbortController().signal,
+    );
+    assert.deepEqual(client.getSnapshot().account, updated);
+    release(lookup === "me" ? session.account : session);
+    assert.equal(await oldRead, lookup === "restore" ? undefined : "events");
+    assert.deepEqual(client.getSnapshot(), {
+      status: "authenticated",
+      account: updated,
+    });
+    assert.equal(clears, 0);
+    if (lookup !== "restore")
+      assert.equal(reads, 2, "normal refresh still retries once");
+  });
+}
+
+test("profile saves do not hide session revocation, another account or newer profile reads", async () => {
+  for (const result of ["anonymous", "other", "fresh"] as const) {
+    let bootstrapped = false;
+    let release!: (value: unknown) => void;
+    let clears = 0;
+    const updated = { ...session.account!, accountType: "owner" as const };
+    const client = new SessionClient(
+      () => {
+        clears++;
+      },
+      transport(async (path) => {
+        if (path.endsWith("first-setup")) return updated;
+        if (!bootstrapped) {
+          bootstrapped = true;
+          return session;
+        }
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      }),
+    );
+    await client.restore();
+    const oldRead = result !== "fresh" ? client.restore() : undefined;
+    await client.saveFirstSetup(
+      { accountType: "owner" },
+      new AbortController().signal,
+    );
+    const read = oldRead ?? client.restore();
+    const next: Session =
+      result === "anonymous"
+        ? { authenticated: false, account: null }
+        : {
+            authenticated: true,
+            account: {
+              ...updated,
+              id: result === "other" ? "b" : updated.id,
+              name: "최신 이름",
+            },
+          };
+    release(next);
+    await read;
+    assert.deepEqual(client.getSnapshot().account, next.account);
+    assert.equal(
+      client.getSnapshot().status,
+      next.authenticated ? "authenticated" : "anonymous",
+    );
+    assert.equal(clears, result === "fresh" ? 0 : 1);
+  }
+});

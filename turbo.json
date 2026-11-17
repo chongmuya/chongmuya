@@ -44,6 +44,7 @@
         "SIGNUP_TERMS_JSON",
         "RESEND_API_KEY",
         "RESEND_FROM",
+        "RESEND_REPLY_TO",
         "EMAIL_VERIFICATION_SECRET"
       ]
     }

@@ -1259,6 +1259,14 @@ test("first setup resumes the missing step, updates session and preserves next w
               .click(),
           );
           await submit(view.container);
+          await until(() =>
+            assert(view.container.querySelector("dialog[open]")),
+          );
+          assert.equal(writes.length, 0);
+          await click(
+            view.container,
+            value === "owner" ? "사장님으로 계속하기" : "총무로 계속하기",
+          );
           await until(() => assert.equal(writes.length, 1));
         }
         if (scenario === "owner") {
@@ -1293,6 +1301,134 @@ test("first setup resumes the missing step, updates session and preserves next w
       }
     }
   } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("role confirmation cancels without saving, restores focus and prevents duplicate or cancelled pending writes", async () => {
+  const original = globalThis.fetch;
+  const pending = deferred<Response>();
+  let writes = 0;
+  const account = {
+    id: "confirm-user",
+    email: "confirm@example.test",
+    name: "사장님 이름",
+    accountType: null,
+    nickname: null,
+  };
+  globalThis.fetch = async (path, options) => {
+    if (String(path).endsWith("restore"))
+      return Response.json({ authenticated: true, account });
+    assert(String(path).endsWith("first-setup"));
+    assert.deepEqual(JSON.parse(String(options?.body)), {
+      accountType: "owner",
+    });
+    writes++;
+    return writes === 1
+      ? pending.promise
+      : Response.json({ ...account, accountType: "owner" });
+  };
+  const view = await render(
+    createElement(AuthProvider, null, createElement(GettingStartedScreen)),
+    client(),
+    "/mypage",
+  );
+  try {
+    await until(() =>
+      assert(view.container.querySelector('input[value="organizer"]')),
+    );
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[value="organizer"]')!
+        .click(),
+    );
+    const trigger = view.container.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+    for (const cancel of ["button", "escape"]) {
+      trigger.focus();
+      await submit(view.container);
+      const dialog = view.container.querySelector("dialog[open]")!;
+      assert(dialog);
+      assert.match(dialog.textContent!, /총무로 계속하시겠어요/);
+      assert.match(dialog.textContent!, /사용자 유형은 이후 변경할 수 없어요/);
+      assert.equal(document.activeElement?.textContent, "닫기");
+      assert.equal(document.body.style.overflow, "hidden");
+      assert(dialog.getAttribute("aria-labelledby"));
+      assert(dialog.getAttribute("aria-describedby"));
+      if (cancel === "button") await click(view.container, "닫기");
+      else
+        await act(async () => {
+          dialog.dispatchEvent(
+            new window.Event("cancel", { cancelable: true }),
+          );
+        });
+      assert.equal(view.container.querySelector("dialog"), null);
+      assert.equal(document.activeElement, trigger);
+      assert.equal(document.body.style.overflow, "");
+      assert.equal(writes, 0);
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          'input[value="organizer"]',
+        )!.checked,
+        true,
+      );
+    }
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[value="owner"]')!
+        .click(),
+    );
+    trigger.focus();
+    await submit(view.container);
+    const dialog = view.container.querySelector("dialog")!;
+    assert.match(dialog.textContent!, /사장님으로 계속하시겠어요/);
+    const confirm = [...dialog.querySelectorAll("button")].find(
+      (button) => button.textContent === "사장님으로 계속하기",
+    )!;
+    await act(async () => {
+      confirm.click();
+      confirm.click();
+    });
+    await until(() => {
+      assert.equal(writes, 1);
+      assert(
+        [...dialog.querySelectorAll("button")].every(
+          (button) => button.disabled,
+        ),
+      );
+    });
+    await act(async () => {
+      dialog.dispatchEvent(new window.Event("cancel", { cancelable: true }));
+    });
+    assert(view.container.querySelector("dialog[open]"));
+    await act(async () =>
+      pending.resolve(
+        Response.json(
+          {
+            statusCode: 503,
+            code: "SERVICE_UNAVAILABLE",
+            message: "PRIVATE PROVIDER DETAIL",
+            requestId: "00000000-0000-4000-8000-000000000001",
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    await until(() => assert.equal(confirm.disabled, false));
+    assert(view.container.querySelector("dialog[open]"));
+    assert(dialog.querySelector('[role="alert"]'));
+    assert.doesNotMatch(dialog.textContent!, /PRIVATE/);
+    await click(view.container, "사장님으로 계속하기");
+    await until(() =>
+      assert.match(view.container.textContent!, /사장님 설정을 마쳤어요/),
+    );
+    assert.equal(writes, 2);
+    assert.equal(view.container.querySelector("dialog"), null);
+    assert.equal(document.body.style.overflow, "");
+  } finally {
+    await act(async () => pending.resolve(new Response(null, { status: 503 })));
+    await view.unmount();
     globalThis.fetch = original;
   }
 });
