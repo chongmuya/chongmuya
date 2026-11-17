@@ -4,6 +4,7 @@ import { requestJson } from "../shared/http/request";
 import { ApiError } from "../shared/http/api-error";
 import { parseApiError } from "../shared/http/error-contract";
 import { safeReturnPath } from "../features/auth/lib/return-path";
+import { apiOrigin } from "../shared/http/api-origin";
 
 const requestId = "00000000-0000-4000-8000-000000000001";
 const validation = {
@@ -63,6 +64,7 @@ test("requestJson preserves methods, CSRF, 204, cancellation and safe malformed 
     globalThis,
     "fetch",
     async (_input: unknown, options: RequestInit) => {
+      assert.equal(String(_input), `${apiOrigin()}/api/v1/events`);
       calls.push(options);
       return new Response(null, { status: 204 });
     },
@@ -75,7 +77,7 @@ test("requestJson preserves methods, CSRF, 204, cancellation and safe malformed 
     const call = calls.at(-1)!;
     assert.equal(call.method, method);
     assert.equal(new Headers(call.headers).get("X-CSRF-Protection"), "1");
-    assert.equal(call.credentials, "same-origin");
+    assert.equal(call.credentials, "include");
   }
   for (const [status, content, code] of [
     [400, JSON.stringify(validation), "VALIDATION_FAILED"],

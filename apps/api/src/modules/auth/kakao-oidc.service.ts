@@ -60,6 +60,13 @@ export class KakaoOidcService {
     if (error instanceof DomainHttpException) return error;
     if (
       error instanceof oidc.ResponseBodyError &&
+      ["invalid_scope", "invalid_client", "unauthorized_client"].includes(
+        error.error,
+      )
+    )
+      return new DomainHttpException("KAKAO_CONFIGURATION");
+    if (
+      error instanceof oidc.ResponseBodyError &&
       (error.status >= 500 ||
         error.status === 429 ||
         ["server_error", "temporarily_unavailable"].includes(error.error))

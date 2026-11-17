@@ -263,6 +263,9 @@ test("signup keeps values and consent across details/back, validates steps and s
           }),
         },
       },
+      onSubmit: async () => {
+        assert.fail("fresh form must not submit");
+      },
       onExit: noop,
       onComplete: noop,
     }),
@@ -455,6 +458,9 @@ test("recovery request/reset handles loading, retry, matching passwords and unav
     const view = await render(
       createElement(RecoveryPassword, {
         linkState,
+        onSubmit: async () => {
+          assert.fail("invalid links must not submit");
+        },
         onBack: noop,
         onRetry: noop,
       }),

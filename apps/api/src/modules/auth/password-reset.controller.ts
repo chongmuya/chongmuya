@@ -13,7 +13,7 @@ export class PasswordResetController {
   @HttpCode(202)
   @Header("Cache-Control", "no-store")
   request(@Body() input: RequestPasswordResetDto, @Req() request: Request) {
-    return this.reset.request(input.email, request.ip ?? "unknown");
+    return this.reset.request(input.email, request.ip ?? "unknown", input.next);
   }
   @Post("check")
   @HttpCode(200)

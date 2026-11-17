@@ -1,3 +1,4 @@
+import { safeReturnPath } from "./utils/return-path.js";
 import { HttpException, Injectable } from "@nestjs/common";
 import { randomBytes, randomInt } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
@@ -39,7 +40,7 @@ export class PasswordResetService {
   private invalid() {
     return new DomainHttpException("PASSWORD_RESET_INVALID");
   }
-  async request(email: string, ip: string) {
+  async request(email: string, ip: string, next?: string) {
     const started = performance.now();
     try {
       const db = await this.database.connect();
@@ -96,7 +97,12 @@ export class PasswordResetService {
       // Provider latency never controls this public response. No transaction/lock spans delivery.
       // Best effort in-process delivery: a process exit may lose an unsent email, never grant access.
       if (record)
-        void this.deliver(email, token, record.hash).catch(() => undefined);
+        void this.deliver(
+          email,
+          token,
+          record.hash,
+          safeReturnPath(next),
+        ).catch(() => undefined);
       return accepted;
     } finally {
       await delay(
@@ -109,12 +115,18 @@ export class PasswordResetService {
       );
     }
   }
-  private async deliver(email: string, token: string, hash: string) {
+  private async deliver(
+    email: string,
+    token: string,
+    hash: string,
+    next: string,
+  ) {
     const url = new URL(
       "/auth/reset-password",
       this.config.environment.webOrigin,
     );
     // Fragments never reach HTTP request/access logs or Referer headers.
+    url.searchParams.set("next", next);
     url.hash = new URLSearchParams({ token }).toString();
     let delivery: "sent" | "failed" = "sent";
     try {

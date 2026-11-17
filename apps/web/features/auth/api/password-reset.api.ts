@@ -5,11 +5,12 @@ export async function requestPasswordReset(
   request: SessionRequest,
   email: string,
   signal: AbortSignal,
+  next?: string,
 ) {
   const result = z.object({ accepted: z.literal(true) }).safeParse(
     await request("/api/v1/auth/password-reset/request", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, next }),
       signal,
     }),
   );

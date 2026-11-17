@@ -158,7 +158,7 @@ test("email configuration is all-or-none, validates sender and never exposes sec
     );
 });
 
-test("Kakao configuration is optional together and callback must use the public web origin", () => {
+test("Kakao configuration is optional together and callback is an explicit trusted API URL, separate from the web origin", () => {
   const base = {
     DATABASE_URL: "postgresql://test@localhost/test",
     AUTH_SECRET: "s".repeat(32),
@@ -168,17 +168,33 @@ test("Kakao configuration is optional together and callback must use the public 
   const kakao = {
     KAKAO_CLIENT_ID: "test-client",
     KAKAO_CLIENT_SECRET: "private-test-secret",
-    KAKAO_REDIRECT_URI: "http://localhost:3000/api/v1/auth/kakao/callback",
+    KAKAO_REDIRECT_URI: "http://localhost:3001/api/v1/auth/kakao/callback",
   };
   assert.equal(
     parseEnvironment({ ...base, ...kakao }).kakaoRedirectUri,
     kakao.KAKAO_REDIRECT_URI,
   );
+  assert.equal(
+    parseEnvironment({
+      ...base,
+      ...kakao,
+      NODE_ENV: "production",
+      WEB_ORIGIN: "https://chongmuya.com",
+      KAKAO_REDIRECT_URI:
+        "https://api.chongmuya.com/api/v1/auth/kakao/callback",
+    }).kakaoRedirectUri,
+    "https://api.chongmuya.com/api/v1/auth/kakao/callback",
+  );
   for (const change of [
     { KAKAO_CLIENT_SECRET: undefined },
-    { KAKAO_REDIRECT_URI: "http://localhost:3001/api/v1/auth/kakao/callback" },
+    {
+      KAKAO_REDIRECT_URI:
+        "https://name:secret@api.example.com/api/v1/auth/kakao/callback",
+    },
     { KAKAO_REDIRECT_URI: "https://evil.example/callback" },
     { KAKAO_REDIRECT_URI: kakao.KAKAO_REDIRECT_URI + "?next=evil" },
+    { KAKAO_REDIRECT_URI: kakao.KAKAO_REDIRECT_URI + "#hash" },
+    { NODE_ENV: "production", WEB_ORIGIN: "https://chongmuya.com" },
   ])
     assert.throws(
       () => parseEnvironment({ ...base, ...kakao, ...change }),

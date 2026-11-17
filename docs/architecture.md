@@ -1,6 +1,6 @@
 # 기본 아키텍처
 
-총무야는 Next.js App Router 웹과 NestJS API로 구성한다. 프론트는 라우팅·기능·공용 코드의 책임을 나누고, 인증 계약은 [authentication.md](authentication.md)를 따른다. 행사는 생성한 계정이 소유한다. 모임 연결은 선택이며 연결해도 행사 소유자와 기존 기록은 유지된다. 인증은 이메일·비밀번호와 HttpOnly 세션 쿠키를 사용한다.
+총무야는 Next.js App Router 웹과 NestJS API로 구성한다. 프론트는 라우팅·기능·공용 코드의 책임을 나누고, 인증 계약은 [authentication.md](authentication.md)를 따른다. 행사는 생성한 계정이 소유한다. 모임 연결은 선택이며 연결해도 행사 소유자와 기존 기록은 유지된다. 이메일·비밀번호 또는 카카오로 로그인한 뒤 API의 HttpOnly 세션 쿠키를 사용한다.
 
 ## 책임과 폴더
 
@@ -174,7 +174,7 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 AuthService는 이메일·휴대폰 인증 소비·가입 계정·동의·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
 
-실제 서버와 E2E 모두 `configureHttp`를 호출합니다. 앱 루트 prefix를 새로 붙이지 않아 기존 `/health`와 웹 rewrite 계약을 유지합니다.
+실제 서버와 E2E 모두 `configureHttp`를 호출합니다. 업무 API는 `/api/v1`, liveness는 `/health`입니다. 브라우저는 공개 API origin에 직접 요청하며 Next rewrite를 사용하지 않습니다. configureHttp의 CORS는 정확한 WEB_ORIGIN에 credentials와 요청 ID 응답 헤더 노출을 허용하고, preflight를 Guard 전에 처리합니다.
 
 | 경로                      | 의미                                     | 결과                                             |
 | ------------------------- | ---------------------------------------- | ------------------------------------------------ |
@@ -229,7 +229,7 @@ HTTP DTO는 기존 class-validator/class-transformer 및 Swagger 연동을 유�
 
 ### 빌드·마이그레이션
 
-ORM Client 코드 생성 단계가 없습니다. API `build`는 Nest/TypeScript 컴파일이며 Turbo는 `dist/**`만 캐시합니다. Entity·마이그레이션·옵션 파일은 기본 입력에 포함됩니다. Nest 빌드와 test:compile은 각 출력 폴더를 비워 이동 전 Entity 산출물이 중복 로드되지 않도록 합니다. Entity 탐색은 `modules/**/*.entity.js`로 역할별 하위 폴더를 포함합니다. 런타임 DATABASE_URL은 빌드에 포함하지 않습니다. 웹의 API_URL·환경변수 캐시 규칙은 유지합니다.
+ORM Client 코드 생성 단계가 없습니다. API `build`는 Nest/TypeScript 컴파일이며 Turbo는 `dist/**`만 캐시합니다. Entity·마이그레이션·옵션 파일은 기본 입력에 포함됩니다. Nest 빌드와 test:compile은 각 출력 폴더를 비워 이동 전 Entity 산출물이 중복 로드되지 않도록 합니다. Entity 탐색은 `modules/**/*.entity.js`로 역할별 하위 폴더를 포함합니다. 런타임 DATABASE_URL은 빌드에 포함하지 않습니다. 웹의 NEXT_PUBLIC_API_ORIGIN·환경변수 캐시 규칙은 유지합니다.
 
 Entity는 `modules/<업무>/entities/*.entity.ts`에 실제로 필요한 모델만 추가합니다. 개발 DB에서 `pnpm --filter @chongmuya/api db:migration:generate src/database/migrations/<변경이름>`을 실행하면 먼저 빌드한 후 Entity와 DB 차이를 비교해 TypeScript 파일을 만듭니다. 생성 SQL을 검토하고 **다시 build**한 후 `db:migration:show`, `db:migration:run`을 실행합니다.
 
@@ -276,4 +276,6 @@ PasswordResetService는 복구 토큰 발급·소비, KakaoFlowService는 브라
 
 새 테이블 기록, null 비밀번호, 인증 출처/자격 변경 기록이 있으면 down은 중단합니다. 이전 스키마로 돌리기 위해 소셜 계정을 지우거나 가짜 비밀번호를 넣지 않습니다. 데이터가 생긴 뒤에는 nullable 비밀번호를 지원하는 코드와 보존 가능한 후속 migration으로 복구합니다. 자동 migrate/synchronize/dropSchema는 계속 false이며 운영 DB를 초기화하지 않습니다. 만료된 시도/복구 이력의 보존·정리는 운영 정책에 따라 별도로 수행해야 합니다.
 
-카카오 GET 콜백의 app Route Handler는 고정 API_URL로 요청을 전달하고 깨끗한 Nest 리다이렉트만 돌려주는 전송 경계입니다. Next 기본 rewrite의 장애 로그가 code/state를 출력하지 않도록 필요한 한 경로만 처리합니다. 토큰 교환·검증·DB·쿠키 발급은 모두 Nest에 있으며 새 BFF 인증 계층을 두지 않습니다.
+브라우저의 HTTP 전송은 shared/http가 NEXT_PUBLIC_API_ORIGIN에 credentials를 포함해 요청합니다. 업무 요청은 기존 SessionClient를 사용하고, 공개 health 요청은 `/health`를 사용합니다. 인증 SSR과 BFF는 없으며 AuthProvider가 클라이언트에서 세션을 복원합니다. API 호스트의 host-only 쿠키는 Next 서버로 전달되지 않습니다.
+
+카카오 GET 콜백은 명시적인 KAKAO_REDIRECT_URI의 Nest 엔드포인트에서만 처리합니다. 임시 결과를 DB에 저장한 뒤 WEB_ORIGIN의 깨끗한 완료 화면으로 이동하고, 프론트가 Origin·CSRF 헤더를 갖춘 POST로 API에 최종 확정을 요청합니다. 콜백 query는 프론트 URL이나 애플리케이션 로그에 전달하지 않습니다. 운영 ingress·CDN·APM의 query 수집도 배포 설정에서 제외해야 합니다.

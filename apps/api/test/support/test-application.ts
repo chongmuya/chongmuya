@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { Body, Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Get, Post, HttpException } from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { Test } from "@nestjs/testing";
 import { IsInt, IsString, Min } from "class-validator";
@@ -29,6 +29,11 @@ class ProbeController {
   @Get("error")
   error() {
     throw new Error("private-database-password");
+  }
+
+  @Get("limited")
+  limited() {
+    throw new HttpException("private-limit-details", 429);
   }
 
   @Get("secret/:token")

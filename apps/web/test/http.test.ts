@@ -5,6 +5,34 @@ import { QueryClient } from "@tanstack/react-query";
 import { getApiJson } from "../shared/http/browser-api";
 import { ApiError } from "../shared/http/api-error";
 import { healthQueryOptions } from "../features/health/api/health.queries";
+import { apiOrigin } from "../shared/http/api-origin";
+
+test("public API origin is explicit in production and cannot contain credentials, paths or queries", () => {
+  assert.equal(
+    apiOrigin("https://api.chongmuya.com", true),
+    "https://api.chongmuya.com",
+  );
+  for (const value of [
+    "",
+    "http://api.example.com",
+    "https://user:secret@api.example.com",
+    "https://api.example.com/",
+    "https://api.example.com/path",
+    "https://api.example.com?secret=value",
+    "https://api.example.com#hash",
+  ])
+    assert.throws(() => apiOrigin(value, true), {
+      message: "Invalid environment variable: NEXT_PUBLIC_API_ORIGIN",
+    });
+  const previous = process.env.NEXT_PUBLIC_API_ORIGIN;
+  delete process.env.NEXT_PUBLIC_API_ORIGIN;
+  try {
+    assert.equal(apiOrigin(undefined, false), "http://localhost:3001");
+    assert.throws(() => apiOrigin(undefined, true));
+  } finally {
+    if (previous !== undefined) process.env.NEXT_PUBLIC_API_ORIGIN = previous;
+  }
+});
 
 test("browser transport handles real HTTP errors, invalid data, cancellation and recovery", async (t) => {
   let mode = "healthy";
@@ -32,15 +60,18 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
   const address = server.address();
   assert(address && typeof address !== "string");
   const nativeFetch = globalThis.fetch;
-  // Supply the browser origin while retaining real network requests.
-  globalThis.fetch = (input, options) =>
-    nativeFetch(
-      new URL(String(input), `http://127.0.0.1:${address.port}`),
-      options,
-    );
+  const previousOrigin = process.env.NEXT_PUBLIC_API_ORIGIN;
+  process.env.NEXT_PUBLIC_API_ORIGIN = `http://127.0.0.1:${address.port}`;
+  globalThis.fetch = (input, options) => {
+    assert.equal(String(input), `${process.env.NEXT_PUBLIC_API_ORIGIN}/health`);
+    assert.equal(options?.credentials, "include");
+    return nativeFetch(input, options);
+  };
   const client = new QueryClient();
   t.after(async () => {
     globalThis.fetch = nativeFetch;
+    if (previousOrigin === undefined) delete process.env.NEXT_PUBLIC_API_ORIGIN;
+    else process.env.NEXT_PUBLIC_API_ORIGIN = previousOrigin;
     client.clear();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -76,11 +107,11 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
   }
   mode = "slow";
   await assert.rejects(
-    getApiJson("/api/health", { timeoutMs: 30 }),
+    getApiJson("/health", { timeoutMs: 30 }),
     (error: unknown) => error instanceof ApiError && error.code === "TIMEOUT",
   );
   const controller = new AbortController();
-  const pending = getApiJson("/api/health", { signal: controller.signal });
+  const pending = getApiJson("/health", { signal: controller.signal });
   controller.abort();
   await assert.rejects(
     pending,
@@ -89,7 +120,7 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await assert.rejects(
-    getApiJson("/api/health"),
+    getApiJson("/health"),
     (error: unknown) =>
       error instanceof ApiError && error.code === "NETWORK_ERROR",
   );

@@ -6,7 +6,7 @@
 - `apps/web`은 Next.js 웹, `apps/api`는 NestJS 표준 모드 API다. 다른 앱의 소스 코드를 직접 import하지 않는다.
 - 루트의 단일 `pnpm-lock.yaml`을 유지한다. npm·Yarn lockfile이나 중첩 Git 저장소를 만들지 않는다.
 - 기본 검증은 루트에서 `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test`를 실행한다. DB 변경 시 격리된 로컬/테스트 DB로 `pnpm test:integration`도 실행한다.
-- 연결 변경은 `pnpm dev`와 실제 API·rewrite 응답, 브라우저의 성공·실패·복구 표시를 확인한다. 실행하지 못한 검증은 이유와 함께 보고한다.
+- 연결 변경은 `pnpm dev`와 웹 → API 직접 호출·CORS 응답, 브라우저의 성공·실패·복구 표시를 확인한다. 실행하지 못한 검증은 이유와 함께 보고한다.
 - 실제 필요가 생기기 전 공통 패키지, 빈 업무 모듈, 과도한 추상화를 추가하지 않는다.
 - Next.js와 NestJS의 TypeScript 요구사항을 각각 유지한다. 검증을 통과시키기 위한 가짜 성공 스크립트나 오류 무시는 금지한다.
 - [아키텍처](docs/architecture.md)의 책임·의존 방향을 따른다. 웹은 app → features → shared, API 업무 코드는 modules 안에 둔다. common에는 기술 공통 처리만 둔다.

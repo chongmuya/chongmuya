@@ -7,7 +7,7 @@ export interface Health {
 }
 
 export async function getHealth(signal?: AbortSignal): Promise<Health> {
-  const body = await getApiJson("/api/health", { signal });
+  const body = await getApiJson("/health", { signal });
   if (
     typeof body !== "object" ||
     body === null ||

@@ -1,3 +1,4 @@
+import { apiOrigin } from "./api-origin";
 import { ApiError } from "./api-error";
 import { parseApiError } from "./error-contract";
 
@@ -14,10 +15,10 @@ export async function requestJson<T>(
   if (options.method && options.method !== "GET")
     headers.set("X-CSRF-Protection", "1");
   try {
-    const response = await fetch(path, {
+    const response = await fetch(`${apiOrigin()}${path}`, {
       ...options,
       headers,
-      credentials: "same-origin",
+      credentials: "include",
       cache: "no-store",
       signal: options.signal
         ? AbortSignal.any([options.signal, timeout])

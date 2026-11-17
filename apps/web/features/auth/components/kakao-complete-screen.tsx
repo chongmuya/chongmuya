@@ -15,9 +15,6 @@ import { usePrivateAuthAction } from "../hooks/use-private-auth-action";
 import { kakaoStatus, confirmKakaoLink, cancelKakao } from "../api/kakao.api";
 import { postLoginPath } from "../lib/first-setup";
 export function KakaoCompleteScreen() {
-  return <KakaoCompletion />;
-}
-function KakaoCompletion() {
   const { client, status, account } = useAuth();
   const params = useSearchParams(),
     router = useRouter();
@@ -42,8 +39,6 @@ function KakaoCompletion() {
         <p role="status">카카오 인증을 확인하고 있어요…</p>
       </main>
     );
-  if (!failure && result.data?.kind === "signup" && status === "anonymous")
-    return <KakaoSignupScreen context={result.data} />;
   const kind = result.data?.kind;
   return (
     <StepLayout
@@ -54,7 +49,7 @@ function KakaoCompletion() {
       <StepHeading
         title={
           kind === "existing"
-            ? "기존 계정에 카카오를 연결해 주세요"
+            ? "기존 로그인 방법으로 로그인해 주세요"
             : kind === "link"
               ? "카카오 연결을 마무리해 주세요"
               : "카카오 인증"
@@ -76,12 +71,10 @@ function KakaoCompletion() {
       {kind === "existing" ? (
         <>
           <p>
-            같은 이메일의 계정이 있어요. 기존 계정으로 로그인한 뒤
-            마이페이지에서 비밀번호 확인과 카카오 인증을 거쳐 연결할 수
-            있습니다.
+            같은 이메일의 계정이 있어요. 가입할 때 사용한 이메일 또는 카카오로
+            로그인해 주세요. 다른 카카오로 교체하거나 계정을 합칠 수는 없습니다.
           </p>
           <Link href="/auth?next=%2Fmypage">기존 계정으로 로그인</Link>
-          <Link href="/auth/recovery">비밀번호 재설정</Link>
         </>
       ) : !failure && !result.error && (kind === "login" || kind === "link") ? (
         <>

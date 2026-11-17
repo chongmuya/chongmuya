@@ -37,6 +37,11 @@ const messages: Record<string, { status: number; message: string }> = {
     status: 503,
     message: "카카오 인증을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
   },
+  KAKAO_CONFIGURATION: {
+    status: 503,
+    message:
+      "카카오 로그인 설정 확인이 필요합니다. 기존 로그인 방법을 이용해 주세요.",
+  },
   KAKAO_INVALID: {
     status: 400,
     message: "카카오 인증을 확인할 수 없습니다. 처음부터 다시 진행해 주세요.",
@@ -56,7 +61,8 @@ const messages: Record<string, { status: number; message: string }> = {
   },
   KAKAO_LINK_REQUIRED: {
     status: 409,
-    message: "기존 계정으로 로그인한 뒤 마이페이지에서 카카오를 연결해 주세요.",
+    message:
+      "이미 가입한 이메일입니다. 가입할 때 사용한 로그인 방법을 이용해 주세요.",
   },
   KAKAO_ALREADY_LINKED: {
     status: 409,
