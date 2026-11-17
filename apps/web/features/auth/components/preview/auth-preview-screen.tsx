@@ -138,6 +138,7 @@ export function AuthPreviewScreen() {
           onSubmit={(_values, signal) => previewSubmission(outcome, signal)}
           verification={{
             phone: previewVerification(verification),
+            email: previewVerification(verification),
           }}
         />
       )}

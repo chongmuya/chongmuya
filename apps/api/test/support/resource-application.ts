@@ -1,6 +1,5 @@
 import { signupFixture } from "./signup-fixture.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import type { TestContext } from "node:test";
 import { startTestApplication } from "./test-application.js";
 import { DatabaseService } from "../../src/database/database.service.js";
@@ -35,7 +34,6 @@ export async function startResourceApplication(t: TestContext) {
     const fixture = await signupFixture(db);
     const response = await call("auth/signup", fixture.jar, "POST", {
       ...fixture.body,
-      email: `${randomUUID()}@example.com`,
       password: "group-events-123",
     });
     assert.equal(response.status, 201);

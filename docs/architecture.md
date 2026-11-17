@@ -10,7 +10,7 @@ apps/web/
     workspace-screen.tsx     인증 화면과 모임·행사 화면 조합, URL별 화면 key
   features/
     auth/
-      api/                   profile·가입 약관 요청·query options·휴대폰 API
+      api/                   profile·가입 약관 요청·query options·이메일/휴대폰 API
       components/            Provider, 인증·복구 화면, 로그인·가입 폼
       hooks/                 인증 mutation
       lib/                   SessionClient 생명주기·갱신·잠금
@@ -18,7 +18,9 @@ apps/web/
       types/                 계정·인증 상태·요청 타입
       client.ts / types.ts   외부 공개 진입점
     onboarding/
-      components/            가입 후 이용 방식·환영 화면, 인증 경계
+      components/            가입 후 이용 유형·총무 닉네임·이용 방식·환영 화면
+      hooks/                 첫 설정 저장 mutation, 화면 이탈 취소
+      schemas/               이용 유형·닉네임 검증
       client.ts              GettingStartedScreen 공개
     groups/
       api/                   groups.api.ts, groups.queries.ts
@@ -64,7 +66,7 @@ apps/api/
       guards/ / strategies/ / decorators/
       repositories/ / types/ / utils/ / exceptions/
     database/           TypeORM 옵션·CLI DataSource·연결 생명주기·오류 분류
-      migrations/       Authentication·GroupEvents·PersonalEvents·VerifiedSignup·AccountTypes
+      migrations/       Authentication·GroupEvents·PersonalEvents·VerifiedSignup·AccountTypes·EmailVerification
   test/                 설정·HTTP 계약 테스트와 DB 통합 테스트
 tools/                  ESLint 의존 경계 규칙과 회귀 테스트
 compose.yaml            로컬 PostgreSQL만 실행
@@ -77,7 +79,7 @@ compose.yaml            로컬 PostgreSQL만 실행
 
 ### 공개 경계와 페이지 조합
 
-`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 가입 후 정기 모임/일회성 행사 안내를 제공한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`에서도 내 행사로 시작할 수 있다.
+`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`에서도 내 행사로 시작할 수 있다.
 
 공개 홈은 비로그인 접근을 허용한다. 개인 화면은 인증 상태를 확인하고 로그인 링크에 원래 경로를 전달한다. auth의 safeReturnPath는 지원하는 내부 페이지와 UUID query만 재구성하며 외부 URL·프로토콜 상대 URL·역슬래시·제어 문자·인증/API 경로를 반환하지 않는다. 기본 목적지는 `/events`다. 실제 자료 권한은 Nest에서 검사한다.
 
@@ -170,7 +172,7 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 연결 명령은 행사 id/ownerId 조건으로 행을 FOR UPDATE 잠금하고, 같은 manager로 모임 소유권을 확인한 뒤 expectedVersion과 미연결 상태를 검사합니다. groupId와 version만 갱신하며 소유자·일정·생성 시각은 그대로 둡니다. 일반 수정도 같은 행사 잠금·버전 검사를 사용합니다. 동시 연결 중 먼저 커밋한 요청만 반영되고 뒤의 요청은 VERSION_CONFLICT입니다. 최신 버전으로 이미 연결된 행사를 다시 연결하면 EVENT_ALREADY_LINKED입니다. 현재 모임 소유자 변경·삭제 API는 없으며, 향후 추가 시 동시 권한 변경에 대한 잠금 정책도 함께 설계해야 합니다.
 
-AuthService는 휴대폰 인증 소비·가입 계정·동의·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
+AuthService는 이메일·휴대폰 인증 소비·가입 계정·동의·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
 
 실제 서버와 E2E 모두 `configureHttp`를 호출합니다. 앱 루트 prefix를 새로 붙이지 않아 기존 `/health`와 웹 rewrite 계약을 유지합니다.
 
@@ -239,7 +241,7 @@ Entity는 `modules/<업무>/entities/*.entity.ts`에 실제로 필요한 모델�
 
 `1794787200000-VerifiedSignup`은 기존 Account의 id/email/password_hash/created_at과 기존 모임·행사·세션을 보존하고 이름·닉네임·전화번호·휴대폰/이메일 인증 시각을 nullable로 추가합니다. 기존 계정은 미인증 상태(null)를 유지하며 임의 backfill을 하지 않습니다. account_consents와 phone_verifications를 추가하고 전화번호·닉네임 unique 제약은 만들지 않습니다. 새 가입 필드·동의·인증 기록이 존재하면 down은 데이터 손실을 막기 위해 거부합니다. 운영 DB를 지우지 말고 후속 migration으로 복구합니다. 새 계약을 사용하는 API와 웹을 함께 배포합니다. 만료된 휴대폰 요청과 오래된 시도 제한 기록의 운영 정리 정책은 별도로 적용해야 합니다.
 
-`1794790800000-AccountTypes`는 account_type nullable 컬럼과 organizer/owner 허용 제약을 추가합니다. 기존 계정의 이용 유형은 추측하지 않고 null로 유지하며 계정·모임·행사 ID를 보존합니다. 신규 가입은 유형을 필수로 받고 세션 응답으로 전달하지만 자원 권한에는 사용하지 않습니다. 유형 기록이 생긴 뒤 down은 데이터 손실을 막기 위해 거부합니다.
+`1794790800000-AccountTypes`는 account_type nullable 컬럼과 organizer/owner 허용 제약을 추가합니다. 기존 계정의 이용 유형은 추측하지 않고 null로 유지하며 계정·모임·행사 ID를 보존합니다. 신규 가입의 유형은 null이며 인증된 본인의 첫 설정 API로 저장합니다. 세션 응답으로 전달하지만 자원 권한에는 사용하지 않습니다. 유형 기록이 생긴 뒤 down은 데이터 손실을 막기 위해 거부합니다.
 
 TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수 있으므로 대상 DB를 확인합니다. 운영 DB reset/drop은 수행하지 않습니다.
 
@@ -257,3 +259,9 @@ ESLint 로컬 규칙으로 의존 경계를 검사합니다. 상대 경로·웹 
 CI는 고정된 Node·pnpm과 커밋 SHA로 고정한 공식 Actions를 사용합니다. 외부 비밀 없이 임시 PostgreSQL 서비스에서 frozen 설치·lint·빌드·typecheck·일반 테스트·DB 통합 테스트를 실행합니다. PR 및 main push가 트리거이며 실행 결과는 PR Checks와 Actions에서 확인합니다.
 
 pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolver의 정확한 버전만 허용합니다. Swagger의 선택적 Scarf 설치 분석은 비활성화합니다.
+
+`1794873600000-EmailVerification`은 요청자별 현재 이메일 인증을 email_verifications에 추가합니다. 기존 Account의 nullable 필드로 첫 설정 상태를 표현하므로 계정 상태 컬럼을 추가하지 않습니다. 기존 계정·모임·행사·세션과 인증 시각을 변경하지 않습니다. 인증 기록이 존재하면 down을 거부하며 운영 복구는 후속 마이그레이션으로 처리합니다.
+
+가입 요청자 쿠키는 두 인증이 공유합니다. EmailVerificationService와 PhoneVerificationService는 각각 발급·검증·소비를 관리하고, ResendMailService와 OctomoService는 외부 통신만 담당합니다. 외부 응답을 기다리는 동안 DB 트랜잭션을 유지하지 않습니다. AuthService가 두 인증 행을 이메일→휴대폰 순서로 잠그고 소비·계정·동의·최초 세션을 원자적으로 저장합니다. 첫 설정 API는 AccessGuard/CurrentUser로 본인 계정을 결정하고 계정 행 잠금 안에서 이용 유형의 불변성을 검증합니다.
+
+약관 Query는 공개 데이터입니다. 이미 받은 약관의 배경 재조회 실패에는 폼과 인증을 보존하고 안내만 표시합니다. 약관 버전 변경은 해당 동의만 다시 받으며 전체 폼 key로 쓰지 않습니다. 첫 설정 저장은 SessionClient가 결과를 현재 계정에 적용하고 계정 전환·로그아웃·화면 이탈 뒤 응답은 버립니다. 비밀번호와 두 인증의 비밀값은 Query·브라우저 영구 저장소에 보관하지 않습니다.

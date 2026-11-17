@@ -24,6 +24,18 @@ const environmentSchema = z
       }
     }),
     AUTH_SECRET: z.string().min(32),
+    RESEND_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
+    RESEND_FROM: z
+      .string()
+      .max(320)
+      .refine((value) => {
+        if (z.email().safeParse(value).success) return true;
+        const match = /^[^<>\r\n]+ <([^<>\s]+)>$/.exec(value);
+        return !!match && z.email().safeParse(match[1]).success;
+      })
+      .optional(),
+    EMAIL_VERIFICATION_SECRET: z.string().min(32).optional(),
+    RESEND_DEBUG: z.enum(["false"]).optional(),
     OCTOMO_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
     SIGNUP_TERMS_JSON: z
       .string()
@@ -73,6 +85,20 @@ const environmentSchema = z
     API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
   })
   .superRefine((env, ctx) => {
+    const mailFields = [
+      "RESEND_API_KEY",
+      "RESEND_FROM",
+      "EMAIL_VERIFICATION_SECRET",
+    ] as const;
+    if (mailFields.some((field) => env[field] !== undefined))
+      for (const field of mailFields) {
+        if (!env[field])
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: "Required together",
+          });
+      }
     if (
       env.NODE_ENV === "production" &&
       !env.WEB_ORIGIN.startsWith("https://")
@@ -85,6 +111,9 @@ const environmentSchema = z
     }
   })
   .transform((env) => ({
+    resendApiKey: env.RESEND_API_KEY,
+    resendFrom: env.RESEND_FROM,
+    emailVerificationSecret: env.EMAIL_VERIFICATION_SECRET,
     authSecret: env.AUTH_SECRET,
     octomoApiKey: env.OCTOMO_API_KEY,
     signupTerms: env.SIGNUP_TERMS_JSON,

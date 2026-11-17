@@ -11,6 +11,8 @@ export type VerificationResult = {
   message?: string;
   qrCode?: string;
   nextCheckAt?: number;
+  deliveryFailed?: boolean;
+  attemptsRemaining?: number;
   checksRemaining?: number;
   serverNow?: number;
 };
@@ -23,6 +25,7 @@ export type VerificationActions = {
     value: string,
     signal: AbortSignal,
     id?: string,
+    code?: string,
   ) => Promise<VerificationResult>;
   cancel?: (id: string) => Promise<void>;
 };

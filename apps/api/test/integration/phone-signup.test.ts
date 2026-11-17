@@ -1,3 +1,5 @@
+import { verifiedEmailFixture } from "../support/signup-fixture.js";
+import { EmailVerification } from "../../src/modules/auth/entities/email-verification.entity.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -63,6 +65,12 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
     await db
       .getRepository(PhoneVerification)
       .update({ id: challenge.id }, { nextCheckAt: new Date(0) });
+    await verifiedEmailFixture(
+      db,
+      `${challenge.id}@example.test`,
+      tokenHash(jar.split("=")[1]),
+      challenge.id,
+    );
     return challenge;
   };
   const check = (jar: string, row: { id: string; phone: string }) =>
@@ -71,11 +79,10 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
       phone: row.phone,
     });
   const payload = (row: { id: string; phone: string }) => ({
-    accountType: "organizer",
-    email: `${randomUUID()}@example.test`,
+    email: `${row.id}@example.test`,
+    emailVerificationId: row.id,
     password: "valid-pass123",
     name: "이름",
-    nickname: "같은 닉네임",
     phone: row.phone,
     phoneVerificationId: row.id,
     consents: signupTerms.map((term) => ({
@@ -112,12 +119,6 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
     .update({ id: row.id }, { nextCheckAt: new Date(0) });
   const verified = await check(a, row);
   assert.equal((await verified.json()).status, "verified");
-  for (const accountType of [undefined, "", "admin"]) {
-    assert.equal(
-      (await call("auth/signup", a, "POST", { ...input, accountType })).status,
-      400,
-    );
-  }
   assert.equal(
     (await call("auth/signup", a, "POST", { ...input, phone: "01099999999" }))
       .status,
@@ -160,6 +161,14 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
       0,
     );
     assert.equal(
+      (
+        await db
+          .getRepository(EmailVerification)
+          .findOneByOrFail({ id: row.id })
+      ).consumedAt,
+      null,
+    );
+    assert.equal(
       await db.getRepository(AccountConsent).count(),
       beforeConsents,
     );
@@ -184,12 +193,12 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
   assert.deepEqual(race.map((r) => r.status).sort(), [201, 400]);
   const success = race.find((r) => r.status === 201)!;
   const account = (await success.json()).account;
-  assert.equal(account.accountType, "organizer");
+  assert.equal(account.accountType, null);
   assert.equal(account.name, input.name);
-  assert.equal(account.nickname, input.nickname);
+  assert.equal(account.nickname, null);
   assert.equal(account.phone, input.phone);
   assert(account.phoneVerifiedAt);
-  assert.equal(account.emailVerifiedAt, null);
+  assert(account.emailVerifiedAt);
   const consents = await db
     .getRepository(AccountConsent)
     .findBy({ accountId: account.id });
@@ -269,21 +278,6 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
   assert.equal(
     (await call("auth/signup", c, "POST", payload(cancellable))).status,
     400,
-  );
-  const ownerContext = await context();
-  const ownerProof = await create(ownerContext);
-  assert.equal((await check(ownerContext, ownerProof)).status, 200);
-  const ownerResponse = await call("auth/signup", ownerContext, "POST", {
-    ...payload(ownerProof),
-    accountType: "owner",
-  });
-  assert.equal(ownerResponse.status, 201);
-  const ownerAccount = (await ownerResponse.json()).account;
-  assert.equal(ownerAccount.accountType, "owner");
-  assert.equal(
-    (await db.getRepository(Account).findOneByOrFail({ id: ownerAccount.id }))
-      .accountType,
-    "owner",
   );
   assert.doesNotMatch(
     JSON.stringify(logs),

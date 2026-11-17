@@ -26,9 +26,6 @@ export class SignupConsentDto {
 }
 
 export class SignupDto {
-  @ApiProperty({ enum: ["organizer", "owner"] })
-  @IsIn(["organizer", "owner"])
-  accountType!: "organizer" | "owner";
   @ApiProperty({ maxLength: 254 })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim().toLowerCase() : value,
@@ -52,15 +49,11 @@ export class SignupDto {
   @MaxLength(100)
   @Matches(/\S/)
   name!: string;
-  @ApiProperty({ maxLength: 100 })
-  @IsString()
-  @MaxLength(100)
-  @Matches(/\S/)
-  nickname!: string;
   @ApiProperty({ pattern: "^010[0-9]{8}$" })
   @IsString()
   @Matches(/^010\d{8}$/)
   phone!: string;
+  @ApiProperty({ format: "uuid" }) @IsUUID("4") emailVerificationId!: string;
   @ApiProperty({ format: "uuid" }) @IsUUID("4") phoneVerificationId!: string;
   @ApiProperty({ type: [SignupConsentDto] })
   @IsArray()

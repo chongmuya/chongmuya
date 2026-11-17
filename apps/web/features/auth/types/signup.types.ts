@@ -11,12 +11,13 @@ export type SignupTerm = {
 };
 export type AccountType = "organizer" | "owner";
 export type SignupRequest = {
-  accountType: AccountType;
   email: string;
   password: string;
   name: string;
-  nickname: string;
   phone: string;
+  emailVerificationId: string;
   phoneVerificationId: string;
   consents: { id: SignupTermId; version: string; accepted: boolean }[];
 };
+
+export type FirstSetupInput = { accountType?: AccountType; nickname?: string };

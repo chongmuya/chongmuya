@@ -121,6 +121,30 @@ test("migrations preserve existing account, group, event and session records and
       await runner.query("SELECT * FROM events"),
       eventsBeforeSignup,
     );
+    const { EmailVerification1794873600000 } =
+      await import("../../src/database/migrations/1794873600000-EmailVerification.js");
+    const emailMigration = new EmailVerification1794873600000();
+    const existingAccounts = await runner.query("SELECT * FROM accounts");
+    const existingSessions = await runner.query("SELECT * FROM auth_sessions");
+    await emailMigration.up(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM accounts"),
+      existingAccounts,
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM auth_sessions"),
+      existingSessions,
+    );
+    assert.deepEqual(await runner.query("SELECT * FROM groups"), beforeGroups);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM events"),
+      eventsBeforeSignup,
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM email_verifications"),
+      [],
+    );
+    await emailMigration.down(runner);
     await runner.query("SAVEPOINT types_rollback");
     await runner.query(
       "UPDATE accounts SET account_type = 'organizer' WHERE id = $1",

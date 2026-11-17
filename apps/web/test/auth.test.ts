@@ -384,3 +384,65 @@ for (const transition of ["account switch", "logout"] as const) {
     );
   });
 }
+
+test("first setup applies the current profile but ignores writes after exit, logout or account switch", async () => {
+  for (const ending of ["none", "exit", "logout", "switch"] as const) {
+    let release!: (value: unknown) => void;
+    let remote = session;
+    const client = new SessionClient(
+      () => {},
+      transport(async (path) => {
+        if (path.endsWith("first-setup"))
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        if (path.endsWith("logout")) return undefined;
+        return remote;
+      }),
+    );
+    await client.restore();
+    const controller = new AbortController();
+    const saving = client.saveFirstSetup(
+      { accountType: "owner" },
+      controller.signal,
+    );
+    const result = saving.then(
+      () => true,
+      () => false,
+    );
+    if (ending === "exit") controller.abort();
+    if (ending === "logout") await client.logout();
+    if (ending === "switch") {
+      remote = { ...session, account: { ...session.account!, id: "other" } };
+      await client.restore();
+    }
+    release({ ...session.account, accountType: "owner" });
+    assert.equal(await result, ending === "none");
+    assert.equal(
+      client.getSnapshot().account?.accountType,
+      ending === "none" ? "owner" : ending === "logout" ? undefined : null,
+    );
+    if (ending === "switch")
+      assert.equal(client.getSnapshot().account?.id, "other");
+  }
+});
+
+test("simultaneous email and phone preparation shares one signup requester initialization", async () => {
+  let calls = 0;
+  let release!: () => void;
+  const client = new SessionClient(
+    () => {},
+    transport(async (path) => {
+      assert(path.endsWith("/signup/context"));
+      calls++;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    }),
+  );
+  const email = client.prepareSignup(),
+    phone = client.prepareSignup();
+  assert.equal(calls, 1);
+  release();
+  await Promise.all([email, phone]);
+});

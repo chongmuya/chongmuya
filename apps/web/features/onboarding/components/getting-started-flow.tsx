@@ -11,10 +11,12 @@ type Usage = "group" | "event";
 
 export function GettingStartedFlow({
   accountType,
+  displayName,
   onNavigate,
   returnTo,
 }: {
   accountType: Account["accountType"];
+  displayName?: string;
   onNavigate: (path: string) => void;
   returnTo: string;
 }) {
@@ -126,7 +128,7 @@ export function GettingStartedFlow({
               </h1>
               <p className="mt-2 text-control text-muted">
                 {owner
-                  ? "사장님 계정으로 가입했어요. 매장 상세 등록은 준비 중이에요."
+                  ? `${displayName ? `${displayName}님, ` : ""}사장님 설정을 마쳤어요. 매장 상세 등록은 준비 중이에요.`
                   : usage === "group"
                     ? "모임을 등록해 총무야와 함께 행사를 준비해봐요."
                     : "행사를 등록해 총무야와 함께 준비해봐요."}

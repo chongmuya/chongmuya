@@ -1,0 +1,156 @@
+"use client";
+import { useForm, useFormContext } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { FormField } from "@/shared/ui/form-field";
+import { FormError } from "@/shared/ui/form-error";
+import type { SignupValues } from "../../schemas/signup.schema";
+import type { useContactVerification } from "../../hooks/use-contact-verification";
+const codeSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, "6자리 숫자 인증번호를 입력해 주세요."),
+});
+export function EmailVerification({
+  email,
+}: {
+  email: ReturnType<typeof useContactVerification>;
+}) {
+  const {
+    register,
+    trigger,
+    formState: { errors },
+  } = useFormContext<SignupValues>();
+  const { state, now, error } = email;
+  const waiting = Math.max(0, Math.ceil(((state.retryAt ?? 0) - now) / 1000));
+  const busy = state.status === "requesting";
+  return (
+    <div className="space-y-3">
+      <FormField
+        required
+        id="signup-email"
+        label="이메일"
+        labelClassName="text-label"
+        error={errors.email?.message}
+      >
+        {(attributes) => (
+          <div className="flex items-start gap-2">
+            <Input
+              {...attributes}
+              {...register("email", { onChange: email.reset })}
+              variant="pill"
+              className="min-w-0 shadow-control aria-invalid:bg-brand/10"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="chongmuya@gmail.com"
+              required
+            />
+            <Button
+              className="min-h-input shrink-0 rounded-control px-3 text-caption"
+              disabled={busy || waiting > 0 || state.status === "verified"}
+              onClick={() =>
+                void trigger("email", { shouldFocus: true }).then((valid) => {
+                  if (valid) void email.request();
+                })
+              }
+            >
+              {state.status === "verified"
+                ? "인증 완료"
+                : waiting
+                  ? `${waiting}초 후 재전송`
+                  : state.id
+                    ? "재전송"
+                    : "인증번호 보내기"}
+            </Button>
+          </div>
+        )}
+      </FormField>
+      <p role="status" className="text-caption text-muted">
+        {busy
+          ? "이메일 인증을 처리하고 있어요."
+          : state.status === "verified"
+            ? "이메일 인증이 완료되었어요."
+            : state.status === "expired"
+              ? "인증 시간이 만료되었어요. 다시 요청해 주세요."
+              : state.status === "error" && !error
+                ? "이메일 발송에 실패했어요. 대기 후 다시 요청해 주세요."
+                : state.id
+                  ? "메일로 받은 인증번호를 입력해 주세요."
+                  : "가입할 이메일을 인증해 주세요."}
+      </p>
+      <FormError message={error} />
+      {state.id &&
+        !state.deliveryFailed &&
+        state.status !== "verified" &&
+        state.status !== "expired" && (
+          <EmailCode key={state.id} email={email} />
+        )}
+      {state.expiresAt && state.status !== "expired" && (
+        <p className="text-caption text-muted">
+          남은 인증 시간{" "}
+          {Math.max(0, Math.ceil((state.expiresAt - now) / 1000))}초
+        </p>
+      )}
+    </div>
+  );
+}
+function EmailCode({
+  email,
+}: {
+  email: ReturnType<typeof useContactVerification>;
+}) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<z.infer<typeof codeSchema>>({
+    resolver: zodResolver(codeSchema),
+    defaultValues: { code: "" },
+  });
+  const check = handleSubmit(async ({ code }) => {
+    await email.check?.(code);
+    reset({ code: "" });
+  });
+  return (
+    <div className="flex items-start gap-2">
+      <div className="min-w-0 flex-1">
+        <FormField
+          id="signup-email-code"
+          label="이메일 인증번호"
+          error={errors.code?.message}
+        >
+          {(attributes) => (
+            <Input
+              {...attributes}
+              {...register("code")}
+              variant="pill"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="6자리 인증번호"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void check();
+                }
+              }}
+            />
+          )}
+        </FormField>
+      </div>
+      <Button
+        className="mt-7 shrink-0 rounded-control"
+        disabled={
+          email.state.status === "requesting" ||
+          email.state.attemptsRemaining === 0
+        }
+        onClick={() => void check()}
+      >
+        인증번호 확인
+      </Button>
+    </div>
+  );
+}

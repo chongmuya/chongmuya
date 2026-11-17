@@ -62,6 +62,9 @@ test("configuration rejects missing/invalid required values without exposing val
     }),
     {
       authSecret,
+      resendApiKey: undefined,
+      resendFrom: undefined,
+      emailVerificationSecret: undefined,
       octomoApiKey: undefined,
       signupTerms: undefined,
       webOrigin,
@@ -119,4 +122,28 @@ test("real server refuses to start with invalid configuration", () => {
     );
     assert.doesNotMatch(result.stdout + result.stderr, /postgresql:\/\//);
   }
+});
+
+test("email configuration is all-or-none, validates sender and never exposes secrets", () => {
+  const valid = {
+    DATABASE_URL: databaseUrl,
+    RESEND_API_KEY: "re_private-password",
+    RESEND_FROM: "총무야 <hello@example.com>",
+    EMAIL_VERIFICATION_SECRET: "s".repeat(32),
+  };
+  assert.equal(parseEnvironment(valid).resendFrom, valid.RESEND_FROM);
+  for (const overrides of [
+    { RESEND_FROM: undefined },
+    { EMAIL_VERIFICATION_SECRET: "private-password" },
+    { RESEND_FROM: "hello@example.com>" },
+    { RESEND_FROM: "Name <hello@example.com" },
+    { RESEND_FROM: "bad\nName <hello@example.com>" },
+    { RESEND_DEBUG: "true" },
+    { RESEND_API_KEY: "private-password whitespace" },
+  ])
+    assert.throws(
+      () => parseEnvironment({ ...valid, ...overrides }),
+      (error: unknown) =>
+        error instanceof Error && !error.message.includes("private-password"),
+    );
 });

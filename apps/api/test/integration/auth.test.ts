@@ -49,6 +49,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "accounts",
       "auth_attempts",
       "auth_sessions",
+      "email_verifications",
       "events",
       "groups",
       "phone_verifications",
@@ -93,7 +94,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     (await post("signup", "", { ...credentials, password: "short" })).status,
     400,
   );
-  const fixture = await signupFixture(db);
+  const fixture = await signupFixture(db, email);
   const signup = await post(
     "signup",
     fixture.jar,
@@ -139,7 +140,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     .findOneByOrFail({ id: identity.account.id });
   assert.notEqual(stored.passwordHash, credentials.password);
   assert.match(stored.passwordHash, /^scrypt-v1\$/);
-  const duplicate = await signupFixture(db);
+  const duplicate = await signupFixture(db, email);
   assert.equal(
     (await post("signup", duplicate.jar, { ...duplicate.body, ...credentials }))
       .status,
@@ -272,7 +273,7 @@ test("signup rolls back account, session and refresh token on either insert fail
   const post = async (email: string) => {
     let fixture = fixtures.get(email);
     if (!fixture) {
-      fixture = await signupFixture(db);
+      fixture = await signupFixture(db, email);
       fixtures.set(email, fixture);
     }
     return fetch(`${url}/api/v1/auth/signup`, {
@@ -387,7 +388,7 @@ test("signing failure is a sanitized 500, rolls signup back, and allows retry", 
   const signing = t.mock.method(app.get(JwtService), "signAsync", async () => {
     throw new TypeError("private-signing-token-password");
   });
-  const fixture = await signupFixture(db);
+  const fixture = await signupFixture(db, email);
   const signup = () =>
     fetch(`${url}/api/v1/auth/signup`, {
       method: "POST",
@@ -440,7 +441,6 @@ test("DB outage propagates through auth guards and refresh without invalidating 
     headers: { ...headers, Cookie: fixture.jar },
     body: JSON.stringify({
       ...fixture.body,
-      email: `${randomUUID()}@example.com`,
       password: "available-pass12",
     }),
   });

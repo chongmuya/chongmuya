@@ -1,3 +1,5 @@
+import { EmailVerificationService } from "./email-verification.service.js";
+import { ResendMailService } from "./resend-mail.service.js";
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { DatabaseModule } from "../../database/database.module.js";
@@ -28,6 +30,8 @@ import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
   providers: [
     AuthService,
     PhoneVerificationService,
+    EmailVerificationService,
+    ResendMailService,
     OctomoService,
     SignupTermsService,
     AuthAttemptsRepository,

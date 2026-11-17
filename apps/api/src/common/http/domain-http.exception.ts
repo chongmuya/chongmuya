@@ -2,6 +2,38 @@ import { HttpException } from "@nestjs/common";
 import type { ValidationError } from "class-validator";
 
 const domainErrors = {
+  EMAIL_VERIFICATION_REQUIRED: {
+    status: 400,
+    message: "현재 이메일의 인증을 완료해 주세요.",
+  },
+  EMAIL_VERIFICATION_INVALID: {
+    status: 400,
+    message: "유효하지 않은 이메일 인증 요청입니다. 다시 인증해 주세요.",
+  },
+  EMAIL_VERIFICATION_EXPIRED: {
+    status: 400,
+    message: "이메일 인증 시간이 만료되었습니다. 다시 요청해 주세요.",
+  },
+  EMAIL_VERIFICATION_MISMATCH: {
+    status: 400,
+    message: "인증번호가 일치하지 않아요.",
+  },
+  EMAIL_VERIFICATION_LIMIT: {
+    status: 429,
+    message: "인증번호 입력 횟수를 초과했습니다. 다시 요청해 주세요.",
+  },
+  EMAIL_VERIFICATION_WAIT: {
+    status: 429,
+    message: "재전송 대기 시간이 지난 뒤 다시 요청해 주세요.",
+  },
+  EMAIL_VERIFICATION_UNAVAILABLE: {
+    status: 503,
+    message: "이메일 발송에 실패했어요. 잠시 후 다시 요청해 주세요.",
+  },
+  FIRST_SETUP_CONFLICT: {
+    status: 409,
+    message: "이미 저장된 이용 유형이나 닉네임을 변경할 수 없습니다.",
+  },
   EMAIL_ALREADY_REGISTERED: {
     status: 409,
     message: "이미 가입한 이메일입니다.",

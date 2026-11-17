@@ -2,14 +2,14 @@ import Image from "next/image";
 import { useFormContext, useWatch } from "react-hook-form";
 import { ChoiceCard } from "@/shared/ui/choice-card";
 import { FormError } from "@/shared/ui/form-error";
-import type { SignupValues } from "../../schemas/signup.schema";
+import type { RoleValues } from "../schemas/first-setup.schema";
 
-export function SignupRole() {
+export function SetupRole() {
   const {
     register,
     control,
     formState: { errors },
-  } = useFormContext<SignupValues>();
+  } = useFormContext<RoleValues>();
   const accountType = useWatch({ control, name: "accountType" });
   return (
     <>
@@ -65,7 +65,7 @@ export function SignupRole() {
         <FormError id="role-error" message={errors.accountType?.message} />
         {accountType === "owner" && (
           <p className="text-caption text-muted">
-            사장님 계정으로 가입할 수 있어요. 매장 상세 등록은 준비 중이에요.
+            사장님으로 시작할 수 있어요. 매장 상세 등록은 준비 중이에요.
           </p>
         )}
       </div>

@@ -1,3 +1,5 @@
+import { EmailVerificationService } from "./email-verification.service.js";
+import type { FirstSetupDto } from "./dto/request/first-setup.request.dto.js";
 import { Injectable } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -30,6 +32,7 @@ export class AuthService {
     private readonly repository: AuthAttemptsRepository,
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly emailVerification: EmailVerificationService,
     private readonly phone: PhoneVerificationService,
     private readonly terms: SignupTermsService,
   ) {}
@@ -55,6 +58,12 @@ export class AuthService {
     const db = await this.limit(ip, input.email);
     const passwordHash = await hashPassword(input.password);
     return db.transaction(async (manager) => {
+      const emailVerifiedAt = await this.emailVerification.consume(
+        manager,
+        requester,
+        input.emailVerificationId,
+        input.email,
+      );
       const phoneVerifiedAt = await this.phone.consume(
         manager,
         requester,
@@ -64,14 +73,14 @@ export class AuthService {
       const account = Object.assign(new Account(), {
         id: randomUUID(),
         email: input.email,
-        accountType: input.accountType,
+        accountType: null,
         passwordHash,
         createdAt: new Date(),
         name: input.name,
-        nickname: input.nickname,
+        nickname: null,
         phone: input.phone,
         phoneVerifiedAt,
-        emailVerifiedAt: null,
+        emailVerifiedAt,
       });
       const result = await manager
         .createQueryBuilder()
@@ -94,6 +103,35 @@ export class AuthService {
         })),
       );
       return this.createSession(manager, account);
+    });
+  }
+  async saveFirstSetup(accountId: string, input: FirstSetupDto) {
+    const db = await this.database.connect();
+    return db.transaction(async (manager) => {
+      const account = await manager.findOne(Account, {
+        where: { id: accountId },
+        lock: { mode: "pessimistic_write" },
+      });
+      if (!account) throw new AuthError("SESSION_INVALID");
+      if (
+        input.accountType &&
+        account.accountType &&
+        account.accountType !== input.accountType
+      )
+        throw new DomainHttpException("FIRST_SETUP_CONFLICT");
+      const type = account.accountType ?? input.accountType;
+      if (!type || (input.nickname !== undefined && type !== "organizer"))
+        throw new DomainHttpException("VALIDATION_FAILED");
+      if (
+        input.nickname !== undefined &&
+        account.nickname &&
+        account.nickname !== input.nickname
+      )
+        throw new DomainHttpException("FIRST_SETUP_CONFLICT");
+      account.accountType = type;
+      if (input.nickname !== undefined) account.nickname = input.nickname;
+      await manager.save(account);
+      return publicAccount(account);
     });
   }
   private async createSession(manager: EntityManager, account: Account) {

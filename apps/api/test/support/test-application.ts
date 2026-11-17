@@ -42,6 +42,9 @@ export async function startTestApplication(
   docsEnabled = true,
 ) {
   const environment = parseEnvironment({
+    RESEND_API_KEY: "re_test_only",
+    RESEND_FROM: "Test <test@example.test>",
+    EMAIL_VERIFICATION_SECRET: "test-email-secret-with-at-least-32-characters",
     AUTH_SECRET: "test-secret-with-at-least-32-characters",
     WEB_ORIGIN: "http://localhost:3000",
     NODE_ENV: "test",

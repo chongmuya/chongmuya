@@ -4,13 +4,15 @@ import { Input } from "@/shared/ui/input";
 import { PasswordInput } from "@/shared/ui/password-input";
 import type { SignupValues } from "../../schemas/signup.schema";
 import type { useSignupFlow } from "../../hooks/use-signup-flow";
+import { EmailVerification } from "./email-verification";
 import { ContactVerification } from "../contact-verification";
 import { StepHeading } from "@/shared/ui/step-layout";
 
 export const enrollmentInputClass = "shadow-control aria-invalid:bg-brand/10";
 export function SignupInformation({
   phone,
-}: Pick<ReturnType<typeof useSignupFlow>, "phone">) {
+  email,
+}: Pick<ReturnType<typeof useSignupFlow>, "phone" | "email">) {
   const {
     register,
     trigger,
@@ -23,31 +25,7 @@ export function SignupInformation({
         description="계정을 만들고 모임 준비를 시작해 보세요."
       />
       <div className="space-y-9">
-        <div>
-          <FormField
-            required
-            id="signup-email"
-            label="이메일"
-            labelClassName="text-label"
-            error={errors.email?.message}
-          >
-            {(attributes) => (
-              <Input
-                {...attributes}
-                {...register("email")}
-                variant="pill"
-                className={enrollmentInputClass}
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                autoCapitalize="none"
-                spellCheck={false}
-                placeholder="chongmuya@gmail.com"
-                required
-              />
-            )}
-          </FormField>
-        </div>
+        <EmailVerification email={email} />
         <FormField
           required
           id="signup-name"
@@ -140,41 +118,6 @@ export function SignupInformation({
           />
         </div>
       </div>
-    </div>
-  );
-}
-
-export function SignupNickname({ disabled }: { disabled?: boolean }) {
-  const {
-    register,
-    formState: { errors },
-  } = useFormContext<SignupValues>();
-  return (
-    <div className="px-[17px]">
-      <StepHeading
-        title="어떻게 불러드릴까요?"
-        description="가입 정보의 이름과 별도로, 총무야에서 사용할 닉네임을 설정해 주세요."
-      />
-      <FormField
-        required
-        id="signup-nickname"
-        label="닉네임"
-        labelClassName="text-label"
-        error={errors.nickname?.message}
-      >
-        {(attributes) => (
-          <Input
-            {...attributes}
-            {...register("nickname")}
-            disabled={disabled}
-            variant="pill"
-            className={enrollmentInputClass}
-            autoComplete="nickname"
-            placeholder="닉네임을 입력해 주세요"
-            required
-          />
-        )}
-      </FormField>
     </div>
   );
 }

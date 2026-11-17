@@ -1,7 +1,12 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useAuth, AuthScreen } from "@/features/auth/client";
+import {
+  useAuth,
+  AuthScreen,
+  isFirstSetupComplete,
+  firstSetupPath,
+} from "@/features/auth/client";
 import type { SessionRequest } from "@/features/auth/types";
 import { GroupBoundary, GroupSettings } from "@/features/groups/client";
 import { EventList, EventDetail } from "@/features/events/client";
@@ -27,6 +32,23 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         ) : (
           <AuthScreen />
         )}
+      </main>
+    );
+  if (!isFirstSetupComplete(account))
+    return (
+      <main className="app-page">
+        <Link href="/">홈</Link>
+        <h1>첫 설정을 이어서 진행해 주세요</h1>
+        <p>
+          이용 유형과 서비스에서 사용할 이름을 설정하면 내 모임과 행사를 관리할
+          수 있어요.
+        </p>
+        <Link
+          href={firstSetupPath(`${pathname}${params.size ? `?${params}` : ""}`)}
+        >
+          첫 설정 이어서 하기
+        </Link>
+        <AuthScreen />
       </main>
     );
   return (
@@ -63,7 +85,7 @@ export function WorkspaceContent({
         <Link href="/events">내 행사</Link>
         <Link href="/mypage">마이페이지</Link>
         {mode === "mypage" && (
-          <Link href="/getting-started">이용 방식 선택</Link>
+          <Link href="/getting-started?guide=1">이용 방식 선택</Link>
         )}
       </nav>
       <h1>{mode === "mypage" ? "내 모임 관리" : "내 행사"}</h1>
