@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { AccountType } from "@/features/auth/types";
+import { RoleConfirmation } from "./role-confirmation";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/shared/ui/button";
@@ -39,16 +41,31 @@ function RoleForm() {
     defaultValues: { accountType: "" as const },
   });
   const save = useFirstSetup();
+  const [confirmation, setConfirmation] = useState<AccountType | null>(null);
+  const confirming = useRef(false);
+  const cancel = () => {
+    if (!confirming.current) setConfirmation(null);
+  };
+  const confirm = async () => {
+    if (!confirmation || confirming.current) return;
+    confirming.current = true;
+    try {
+      await save.mutateAsync({ accountType: confirmation });
+    } catch {
+      // Keep the selected type and confirmation visible for an explicit retry.
+    } finally {
+      confirming.current = false;
+    }
+  };
   return (
     <FormProvider {...form}>
       <form
         className="flex flex-1 flex-col"
         noValidate
-        onSubmit={form.handleSubmit(async (value) => {
-          if (value.accountType)
-            await save
-              .mutateAsync({ accountType: value.accountType })
-              .catch(() => undefined);
+        onSubmit={form.handleSubmit((value) => {
+          if (confirmation || !value.accountType) return;
+          save.reset();
+          setConfirmation(value.accountType);
         })}
       >
         <fieldset disabled={save.isPending}>
@@ -68,6 +85,15 @@ function RoleForm() {
           </Button>
         </div>
       </form>
+      {confirmation && (
+        <RoleConfirmation
+          accountType={confirmation}
+          pending={save.isPending}
+          error={save.error ? safeErrorMessage(save.error) : undefined}
+          onCancel={cancel}
+          onConfirm={() => void confirm()}
+        />
+      )}
     </FormProvider>
   );
 }

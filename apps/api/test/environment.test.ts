@@ -64,6 +64,7 @@ test("configuration rejects missing/invalid required values without exposing val
       authSecret,
       resendApiKey: undefined,
       resendFrom: undefined,
+      resendReplyTo: "support@chongmuya.com",
       emailVerificationSecret: undefined,
       octomoApiKey: undefined,
       signupTerms: undefined,
@@ -132,8 +133,14 @@ test("email configuration is all-or-none, validates sender and never exposes sec
     EMAIL_VERIFICATION_SECRET: "s".repeat(32),
   };
   assert.equal(parseEnvironment(valid).resendFrom, valid.RESEND_FROM);
+  assert.equal(
+    parseEnvironment({ ...valid, RESEND_REPLY_TO: "help@example.com" })
+      .resendReplyTo,
+    "help@example.com",
+  );
   for (const overrides of [
     { RESEND_FROM: undefined },
+    { RESEND_REPLY_TO: "private-password" },
     { EMAIL_VERIFICATION_SECRET: "private-password" },
     { RESEND_FROM: "hello@example.com>" },
     { RESEND_FROM: "Name <hello@example.com" },

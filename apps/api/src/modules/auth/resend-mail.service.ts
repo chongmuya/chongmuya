@@ -28,6 +28,7 @@ export class ResendMailService {
         const result = await resend.emails.send(
           {
             from: this.config.environment.resendFrom!,
+            replyTo: this.config.environment.resendReplyTo,
             to: [to],
             subject,
             text,

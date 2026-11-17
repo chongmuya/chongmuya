@@ -41,6 +41,8 @@ test("Resend delivery retries with one idempotency key, bounds requests and sani
   await service.send("recipient@example.test", "인증", "123456", "one");
   assert.deepEqual(keys, ["one", "one"]);
   assert.equal(bodies[0], bodies[1]);
+  assert.equal(JSON.parse(bodies[0]).reply_to, "support@chongmuya.com");
+  assert.equal(JSON.parse(bodies[0]).from, "총무야 <hello@example.com>");
   for (const failure of ["fail", "timeout"] as const) {
     mode = failure;
     const count = keys.length;
