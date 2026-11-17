@@ -62,6 +62,9 @@ test("configuration rejects missing/invalid required values without exposing val
     }),
     {
       authSecret,
+      kakaoClientId: undefined,
+      kakaoClientSecret: undefined,
+      kakaoRedirectUri: undefined,
       resendApiKey: undefined,
       resendFrom: undefined,
       resendReplyTo: "support@chongmuya.com",
@@ -152,5 +155,37 @@ test("email configuration is all-or-none, validates sender and never exposes sec
       () => parseEnvironment({ ...valid, ...overrides }),
       (error: unknown) =>
         error instanceof Error && !error.message.includes("private-password"),
+    );
+});
+
+test("Kakao configuration is optional together and callback must use the public web origin", () => {
+  const base = {
+    DATABASE_URL: "postgresql://test@localhost/test",
+    AUTH_SECRET: "s".repeat(32),
+    WEB_ORIGIN: "http://localhost:3000",
+  };
+  assert.equal(parseEnvironment(base).kakaoClientId, undefined);
+  const kakao = {
+    KAKAO_CLIENT_ID: "test-client",
+    KAKAO_CLIENT_SECRET: "private-test-secret",
+    KAKAO_REDIRECT_URI: "http://localhost:3000/api/v1/auth/kakao/callback",
+  };
+  assert.equal(
+    parseEnvironment({ ...base, ...kakao }).kakaoRedirectUri,
+    kakao.KAKAO_REDIRECT_URI,
+  );
+  for (const change of [
+    { KAKAO_CLIENT_SECRET: undefined },
+    { KAKAO_REDIRECT_URI: "http://localhost:3001/api/v1/auth/kakao/callback" },
+    { KAKAO_REDIRECT_URI: "https://evil.example/callback" },
+    { KAKAO_REDIRECT_URI: kakao.KAKAO_REDIRECT_URI + "?next=evil" },
+  ])
+    assert.throws(
+      () => parseEnvironment({ ...base, ...kakao, ...change }),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message.includes("KAKAO_") &&
+        !error.message.includes("private-test-secret") &&
+        !error.message.includes("evil"),
     );
 });

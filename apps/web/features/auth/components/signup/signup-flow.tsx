@@ -63,7 +63,12 @@ export function SignupFlow(
                     />
                   )}
                   {flow.step === "information" && (
-                    <SignupInformation phone={flow.phone} email={flow.email} />
+                    <SignupInformation
+                      phone={flow.phone}
+                      email={flow.email}
+                      kakao={!!props.kakao}
+                      providerEmailVerified={flow.providerEmailVerified}
+                    />
                   )}
                   <div className="mt-auto pt-12">
                     <div className="mb-3 min-h-5">

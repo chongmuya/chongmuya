@@ -28,6 +28,45 @@ export const fieldErrorSchema = z
 export type FieldError = z.infer<typeof fieldErrorSchema>;
 
 const messages: Record<string, { status: number; message: string }> = {
+  PASSWORD_RESET_INVALID: {
+    status: 400,
+    message:
+      "유효하지 않거나 만료된 재설정 링크입니다. 메일을 다시 요청해 주세요.",
+  },
+  KAKAO_UNAVAILABLE: {
+    status: 503,
+    message: "카카오 인증을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  },
+  KAKAO_INVALID: {
+    status: 400,
+    message: "카카오 인증을 확인할 수 없습니다. 처음부터 다시 진행해 주세요.",
+  },
+  KAKAO_EXPIRED: {
+    status: 400,
+    message: "카카오 인증 시간이 만료되었습니다. 다시 시작해 주세요.",
+  },
+  KAKAO_CANCELLED: {
+    status: 400,
+    message: "카카오 인증을 취소했어요. 다시 시작할 수 있습니다.",
+  },
+  KAKAO_CONTEXT_CHANGED: {
+    status: 409,
+    message:
+      "로그인 상태가 바뀌었습니다. 현재 계정을 확인하고 다시 시작해 주세요.",
+  },
+  KAKAO_LINK_REQUIRED: {
+    status: 409,
+    message: "기존 계정으로 로그인한 뒤 마이페이지에서 카카오를 연결해 주세요.",
+  },
+  KAKAO_ALREADY_LINKED: {
+    status: 409,
+    message: "이미 연결된 카카오 계정입니다. 기존 연결을 교체할 수 없습니다.",
+  },
+  REAUTHENTICATION_REQUIRED: {
+    status: 403,
+    message: "현재 계정의 비밀번호를 다시 확인하고 연결에 동의해 주세요.",
+  },
+
   EMAIL_VERIFICATION_REQUIRED: {
     status: 400,
     message: "현재 이메일의 인증을 완료해 주세요.",

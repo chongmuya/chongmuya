@@ -45,6 +45,9 @@
         "RESEND_API_KEY",
         "RESEND_FROM",
         "RESEND_REPLY_TO",
+        "KAKAO_CLIENT_ID",
+        "KAKAO_CLIENT_SECRET",
+        "KAKAO_REDIRECT_URI",
         "EMAIL_VERIFICATION_SECRET"
       ]
     }

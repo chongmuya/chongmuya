@@ -16,3 +16,6 @@ export function cookieNames(production: boolean) {
     refresh: production ? "__Host-refresh" : "refresh",
   };
 }
+
+export const kakaoCookieName = (production: boolean) =>
+  production ? "__Host-kakao-browser" : "kakao-browser";

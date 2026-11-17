@@ -82,8 +82,8 @@ export function RecoveryEmail({
           title={sent ? "이메일을 확인해 주세요." : "비밀번호를 잊으셨나요?"}
           description={
             sent
-              ? "입력한 이메일로 재설정 안내를 요청했어요. 메일함과 스팸함을 확인해 주세요."
-              : "가입한 이메일을 입력하면 비밀번호 재설정 링크를 보내드려요."
+              ? "재설정 가능한 계정이면 안내 메일을 보내드려요. 메일함과 스팸함을 확인해 주세요."
+              : "가입한 이메일을 입력해 주세요. 재설정 가능한 계정이면 안내 메일을 보내드려요."
           }
         />
       </div>
@@ -243,7 +243,7 @@ function RecoveryPasswordForm({
         </p>
       ) : linkState !== "valid" ? (
         <Button onClick={onRetry} className="mt-auto">
-          재설정 메일 다시 요청
+          {linkState === "error" ? "링크 다시 확인" : "재설정 메일 다시 요청"}
         </Button>
       ) : (
         <form

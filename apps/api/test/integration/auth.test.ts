@@ -51,7 +51,10 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "auth_sessions",
       "email_verifications",
       "events",
+      "external_identities",
       "groups",
+      "kakao_attempts",
+      "password_resets",
       "phone_verifications",
       "refresh_tokens",
     ],
@@ -139,6 +142,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     .getRepository(Account)
     .findOneByOrFail({ id: identity.account.id });
   assert.notEqual(stored.passwordHash, credentials.password);
+  assert(stored.passwordHash);
   assert.match(stored.passwordHash, /^scrypt-v1\$/);
   const duplicate = await signupFixture(db, email);
   assert.equal(

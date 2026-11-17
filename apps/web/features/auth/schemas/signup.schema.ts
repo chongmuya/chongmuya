@@ -37,6 +37,10 @@ export const signupSchema = z
       ),
   })
   .refine(passwordConfirmation, passwordConfirmationError);
+export const kakaoSignupSchema = signupSchema.safeExtend({
+  password: z.string().max(0),
+  passwordConfirm: z.string().max(0),
+});
 export type SignupValues = z.infer<typeof signupSchema>;
 export const signupDefaults: SignupValues = {
   serviceTerms: false,

@@ -1,6 +1,9 @@
 "use client";
+import type { KakaoStatus } from "../../api/kakao.api";
+import { cancelKakao } from "../../api/kakao.api";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/button";
@@ -17,7 +20,7 @@ import {
   emailVerificationActions,
   signupTermsOptions,
 } from "../../api/signup.api";
-import type { SignupRequest } from "../../types/signup.types";
+import type { SignupFormRequest } from "../../types/signup.types";
 import { SignupFlow } from "./signup-flow";
 
 export function SignupScreen() {
@@ -25,15 +28,31 @@ export function SignupScreen() {
   const returnTo = safeReturnPath(params.get("next"));
   return <SignupScreenContent key={returnTo} returnTo={returnTo} />;
 }
-function SignupScreenContent({ returnTo }: { returnTo: string }) {
+export function KakaoSignupScreen({ context }: { context: KakaoStatus }) {
+  return (
+    <SignupScreenContent
+      key={context.expiresAt}
+      returnTo={safeReturnPath(context.next)}
+      kakao={context}
+    />
+  );
+}
+function SignupScreenContent({
+  returnTo,
+  kakao,
+}: {
+  returnTo: string;
+  kakao?: KakaoStatus;
+}) {
   const { client, status, account } = useAuth();
   const router = useRouter();
   const [completing, setCompleting] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<string | null>(null);
   const active = useRef(true);
-  const input = useRef<{ values: SignupRequest; signal: AbortSignal } | null>(
-    null,
-  );
+  const input = useRef<{
+    values: SignupFormRequest;
+    signal: AbortSignal;
+  } | null>(null);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -47,7 +66,12 @@ function SignupScreenContent({ returnTo }: { returnTo: string }) {
       const current = input.current;
       input.current = null;
       if (!current) throw new Error("Missing signup input");
-      const identity = await client.signup(current.values, current.signal);
+      const identity = kakao
+        ? await client.kakaoSignup(current.values, current.signal)
+        : "password" in current.values && current.values.emailVerificationId
+          ? await client.signup(current.values, current.signal)
+          : null;
+      if (!identity) throw new Error("Missing signup credentials");
       if (!active.current || current.signal.aborted)
         throw new Error("Signup cancelled");
       setCreatedAccount(identity.id);
@@ -110,8 +134,20 @@ function SignupScreenContent({ returnTo }: { returnTo: string }) {
           </Button>
         </aside>
       )}
+      {kakao &&
+        signup.error instanceof ApiError &&
+        signup.error.code === "KAKAO_LINK_REQUIRED" && (
+          <aside className="app-page" role="alert">
+            <p>
+              기존 계정으로 로그인한 뒤 마이페이지에서 카카오를 연결해 주세요.
+            </p>
+            <Link href="/auth?next=%2Fmypage">기존 계정 로그인</Link>
+            <Link href="/auth/recovery">비밀번호 재설정</Link>
+          </aside>
+        )}
       <SignupFlow
         terms={terms.data}
+        kakao={kakao}
         verification={{
           email: emailVerificationActions(
             client.request.bind(client),
@@ -122,7 +158,13 @@ function SignupScreenContent({ returnTo }: { returnTo: string }) {
             client.prepareSignup,
           ),
         }}
-        onExit={() => router.push(authEntryPath("/start", returnTo))}
+        onExit={() => {
+          if (kakao)
+            void cancelKakao(client.request.bind(client), kakao.id).catch(
+              () => undefined,
+            );
+          router.push(authEntryPath("/start", returnTo));
+        }}
         onComplete={() => {
           if (
             client.getSnapshot().status === "authenticated" &&

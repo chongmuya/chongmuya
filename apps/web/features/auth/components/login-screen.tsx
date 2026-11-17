@@ -14,6 +14,7 @@ export function LoginScreen({ returnTo }: { returnTo: string }) {
   return (
     <AuthLayout title="로그인" backHref={authEntryPath("/start", returnTo)}>
       <CredentialsForm
+        returnTo={returnTo}
         appearance="auth"
         pending={login.isPending}
         formError={error ? authErrorMessage(error) : undefined}

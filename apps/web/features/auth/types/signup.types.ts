@@ -21,3 +21,9 @@ export type SignupRequest = {
 };
 
 export type FirstSetupInput = { accountType?: AccountType; nickname?: string };
+
+export type KakaoSignupRequest = Omit<
+  SignupRequest,
+  "password" | "emailVerificationId"
+> & { emailVerificationId?: string };
+export type SignupFormRequest = SignupRequest | KakaoSignupRequest;

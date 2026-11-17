@@ -1,4 +1,7 @@
 import "./support/dom";
+import { RecoveryScreen } from "../features/auth/components/recovery/recovery-screen";
+import { KakaoCompleteScreen } from "../features/auth/components/kakao-complete-screen";
+import { KakaoConnection } from "../features/auth/components/kakao-connection";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement, type ReactElement } from "react";
@@ -1428,6 +1431,387 @@ test("role confirmation cancels without saving, restores focus and prevents dupl
     assert.equal(document.body.style.overflow, "");
   } finally {
     await act(async () => pending.resolve(new Response(null, { status: 503 })));
+    await view.unmount();
+    globalThis.fetch = original;
+  }
+});
+
+test("password recovery routes accept requests, remove fragment tokens, retry lookup and finish without automatic login or secret caching", async () => {
+  const original = globalThis.fetch;
+  const token = "t".repeat(43),
+    password = "new-password12";
+  let checks = 0,
+    saved = 0;
+  globalThis.fetch = async (path, options) => {
+    if (String(path).endsWith("restore"))
+      return Response.json({ authenticated: false, account: null });
+    const input = JSON.parse(String(options?.body));
+    if (String(path).endsWith("/request")) {
+      assert.equal(input.email, "recover@example.test");
+      return Response.json({ accepted: true }, { status: 202 });
+    }
+    assert.equal(input.token, token);
+    if (String(path).endsWith("/check")) {
+      if (++checks === 1) throw new TypeError("offline");
+      return Response.json({
+        valid: true,
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
+      });
+    }
+    assert(String(path).endsWith("/confirm"));
+    assert.equal(input.password, password);
+    saved++;
+    return new Response(null, { status: 204 });
+  };
+  let view = await render(
+    createElement(AuthProvider, null, createElement(RecoveryScreen)),
+  );
+  try {
+    await fill(view.container, "email", "recover@example.test");
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /재설정 가능한 계정이면/),
+    );
+    await view.unmount();
+    window.history.replaceState(
+      null,
+      "",
+      `/auth/reset-password#token=${token}`,
+    );
+    view = await render(
+      createElement(
+        AuthProvider,
+        null,
+        createElement(RecoveryScreen, { reset: true }),
+      ),
+    );
+    await until(() =>
+      assert.match(view.container.textContent!, /링크를 확인할 수 없어요/),
+    );
+    assert.equal(window.location.hash, "");
+    assert.equal(window.location.search, "");
+    await click(view.container, "링크 다시 확인");
+    await until(() =>
+      assert(view.container.querySelector('input[name="password"]')),
+    );
+    await fill(view.container, "password", password);
+    await fill(view.container, "passwordConfirm", password);
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /비밀번호를 변경했어요/),
+    );
+    assert.equal(saved, 1);
+    assert.deepEqual(view.navigations, []);
+    const cached = JSON.stringify([
+      ...view.cache
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.state),
+      ...view.cache
+        .getMutationCache()
+        .getAll()
+        .map((mutation) => mutation.state),
+    ]);
+    assert(!cached.includes(token));
+    assert(!cached.includes(password));
+    assert.equal(window.localStorage.length, 0);
+    assert.equal(window.sessionStorage.length, 0);
+  } finally {
+    await view.unmount();
+    globalThis.fetch = original;
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("Kakao button bypasses empty email form validation and linking requires consent without caching passwords or navigating after exit", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  const pending = deferred<Response>();
+  globalThis.fetch = async (path) => {
+    if (String(path).endsWith("restore"))
+      return Response.json({ authenticated: false, account: null });
+    assert(String(path).endsWith("kakao/start"));
+    calls++;
+    return Response.json(
+      {
+        statusCode: 503,
+        code: "KAKAO_UNAVAILABLE",
+        message: "private",
+        requestId: "00000000-0000-4000-8000-000000000001",
+      },
+      { status: 503 },
+    );
+  };
+  let view = await render(
+    createElement(
+      AuthProvider,
+      null,
+      createElement(AuthEntryScreen, { screen: "login" }),
+    ),
+  );
+  try {
+    await until(() =>
+      assert(view.container.querySelector('input[name="email"]')),
+    );
+    await click(view.container, "카카오 계정으로 계속하기");
+    await until(() => assert.equal(calls, 1));
+    await until(() =>
+      assert.match(
+        view.container.textContent!,
+        /카카오 인증을 사용할 수 없습니다/,
+      ),
+    );
+    assert.equal(
+      view.container.querySelector('input[aria-invalid="true"]'),
+      null,
+    );
+    assert(view.container.querySelector('a[href="/auth/recovery"]'));
+    await view.unmount();
+    globalThis.fetch = async (path, options) => {
+      if (String(path).endsWith("restore"))
+        return Response.json({
+          authenticated: true,
+          account: {
+            id: "link-user",
+            email: "link@example.test",
+            accountType: "owner",
+            nickname: null,
+          },
+        });
+      if (String(path).endsWith("/connection"))
+        return Response.json({ linked: false, canLink: true });
+      assert(String(path).endsWith("link/start"));
+      assert.deepEqual(JSON.parse(String(options?.body)), {
+        password: "link-password1",
+        consent: true,
+      });
+      calls++;
+      return pending.promise;
+    };
+    view = await render(
+      createElement(
+        AuthProvider,
+        null,
+        createElement(KakaoConnection, { accountId: "link-user" }),
+      ),
+    );
+    await until(() =>
+      assert(view.container.querySelector('input[name="password"]')),
+    );
+    await fill(view.container, "password", "link-password1");
+    await submit(view.container);
+    assert.equal(calls, 1);
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[name="consent"]')!
+        .click(),
+    );
+    await submit(view.container);
+    await until(() => assert.equal(calls, 2));
+    await submit(view.container);
+    assert.equal(calls, 2);
+    assert(
+      !JSON.stringify(
+        view.cache
+          .getMutationCache()
+          .getAll()
+          .map((mutation) => mutation.state),
+      ).includes("link-password1"),
+    );
+    await view.unmount();
+    await act(async () =>
+      pending.resolve(
+        Response.json({
+          authorizationUrl:
+            "https://kauth.kakao.com/oauth/authorize?state=test",
+        }),
+      ),
+    );
+    assert.deepEqual(view.navigations, []);
+  } finally {
+    globalThis.fetch = original;
+    pending.resolve(new Response(null, { status: 503 }));
+    if (view.container.isConnected) await view.unmount();
+  }
+});
+
+test("Kakao completion cancels without logging in and directs existing emails to real login/recovery/link paths", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const kind of ["existing", "login", "link"] as const) {
+      let cancelled = 0;
+      globalThis.fetch = async (path) => {
+        if (String(path).endsWith("restore"))
+          return Response.json({
+            authenticated: kind === "link",
+            account:
+              kind === "link"
+                ? {
+                    id: "linked",
+                    accountType: "owner",
+                    email: "linked@example.test",
+                  }
+                : null,
+          });
+        if (String(path).endsWith("/status"))
+          return Response.json({
+            id: "00000000-0000-4000-8000-000000000001",
+            kind,
+            email: "existing@example.test",
+            trustedEmail: true,
+            next: "/mypage",
+            expiresAt: new Date(Date.now() + 60000).toISOString(),
+          });
+        assert(String(path).endsWith("/cancel"));
+        cancelled++;
+        return new Response(null, { status: 204 });
+      };
+      const view = await render(
+        createElement(AuthProvider, null, createElement(KakaoCompleteScreen)),
+      );
+      try {
+        if (kind === "existing") {
+          await until(() =>
+            assert.match(view.container.textContent!, /기존 계정으로 로그인/),
+          );
+          assert(
+            view.container.querySelector('a[href="/auth?next=%2Fmypage"]'),
+          );
+          assert(view.container.querySelector('a[href="/auth/recovery"]'));
+        } else {
+          await until(() =>
+            assert.match(
+              view.container.textContent!,
+              kind === "login" ? /로그인 완료하기/ : /연결 완료하기/,
+            ),
+          );
+          await click(view.container, "취소");
+          await until(() => assert.equal(cancelled, 1));
+          assert.deepEqual(view.navigations, [
+            kind === "link" ? "/mypage" : "/auth",
+          ]);
+        }
+      } finally {
+        await view.unmount();
+      }
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("Kakao signup keeps verified provider email separate, never asks for a password and shows completion before first setup", async () => {
+  const original = globalThis.fetch;
+  const id = "00000000-0000-4000-8000-000000000079",
+    now = Date.now();
+  const proof = {
+    id,
+    phone: "01000000000",
+    status: "pending",
+    expiresAt: new Date(now + 300000).toISOString(),
+    retryAt: new Date(now - 1).toISOString(),
+    nextCheckAt: new Date(now - 1).toISOString(),
+    serverNow: new Date(now).toISOString(),
+    checksRemaining: 12,
+  };
+  const account = {
+    id: "new-kakao",
+    email: "kakao@example.test",
+    name: "직접 입력 이름",
+    accountType: null,
+    nickname: null,
+  };
+  let joined = 0,
+    emailRequests = 0;
+  globalThis.fetch = async (path, options) => {
+    if (String(path).endsWith("restore"))
+      return Response.json({
+        authenticated: joined > 0,
+        account: joined ? account : null,
+      });
+    if (String(path).endsWith("kakao/status"))
+      return Response.json({
+        id,
+        kind: "signup",
+        email: account.email,
+        trustedEmail: true,
+        next: "/mypage",
+        expiresAt: new Date(now + 600000).toISOString(),
+      });
+    if (String(path).endsWith("/terms"))
+      return Response.json({ terms: previewTerms });
+    if (String(path).endsWith("/context") || String(path).endsWith("/cancel"))
+      return new Response(null, { status: 204 });
+    if (String(path).endsWith("/email-verifications")) {
+      emailRequests++;
+      return Response.json({
+        ...proof,
+        email: "changed@example.test",
+        attemptsRemaining: 5,
+      });
+    }
+    if (String(path).endsWith("/phone-verifications"))
+      return Response.json(
+        {
+          ...proof,
+          receiver: "16663538",
+          message: "test-only-message",
+          qrCode: "data:image/png;base64,aGVsbG8=",
+        },
+        { status: 201 },
+      );
+    if (String(path).endsWith("/phone-verifications/check"))
+      return Response.json({ ...proof, status: "verified" });
+    assert(String(path).endsWith("kakao/signup"));
+    const body = JSON.parse(String(options?.body));
+    assert.equal(body.password, undefined);
+    assert.equal(body.passwordConfirm, undefined);
+    assert.equal(body.emailVerificationId, undefined);
+    assert.equal(body.name, account.name);
+    assert.equal(body.phoneVerificationId, id);
+    joined++;
+    return Response.json({ authenticated: true, account }, { status: 201 });
+  };
+  const view = await render(
+    createElement(AuthProvider, null, createElement(KakaoCompleteScreen)),
+  );
+  try {
+    await until(() =>
+      assert(view.container.querySelector('input[name="serviceTerms"]')),
+    );
+    for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
+      await act(async () =>
+        view.container
+          .querySelector<HTMLInputElement>(`input[name="${name}"]`)!
+          .click(),
+      );
+    await submit(view.container);
+    assert.equal(view.container.querySelector('input[name="password"]'), null);
+    assert.match(view.container.textContent!, /카카오에서 확인한 이메일/);
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('input[name="name"]')!
+        .value,
+      "",
+    );
+    await fill(view.container, "email", "changed@example.test");
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /카카오에서 확인한 이메일/,
+    );
+    await click(view.container, "인증번호 보내기");
+    assert.equal(emailRequests, 1);
+    await fill(view.container, "email", account.email);
+    await fill(view.container, "name", account.name);
+    await fill(view.container, "phone", proof.phone);
+    await click(view.container, "휴대폰 인증 요청");
+    await click(view.container, "인증 결과 확인");
+    await submit(view.container);
+    await until(() => assert.match(view.container.textContent!, /가입을 축하/));
+    assert.equal(joined, 1);
+    assert.deepEqual(view.navigations, []);
+    await click(view.container, "다음");
+    assert.deepEqual(view.navigations, ["/getting-started?next=%2Fmypage"]);
+  } finally {
     await view.unmount();
     globalThis.fetch = original;
   }

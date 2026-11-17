@@ -33,23 +33,23 @@ pnpm dev
 
 install·build·서버 시작은 migration을 자동 적용하지 않습니다. `synchronize`, `migrationsRun`, `dropSchema`는 모두 false입니다. 개발 서버는 `Ctrl+C`, DB는 `pnpm db:down`으로 종료합니다. `db:down`은 데이터를 보존합니다.
 
-| 주소                               | 용도                                              |
-| ---------------------------------- | ------------------------------------------------- |
-| <http://localhost:3000>            | 비로그인 공개 홈                                  |
-| <http://localhost:3000/start>      | 시작 화면: 가입·로그인·공개 홈 선택               |
-| <http://localhost:3000/auth>       | 이메일 로그인 (`?mode=signup`으로 기존 가입 폼)   |
-| <http://localhost:3000/events>     | 로그인한 계정의 전체 행사·개인 행사 생성          |
-| <http://localhost:3000/mypage>     | 모임 목록·생성·이름 수정, 계정·로그아웃           |
-| <http://localhost:3001/health>     | DB와 독립된 liveness                              |
-| <http://localhost:3001/ready>      | 실제 DB 쿼리; 정상 200, 가용성 장애 503           |
-| <http://localhost:3000/api/health> | Next rewrite를 거친 liveness                      |
-| <http://localhost:3001/docs>       | 개발용 Swagger; 변경 요청은 Origin·CSRF 헤더 필요 |
+| 주소                               | 용도                                                     |
+| ---------------------------------- | -------------------------------------------------------- |
+| <http://localhost:3000>            | 비로그인 공개 홈                                         |
+| <http://localhost:3000/start>      | 시작 화면: 가입·로그인·공개 홈 선택                      |
+| <http://localhost:3000/auth>       | 이메일·카카오 로그인 (`?mode=signup`은 새 가입으로 이동) |
+| <http://localhost:3000/events>     | 로그인한 계정의 전체 행사·개인 행사 생성                 |
+| <http://localhost:3000/mypage>     | 모임 목록·생성·이름 수정, 계정·로그아웃                  |
+| <http://localhost:3001/health>     | DB와 독립된 liveness                                     |
+| <http://localhost:3001/ready>      | 실제 DB 쿼리; 정상 200, 가용성 장애 503                  |
+| <http://localhost:3000/api/health> | Next rewrite를 거친 liveness                             |
+| <http://localhost:3001/docs>       | 개발용 Swagger; 변경 요청은 Origin·CSRF 헤더 필요        |
 
 모임이 없어도 행사명과 선택적 일정으로 개인 행사를 만들 수 있습니다. 생성 시 본인 모임을 선택하거나 개인 행사 상세에서 나중에 연결할 수 있습니다. 연결은 행사 소유자와 기록을 유지하며 다른 사용자에게 권한을 주지 않습니다. 모임 명단 불러오기·연결 해제·다른 모임 이동·소유권 이전은 제공하지 않습니다.
 
 `/events?event=<행사 UUID>`는 모임과 독립된 상세 주소이며 `/events?group=<모임 UUID>`는 본인 행사 목록의 필터입니다. 로그인 후에는 요청한 유효한 내부 경로로 돌아갑니다. 모임 선택은 URL에 두며 브라우저 저장소에 계정 공통 값을 남기지 않습니다.
 
-시작·로그인·가입 간 이동은 유효한 `next`를 유지합니다. 비회원 시작은 공개 홈으로 연결하며 개인 행사 권한을 부여하지 않습니다. 카카오 로그인과 비밀번호 재설정은 준비 중입니다.
+시작·로그인·가입 간 이동은 유효한 `next`를 유지합니다. 비회원 시작은 공개 홈으로 연결하며 개인 행사 권한을 부여하지 않습니다. 비밀번호 재설정은 `/auth/recovery`, 카카오 연결은 로그인 후 `/mypage`에서 사용합니다. 카카오 설정·추가 가입·복구 링크·배포 순서는 [인증 기준](docs/authentication.md)을 따릅니다.
 
 ## 환경변수
 

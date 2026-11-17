@@ -4,11 +4,12 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError } from "@/shared/http/api-error";
-import type { SignupRequest, SignupTerm } from "../types/signup.types";
+import type { SignupFormRequest, SignupTerm } from "../types/signup.types";
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import {
   signupDefaults,
   signupSchema,
+  kakaoSignupSchema,
   signupStepFields,
   type SignupStep,
   type SignupValues,
@@ -17,7 +18,7 @@ import type { VerificationActions } from "../types/verification.types";
 import { useContactVerification } from "./use-contact-verification";
 
 export type SignupSubmission = (
-  values: SignupRequest,
+  values: SignupFormRequest,
   signal: AbortSignal,
 ) => Promise<void>;
 export function useSignupFlow({
@@ -25,15 +26,17 @@ export function useSignupFlow({
   onExit,
   verification,
   terms,
+  kakao,
 }: {
   onSubmit?: SignupSubmission;
   onExit: () => void;
   verification?: { phone?: VerificationActions; email?: VerificationActions };
   terms: SignupTerm[];
+  kakao?: { email: string | null; trustedEmail: boolean };
 }) {
   const methods = useForm<SignupValues>({
-    resolver: zodResolver(signupSchema),
-    defaultValues: signupDefaults,
+    resolver: zodResolver(kakao ? kakaoSignupSchema : signupSchema),
+    defaultValues: { ...signupDefaults, email: kakao?.email ?? "" },
     shouldUnregister: false,
     mode: "onTouched",
   });
@@ -62,6 +65,9 @@ export function useSignupFlow({
     () => methods.getValues("email").trim().toLowerCase(),
     verification?.email,
   );
+  const providerEmailVerified =
+    !!kakao?.trustedEmail &&
+    (values.email ?? "").trim().toLowerCase() === kakao.email;
   const previousTerms = useRef(
     new Map(terms.map((term) => [term.id, `${term.version}:${term.required}`])),
   );
@@ -137,7 +143,7 @@ export function useSignupFlow({
         }
         return;
       }
-      if (!email.isVerified()) {
+      if (!providerEmailVerified && !email.isVerified()) {
         methods.setError("email", {
           message: "현재 이메일의 인증을 완료해 주세요.",
         });
@@ -159,10 +165,12 @@ export function useSignupFlow({
             await onSubmit(
               {
                 email: input.email.trim().toLowerCase(),
-                password: input.password,
+                ...(!kakao ? { password: input.password } : {}),
                 name: input.name,
                 phone: input.phone,
-                emailVerificationId: email.state.id!,
+                ...(!providerEmailVerified
+                  ? { emailVerificationId: email.state.id! }
+                  : {}),
                 phoneVerificationId: phone.state.id!,
                 consents: terms.map((term) => ({
                   id: term.id,
@@ -259,6 +267,7 @@ export function useSignupFlow({
     submit,
     phone,
     email,
+    providerEmailVerified,
     termsNotice,
     focus,
   };

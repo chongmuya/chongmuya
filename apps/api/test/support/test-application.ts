@@ -40,6 +40,7 @@ class ProbeController {
 export async function startTestApplication(
   databaseUrl: string,
   docsEnabled = true,
+  extraEnvironment: NodeJS.ProcessEnv = {},
 ) {
   const environment = parseEnvironment({
     RESEND_API_KEY: "re_test_only",
@@ -50,6 +51,7 @@ export async function startTestApplication(
     NODE_ENV: "test",
     DATABASE_URL: databaseUrl,
     API_DOCS_ENABLED: String(docsEnabled),
+    ...extraEnvironment,
   });
   const module = await Test.createTestingModule({
     imports: [AppModule],

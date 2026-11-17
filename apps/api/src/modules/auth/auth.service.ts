@@ -1,11 +1,9 @@
+import { SessionIssuerService } from "./session-issuer.service.js";
 import { EmailVerificationService } from "./email-verification.service.js";
 import type { FirstSetupDto } from "./dto/request/first-setup.request.dto.js";
 import { Injectable } from "@nestjs/common";
-import type { EntityManager } from "typeorm";
 import { randomBytes, randomUUID } from "node:crypto";
-import { JwtService } from "@nestjs/jwt";
 import { DatabaseService } from "../../database/database.service.js";
-import { ConfigService } from "../../config/config.service.js";
 import { Account } from "./entities/account.entity.js";
 import { AuthSession } from "./entities/auth-session.entity.js";
 import { RefreshToken } from "./entities/refresh-token.entity.js";
@@ -22,16 +20,12 @@ import { PhoneVerificationService } from "./phone-verification.service.js";
 import { SignupTermsService } from "./signup-terms.service.js";
 import type { SignupDto } from "./dto/request/signup.request.dto.js";
 
-export const ACCESS_SECONDS = 300;
-export const SESSION_SECONDS = 60 * 60 * 24 * 14;
-
 @Injectable()
 export class AuthService {
   constructor(
     private readonly database: DatabaseService,
     private readonly repository: AuthAttemptsRepository,
-    private readonly config: ConfigService,
-    private readonly jwt: JwtService,
+    private readonly sessions: SessionIssuerService,
     private readonly emailVerification: EmailVerificationService,
     private readonly phone: PhoneVerificationService,
     private readonly terms: SignupTermsService,
@@ -47,11 +41,19 @@ export class AuthService {
     const account = await db
       .getRepository(Account)
       .findOneBy({ email: input.email });
-    const valid = account
+    const valid = account?.passwordHash
       ? await verifyPassword(input.password, account.passwordHash)
       : (await hashPassword(input.password), false);
     if (!valid || !account) throw new AuthError("INVALID_CREDENTIALS");
-    return db.transaction((manager) => this.createSession(manager, account));
+    return db.transaction(async (manager) => {
+      const current = await manager.findOne(Account, {
+        where: { id: account.id },
+        lock: { mode: "pessimistic_write" },
+      });
+      if (!current || current.passwordHash !== account.passwordHash)
+        throw new AuthError("INVALID_CREDENTIALS");
+      return this.sessions.createSession(manager, current);
+    });
   }
   async signup(input: SignupDto, ip: string, requester?: string) {
     this.terms.validate(input.consents);
@@ -81,6 +83,7 @@ export class AuthService {
         phone: input.phone,
         phoneVerifiedAt,
         emailVerifiedAt,
+        emailVerificationSource: "resend",
       });
       const result = await manager
         .createQueryBuilder()
@@ -102,7 +105,7 @@ export class AuthService {
           recordedAt: account.createdAt,
         })),
       );
-      return this.createSession(manager, account);
+      return this.sessions.createSession(manager, account);
     });
   }
   async saveFirstSetup(accountId: string, input: FirstSetupDto) {
@@ -134,45 +137,6 @@ export class AuthService {
       return publicAccount(account);
     });
   }
-  private async createSession(manager: EntityManager, account: Account) {
-    const session = Object.assign(new AuthSession(), {
-      id: randomUUID(),
-      accountId: account.id,
-      expiresAt: new Date(Date.now() + SESSION_SECONDS * 1000),
-      revokedAt: null,
-    });
-    const refresh = randomBytes(32).toString("base64url");
-    await manager.save(session);
-    await manager.insert(RefreshToken, {
-      hash: tokenHash(refresh),
-      sessionId: session.id,
-      usedAt: null,
-    });
-    // A signing failure rolls back account, consents and verification consumption too.
-    return this.issue(session, account, refresh);
-  }
-  private async issue(
-    session: AuthSession,
-    account: Account,
-    refresh?: string,
-  ) {
-    const access = await this.jwt.signAsync(
-      { sub: account.id, sid: session.id },
-      {
-        secret: this.config.environment.authSecret,
-        algorithm: "HS256",
-        issuer: "chongmuya-api",
-        audience: "chongmuya-web",
-        expiresIn: ACCESS_SECONDS,
-      },
-    );
-    return {
-      access,
-      refresh,
-      expiresAt: session.expiresAt,
-      account: publicAccount(account),
-    };
-  }
   async refresh(raw?: string) {
     if (!raw || !/^[A-Za-z0-9_-]{43}$/.test(raw))
       throw new AuthError("SESSION_INVALID");
@@ -184,6 +148,14 @@ export class AuthService {
         hash: tokenHash(raw),
       });
       if (!token) return null;
+      const hint = await manager.findOneBy(AuthSession, {
+        id: token.sessionId,
+      });
+      if (!hint) return null;
+      await manager.findOneOrFail(Account, {
+        where: { id: hint.accountId },
+        lock: { mode: "pessimistic_write" },
+      });
       const session = await manager.findOne(AuthSession, {
         where: { id: token.sessionId },
         lock: { mode: "pessimistic_write" },
@@ -215,7 +187,7 @@ export class AuthService {
       return { session, account };
     });
     if (!result) throw new AuthError("SESSION_INVALID");
-    return this.issue(result.session, result.account, next);
+    return this.sessions.issue(result.session, result.account, next);
   }
   async logout(raw?: string) {
     if (!raw) return;
@@ -225,6 +197,14 @@ export class AuthService {
         hash: tokenHash(raw),
       });
       if (!token) return;
+      const hint = await manager.findOneBy(AuthSession, {
+        id: token.sessionId,
+      });
+      if (!hint) return null;
+      await manager.findOneOrFail(Account, {
+        where: { id: hint.accountId },
+        lock: { mode: "pessimistic_write" },
+      });
       const session = await manager.findOne(AuthSession, {
         where: { id: token.sessionId },
         lock: { mode: "pessimistic_write" },

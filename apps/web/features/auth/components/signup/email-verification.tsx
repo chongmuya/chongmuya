@@ -13,8 +13,10 @@ const codeSchema = z.object({
 });
 export function EmailVerification({
   email,
+  trusted = false,
 }: {
   email: ReturnType<typeof useContactVerification>;
+  trusted?: boolean;
 }) {
   const {
     register,
@@ -50,14 +52,16 @@ export function EmailVerification({
             />
             <Button
               className="min-h-input shrink-0 rounded-control px-3 text-caption"
-              disabled={busy || waiting > 0 || state.status === "verified"}
+              disabled={
+                trusted || busy || waiting > 0 || state.status === "verified"
+              }
               onClick={() =>
                 void trigger("email", { shouldFocus: true }).then((valid) => {
                   if (valid) void email.request();
                 })
               }
             >
-              {state.status === "verified"
+              {trusted || state.status === "verified"
                 ? "인증 완료"
                 : waiting
                   ? `${waiting}초 후 재전송`
@@ -69,26 +73,29 @@ export function EmailVerification({
         )}
       </FormField>
       <p role="status" className="text-caption text-muted">
-        {busy
-          ? "이메일 인증을 처리하고 있어요."
-          : state.status === "verified"
-            ? "이메일 인증이 완료되었어요."
-            : state.status === "expired"
-              ? "인증 시간이 만료되었어요. 다시 요청해 주세요."
-              : state.status === "error" && !error
-                ? "이메일 발송에 실패했어요. 대기 후 다시 요청해 주세요."
-                : state.id
-                  ? "메일로 받은 인증번호를 입력해 주세요."
-                  : "가입할 이메일을 인증해 주세요."}
+        {trusted
+          ? "카카오에서 확인한 이메일이에요. 변경하면 다시 인증해 주세요."
+          : busy
+            ? "이메일 인증을 처리하고 있어요."
+            : state.status === "verified"
+              ? "이메일 인증이 완료되었어요."
+              : state.status === "expired"
+                ? "인증 시간이 만료되었어요. 다시 요청해 주세요."
+                : state.status === "error" && !error
+                  ? "이메일 발송에 실패했어요. 대기 후 다시 요청해 주세요."
+                  : state.id
+                    ? "메일로 받은 인증번호를 입력해 주세요."
+                    : "가입할 이메일을 인증해 주세요."}
       </p>
       <FormError message={error} />
-      {state.id &&
+      {!trusted &&
+        state.id &&
         !state.deliveryFailed &&
         state.status !== "verified" &&
         state.status !== "expired" && (
           <EmailCode key={state.id} email={email} />
         )}
-      {state.expiresAt && state.status !== "expired" && (
+      {!trusted && state.expiresAt && state.status !== "expired" && (
         <p className="text-caption text-muted">
           남은 인증 시간{" "}
           {Math.max(0, Math.ceil((state.expiresAt - now) / 1000))}초

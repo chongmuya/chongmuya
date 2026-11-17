@@ -265,3 +265,15 @@ pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolv
 가입 요청자 쿠키는 두 인증이 공유합니다. EmailVerificationService와 PhoneVerificationService는 각각 발급·검증·소비를 관리하고, ResendMailService와 OctomoService는 외부 통신만 담당합니다. 외부 응답을 기다리는 동안 DB 트랜잭션을 유지하지 않습니다. AuthService가 두 인증 행을 이메일→휴대폰 순서로 잠그고 소비·계정·동의·최초 세션을 원자적으로 저장합니다. 첫 설정 API는 AccessGuard/CurrentUser로 본인 계정을 결정하고 계정 행 잠금 안에서 이용 유형의 불변성을 검증합니다.
 
 약관 Query는 공개 데이터입니다. 이미 받은 약관의 배경 재조회 실패에는 폼과 인증을 보존하고 안내만 표시합니다. 약관 버전 변경은 해당 동의만 다시 받으며 전체 폼 key로 쓰지 않습니다. 첫 설정 저장은 SessionClient가 결과를 현재 계정에 적용하고 계정 전환·로그아웃·화면 이탈 뒤 응답은 버립니다. 비밀번호와 두 인증의 비밀값은 Query·브라우저 영구 저장소에 보관하지 않습니다.
+
+## 복구와 외부 로그인 저장 경계
+
+PasswordResetService는 복구 토큰 발급·소비, KakaoFlowService는 브라우저별 OAuth 시도와 가입/연결 트랜잭션, KakaoOidcService는 외부 OIDC 검증을 담당합니다. SessionIssuerService는 기존 세션/JWT 발급을 공유하며 ResendMailService는 계속 발송만 담당합니다. 새 제공자 프레임워크나 공통 패키지는 없습니다.
+
+자격 증명 경합은 Account 행 잠금으로 직렬화합니다. 로그인은 트랜잭션 밖에서 scrypt를 검증한 후 잠긴 Account의 passwordHash가 같은지 확인합니다. refresh/logout/link는 Account → AuthSession 순서입니다. 재설정도 Account를 먼저 잠그고 토큰 재검증·비밀번호·세션 폐기·남은 증명 무효화를 원자적으로 처리합니다. 외부 식별자를 생성/연결하는 경로는 issuer/sub advisory lock → Account(기존 계정) → 세션 → 시도 순서입니다. 일반 OAuth 콜백은 시도만 잠그며 외부 통신 전에 잠금을 풉니다. 계정 잠금 이전에 시작한 작업도 최종 잠금 안에서 현재 자격 증명/세션을 재검사합니다.
+
+`1794960000000-PasswordResetKakao`는 password_resets, kakao_attempts, external_identities와 FK·인덱스·고유 제약을 추가합니다. 기존 password_hash만 nullable로 완화하고 email_verification_source/credentials_changed_at을 nullable로 추가합니다. 기존 Account·AuthSession·모임·행사 ID, 비밀번호와 인증 시각은 변경하지 않습니다. 기존 migration 뒤 API build → 대상 DB 확인 → db:migration:show → db:migration:run → 새 API/웹 배포 순서입니다. 구 API는 null 비밀번호 계정을 처리하지 못하므로 카카오를 활성화하기 전에 모든 API replica를 새 버전으로 전환합니다.
+
+새 테이블 기록, null 비밀번호, 인증 출처/자격 변경 기록이 있으면 down은 중단합니다. 이전 스키마로 돌리기 위해 소셜 계정을 지우거나 가짜 비밀번호를 넣지 않습니다. 데이터가 생긴 뒤에는 nullable 비밀번호를 지원하는 코드와 보존 가능한 후속 migration으로 복구합니다. 자동 migrate/synchronize/dropSchema는 계속 false이며 운영 DB를 초기화하지 않습니다. 만료된 시도/복구 이력의 보존·정리는 운영 정책에 따라 별도로 수행해야 합니다.
+
+카카오 GET 콜백의 app Route Handler는 고정 API_URL로 요청을 전달하고 깨끗한 Nest 리다이렉트만 돌려주는 전송 경계입니다. Next 기본 rewrite의 장애 로그가 code/state를 출력하지 않도록 필요한 한 경로만 처리합니다. 토큰 교환·검증·DB·쿠키 발급은 모두 Nest에 있으며 새 BFF 인증 계층을 두지 않습니다.

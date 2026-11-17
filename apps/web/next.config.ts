@@ -7,6 +7,27 @@ if (!["http:", "https:"].includes(apiUrl.protocol)) {
 }
 
 const nextConfig: NextConfig = {
+  logging: {
+    incomingRequests: {
+      ignore: [
+        /^\/api\/v1\/auth\/(kakao|password-reset)/,
+        /^\/auth\/reset-password/,
+      ],
+    },
+  },
+  async headers() {
+    return [
+      "/auth/reset-password",
+      "/auth/kakao/:path*",
+      "/api/v1/auth/kakao/:path*",
+    ].map((source) => ({
+      source,
+      headers: [
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "Cache-Control", value: "no-store" },
+      ],
+    }));
+  },
   async rewrites() {
     return [
       {

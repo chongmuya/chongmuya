@@ -9,7 +9,20 @@ export class Account {
   @Column({ name: "account_type", type: "varchar", length: 20, nullable: true })
   accountType!: "organizer" | "owner" | null;
   @Column({ type: "varchar", length: 254 }) email!: string;
-  @Column("text") passwordHash!: string;
+  @Column({ type: "text", nullable: true }) passwordHash!: string | null;
+  @Column({
+    name: "email_verification_source",
+    type: "varchar",
+    length: 20,
+    nullable: true,
+  })
+  emailVerificationSource!: "resend" | "kakao" | null;
+  @Column({
+    name: "credentials_changed_at",
+    type: "timestamptz",
+    nullable: true,
+  })
+  credentialsChangedAt!: Date | null;
   @Column("timestamptz") createdAt!: Date;
   // Legacy accounts keep their IDs and remain explicitly unverified.
   @Column({ type: "varchar", length: 100, nullable: true }) name!:

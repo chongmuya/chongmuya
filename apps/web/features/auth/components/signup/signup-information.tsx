@@ -12,7 +12,12 @@ export const enrollmentInputClass = "shadow-control aria-invalid:bg-brand/10";
 export function SignupInformation({
   phone,
   email,
-}: Pick<ReturnType<typeof useSignupFlow>, "phone" | "email">) {
+  kakao = false,
+  providerEmailVerified = false,
+}: Pick<ReturnType<typeof useSignupFlow>, "phone" | "email"> & {
+  kakao?: boolean;
+  providerEmailVerified?: boolean;
+}) {
   const {
     register,
     trigger,
@@ -25,7 +30,7 @@ export function SignupInformation({
         description="계정을 만들고 모임 준비를 시작해 보세요."
       />
       <div className="space-y-9">
-        <EmailVerification email={email} />
+        <EmailVerification email={email} trusted={providerEmailVerified} />
         <FormField
           required
           id="signup-name"
@@ -45,45 +50,49 @@ export function SignupInformation({
             />
           )}
         </FormField>
-        <FormField
-          required
-          id="signup-password"
-          label="비밀번호"
-          labelClassName="text-label"
-          hint="8~16자, 공백 없이 영문·숫자·일반 특수문자 허용. 문자 종류별 필수 조합은 없어요."
-          error={errors.password?.message}
-        >
-          {(attributes) => (
-            <PasswordInput
-              {...attributes}
-              {...register("password")}
-              variant="pill"
-              className={enrollmentInputClass}
-              autoComplete="new-password"
-              placeholder="8~16자 비밀번호"
+        {!kakao && (
+          <>
+            <FormField
               required
-            />
-          )}
-        </FormField>
-        <FormField
-          required
-          id="signup-passwordConfirm"
-          label="비밀번호 확인"
-          labelClassName="text-label"
-          error={errors.passwordConfirm?.message}
-        >
-          {(attributes) => (
-            <PasswordInput
-              {...attributes}
-              {...register("passwordConfirm")}
-              variant="pill"
-              className={enrollmentInputClass}
-              autoComplete="new-password"
-              placeholder="비밀번호를 다시 입력해 주세요"
+              id="signup-password"
+              label="비밀번호"
+              labelClassName="text-label"
+              hint="8~16자, 공백 없이 영문·숫자·일반 특수문자 허용. 문자 종류별 필수 조합은 없어요."
+              error={errors.password?.message}
+            >
+              {(attributes) => (
+                <PasswordInput
+                  {...attributes}
+                  {...register("password")}
+                  variant="pill"
+                  className={enrollmentInputClass}
+                  autoComplete="new-password"
+                  placeholder="8~16자 비밀번호"
+                  required
+                />
+              )}
+            </FormField>
+            <FormField
               required
-            />
-          )}
-        </FormField>
+              id="signup-passwordConfirm"
+              label="비밀번호 확인"
+              labelClassName="text-label"
+              error={errors.passwordConfirm?.message}
+            >
+              {(attributes) => (
+                <PasswordInput
+                  {...attributes}
+                  {...register("passwordConfirm")}
+                  variant="pill"
+                  className={enrollmentInputClass}
+                  autoComplete="new-password"
+                  placeholder="비밀번호를 다시 입력해 주세요"
+                  required
+                />
+              )}
+            </FormField>
+          </>
+        )}
         <div>
           <FormField
             required

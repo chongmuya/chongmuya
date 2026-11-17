@@ -3,7 +3,8 @@
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import { ApiError } from "@/shared/http/api-error";
 import { useId } from "react";
-import Image from "next/image";
+import { KakaoButton } from "./kakao-button";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/shared/ui/button";
@@ -20,10 +21,12 @@ export function CredentialsForm({
   submit,
   appearance = "default",
   formError,
+  returnTo = "/events",
 }: {
   pending: boolean;
   appearance?: "default" | "auth";
   formError?: string;
+  returnTo?: string;
   submit: (values: Credentials, onError: (error: Error) => void) => void;
 }) {
   const id = useId();
@@ -134,42 +137,14 @@ export function CredentialsForm({
       </Button>
       {branded && (
         <>
-          <Button
-            variant="kakao"
-            disabled
-            className="mt-2 w-full py-[5px]"
-            aria-describedby={`${id}-kakao-notice`}
-          >
-            <Image
-              src="/images/auth/kakao.png"
-              alt=""
-              width={33}
-              height={33}
-              unoptimized
-            />
-            카카오 계정으로 계속하기
-          </Button>
-          <p
-            id={`${id}-kakao-notice`}
-            className="mt-1 text-center text-caption text-brand-ink"
-          >
-            카카오 로그인 준비 중
-          </p>
+          <KakaoButton returnTo={returnTo} disabled={pending} />
           <div className="mt-[26px] text-center">
-            <button
-              type="button"
-              disabled
-              className="cursor-not-allowed text-caption text-black/70 underline underline-offset-2"
-              aria-describedby={`${id}-reset-notice`}
+            <Link
+              href="/auth/recovery"
+              className="text-caption text-black/70 underline underline-offset-2"
             >
               비밀번호를 잊으셨나요?
-            </button>
-            <p
-              id={`${id}-reset-notice`}
-              className="mt-1 text-caption text-brand-ink"
-            >
-              비밀번호 재설정 준비 중
-            </p>
+            </Link>
           </div>
         </>
       )}
