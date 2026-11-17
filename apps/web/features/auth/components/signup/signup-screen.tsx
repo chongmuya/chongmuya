@@ -9,10 +9,12 @@ import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
 import { useAuth, notifySessionChange } from "../auth-provider";
 import { AuthScreen } from "../auth-screen";
+import { postLoginPath, firstSetupPath } from "../../lib/first-setup";
 import { safeReturnPath } from "../../lib/return-path";
 import { authEntryPath } from "../../lib/auth-entry-path";
 import {
   phoneVerificationActions,
+  emailVerificationActions,
   signupTermsOptions,
 } from "../../api/signup.api";
 import type { SignupRequest } from "../../types/signup.types";
@@ -61,8 +63,8 @@ function SignupScreenContent({ returnTo }: { returnTo: string }) {
       !completing &&
       createdAccount !== account?.id
     )
-      router.replace(returnTo);
-  }, [status, completing, createdAccount, account?.id, returnTo, router]);
+      router.replace(postLoginPath(account!, returnTo));
+  }, [status, completing, createdAccount, account, returnTo, router]);
   if (
     status === "loading" ||
     (status === "authenticated" &&
@@ -80,7 +82,7 @@ function SignupScreenContent({ returnTo }: { returnTo: string }) {
         <AuthScreen />
       </main>
     );
-  if (terms.isError)
+  if (terms.isError && !terms.data)
     return (
       <main className="app-page">
         <p role="alert">{safeErrorMessage(terms.error)}</p>
@@ -96,38 +98,55 @@ function SignupScreenContent({ returnTo }: { returnTo: string }) {
       </main>
     );
   return (
-    <SignupFlow
-      key={terms.data.map((term) => `${term.id}:${term.version}`).join("|")}
-      terms={terms.data}
-      verification={{
-        phone: phoneVerificationActions(client.request.bind(client)),
-      }}
-      onExit={() => router.push(authEntryPath("/start", returnTo))}
-      onComplete={() => {
-        if (
-          client.getSnapshot().status === "authenticated" &&
-          client.getSnapshot().account?.id === createdAccount
-        )
-          router.replace(
-            `/getting-started?next=${encodeURIComponent(returnTo)}`,
-          );
-      }}
-      onSubmit={async (values, signal) => {
-        setCompleting(true);
-        input.current = { values, signal };
-        try {
-          await signup.mutateAsync();
-        } catch (error) {
+    <>
+      {terms.isError && (
+        <aside
+          role="alert"
+          className="mx-auto max-w-[402px] px-5 pt-4 text-caption"
+        >
+          <p>약관을 새로 확인하지 못했어요. 입력한 정보는 유지됩니다.</p>
+          <Button variant="outline" onClick={() => void terms.refetch()}>
+            약관 다시 확인
+          </Button>
+        </aside>
+      )}
+      <SignupFlow
+        terms={terms.data}
+        verification={{
+          email: emailVerificationActions(
+            client.request.bind(client),
+            client.prepareSignup,
+          ),
+          phone: phoneVerificationActions(
+            client.request.bind(client),
+            client.prepareSignup,
+          ),
+        }}
+        onExit={() => router.push(authEntryPath("/start", returnTo))}
+        onComplete={() => {
           if (
-            error instanceof ApiError &&
-            error.code === "SIGNUP_TERMS_CHANGED"
+            client.getSnapshot().status === "authenticated" &&
+            client.getSnapshot().account?.id === createdAccount
           )
-            void terms.refetch();
-          throw error;
-        } finally {
-          if (active.current) setCompleting(false);
-        }
-      }}
-    />
+            router.replace(firstSetupPath(returnTo));
+        }}
+        onSubmit={async (values, signal) => {
+          setCompleting(true);
+          input.current = { values, signal };
+          try {
+            await signup.mutateAsync();
+          } catch (error) {
+            if (
+              error instanceof ApiError &&
+              error.code === "SIGNUP_TERMS_CHANGED"
+            )
+              void terms.refetch();
+            throw error;
+          } finally {
+            if (active.current) setCompleting(false);
+          }
+        }}
+      />
+    </>
   );
 }

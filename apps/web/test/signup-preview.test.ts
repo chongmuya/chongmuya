@@ -108,12 +108,6 @@ const data = {
   nickname: "총무",
 };
 async function information(container: HTMLElement) {
-  await act(async () =>
-    container
-      .querySelector<HTMLInputElement>('input[value="organizer"]')!
-      .click(),
-  );
-  await submit(container);
   for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
     await agree(container, name);
   await submit(container);
@@ -126,6 +120,7 @@ async function information(container: HTMLElement) {
   ] as const)
     await fill(container, name, data[name]);
   await click(container, "휴대폰 인증 요청");
+  await click(container, "인증번호 보내기");
 }
 
 test("password policy is exact ASCII 8–16 across login, signup and recovery", () => {
@@ -169,7 +164,7 @@ test("password policy is exact ASCII 8–16 across login, signup and recovery", 
     signupSchema.safeParse({ ...data, marketing: false }).success,
     true,
   );
-  for (const field of ["name", "nickname", "phone"])
+  for (const field of ["name", "phone"])
     assert.equal(
       signupSchema.safeParse({ ...data, [field]: " " }).success,
       false,
@@ -183,6 +178,14 @@ test("signup keeps values and consent across details/back, validates steps and s
     createElement(SignupFlow, {
       terms: previewTerms,
       verification: {
+        email: {
+          request: async (value) => ({
+            value,
+            status: "verified",
+            id: "00000000-0000-4000-8000-000000000002",
+            expiresAt: Date.now() + 600000,
+          }),
+        },
         phone: {
           request: async (value) => ({
             value,
@@ -201,8 +204,9 @@ test("signup keeps values and consent across details/back, validates steps and s
           false,
         );
         assert(values.phoneVerificationId);
-        assert.equal(values.accountType, "organizer");
-        assert.equal(values.nickname, data.nickname);
+        assert(values.emailVerificationId);
+        assert.equal("nickname" in values, false);
+        assert.equal("accountType" in values, false);
         await done.promise;
       },
     }),
@@ -210,7 +214,7 @@ test("signup keeps values and consent across details/back, validates steps and s
   try {
     assert.equal(view.container.querySelectorAll("input:checked").length, 0);
     await submit(view.container);
-    assert.match(view.container.textContent!, /이용 유형을 선택/);
+    assert.match(view.container.textContent!, /필수 약관에 동의/);
     await information(view.container);
     await fill(view.container, "passwordConfirm", "different");
     await submit(view.container);
@@ -227,10 +231,7 @@ test("signup keeps values and consent across details/back, validates steps and s
         .value,
       data.email,
     );
-    await submit(view.container);
-    assert.match(view.container.textContent!, /어떻게 불러드릴까요/);
     assert.equal(calls, 0);
-    await fill(view.container, "nickname", data.nickname);
     await submit(view.container);
     await submit(view.container);
     assert.equal(calls, 1);
@@ -245,6 +246,14 @@ test("signup keeps values and consent across details/back, validates steps and s
     createElement(SignupFlow, {
       terms: previewTerms,
       verification: {
+        email: {
+          request: async (value) => ({
+            value,
+            status: "verified",
+            id: "00000000-0000-4000-8000-000000000002",
+            expiresAt: Date.now() + 600000,
+          }),
+        },
         phone: {
           request: async (value) => ({
             value,
@@ -258,7 +267,7 @@ test("signup keeps values and consent across details/back, validates steps and s
       onComplete: noop,
     }),
   );
-  assert.match(fresh.container.textContent!, /총무야를 어떻게/);
+  assert.match(fresh.container.textContent!, /전체 동의/);
   assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
   await fresh.unmount();
 });
@@ -269,6 +278,14 @@ test("final field failure returns to the input, focuses it and permits retry wit
     createElement(SignupFlow, {
       terms: previewTerms,
       verification: {
+        email: {
+          request: async (value) => ({
+            value,
+            status: "verified",
+            id: "00000000-0000-4000-8000-000000000002",
+            expiresAt: Date.now() + 600000,
+          }),
+        },
         phone: {
           request: async (value) => ({
             value,
@@ -294,8 +311,7 @@ test("final field failure returns to the input, focuses it and permits retry wit
   );
   try {
     await information(view.container);
-    await submit(view.container);
-    await fill(view.container, "nickname", data.nickname);
+
     await submit(view.container);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -304,7 +320,7 @@ test("final field failure returns to the input, focuses it and permits retry wit
     assert.match(view.container.textContent!, /이메일을 확인/);
     assert.doesNotMatch(view.container.textContent!, /SECRET/);
     await fill(view.container, "email", "retry@example.test");
-    await submit(view.container);
+    await click(view.container, "인증번호 보내기");
     await submit(view.container);
     assert.equal(calls, 2);
     assert.match(view.container.textContent!, /가입을 축하/);

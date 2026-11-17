@@ -85,13 +85,13 @@ function verificationResult(raw: unknown, issued = false): VerificationResult {
 // Only the hook's local state receives challenge text/QR. Query never caches it.
 export function phoneVerificationActions(
   request: SessionRequest,
+  prepare = () =>
+    request<void>("/api/v1/auth/signup/context", { method: "POST" }),
 ): VerificationActions {
   return {
     request: async (phone, signal) => {
-      await request<void>("/api/v1/auth/signup/context", {
-        method: "POST",
-        signal,
-      });
+      await prepare();
+      signal.throwIfAborted();
       return verificationResult(
         await request("/api/v1/auth/signup/phone-verifications", {
           method: "POST",
@@ -111,6 +111,60 @@ export function phoneVerificationActions(
       ),
     cancel: (id) =>
       request<void>("/api/v1/auth/signup/phone-verifications/cancel", {
+        method: "POST",
+        keepalive: true,
+        body: JSON.stringify({ id }),
+      }),
+  };
+}
+
+const emailVerificationSchema = z.object({
+  id: z.uuid(),
+  email: z.email(),
+  status: z.enum(["pending", "verified", "expired", "failed"]),
+  expiresAt: z.iso.datetime(),
+  retryAt: z.iso.datetime(),
+  serverNow: z.iso.datetime(),
+  attemptsRemaining: z.int().min(0).max(5),
+});
+function emailResult(raw: unknown): VerificationResult {
+  const value = parse(emailVerificationSchema, raw);
+  return {
+    ...value,
+    value: value.email,
+    deliveryFailed: value.status === "failed",
+    status: value.status === "failed" ? "error" : value.status,
+    expiresAt: Date.parse(value.expiresAt),
+    retryAt: Date.parse(value.retryAt),
+    serverNow: Date.parse(value.serverNow),
+  };
+}
+export function emailVerificationActions(
+  request: SessionRequest,
+  prepare: () => Promise<void>,
+): VerificationActions {
+  return {
+    request: async (email, signal) => {
+      await prepare();
+      signal.throwIfAborted();
+      return emailResult(
+        await request("/api/v1/auth/signup/email-verifications", {
+          method: "POST",
+          signal,
+          body: JSON.stringify({ email }),
+        }),
+      );
+    },
+    check: async (email, signal, id, code) =>
+      emailResult(
+        await request("/api/v1/auth/signup/email-verifications/check", {
+          method: "POST",
+          signal,
+          body: JSON.stringify({ id, email, code }),
+        }),
+      ),
+    cancel: (id) =>
+      request<void>("/api/v1/auth/signup/email-verifications/cancel", {
         method: "POST",
         keepalive: true,
         body: JSON.stringify({ id }),

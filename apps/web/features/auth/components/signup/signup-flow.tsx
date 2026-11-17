@@ -7,9 +7,8 @@ import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import { useSignupFlow } from "../../hooks/use-signup-flow";
 import { StepLayout } from "@/shared/ui/step-layout";
-import { SignupRole } from "./signup-role";
 import { SignupTerms, SignupTermsDetail } from "./signup-terms";
-import { SignupInformation, SignupNickname } from "./signup-information";
+import { SignupInformation } from "./signup-information";
 
 export function SignupFlow(
   props: Parameters<typeof useSignupFlow>[0] & { onComplete: () => void },
@@ -28,13 +27,9 @@ export function SignupFlow(
             ? ""
             : flow.detail
               ? "약관 상세"
-              : ["role", "terms"].includes(flow.step)
+              : flow.step === "terms"
                 ? ""
-                : flow.step === "nickname"
-                  ? flow.methods.getValues("accountType") === "owner"
-                    ? "프로필 등록"
-                    : "총무 등록"
-                  : "회원가입"
+                : "회원가입"
         }
         onBack={flow.complete ? props.onComplete : flow.back}
         busy={flow.pending}
@@ -56,7 +51,11 @@ export function SignupFlow(
                 aria-busy={flow.pending}
               >
                 <div className="flex min-w-0 flex-1 flex-col">
-                  {flow.step === "role" && <SignupRole />}
+                  {flow.termsNotice && (
+                    <p role="status" className="mb-4 text-caption text-muted">
+                      {flow.termsNotice}
+                    </p>
+                  )}
                   {flow.step === "terms" && (
                     <SignupTerms
                       onDetail={flow.setDetail}
@@ -64,10 +63,7 @@ export function SignupFlow(
                     />
                   )}
                   {flow.step === "information" && (
-                    <SignupInformation phone={flow.phone} />
-                  )}
-                  {flow.step === "nickname" && (
-                    <SignupNickname disabled={flow.pending} />
+                    <SignupInformation phone={flow.phone} email={flow.email} />
                   )}
                   <div className="mt-auto pt-12">
                     <div className="mb-3 min-h-5">
@@ -78,18 +74,16 @@ export function SignupFlow(
                       />
                     </div>
                     <Button
-                      variant={flow.step === "role" ? "brand-outline" : "solid"}
+                      variant="solid"
                       type="submit"
                       loading={flow.pending}
                       className="w-full"
                     >
                       {flow.pending
                         ? "가입 처리 중…"
-                        : flow.step === "nickname"
+                        : flow.step === "information"
                           ? "가입하기"
-                          : flow.step === "role"
-                            ? "계속하기"
-                            : "다음"}
+                          : "다음"}
                     </Button>
                   </div>
                 </div>

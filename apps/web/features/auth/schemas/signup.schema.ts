@@ -6,16 +6,19 @@ import {
 } from "./password.schema";
 
 export const signupEmailSchema = z
-  .email("올바른 이메일 형식이 아니에요.")
-  .max(254, "이메일은 254자 이내로 입력해 주세요.");
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(
+    z
+      .email("올바른 이메일 형식이 아니에요.")
+      .max(254, "이메일은 254자 이내로 입력해 주세요."),
+  );
 const requiredConsent = z
   .boolean()
   .refine(Boolean, "필수 약관에 동의해 주세요.");
 export const signupSchema = z
   .object({
-    accountType: z
-      .enum(["", "organizer", "owner"])
-      .refine((value): boolean => value !== "", "이용 유형을 선택해 주세요."),
     serviceTerms: requiredConsent,
     privacyCollection: requiredConsent,
     privacyPolicy: requiredConsent,
@@ -32,15 +35,10 @@ export const signupSchema = z
         /^010\d{8}$/,
         "010으로 시작하는 휴대폰 번호 11자리를 입력해 주세요.",
       ),
-    nickname: z
-      .string()
-      .max(100, "닉네임은 100자 이내로 입력해 주세요.")
-      .refine((value) => value.trim().length > 0, "닉네임을 입력해 주세요."),
   })
   .refine(passwordConfirmation, passwordConfirmationError);
 export type SignupValues = z.infer<typeof signupSchema>;
 export const signupDefaults: SignupValues = {
-  accountType: "",
   serviceTerms: false,
   privacyCollection: false,
   privacyPolicy: false,
@@ -50,12 +48,9 @@ export const signupDefaults: SignupValues = {
   password: "",
   passwordConfirm: "",
   phone: "",
-  nickname: "",
 };
 export const signupStepFields = {
-  role: ["accountType"],
   terms: ["serviceTerms", "privacyCollection", "privacyPolicy", "marketing"],
   information: ["email", "name", "password", "passwordConfirm", "phone"],
-  nickname: ["nickname"],
 } as const satisfies Record<string, readonly (keyof SignupValues)[]>;
 export type SignupStep = keyof typeof signupStepFields;

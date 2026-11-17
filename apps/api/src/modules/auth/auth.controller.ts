@@ -1,4 +1,6 @@
+import { FirstSetupDto } from "./dto/request/first-setup.request.dto.js";
 import {
+  Patch,
   Body,
   Controller,
   Get,
@@ -135,6 +137,15 @@ export class AuthController {
   @ApiOkResponse({ type: AccountDto })
   me(@CurrentUser() user: AuthUser) {
     return user;
+  }
+
+  @Patch("first-setup")
+  @UseGuards(AccessGuard)
+  @Header("Cache-Control", "no-store")
+  @ApiCookieAuth()
+  @ApiOkResponse({ type: AccountDto })
+  firstSetup(@CurrentUser() user: AuthUser, @Body() body: FirstSetupDto) {
+    return this.auth.saveFirstSetup(user.id, body);
   }
 
   @Post("refresh")

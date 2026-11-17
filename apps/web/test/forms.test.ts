@@ -836,7 +836,7 @@ test("branded login distinguishes credentials and connection errors, retries, bl
     if (attempts === 2) throw new TypeError("offline");
     return Response.json({
       authenticated: true,
-      account: { id: "a", email: "user@example.com" },
+      account: { id: "a", email: "user@example.com", accountType: "owner" },
     });
   };
   const view = await render(
@@ -914,6 +914,8 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
   let issued = 0;
   let checks = 0;
   let joined = 0;
+  let termsFail = false;
+  let terms = previewTerms;
   const now = Date.now();
   const proof = {
     id,
@@ -928,12 +930,12 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
   const account = {
     id: "00000000-0000-4000-8000-000000000098",
     email: "real@example.test",
-    accountType: "organizer",
+    accountType: null,
     name: "가입 이름",
-    nickname: "별명",
+    nickname: null,
     phone: proof.phone,
     phoneVerifiedAt: new Date(now).toISOString(),
-    emailVerifiedAt: null,
+    emailVerifiedAt: new Date(now).toISOString(),
   };
   globalThis.fetch = async (input, options) => {
     const path = String(input);
@@ -943,9 +945,27 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
         authenticated: joined > 0,
         account: joined ? account : null,
       });
-    if (path.endsWith("/terms")) return Response.json({ terms: previewTerms });
+    if (path.endsWith("/terms")) {
+      if (termsFail) throw new TypeError("offline");
+      return Response.json({ terms });
+    }
     if (path.endsWith("/context") || path.endsWith("/cancel"))
       return new Response(null, { status: 204 });
+    if (path.endsWith("/email-verifications"))
+      return Response.json({
+        ...proof,
+        email: account.email,
+        attemptsRemaining: 5,
+      });
+    if (path.endsWith("/email-verifications/check")) {
+      assert.equal(JSON.parse(String(options?.body)).code, "123456");
+      return Response.json({
+        ...proof,
+        email: account.email,
+        status: "verified",
+        attemptsRemaining: 5,
+      });
+    }
     if (path.endsWith("/phone-verifications")) {
       if (++issued === 1)
         return Response.json(
@@ -985,8 +1005,9 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     assert.equal(body.phoneVerificationId, id);
     assert.equal(body.password, "test-pass-123");
     assert.equal(body.name, account.name);
-    assert.equal(body.accountType, account.accountType);
-    assert.equal(body.nickname, account.nickname);
+    assert.equal(body.accountType, undefined);
+    assert.equal(body.nickname, undefined);
+    assert.equal(body.emailVerificationId, id);
     assert.equal(
       body.consents.find((term: { id: string }) => term.id === "marketing")
         .accepted,
@@ -1012,19 +1033,13 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
         .getAll()
         .map((m) => m.state),
     ]);
-    for (const secret of ["test-pass-123", message, id])
+    for (const secret of ["test-pass-123", "123456", message, id])
       assert(!cached.includes(secret));
   };
   try {
     await until(() =>
-      assert(view.container.querySelector('input[name="accountType"]')),
+      assert(view.container.querySelector('input[name="serviceTerms"]')),
     );
-    await act(async () =>
-      view.container
-        .querySelector<HTMLInputElement>('input[value="organizer"]')!
-        .click(),
-    );
-    await submit(view.container);
     for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"]) {
       await act(async () =>
         view.container
@@ -1041,7 +1056,9 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
       phone: proof.phone,
     }))
       await fill(view.container, name, value);
-    assert.doesNotMatch(view.container.textContent!, /이메일 인증/);
+    await click(view.container, "인증번호 보내기");
+    await fill(view.container, "code", "123456");
+    await click(view.container, "인증번호 확인");
     await submit(view.container);
     assert.match(view.container.textContent!, /휴대폰 인증을 완료/);
     assert.equal(joined, 0);
@@ -1069,16 +1086,73 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
       assert.match(view.container.textContent!, /휴대폰 인증이 완료/),
     );
     noSecrets();
+    const values = () =>
+      Object.fromEntries(
+        ["email", "name", "password", "phone"].map((name) => [
+          name,
+          view.container.querySelector<HTMLInputElement>(
+            `input[name="${name}"]`,
+          )!.value,
+        ]),
+      );
+    const before = values();
+    assert.deepEqual(before, {
+      email: account.email,
+      name: account.name,
+      password: "test-pass-123",
+      phone: proof.phone,
+    });
+    termsFail = true;
+    await act(async () => {
+      await view.cache.invalidateQueries({ queryKey: ["signup", "terms"] });
+    });
+    await until(() =>
+      assert.match(view.container.textContent!, /입력한 정보는 유지/),
+    );
+    assert.deepEqual(values(), before);
+    assert.match(view.container.textContent!, /이메일 인증이 완료/);
+    assert.match(view.container.textContent!, /휴대폰 인증이 완료/);
+    termsFail = false;
+    terms = previewTerms.map((term) =>
+      term.id === "serviceTerms" ? { ...term, version: "new-version" } : term,
+    );
+    await act(async () => {
+      await view.cache.invalidateQueries({ queryKey: ["signup", "terms"] });
+    });
+    await until(() =>
+      assert(view.container.querySelector('input[name="serviceTerms"]')),
+    );
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>(
+        'input[name="serviceTerms"]',
+      )!.checked,
+      false,
+    );
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>(
+        'input[name="privacyPolicy"]',
+      )!.checked,
+      true,
+    );
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[name="serviceTerms"]')!
+        .click(),
+    );
     await submit(view.container);
-    await fill(view.container, "nickname", account.nickname);
+    assert.deepEqual(values(), before);
+    assert.match(view.container.textContent!, /이메일 인증이 완료/);
+    assert.match(view.container.textContent!, /휴대폰 인증이 완료/);
+    assert(!paths.some((path) => path.endsWith("/cancel")));
     await submit(view.container);
+
     await until(() => assert.match(view.container.textContent!, /가입을 축하/));
     assert.equal(joined, 1);
     assert.deepEqual(view.navigations, []);
     noSecrets();
     await click(view.container, "다음");
     assert.deepEqual(view.navigations, ["/getting-started?next=%2Fmypage"]);
-    assert(!paths.some((path) => /email.*verif|group/.test(path)));
+    assert(!paths.some((path) => /group/.test(path)));
   } finally {
     await view.unmount();
     globalThis.fetch = original;
@@ -1096,6 +1170,7 @@ test("post-signup entry requires a restored session and skipping rejects externa
             ? {
                 id: "onboarding-user",
                 accountType: "organizer",
+                nickname: "총무",
                 email: "test@example.test",
               }
             : null,
@@ -1112,19 +1187,107 @@ test("post-signup entry requires a restored session and skipping rejects externa
           );
           assert.equal(
             view.container.querySelector("a")?.getAttribute("href"),
-            "/auth?next=%2Fgetting-started",
+            "/auth?next=%2Fgetting-started%3Fnext%3D%252Fevents",
           );
           assert.equal(
             view.container.querySelector('input[name="usage"]'),
             null,
           );
         } else {
+          await until(() => assert.deepEqual(view.navigations, ["/events"]));
+          assert.deepEqual(view.navigations, ["/events"]);
+        }
+      } finally {
+        await view.unmount();
+      }
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("first setup resumes the missing step, updates session and preserves next without creating a group", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const scenario of [
+      "new-organizer",
+      "resume",
+      "owner",
+      "configured",
+    ] as const) {
+      let account = {
+        id: `setup-${scenario}`,
+        email: "setup@example.test",
+        name: "가입 이름",
+        accountType:
+          scenario === "resume" || scenario === "configured"
+            ? "organizer"
+            : (null as string | null),
+        nickname:
+          scenario === "configured" ? "이미 설정" : (null as string | null),
+      };
+      const writes: unknown[] = [];
+      globalThis.fetch = async (path, options) => {
+        if (String(path).endsWith("restore"))
+          return Response.json({ authenticated: true, account });
+        assert(String(path).endsWith("/first-setup"));
+        assert.equal(options?.method, "PATCH");
+        const input = JSON.parse(String(options?.body));
+        writes.push(input);
+        account = { ...account, ...input };
+        return Response.json(account);
+      };
+      const view = await render(
+        createElement(AuthProvider, null, createElement(GettingStartedScreen)),
+        client(),
+        "/mypage",
+      );
+      try {
+        if (scenario === "configured") {
+          await until(() => assert.deepEqual(view.navigations, ["/mypage"]));
+          assert.equal(writes.length, 0);
+          continue;
+        }
+        if (scenario !== "resume") {
+          await until(() =>
+            assert(view.container.querySelector('input[name="accountType"]')),
+          );
+          const value = scenario === "owner" ? "owner" : "organizer";
+          await act(async () =>
+            view.container
+              .querySelector<HTMLInputElement>(`input[value="${value}"]`)!
+              .click(),
+          );
+          await submit(view.container);
+          await until(() => assert.equal(writes.length, 1));
+        }
+        if (scenario === "owner") {
+          await until(() =>
+            assert.match(view.container.textContent!, /가입 이름/),
+          );
+          assert.equal(
+            view.container.querySelector('input[name="nickname"]'),
+            null,
+          );
+          assert.deepEqual(writes, [{ accountType: "owner" }]);
+          await click(view.container, "나중에 시작하기");
+        } else {
+          await until(() =>
+            assert(view.container.querySelector('input[name="nickname"]')),
+          );
+          assert.equal(
+            view.container.querySelector('input[name="accountType"]'),
+            null,
+          );
+          await fill(view.container, "nickname", "우리 총무");
+          await submit(view.container);
           await until(() =>
             assert(view.container.querySelector('input[name="usage"]')),
           );
+          assert.equal(account.nickname, "우리 총무");
           await click(view.container, "나중에 선택하기");
-          assert.deepEqual(view.navigations, ["/events"]);
         }
+        assert.deepEqual(view.navigations, ["/mypage"]);
       } finally {
         await view.unmount();
       }

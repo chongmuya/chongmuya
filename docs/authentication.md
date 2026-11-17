@@ -24,17 +24,35 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 
 쿠키 선택은 Passport와 독립이다. 전역 CSRF Guard가 GET/HEAD/OPTIONS 외 요청에 정확한 `Origin === WEB_ORIGIN`과 `X-CSRF-Protection: 1`을 요구하고 cross-site Fetch Metadata를 거부한다. 로그인/가입/복원/갱신/로그아웃 모두 적용한다. Origin 없는 변경 요청도 거부한다. CORS를 열지 않고 동일 출처 Next rewrite를 사용한다. 전용 헤더를 임의 사이트에서 추가하려면 preflight가 필요하므로 허용하지 않는 CORS와 Origin 검증을 함께 유지해야 한다. GET은 상태를 변경하지 않는다. Swagger/CLI POST에도 두 헤더가 필요하다.
 
-## 회원가입과 휴대폰 인증
+## 회원가입과 첫 설정
 
-시작 화면의 ‘처음 가입해요’는 `/auth/signup`으로 이동한다. `/auth?mode=signup`은 safeReturnPath로 정리한 next를 유지해 새 경로로 이동한다. 사장님/총무 선택 → 약관 → 가입 정보·휴대폰 인증 → 닉네임 → 가입 완료 순서다. 닉네임은 총무 등록(사장님은 프로필 등록) 화면에서 입력하며 필수 정보가 모두 유효할 때 계정·세션을 생성한다. 완료 버튼은 안전한 next를 유지해 `/getting-started`로 이동한다. 총무는 정기 모임/일회성 행사를 선택하고 환영 화면에서 기존 `/mypage` 모임 생성 또는 `/events` 행사 생성으로 이동한다. 나중에 시작하기는 원래 next로 돌아간다. 마이페이지의 이용 방식 선택으로 안내를 다시 열 수 있다. 사장님은 가입 완료를 안내하며 상세 매장 등록은 아직 제공하지 않는다. Figma의 상세 매장·모임 명단 업로드 기능은 구현 범위에 포함되지 않는다. `/onboarding`은 기존 모임 관리 진입 용도를 유지하고 가입 완료에 모임 생성을 요구하지 않는다.
+시작 화면의 ‘처음 가입해요’는 `/auth/signup`으로 이동한다. `/auth?mode=signup`도 safeReturnPath로 정리한 next를 유지한다. 약관 동의 → 가입 정보와 이메일·휴대폰 인증 → 계정·세션 생성 → 가입 완료 순서다. 완료 화면의 다음 버튼은 `/getting-started?next=...`로 이동한다.
 
-이메일은 형식과 중복만 검사하며 이메일 인증 요청이나 완료 조건은 없다. 신규 계정의 emailVerifiedAt은 null이다. 이름과 닉네임은 별개 필수 필드이며, 010으로 시작하는 11자리 휴대폰과 서버가 확인한 인증 결과가 필수다. 닉네임과 전화번호에 계정 고유성 제약을 두지 않는다.
+가입과 첫 설정은 별개다. 신규 계정의 accountType/nickname은 null이며, 로그인된 본인의 `PATCH /first-setup`으로 이용 유형을 저장한다. 총무(organizer)는 닉네임 입력까지, 사장님(owner)은 유형 선택까지 첫 설정이다. 사장님에게 닉네임을 만들지 않으며 표시에 이름을 사용할 수 있다. 기존 닉네임은 보존한다. 확정된 유형 변경과 기존 닉네임 변경은 이 API에서 허용하지 않는다. 이용 유형은 매장 접근 권한이나 모임·행사 소유권을 부여하지 않는다.
 
-`POST /signup` 입력은 `{ accountType, email, password, name, nickname, phone, phoneVerificationId, consents: [{ id, version, accepted }] }`이다. `accountType`은 organizer(총무) 또는 owner(사장님)이며 필수다. 가입 시 선택한 이용 유형으로 저장하고 세션 응답에 포함한다. 이 값은 권한 부여나 모임·행사 소유권 검사에 사용하지 않는다. 기존 계정은 null을 유지한다. 기존 이메일·비밀번호만 보내는 계약은 거부한다. `GET /signup/terms`의 네 약관 식별자·버전과 정확히 일치해야 하며 serviceTerms/privacyCollection/privacyPolicy는 필수, marketing은 선택이다. true/false 모두 서버 시각과 함께 account_consents에 저장한다.
+첫 설정 완료 여부는 accountType과 nickname으로 판단한다. 중단한 사용자는 다시 로그인할 때 누락된 단계로 이어지고, 설정한 사용자는 원래 next로 돌아간다. 공개 홈은 그대로 접근할 수 있고 개인 업무 진입점에서 필요한 설정을 안내한다. 로그인 실패로 처리하거나 모든 공개 페이지를 막지 않는다. `/getting-started`의 next는 안전한 내부 경로만 보존하고 중첩 설정 경로는 제거한다.
+
+총무의 정기 모임/일회성 행사 선택은 시작 안내용 UI 상태다. 서버 권한·영구 유형·완료 상태로 저장하지 않는다. 기존 `/mypage` 모임 관리 또는 `/events` 행사로 연결하고 나중에 선택하기는 원래 next로 돌아간다. 모임 생성은 가입·첫 설정 완료 조건이 아니다. 마이페이지의 `/getting-started?guide=1` 링크로 안내만 다시 볼 수 있다. `/onboarding`은 기존 모임 관리 용도를 유지한다. 상세 매장 등록·명단 업로드·카카오 로그인·비밀번호 재설정은 제공하지 않는다.
+
+가입 입력은 `{ email, password, name, phone, emailVerificationId, phoneVerificationId, consents: [{ id, version, accepted }] }`이다. 이메일은 정규화 후 형식·중복과 소유 인증, 휴대폰은 010으로 시작하는 11자리 번호와 Octomo 인증이 필수다. 이름과 총무 닉네임은 별개이며 닉네임·전화번호 고유성 제약은 없다. 이메일·비밀번호만 보내거나 서버 결정 필드를 덧붙인 요청은 거부한다. `GET /signup/terms`의 네 식별자·버전이 정확히 일치해야 하고 serviceTerms/privacyCollection/privacyPolicy는 필수, marketing은 선택이다. 동의와 비동의를 모두 서버 시각과 함께 account_consents에 저장한다.
+
+약관에 성공 데이터가 있으면 배경 재조회 실패로 가입 폼을 제거하지 않는다. 재시도 안내를 함께 표시하고 입력·단계·동의·인증을 유지한다. 실제 버전 또는 필수 여부가 변경된 항목만 동의를 해제하고 약관 단계로 돌아간다. 다른 입력과 인증 상태는 유지하며 버전으로 전체 폼을 remount하지 않는다.
 
 약관은 `utils/signup-terms.ts`의 수정 가능한 한국어 초안(`draft-2026-11-16`)을 제공한다. 본문 화면에 초안임을 표시하며 가입을 차단하지 않는다. 확정 후 본문과 버전을 함께 변경하거나 `SIGNUP_TERMS_JSON`에 네 항목의 `{ id, version, url }` 배열을 설정해 HTTPS 원문으로 연결한다. 운영자·문의처, 보유 기간과 삭제 절차, 위탁·제공 여부 등 실제 운영에 해당하는 내용을 공개 전 확정해야 한다. 초안이 법률 검토를 거친 최종 문서임을 의미하지 않는다.
 
-`OctomoService`는 [Octomo 공식 API](https://octomo.octoverse.kr/api-docs/) 통신만, `PhoneVerificationService`는 가입 목적의 발급·기한·횟수·소비 규칙을 담당한다. 서버만 OCTOMO_API_KEY를 사용한다. POST `/signup/context`가 32바이트 난수 HttpOnly/SameSite=Strict 요청자 쿠키를 설정하며 DB에는 해시만 남긴다. production 이름은 `__Host-signup-requester`, 로컬은 `signup-requester`이고 30분 유지한다. 쿠키 설정도 CSRF 검사를 통과해야 한다.
+## 이메일 인증
+
+`ResendMailService`는 메일 발송만 담당하고 Resend SDK는 API에만 설치한다. `EmailVerificationService`가 가입 목적의 코드 발급·확인·취소·소비와 제한을 담당한다. `EMAIL_VERIFICATION_SECRET`으로 요청자 해시·정규화 이메일·요청 ID·signup 용도·코드를 HMAC-SHA256으로 묶고 constant-time 비교한다. DB에는 6자리 코드 원문이나 단순 코드 SHA 해시를 저장하지 않는다.
+
+서버 상수 `EMAIL_LIMITS`는 암호학적 6자리 숫자 코드, 유효기간 10분, 재전송 간격 60초, 요청당 오답 5회를 정한다. 발급은 15분 동안 이메일·요청자 각 5회/IP 30회, 확인은 이메일·요청자 각 20회/IP 100회다. 확인 제한에는 성공·실패 요청이 모두 포함된다. 누적 제한은 별도 커밋된 auth_attempts 행에 있어 코드 재발급이나 검증 롤백으로 초기화되지 않는다.
+
+발급 행의 delivery는 sending/sent/failed로 구분한다. 발송 성공은 소유 인증 성공이 아니다. 동일 발급 건의 통신 재시도는 같은 Resend idempotency key와 본문을 사용하며 각 4초, 최대 2회로 제한한다. 명시적 재전송은 새 ID·코드로 이전 요청을 교체한다. 외부 발송 동안 트랜잭션·행 잠금을 유지하지 않으며 발송 후에도 현재 요청·취소 상태를 재확인한다. 발송 실패 응답의 status=failed를 화면에서 실패로 표시하며 코드 확인을 제공하지 않는다. 키 미설정은 503이다. RESEND_DEBUG=true는 시작 시 거부해 SDK의 원문 디버그 출력이 활성화되지 않게 한다.
+
+서버가 올바른 코드를 확인한 시각을 verifiedAt으로 기록한다. 다른 요청자/이메일, 이전 코드·ID, 만료·취소·소비한 요청은 거부한다. 이메일 수정은 이메일 인증만, 전화번호 수정은 휴대폰 인증만 취소한다. 실제 화면 이탈 시 요청을 중단하고 늦은 응답을 무시한다. 메일 앱·문자 앱을 열어도 화면이 유지되는 동안 입력과 인증 기한은 유지되며, 전체 새로고침 후 비밀번호·인증을 영구 저장소에서 복원하지 않는다.
+
+## 휴대폰 인증과 가입 요청자
+
+`OctomoService`는 [Octomo 공식 API](https://octomo.octoverse.kr/api-docs/) 통신만, `PhoneVerificationService`는 가입 목적의 발급·기한·횟수·소비 규칙을 담당한다. 서버만 OCTOMO_API_KEY를 사용한다. POST `/signup/context`가 32바이트 난수 HttpOnly/SameSite=Strict 요청자 쿠키를 설정하며 DB에는 해시만 남긴다. production 이름은 `__Host-signup-requester`, 로컬은 `signup-requester`이고 30분 유지한다. 쿠키 설정도 CSRF 검사를 통과해야 한다. 유효한 기존 쿠키는 교체하지 않는다. 두 인증이 동시에 시작할 때 SessionClient의 단일 요청과 탭 간 잠금으로 쿠키 초기화를 공유한다.
 
 인증 요청마다 새 UUID와 AUTH_SECRET 기반 HMAC 난수 문구를 만들고 요청자·번호·signup 용도에 묶는다. 문구 원문은 DB에 저장하지 않는다. 재발급은 같은 요청자의 이전 ID를 교체한다. 기한은 발급부터 5분, 재발급 간격은 60초다. 발급 시도는 15분 동안 요청자/번호 각 5회, 직접 연결 IP 30회로 제한한다. 결과 확인은 10초 간격, 요청당 최대 12회이고 자동 무한 polling을 하지 않는다.
 
@@ -42,13 +60,13 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 
 외부 조회 전 짧은 트랜잭션에서 확인 횟수를 예약하고, 외부 응답 뒤 다시 잠가 현재 ID·번호·기한·취소 상태를 확인한다. 외부 API 응답을 기다리는 동안 DB 트랜잭션을 유지하지 않는다. 가입 트랜잭션에서 유효한 인증을 잠그고 한 번 소비한다. 만료·번호 불일치·취소·재발급 전 ID·이미 소비한 결과는 거부한다. 화면 이탈/번호 변경은 요청 취소와 지연 응답 무시를 함께 적용한다. 서버 기한에 단조 증가 경과 시간을 더해 표시하며 임의로 기한을 연장하지 않는다.
 
-비밀번호·인증 문구·QR·인증 요청 ID는 폼과 현재 화면 메모리에만 둔다. TanStack mutation에는 비밀값을 variables/data로 넣지 않으며 gcTime=0, retry=false를 적용한다. 브라우저 영구 저장소를 사용하지 않는다. 약관만 공개 Query로 조회한다. 개발 전용 `/dev/auth`의 모의 화면은 실제 가입 경로와 분리되며 production에서는 제공하지 않는다.
+비밀번호·이메일 코드·인증 문구·QR·인증 요청 ID는 폼과 현재 화면 메모리에만 둔다. TanStack mutation에는 비밀값을 variables/data로 넣지 않으며 gcTime=0, retry=false를 적용한다. 브라우저 영구 저장소를 사용하지 않는다. 약관만 공개 Query로 조회한다. 개발 전용 `/dev/auth`의 모의 화면은 실제 가입 경로와 분리되며 production에서는 제공하지 않는다.
 
 ## 세션 저장과 경쟁 조건
 
 `accounts` → `auth_sessions` → `refresh_tokens` 구조이며 로그인마다 독립 세션을 만든다. 각 토큰의 사용 시각을 남겨 과거 토큰 재사용을 탐지한다. 현재 기기의 로그아웃은 해당 세션만 폐기한다.
 
-가입 즉시 로그인되므로 휴대폰 인증 결과 소비·신규 계정·약관별 동의 기록·세션·최초 Refresh 해시 삽입과 Access 서명은 한 DB 트랜잭션에서 완료한다. 세션/Refresh 저장 또는 서명이 실패하면 계정까지 롤백하고 쿠키를 보내지 않는다. 비밀번호 해싱은 트랜잭션 밖에서 수행해 DB 연결을 오래 점유하지 않는다. 이메일 중복은 DB unique 제약과 insert 충돌 처리로 409를 반환하며, 동시 가입도 하나의 계정·세션·Refresh만 남긴다. 로그인 시도 제한 기록은 보안상 실패한 가입 트랜잭션과 별개로 유지한다.
+가입 즉시 로그인되므로 이메일·휴대폰 인증 결과 소비·신규 계정·약관별 동의 기록·세션·최초 Refresh 해시 삽입과 Access 서명은 한 DB 트랜잭션에서 완료한다. 세션/Refresh 저장 또는 서명이 실패하면 계정까지 롤백하고 쿠키를 보내지 않는다. 비밀번호 해싱은 트랜잭션 밖에서 수행해 DB 연결을 오래 점유하지 않는다. 이메일 중복은 DB unique 제약과 insert 충돌 처리로 409를 반환하며, 동시 가입도 하나의 계정·세션·Refresh만 남긴다. 로그인 시도 제한 기록은 보안상 실패한 가입 트랜잭션과 별개로 유지한다.
 
 갱신은 트랜잭션에서 **세션 행 잠금** → 토큰 재조회 → 기존 토큰 사용 처리 → 새 토큰 해시 삽입 순서다. 사용된 토큰이 다시 들어오면 전체 세션을 폐기하고, 폐기 트랜잭션을 커밋한 뒤 401을 반환한다. 로그아웃도 같은 세션 잠금을 사용하며 과거 토큰으로도 그 세션을 폐기할 수 있다. Access 검증마다 세션 활성 상태를 확인하므로 JWT의 남은 수명과 무관하게 폐기가 반영된다.
 
@@ -82,25 +100,29 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 
 기본 경로 `/api/v1/auth`, 응답/Swagger는 `Cache-Control: no-store` 인증 응답 계약을 따른다.
 
-| 메서드·경로                             | 정상 결과                          |
-| --------------------------------------- | ---------------------------------- |
-| GET /signup/terms                       | 200 약관 식별자·버전·본문/URL      |
-| POST /signup/context                    | 204, 가입 요청자 쿠키              |
-| POST /signup/phone-verifications        | 201, 문구·QR·서버 기한             |
-| POST /signup/phone-verifications/check  | 200, pending/verified 및 남은 횟수 |
-| POST /signup/phone-verifications/cancel | 204, 해당 인증 취소                |
-| POST /signup                            | 201 SessionDto, 쿠키 발급          |
-| POST /login                             | 200 SessionDto, 쿠키 발급          |
-| GET /me                                 | 200 AccountDto, 인증 필수          |
-| POST /session/restore                   | 200 SessionDto, 비회원 정상 허용   |
-| POST /refresh                           | 200 SessionDto, rotation           |
-| POST /logout                            | 204, 현재 세션 폐기·쿠키 삭제      |
+| 메서드·경로                             | 정상 결과                                      |
+| --------------------------------------- | ---------------------------------------------- |
+| GET /signup/terms                       | 200 약관 식별자·버전·본문/URL                  |
+| POST /signup/context                    | 204, 가입 요청자 쿠키                          |
+| POST /signup/phone-verifications        | 201, 문구·QR·서버 기한                         |
+| POST /signup/phone-verifications/check  | 200, pending/verified 및 남은 횟수             |
+| POST /signup/phone-verifications/cancel | 204, 해당 인증 취소                            |
+| POST /signup/email-verifications        | 201, pending/failed와 서버 기한·재전송 시각    |
+| POST /signup/email-verifications/check  | 200, verified와 남은 횟수                      |
+| POST /signup/email-verifications/cancel | 204, 해당 인증 취소                            |
+| PATCH /first-setup                      | 200 AccountDto, 로그인 본인의 유형/닉네임 저장 |
+| POST /signup                            | 201 SessionDto, 쿠키 발급                      |
+| POST /login                             | 200 SessionDto, 쿠키 발급                      |
+| GET /me                                 | 200 AccountDto, 인증 필수                      |
+| POST /session/restore                   | 200 SessionDto, 비회원 정상 허용               |
+| POST /refresh                           | 200 SessionDto, rotation                       |
+| POST /logout                            | 204, 현재 세션 폐기·쿠키 삭제                  |
 
 안전한 오류 규격은 `ACCESS_EXPIRED`, `SESSION_INVALID`, `INVALID_CREDENTIALS`를 보존한다. 입력 오류 400, CSRF/권한 403, 이메일 충돌 409, 시도 제한 429, DB 장애 503을 구분한다. 원문 DB 오류를 노출하지 않는다.
 
 ## 실행과 검증
 
-`apps/api/.env.example`의 AUTH_SECRET/WEB_ORIGIN/OCTOMO_API_KEY를 로컬 `.env`에 설정한다. 키는 값이 있으면 공백 없는 비어 있지 않은 문자열인지 Zod로 검증하며 오류에 원문을 넣지 않는다. 키가 없으면 로그인은 동작하지만 휴대폰 인증 발급은 503으로 실패한다. 약관 외부 URL 설정은 선택이다. 환경변수 변경 후 API를 재시작한다. 기존 DB에는 자동으로 테이블을 만들지 않는다. API 빌드 후 **대상 DB를 확인하고** `pnpm --filter @chongmuya/api db:migration:run`을 명시적으로 실행한다. install/build/start에서는 마이그레이션을 적용하지 않는다.
+`apps/api/.env.example`의 AUTH_SECRET/WEB_ORIGIN/OCTOMO_API_KEY와 RESEND_API_KEY/RESEND_FROM/EMAIL_VERIFICATION_SECRET을 로컬 `.env`에 설정한다. Resend 세 변수는 함께 설정하며 발신 주소는 검증된 도메인의 주소 또는 `총무야 <account@auth.example.com>` 형식이다. 전용 EMAIL_VERIFICATION_SECRET은 AUTH_SECRET과 별도로 `openssl rand -hex 32`로 생성하고 서버 인스턴스들이 같은 값을 사용한다. 서버에서만 읽고 NEXT_PUBLIC로 노출하지 않는다. 세 변수가 모두 없으면 기존 로그인은 가능하지만 이메일 인증 발급은 503으로 실패한다. 일부만 설정하거나 잘못된 발신 주소·짧은 비밀키를 넣으면 API 시작을 거부한다. 키는 값이 있으면 공백 없는 비어 있지 않은 문자열인지 Zod로 검증하며 오류에 원문을 넣지 않는다. 키가 없으면 로그인은 동작하지만 휴대폰 인증 발급은 503으로 실패한다. 약관 외부 URL 설정은 선택이다. 환경변수 변경 후 API를 재시작한다. 기존 DB에는 자동으로 테이블을 만들지 않는다. `1794873600000-EmailVerification`은 이메일 인증 테이블만 추가한다. 기존 계정·모임·행사·세션·미인증 시각을 변경하지 않는다. API 빌드 후 **대상 DB를 확인하고** `pnpm --filter @chongmuya/api db:migration:run`을 명시적으로 실행한다. install/build/start에서는 마이그레이션을 적용하지 않는다.
 
 필수 검사: `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test`. 격리된 테스트 DB를 지정해 `TEST_DATABASE_URL=... pnpm test:integration`을 실행한다. 업무 통합 테스트가 명시적으로 마이그레이션을 적용하며 임의 이메일 계정을 생성한다. 운영 DB를 지정하지 않는다.
 
@@ -117,4 +139,4 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 
 API 입력·응답·캐시·fieldErrors의 정확한 형식과 migration 적용·복구 제한은 [아키텍처](architecture.md)를 따른다. 입력 오류는 허용된 필드에, 업무 오류는 폼 전체에 표시하며 작성한 입력을 유지한다. 서버의 임의 message는 출력하지 않는다.
 
-실제 휴대폰 검증은 격리 DB를 지정한 개발 서버에서 `/auth/signup`을 열고 약관 동의·정보 입력 → 휴대폰 인증 요청 → 해당 번호의 휴대폰에서 안내된 문자를 직접 전송 → 결과 확인 → 닉네임·가입 완료 순으로 진행한다. 가입 후 새로고침 세션 복원과 로그아웃·로그인을 확인한다. 자동 통합 테스트에서는 외부 SMS 공급자만 테스트 대역을 사용하고 실제 HTTP·PostgreSQL 트랜잭션으로 검증한다. 실제 문자를 보내지 않은 테스트를 실인증 성공으로 취급하지 않는다.
+실제 외부 인증 검증은 Resend 발신 도메인 확인과 발송 가능한 수신 주소를 준비한 뒤 격리 DB를 지정한 개발 서버에서 `/auth/signup`을 열고 약관 동의·정보 입력 → 이메일 코드 발송·입력·확인 → 휴대폰 인증 요청 → 해당 번호의 휴대폰에서 안내된 문자를 직접 전송 → 결과 확인 → 가입 완료 → 이용 유형·총무 닉네임 설정 순으로 진행한다. 가입 후 새로고침 세션 복원과 로그아웃·로그인을 확인한다. 자동 통합 테스트에서는 외부 메일·SMS 공급자는 테스트 대역을 사용하고 실제 HTTP·PostgreSQL 트랜잭션으로 검증한다. 실제 메일과 문자를 보내지 않은 테스트를 실인증 성공으로 취급하지 않는다.

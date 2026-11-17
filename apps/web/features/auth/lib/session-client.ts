@@ -2,7 +2,7 @@ import { ApiError } from "../../../shared/http/api-error";
 import { requestJson } from "../../../shared/http/request";
 
 import type { Account, AuthState, Session } from "../types/auth.types";
-import type { SignupRequest } from "../types/signup.types";
+import type { SignupRequest, FirstSetupInput } from "../types/signup.types";
 type Transport = typeof requestJson;
 type Lock = <T>(action: () => Promise<T>) => Promise<T>;
 
@@ -12,6 +12,7 @@ export class SessionClient {
   private listeners = new Set<() => void>();
   private restoring?: Promise<void>;
   private refreshing?: Promise<void>;
+  private preparingSignup?: Promise<void>;
   private authenticating?: Promise<Session>;
   private generation = 0;
   private revision = 0;
@@ -141,6 +142,38 @@ export class SessionClient {
         this.invalid();
       throw error;
     }
+  }
+  prepareSignup = (): Promise<void> => {
+    if (!this.preparingSignup) {
+      this.preparingSignup = this.lock(() =>
+        this.request<void>("/api/v1/auth/signup/context", { method: "POST" }),
+      ).finally(() => {
+        this.preparingSignup = undefined;
+      });
+    }
+    return this.preparingSignup;
+  };
+  async saveFirstSetup(input: FirstSetupInput, signal: AbortSignal) {
+    const generation = this.generation,
+      accountId = this.state.account?.id;
+    if (this.state.status !== "authenticated" || !accountId)
+      throw new ApiError("", 401, "SESSION_INVALID");
+    const account = await this.request<Account>("/api/v1/auth/first-setup", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+      signal,
+    });
+    if (
+      signal.aborted ||
+      generation !== this.generation ||
+      this.ending ||
+      this.state.account?.id !== accountId
+    )
+      throw new ApiError("", 401, "SESSION_INVALID");
+    if (account.id !== accountId)
+      throw new ApiError("", 200, "INVALID_RESPONSE");
+    this.apply({ authenticated: true, account });
+    return account;
   }
   async login(email: string, password: string) {
     await this.authenticate("login", { email, password });

@@ -1,3 +1,10 @@
+import { EmailVerificationService } from "./email-verification.service.js";
+import {
+  CreateEmailVerificationDto,
+  CheckEmailVerificationDto,
+  CancelEmailVerificationDto,
+} from "./dto/request/email-verification.request.dto.js";
+import { EmailVerificationDto } from "./dto/response/email-verification.response.dto.js";
 import {
   Body,
   Controller,
@@ -36,6 +43,7 @@ import { SignupTermsDto } from "./dto/response/signup-terms.response.dto.js";
 export class SignupController {
   constructor(
     private readonly config: ConfigService,
+    private readonly email: EmailVerificationService,
     private readonly phone: PhoneVerificationService,
     private readonly terms: SignupTermsService,
   ) {}
@@ -73,6 +81,44 @@ export class SignupController {
         maxAge: 30 * 60_000,
       },
     );
+  }
+  @Post("email-verifications")
+  @Header("Cache-Control", "no-store")
+  @ApiResponse({ status: 201, type: EmailVerificationDto })
+  createEmail(
+    @Body() input: CreateEmailVerificationDto,
+    @Req() request: Request,
+  ) {
+    return this.email.create(
+      input.email,
+      this.requester(request),
+      request.ip ?? "unknown",
+    );
+  }
+  @Post("email-verifications/check")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store")
+  @ApiResponse({ status: 200, type: EmailVerificationDto })
+  checkEmail(
+    @Body() input: CheckEmailVerificationDto,
+    @Req() request: Request,
+  ) {
+    return this.email.check(
+      input.id,
+      input.email,
+      input.code,
+      this.requester(request),
+      request.ip ?? "unknown",
+    );
+  }
+  @Post("email-verifications/cancel")
+  @HttpCode(204)
+  @Header("Cache-Control", "no-store")
+  cancelEmail(
+    @Body() input: CancelEmailVerificationDto,
+    @Req() request: Request,
+  ) {
+    return this.email.cancel(input.id, this.requester(request));
   }
   @Post("phone-verifications")
   @ApiResponse({ status: 201, type: CreatedPhoneVerificationDto })

@@ -99,7 +99,7 @@ export function useContactVerification(
     !!stored.expiresAt &&
     clock.current.server + performance.now() - clock.current.received <
       stored.expiresAt;
-  const run = async (kind: "request" | "check") => {
+  const run = async (kind: "request" | "check", code?: string) => {
     const action = actions?.[kind];
     const target = getCurrentValue();
     if (!action || !target.trim() || running.current) return;
@@ -108,6 +108,7 @@ export function useContactVerification(
       (!state.id ||
         (state.nextCheckAt ?? 0) > now ||
         state.checksRemaining === 0 ||
+        state.attemptsRemaining === 0 ||
         state.status === "expired")
     )
       return;
@@ -119,7 +120,7 @@ export function useContactVerification(
     setStored({ ...state, value: target, status: "requesting" });
     operation.current = async () => {
       try {
-        const result = await action(target, controller.signal, state.id);
+        const result = await action(target, controller.signal, state.id, code);
         if (
           ticket !== generation.current ||
           controller.signal.aborted ||
@@ -148,13 +149,19 @@ export function useContactVerification(
           value: target,
           status:
             cause instanceof ApiError &&
-            cause.code === "PHONE_VERIFICATION_EXPIRED"
+            [
+              "PHONE_VERIFICATION_EXPIRED",
+              "EMAIL_VERIFICATION_EXPIRED",
+            ].includes(cause.code)
               ? "expired"
               : "error",
           ...(cause instanceof ApiError &&
           cause.code === "PHONE_VERIFICATION_LIMIT"
             ? { checksRemaining: 0 }
-            : {}),
+            : cause instanceof ApiError &&
+                cause.code === "EMAIL_VERIFICATION_LIMIT"
+              ? { attemptsRemaining: 0 }
+              : {}),
         });
       } finally {
         if (ticket === generation.current) running.current = null;
@@ -169,7 +176,7 @@ export function useContactVerification(
     isVerified,
     reset,
     request: () => run("request"),
-    check: actions?.check ? () => run("check") : undefined,
+    check: actions?.check ? (code?: string) => run("check", code) : undefined,
     available: !!actions,
   };
 }
