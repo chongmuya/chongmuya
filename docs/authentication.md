@@ -5,7 +5,7 @@
 ## 책임
 
 - 웹 `app`: 라우팅·Provider 조립. `features/auth`: 인증 API 조정, 세션 상태, 사용자 Query, 화면. `features/onboarding`: 가입 후 이용 방식 선택·시작 안내. `shared/ui`: 단계 화면 틀·선택 카드·입력·버튼. `shared/http`: 업무를 모르는 HTTP 전송과 안전한 오류. shared → features 역참조 금지.
-- Nest `AuthController`: HTTP DTO·쿠키·응답. `JwtAccessStrategy`: 쿠키 JWT 추출, 서명·알고리즘·issuer·audience·만료 검증, 필수 claim 검사, 현재 세션과 계정으로 인증 사용자 구성. `AccessGuard`: 인증 필수 요청, `OptionalAccessGuard`: 최초 복원에서 비회원 허용. `AuthService`: 가입·로그인·토큰 발급·세션 rotation/폐기, 연결 대기와 트랜잭션 범위 관리. `AuthAttemptsRepository`: 전달받은 EntityManager를 사용하는 원자적 시도 제한 조회. DB 오류 분류는 공통 HTTP 필터가 맡고 예상하지 못한 오류는 500으로 유지한다.
+- Nest `AuthController`: HTTP DTO·쿠키·응답. `JwtAccessStrategy`: 쿠키 JWT 추출, 서명·알고리즘·issuer·audience·만료 검증, 필수 claim 검사, 현재 세션과 계정으로 인증 사용자 구성. `AccessGuard`: 인증 필수 요청, `OptionalAccessGuard`: 최초 복원에서 비회원 허용. `AuthService`: 이메일 가입·로그인·세션 rotation/폐기와 트랜잭션 범위 관리. `SessionIssuerService`는 같은 EntityManager로 최초 세션·Refresh를 저장하고 JWT를 발급한다. `PasswordResetService`는 복구 링크, `KakaoFlowService`는 카카오 로그인·가입·연결, `KakaoOidcService`는 카카오 외부 통신과 OIDC 검증을 담당한다. `AuthAttemptsRepository`: 전달받은 EntityManager를 사용하는 원자적 시도 제한 조회. DB 오류 분류는 공통 HTTP 필터가 맡고 예상하지 못한 오류는 500으로 유지한다.
 - Controller는 Entity를 반환하지 않는다. `AccountDto`는 id/email/accountType, 이름·닉네임·전화번호와 휴대폰/이메일 인증 시각을 노출한다. 기존 계정의 추가 필드는 null이다. 비밀번호·Refresh·JWT를 JSON이나 로그에 넣지 않는다.
 - 인증과 자원 권한은 별개다. `/auth/me`는 `@CurrentUser()`로 읽은 검증된 사용자만 반환하고 사용자 ID 입력을 받지 않는다. JWT sub와 세션 accountId 일치를 확인한다. 모임·행사 Service는 인증 계정의 소유권을 각 자원 조회 조건으로 검증한다. 모임 연결만으로 행사 권한을 얻지 않는다.
 - 업무 API는 웹/Nest 모두 `/api/v1`. Next rewrite는 동일 경로를 전달한다. 운영 확인용 `/health`, `/ready`, `/docs`와 기존 `/api/health`는 업무 API 밖에 유지한다.
@@ -22,7 +22,7 @@ Access/Refresh 모두 HttpOnly, SameSite=Lax, Path=/, Domain 생략. production�
 
 Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에서 `await cookies()`로 요청별 Access 쿠키를 읽고 Nest로 전달할 수 있고, 새로고침마다 JS 메모리를 복원할 필요가 없다. Next가 JWT 서명/업무 권한을 중복 판단하지 않는다. 향후 서버 데이터 조회는 필요한 쿠키만 전달하고 `cache: no-store`를 사용해야 한다. Server Component 렌더 중 Refresh rotation은 하지 않는다. Set-Cookie를 브라우저에 전달할 수 있는 브라우저 요청/Route Handler 경계에서 갱신한다. 현재 화면은 Client에서 복원하며 SSR 보호 페이지는 아직 없다.
 
-쿠키 선택은 Passport와 독립이다. 전역 CSRF Guard가 GET/HEAD/OPTIONS 외 요청에 정확한 `Origin === WEB_ORIGIN`과 `X-CSRF-Protection: 1`을 요구하고 cross-site Fetch Metadata를 거부한다. 로그인/가입/복원/갱신/로그아웃 모두 적용한다. Origin 없는 변경 요청도 거부한다. CORS를 열지 않고 동일 출처 Next rewrite를 사용한다. 전용 헤더를 임의 사이트에서 추가하려면 preflight가 필요하므로 허용하지 않는 CORS와 Origin 검증을 함께 유지해야 한다. GET은 상태를 변경하지 않는다. Swagger/CLI POST에도 두 헤더가 필요하다.
+쿠키 선택은 Passport와 독립이다. 전역 CSRF Guard가 GET/HEAD/OPTIONS 외 요청에 정확한 `Origin === WEB_ORIGIN`과 `X-CSRF-Protection: 1`을 요구하고 cross-site Fetch Metadata를 거부한다. 로그인/가입/복원/갱신/로그아웃 모두 적용한다. Origin 없는 변경 요청도 거부한다. CORS를 열지 않고 동일 출처 Next rewrite를 사용한다. 전용 헤더를 임의 사이트에서 추가하려면 preflight가 필요하므로 허용하지 않는 CORS와 Origin 검증을 함께 유지해야 한다. 업무 GET은 상태를 변경하지 않는다. 외부 OAuth GET 콜백만 state·브라우저 바인딩을 검증해 임시 결과를 저장하며, 회원 세션·가입·연결은 동일 출처 POST로 확정한다. Swagger/CLI POST에도 두 헤더가 필요하다.
 
 ## 회원가입과 첫 설정
 
@@ -32,7 +32,7 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 
 첫 설정 완료 여부는 accountType과 nickname으로 판단한다. 중단한 사용자는 다시 로그인할 때 누락된 단계로 이어지고, 설정한 사용자는 원래 next로 돌아간다. 공개 홈은 그대로 접근할 수 있고 개인 업무 진입점에서 필요한 설정을 안내한다. 로그인 실패로 처리하거나 모든 공개 페이지를 막지 않는다. `/getting-started`의 next는 안전한 내부 경로만 보존하고 중첩 설정 경로는 제거한다.
 
-총무의 정기 모임/일회성 행사 선택은 시작 안내용 UI 상태다. 서버 권한·영구 유형·완료 상태로 저장하지 않는다. 기존 `/mypage` 모임 관리 또는 `/events` 행사로 연결하고 나중에 선택하기는 원래 next로 돌아간다. 모임 생성은 가입·첫 설정 완료 조건이 아니다. 마이페이지의 `/getting-started?guide=1` 링크로 안내만 다시 볼 수 있다. `/onboarding`은 기존 모임 관리 용도를 유지한다. 상세 매장 등록·명단 업로드·카카오 로그인·비밀번호 재설정은 제공하지 않는다.
+총무의 정기 모임/일회성 행사 선택은 시작 안내용 UI 상태다. 서버 권한·영구 유형·완료 상태로 저장하지 않는다. 기존 `/mypage` 모임 관리 또는 `/events` 행사로 연결하고 나중에 선택하기는 원래 next로 돌아간다. 모임 생성은 가입·첫 설정 완료 조건이 아니다. 마이페이지의 `/getting-started?guide=1` 링크로 안내만 다시 볼 수 있다. `/onboarding`은 기존 모임 관리 용도를 유지한다. 상세 매장 등록·명단 업로드는 제공하지 않는다. 카카오 가입도 동일한 첫 설정으로 이어진다.
 
 가입 입력은 `{ email, password, name, phone, emailVerificationId, phoneVerificationId, consents: [{ id, version, accepted }] }`이다. 이메일은 정규화 후 형식·중복과 소유 인증, 휴대폰은 010으로 시작하는 11자리 번호와 Octomo 인증이 필수다. 이름과 총무 닉네임은 별개이며 닉네임·전화번호 고유성 제약은 없다. 이메일·비밀번호만 보내거나 서버 결정 필드를 덧붙인 요청은 거부한다. `GET /signup/terms`의 네 식별자·버전이 정확히 일치해야 하고 serviceTerms/privacyCollection/privacyPolicy는 필수, marketing은 선택이다. 동의와 비동의를 모두 서버 시각과 함께 account_consents에 저장한다.
 
@@ -97,6 +97,41 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 - 첫 설정 저장 성공은 프로필 revision을 증가시킨다. restore/me/refresh는 조회 시작 시의 revision과 비교해 같은 계정의 오래된 프로필로 저장 결과를 덮지 않는다. 로그인·로그아웃·계정 전환의 generation과 토큰 갱신 revision은 별도로 유지하므로 다른 계정·세션 폐기는 반영하고 정상 요청 재시도도 보존한다.
 - 인증 상태는 Query cache와 분리하고 Provider 인스턴스에 둔다. 서버 프로세스 전역에 사용자 상태를 두지 않는다. 폼은 React Hook Form과 Zod, 공용 입력·오류 UI를 사용한다.
 
+## 비밀번호 재설정
+
+`/auth/recovery`에서 이메일을 제출하면 “재설정 가능한 계정이면 안내 메일을 보내드려요”라고 안내한다. 존재하는 이메일 비밀번호 계정, 없는 계정, 카카오 전용 계정 모두 `202 { accepted: true }`다. 이메일별 제한·재전송 대기·발송 실패도 같은 응답이다. IP별 과도한 요청은 계정 유무와 무관하게 429다. 발송을 응답 경로에서 분리하고 최소 400ms와 0~99ms 무작위 지연을 적용해 계정 조회/발송 시간 차이를 완화한다. 네트워크·DB 부하까지 일정하게 만드는 보장은 아니다.
+
+토큰은 32바이트 난수이며 DB에는 목적 접두사를 포함한 SHA-256 해시만 저장한다. 링크는 신뢰한 WEB_ORIGIN의 `/auth/reset-password#token=...`로 만든다. fragment는 HTTP/Referer에 실리지 않으며 화면이 읽은 즉시 history.replaceState로 제거한다. 페이지는 no-store/no-referrer/noindex이고 링크·비밀번호는 화면 메모리에만 둔다. 새로고침하면 원래 메일 링크를 다시 열어야 한다. signup-requester 쿠키가 없어도 사용할 수 있다. GET과 POST check는 소비하지 않고 최종 confirm POST만 소비한다.
+
+`RESET_POLICY`의 기한은 15분, 재전송 간격은 60초다. 15분 창에서 이메일 발급 5회/IP 발급 30회, 확인 IP 60회, 저장 IP 20회, 토큰별 확인·저장 각각 10회다. 재발급은 이전 링크를 무효화하고 계정 잠금으로 동시 발급을 직렬화한다. 같은 메일 건의 통신 재시도는 동일 Resend idempotency key를 사용한다. ResendMailService의 기존 from/replyTo·제한된 재시도를 재사용하며 외부 발송 중 DB 잠금은 없다. 발송은 프로세스 내 best effort이므로 발송 직전 프로세스가 종료되면 메일이 도착하지 않을 수 있다. 별도 큐는 없으며 사용자는 대기 후 다시 요청한다. `sending`·`failed` 결과는 재설정 권한이 아니다.
+
+최종 저장은 계정 잠금 이후 토큰을 다시 확인하고 scrypt 비밀번호 변경·토큰 소비·남은 링크 무효화·그 계정의 모든 AuthSession 폐기·연결용 재인증 무효화를 같은 트랜잭션에서 처리한다. 기존 Access도 세션 검증에서 거부된다. 다른 계정의 세션·쿠키는 건드리지 않는다. 완료 후 자동 로그인하지 않으며 새 비밀번호로 로그인한다. 커밋 후 변경 알림은 비밀번호 없이 보내고 실패가 완료 응답을 바꾸지 않는다. passwordHash가 null인 카카오 전용 계정에는 비밀번호를 만들지 않는다.
+
+## 카카오 로그인·가입·연결
+
+로그인 화면의 카카오 버튼은 이메일 폼 검증과 독립적으로 동작한다. POST start → 카카오 인가 → GET callback → `/auth/kakao/complete` → 동일 출처 POST 확정 순서다. 콜백은 웹 origin의 전용 전달 경로를 거치며 임시 쿠키는 host-only/HttpOnly/SameSite=Lax/15분이다. production에서는 Secure와 `__Host-kakao-browser`를 쓴다. 기존 Strict 가입 요청자 쿠키는 바꾸지 않는다. code/state는 프론트 완료 URL로 전달하지 않는다.
+
+API 전용 openid-client 6.9.0을 사용한다. 고정 issuer `https://kauth.kakao.com`의 discovery, client_secret_post, openid account_email scope, S256 PKCE, state·nonce를 사용한다. ID Token을 필수로 요구하고 enableNonRepudiationChecks로 JWKS 서명 검증을 명시적으로 켠다. RS256·iss·aud·exp·nonce·필수 sub/iat를 검증하며 SDK JWKS 캐시와 키 교체를 사용한다. UserInfo는 고정된 공식 endpoint에서 조회하고 sub 일치를 검사한다. 각 외부 요청은 5초 제한이며 일회용 code 교환을 재시도하지 않는다. 카카오 토큰은 브라우저/DB에 저장하지 않는다.
+
+`kakao_attempts`는 브라우저 해시·목적·state 해시·nonce·암호화한 PKCE verifier·만료·일회 소비를 PostgreSQL에 저장한다. verifier 암호화는 AUTH_SECRET에서 목적별로 유도한 키를 사용하며 교환 시작 후 삭제한다. 재시작·다중 인스턴스에서도 같은 DB와 AUTH_SECRET을 사용한다. 새 시작은 기존 시도를 교체하고 이전 콜백·늦은 취소는 새 시도를 바꾸지 못한다. 실패·거부·설정 누락·기한 초과를 안전한 오류로 구분한다. 임시 인증은 일반 회원 세션이나 업무 권한이 아니다.
+
+이미 연결된 issuer/sub는 이메일 변경과 무관하게 같은 Account로 로그인하며 프로필을 덮어쓰지 않는다. 미연결 사용자는 약관 → 이름·이메일·Octomo 휴대폰 인증 → 계정·세션 생성 → 완료 → 첫 설정으로 간다. 비밀번호·임의 이름·가짜 이메일은 만들지 않는다. 공식 UserInfo의 email_verified=true이고 사용자가 같은 이메일을 사용할 때만 Resend를 생략한다. ID Token의 email만으로 인증하지 않는다. 미제공·미검증·다른 이메일에는 기존 Resend 인증이 필요하다. email_verification_source는 resend/kakao, emailVerifiedAt은 우리 서버가 실제 확인한 시각이다. 기존 미인증/출처 미상 값은 backfill하지 않는다.
+
+같은 이메일의 기존 계정은 자동 연결하거나 새로 만들지 않는다. 기존 계정 로그인(필요 시 비밀번호 재설정) 후 `/mypage`의 카카오 연결에서 현재 비밀번호와 연결 동의를 입력하고 카카오 인증을 다시 진행한다. 연결 증명은 link 목적·인증된 accountId·현재 AuthSession·동의·5분 재인증 기한에 묶는다. Refresh는 재인증이 아니다. 최종 연결은 세션과 증명을 다시 잠가 검사하고 한 번 소비한다. 계정 전환·로그아웃·비밀번호 재설정 뒤의 증명은 거부한다. 동일 연결은 중복 기록을 만들지 않으며 다른 계정의 카카오나 기존 연결의 교체는 거부한다. 연결은 현재 계정·업무 데이터·세션 소유자를 바꾸지 않는다.
+
+최초 가입은 외부 식별자 직렬화 잠금과 동일 트랜잭션 안에서 인증 결과·대기 결과 소비, Account·ExternalIdentity·동의·최초 세션 저장을 처리한다. issuer/sub는 DB 고유 키이며 계정당 issuer 하나다. 기존 SessionClient의 generation/revision/profileRevision, Web Locks, BroadcastChannel과 사용자 캐시 정리를 그대로 사용한다. 비밀번호·OAuth 인가 URL·복구 토큰을 Query 변수/데이터·브라우저 영구 저장소에 보관하지 않는다. 콜백 query를 기록하지 않도록 Next 개발 요청 로그를 제외했고 Nest 로그는 경로만 기록한다. Next 기본 rewrite는 upstream 연결 실패 시 전체 URL을 출력하므로 콜백 GET 하나만 no-store·시간 제한·오류 원문 없는 Route Handler로 전달한다. 인증 로직과 쿠키 발급은 Nest에 남으며 나머지 API는 기존 rewrite를 유지한다. 운영 ingress/CDN/APM도 해당 경로의 query·body를 기록하지 않도록 설정해야 한다.
+
+### 카카오 설정과 실제 확인
+
+서버 변수 KAKAO_CLIENT_ID(REST API 키), KAKAO_CLIENT_SECRET, KAKAO_REDIRECT_URI를 함께 설정한다. 모두 없으면 카카오만 503이며 기존 기능은 유지된다. 일부 누락·잘못된 주소는 Zod가 변수 이름만 포함해 시작을 거부한다. KAKAO_REDIRECT_URI는 WEB_ORIGIN에 `/api/v1/auth/kakao/callback`을 붙인 값과 정확히 같아야 한다. NEXT_PUBLIC에는 넣지 않는다.
+
+- 개발: WEB_ORIGIN=`http://localhost:3000`, Redirect URI=`http://localhost:3000/api/v1/auth/kakao/callback`.
+- 운영: WEB_ORIGIN=`https://chongmuya.com`을 사용할 경우 Redirect URI=`https://chongmuya.com/api/v1/auth/kakao/callback`. 실제 공개 호스트가 www 또는 별도 도메인이면 두 값을 함께 그 origin으로 맞춘다. 저장소는 운영 호스트를 확정하거나 콘솔을 변경하지 않는다.
+- 카카오 콘솔에서 앱의 웹 도메인, 카카오 로그인, OpenID Connect, Client Secret, 이메일(account_email) 동의 항목과 위 Redirect URI를 설정한다. 이메일 권한이 없거나 사용자가 제공하지 않아도 추가 Resend 인증으로 가입할 수 있다.
+- Resend의 RESEND_API_KEY/RESEND_FROM/RESEND_REPLY_TO와 가입용 EMAIL_VERIFICATION_SECRET, Octomo 키는 기존 설정을 사용한다. 실제 키를 확인하거나 출력하지 않는다.
+
+설정 후 격리 DB에서 (1) 이메일 계정 복구 메일 요청·다른 브라우저에서 링크 열기·비밀번호 변경·기존 세션 거부·새 로그인, (2) 카카오 취소 후 재시도·신규 약관/이메일/휴대폰 인증·첫 설정, (3) 카카오 재로그인, (4) 기존 이메일 중복 안내·기존 로그인·마이페이지 비밀번호/동의·연결·두 방법의 동일 accountId, (5) 연결 중 다른 탭 로그아웃·복구 후 오래된 완료 거부를 확인한다. SMS는 안내된 수신 번호와 문구를 해당 휴대폰에서 직접 전송해야 한다. 자동 테스트의 메일/SMS/OIDC HTTP 대역은 실제 외부 연동 성공을 의미하지 않는다.
+
 ## API
 
 기본 경로 `/api/v1/auth`, 응답/Swagger는 `Cache-Control: no-store` 인증 응답 계약을 따른다.
@@ -117,6 +152,18 @@ Access와 Refresh는 HttpOnly 쿠키로 전달한다. Next Server Component에�
 | GET /me                                 | 200 AccountDto, 인증 필수                      |
 | POST /session/restore                   | 200 SessionDto, 비회원 정상 허용               |
 | POST /refresh                           | 200 SessionDto, rotation                       |
+| POST /password-reset/request            | 202, 계정 유무와 무관한 접수                   |
+| POST /password-reset/check              | 200, 토큰 미소비 확인·기한                     |
+| POST /password-reset/confirm            | 204, 비밀번호 변경·세션 폐기                   |
+| POST /kakao/start                       | 200, 인가 URL·브라우저 쿠키                    |
+| GET /kakao/callback                     | 303, 깨끗한 완료 경로                          |
+| POST /kakao/status                      | 200, login/signup/existing/link 상태           |
+| POST /kakao/cancel                      | 204, 해당 시도 취소                            |
+| POST /kakao/login                       | 200 SessionDto·쿠키                            |
+| POST /kakao/signup                      | 201 SessionDto·쿠키                            |
+| GET /kakao/connection                   | 200, 본인 연결 상태                            |
+| POST /kakao/link/start                  | 200, 비밀번호 재인증·동의 후 인가 URL          |
+| POST /kakao/link/confirm                | 200, 현재 계정 연결 확정                       |
 | POST /logout                            | 204, 현재 세션 폐기·쿠키 삭제                  |
 
 안전한 오류 규격은 `ACCESS_EXPIRED`, `SESSION_INVALID`, `INVALID_CREDENTIALS`를 보존한다. 입력 오류 400, CSRF/권한 403, 이메일 충돌 409, 시도 제한 429, DB 장애 503을 구분한다. 원문 DB 오류를 노출하지 않는다.

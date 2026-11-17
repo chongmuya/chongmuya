@@ -1,3 +1,9 @@
+import { KakaoController } from "./kakao.controller.js";
+import { KakaoOidcService } from "./kakao-oidc.service.js";
+import { KakaoFlowService } from "./kakao-flow.service.js";
+import { SessionIssuerService } from "./session-issuer.service.js";
+import { PasswordResetService } from "./password-reset.service.js";
+import { PasswordResetController } from "./password-reset.controller.js";
 import { EmailVerificationService } from "./email-verification.service.js";
 import { ResendMailService } from "./resend-mail.service.js";
 import { Module } from "@nestjs/common";
@@ -26,9 +32,18 @@ import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
     PassportModule.register({ session: false }),
     JwtModule.register({}),
   ],
-  controllers: [AuthController, SignupController],
+  controllers: [
+    AuthController,
+    SignupController,
+    PasswordResetController,
+    KakaoController,
+  ],
   providers: [
     AuthService,
+    SessionIssuerService,
+    PasswordResetService,
+    KakaoOidcService,
+    KakaoFlowService,
     PhoneVerificationService,
     EmailVerificationService,
     ResendMailService,

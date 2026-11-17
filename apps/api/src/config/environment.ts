@@ -23,6 +23,9 @@ const environmentSchema = z
         return false;
       }
     }),
+    KAKAO_CLIENT_ID: z.string().min(1).regex(/^\S+$/).optional(),
+    KAKAO_CLIENT_SECRET: z.string().min(1).regex(/^\S+$/).optional(),
+    KAKAO_REDIRECT_URI: z.url().optional(),
     AUTH_SECRET: z.string().min(32),
     RESEND_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
     RESEND_FROM: z
@@ -86,6 +89,30 @@ const environmentSchema = z
     API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
   })
   .superRefine((env, ctx) => {
+    const kakaoFields = [
+      "KAKAO_CLIENT_ID",
+      "KAKAO_CLIENT_SECRET",
+      "KAKAO_REDIRECT_URI",
+    ] as const;
+    if (kakaoFields.some((field) => env[field] !== undefined)) {
+      for (const field of kakaoFields)
+        if (!env[field])
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: "Required together",
+          });
+      if (
+        env.KAKAO_REDIRECT_URI &&
+        env.KAKAO_REDIRECT_URI !==
+          `${env.WEB_ORIGIN}/api/v1/auth/kakao/callback`
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["KAKAO_REDIRECT_URI"],
+          message: "Must match web callback",
+        });
+    }
     const mailFields = [
       "RESEND_API_KEY",
       "RESEND_FROM",
@@ -112,6 +139,9 @@ const environmentSchema = z
     }
   })
   .transform((env) => ({
+    kakaoClientId: env.KAKAO_CLIENT_ID,
+    kakaoClientSecret: env.KAKAO_CLIENT_SECRET,
+    kakaoRedirectUri: env.KAKAO_REDIRECT_URI,
     resendApiKey: env.RESEND_API_KEY,
     resendFrom: env.RESEND_FROM,
     resendReplyTo: env.RESEND_REPLY_TO,

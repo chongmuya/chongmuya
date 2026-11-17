@@ -2,7 +2,11 @@ import { ApiError } from "../../../shared/http/api-error";
 import { requestJson } from "../../../shared/http/request";
 
 import type { Account, AuthState, Session } from "../types/auth.types";
-import type { SignupRequest, FirstSetupInput } from "../types/signup.types";
+import type {
+  SignupRequest,
+  FirstSetupInput,
+  KakaoSignupRequest,
+} from "../types/signup.types";
 type Transport = typeof requestJson;
 type Lock = <T>(action: () => Promise<T>) => Promise<T>;
 
@@ -194,8 +198,14 @@ export class SessionClient {
   async signup(input: SignupRequest, signal: AbortSignal) {
     return this.authenticate("signup", input, signal);
   }
+  async kakaoLogin(signal: AbortSignal) {
+    return this.authenticate("kakao/login", {}, signal);
+  }
+  async kakaoSignup(input: KakaoSignupRequest, signal: AbortSignal) {
+    return this.authenticate("kakao/signup", input, signal);
+  }
   private async authenticate(
-    kind: "login" | "signup",
+    kind: "login" | "signup" | "kakao/login" | "kakao/signup",
     input: object,
     signal?: AbortSignal,
   ) {

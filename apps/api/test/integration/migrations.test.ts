@@ -144,6 +144,39 @@ test("migrations preserve existing account, group, event and session records and
       await runner.query("SELECT * FROM email_verifications"),
       [],
     );
+    const { PasswordResetKakao1794960000000 } =
+      await import("../../src/database/migrations/1794960000000-PasswordResetKakao.js");
+    const social = new PasswordResetKakao1794960000000();
+    await social.up(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM accounts"),
+      existingAccounts.map((row: object) => ({
+        ...row,
+        email_verification_source: null,
+        credentials_changed_at: null,
+      })),
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM auth_sessions"),
+      existingSessions,
+    );
+    assert.deepEqual(await runner.query("SELECT * FROM groups"), beforeGroups);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM events"),
+      eventsBeforeSignup,
+    );
+    await runner.query("SAVEPOINT social_rollback");
+    await runner.query(
+      'UPDATE accounts SET "passwordHash" = NULL WHERE id = $1',
+      [account],
+    );
+    await assert.rejects(social.down(runner), /cannot be represented/);
+    await runner.query("ROLLBACK TO SAVEPOINT social_rollback");
+    await social.down(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM accounts"),
+      existingAccounts,
+    );
     await emailMigration.down(runner);
     await runner.query("SAVEPOINT types_rollback");
     await runner.query(

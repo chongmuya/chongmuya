@@ -1,3 +1,5 @@
+import { KakaoFlowService } from "./kakao-flow.service.js";
+import { kakaoCookieName } from "./utils/auth-cookies.js";
 import { FirstSetupDto } from "./dto/request/first-setup.request.dto.js";
 import {
   Patch,
@@ -23,7 +25,11 @@ import {
 } from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { ConfigService } from "../../config/config.service.js";
-import { AuthService, ACCESS_SECONDS } from "./auth.service.js";
+import { AuthService } from "./auth.service.js";
+import {
+  sendSessionCookies,
+  clearSessionCookies,
+} from "./utils/session-cookies.js";
 import { AccountDto } from "./dto/response/account.response.dto.js";
 import { SessionDto } from "./dto/response/session.response.dto.js";
 import { CredentialsDto } from "./dto/request/credentials.request.dto.js";
@@ -54,6 +60,7 @@ import { AuthError } from "./exceptions/auth.exception.js";
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly kakao: KakaoFlowService,
     private readonly config: ConfigService,
   ) {}
   private get production() {
@@ -62,32 +69,14 @@ export class AuthController {
   private get names() {
     return cookieNames(this.production);
   }
-  private options() {
-    return {
-      httpOnly: true,
-      secure: this.production,
-      sameSite: "lax" as const,
-      path: "/",
-    };
-  }
   private clear(response: Response) {
-    response.clearCookie(this.names.access, this.options());
-    response.clearCookie(this.names.refresh, this.options());
+    clearSessionCookies(response, this.production);
   }
   private send(
     response: Response,
     result: Awaited<ReturnType<AuthService["refresh"]>>,
   ) {
-    response.cookie(this.names.access, result.access, {
-      ...this.options(),
-      maxAge: ACCESS_SECONDS * 1000,
-    });
-    if (result.refresh)
-      response.cookie(this.names.refresh, result.refresh, {
-        ...this.options(),
-        expires: result.expiresAt,
-      });
-    return { authenticated: true, account: result.account };
+    return sendSessionCookies(response, result, this.production);
   }
   @Post("signup")
   @HttpCode(201)
@@ -106,6 +95,7 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
+    await this.kakao.cancel(cookie(request, kakaoCookieName(this.production)));
     return this.send(
       response,
       await this.auth.signup(
@@ -125,6 +115,7 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
+    await this.kakao.cancel(cookie(request, kakaoCookieName(this.production)));
     return this.send(
       response,
       await this.auth.login(body, request.ip ?? "unknown"),
@@ -204,6 +195,7 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
+    await this.kakao.cancel(cookie(request, kakaoCookieName(this.production)));
     await this.auth.logout(cookie(request, this.names.refresh));
     this.clear(response);
   }

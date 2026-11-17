@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   useAuth,
+  KakaoConnection,
   AuthScreen,
   isFirstSetupComplete,
   firstSetupPath,
@@ -48,6 +49,9 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         >
           첫 설정 이어서 하기
         </Link>
+        {mode === "mypage" && (
+          <KakaoConnection key={account.id} accountId={account.id} />
+        )}
         <AuthScreen />
       </main>
     );
@@ -61,7 +65,12 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         eventId={params.get("event")}
         mode={mode}
       />
-      {mode === "mypage" && <AuthScreen />}
+      {mode === "mypage" && (
+        <>
+          <KakaoConnection key={account.id} accountId={account.id} />
+          <AuthScreen />
+        </>
+      )}
     </main>
   );
 }

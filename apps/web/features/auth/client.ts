@@ -8,3 +8,8 @@ export { SignupScreen } from "./components/signup/signup-screen";
 export { safeReturnPath } from "./lib/return-path";
 
 export { isFirstSetupComplete, firstSetupPath } from "./lib/first-setup";
+
+export { RecoveryScreen } from "./components/recovery/recovery-screen";
+
+export { KakaoConnection } from "./components/kakao-connection";
+export { KakaoCompleteScreen } from "./components/kakao-complete-screen";
