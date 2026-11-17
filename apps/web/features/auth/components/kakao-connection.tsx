@@ -100,7 +100,9 @@ export function KakaoConnection({ accountId }: { accountId: string }) {
           <Button type="submit" variant="kakao" loading={action.isPending}>
             카카오 연결
           </Button>
-          <Link href="/auth/recovery">비밀번호를 잊으셨나요?</Link>
+          <Link href="/auth/recovery?next=%2Fmypage">
+            비밀번호를 잊으셨나요?
+          </Link>
         </form>
       )}
     </section>

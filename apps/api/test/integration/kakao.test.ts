@@ -38,7 +38,7 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
     {
       KAKAO_CLIENT_ID: "test-client",
       KAKAO_CLIENT_SECRET: "test-secret",
-      KAKAO_REDIRECT_URI: "http://localhost:3000/api/v1/auth/kakao/callback",
+      KAKAO_REDIRECT_URI: "http://localhost:3001/api/v1/auth/kakao/callback",
     },
   );
   t.after(() => app.close());
@@ -151,6 +151,11 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
     (await (await post("kakao/status", {}, initial.jar)).json()).code,
     "KAKAO_CANCELLED",
   );
+  const missingScope = await start();
+  await callback(missingScope, "&error=invalid_scope");
+  const configuration = await post("kakao/status", {}, missingScope.jar);
+  assert.equal(configuration.status, 503);
+  assert.equal((await configuration.json()).code, "KAKAO_CONFIGURATION");
   const expired = await start();
   await db.manager.update(
     KakaoAttempt,
@@ -258,6 +263,23 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
     signup.email,
   );
   // No automatic link for matching email, regardless of provider verification.
+  identity = {
+    issuer: KAKAO_ISSUER,
+    sub: randomUUID(),
+    email: signup.email,
+    emailVerifiedAt: new Date(),
+  };
+  const socialOverlap = await start();
+  await callback(socialOverlap);
+  assert.equal(
+    (await (await post("kakao/status", {}, socialOverlap.jar)).json()).kind,
+    "existing",
+  );
+  assert.equal((await post("kakao/login", {}, socialOverlap.jar)).status, 400);
+  assert.equal(
+    await db.manager.countBy(ExternalIdentity, { accountId: account.id }),
+    1,
+  );
   const emailFixture = await signupFixture(db);
   const emailSignup = await post(
     "signup",

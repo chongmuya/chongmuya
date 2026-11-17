@@ -28,7 +28,7 @@ export function useSignupFlow({
   terms,
   kakao,
 }: {
-  onSubmit?: SignupSubmission;
+  onSubmit: SignupSubmission;
   onExit: () => void;
   verification?: { phone?: VerificationActions; email?: VerificationActions };
   terms: SignupTerm[];
@@ -152,12 +152,6 @@ export function useSignupFlow({
       }
       await methods.handleSubmit(
         async (input) => {
-          if (!onSubmit) {
-            methods.setError("root.server", {
-              message: "회원가입 연결을 준비하고 있어요.",
-            });
-            return;
-          }
           setPending(true);
           const controller = new AbortController();
           request.current = controller;

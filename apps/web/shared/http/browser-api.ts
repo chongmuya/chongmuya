@@ -1,24 +1,25 @@
 import "client-only";
+import { apiOrigin } from "./api-origin";
 import { ApiError } from "./api-error";
 
-// Browser-only GET transport. Server cookies and API_URL do not belong here.
+// Browser-only health transport with the same public API origin.
 export async function getApiJson(
-  path: `/api/${string}`,
+  path: "/health",
   {
     signal,
     timeoutMs = 3_000,
   }: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<unknown> {
-  if (!path.startsWith("/api/") || path.includes("\\")) {
+  if (path !== "/health") {
     throw new ApiError("API 경로가 올바르지 않습니다.", 0, "INVALID_PATH");
   }
   const timeout = AbortSignal.timeout(timeoutMs);
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(`${apiOrigin()}${path}`, {
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       cache: "no-store",
-      credentials: "same-origin",
+      credentials: "include",
       headers: { Accept: "application/json" },
     });
     const requestId = response.headers.get("x-request-id") ?? undefined;

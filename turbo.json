@@ -4,7 +4,7 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["API_URL", "NODE_ENV"]
+      "passThroughEnv": ["NEXT_PUBLIC_API_ORIGIN", "NODE_ENV"]
     },
     "build": {
       "dependsOn": ["^build"],
@@ -13,7 +13,7 @@
     "@chongmuya/web#build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "env": ["API_URL"],
+      "env": ["NEXT_PUBLIC_API_ORIGIN"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
     },
     "@chongmuya/api#build": {
@@ -25,7 +25,7 @@
     },
     "typecheck": {
       "cache": false,
-      "passThroughEnv": ["API_URL"]
+      "passThroughEnv": ["NEXT_PUBLIC_API_ORIGIN"]
     },
     "test": {
       "cache": false

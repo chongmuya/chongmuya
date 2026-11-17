@@ -54,9 +54,11 @@ function useRecoveryRequest() {
 export function RecoveryEmail({
   onBack,
   onRequest,
+  loginHref = "/auth",
 }: {
   onBack: () => void;
-  onRequest?: (email: string, signal: AbortSignal) => Promise<void>;
+  loginHref?: string;
+  onRequest: (email: string, signal: AbortSignal) => Promise<void>;
 }) {
   const {
     register,
@@ -106,12 +108,6 @@ export function RecoveryEmail({
           aria-label="재설정 메일 요청"
           onSubmit={handleSubmit((values) => {
             clearErrors();
-            if (!onRequest) {
-              setError("root.server", {
-                message: "비밀번호 재설정 메일을 준비하고 있어요.",
-              });
-              return;
-            }
             void run(
               (signal) => onRequest(values.email, signal),
               () => {
@@ -158,7 +154,7 @@ export function RecoveryEmail({
       )}
       <div className="mt-auto pt-8">
         <Link
-          href="/auth"
+          href={loginHref}
           className={buttonStyles({ variant: "outline", className: "w-full" })}
         >
           로그인으로 돌아가기
@@ -172,10 +168,8 @@ type RecoveryPasswordProps = {
   linkState: RecoveryLinkState;
   onBack: () => void;
   onRetry: () => void;
-  onSubmit?: (
-    values: ResetPasswordValues,
-    signal: AbortSignal,
-  ) => Promise<void>;
+  loginHref?: string;
+  onSubmit: (values: ResetPasswordValues, signal: AbortSignal) => Promise<void>;
 };
 
 export function RecoveryPassword(props: RecoveryPasswordProps) {
@@ -188,6 +182,7 @@ function RecoveryPasswordForm({
   onBack,
   onRetry,
   onSubmit,
+  loginHref = "/auth",
 }: RecoveryPasswordProps) {
   const {
     register,
@@ -232,7 +227,7 @@ function RecoveryPasswordForm({
       </div>
       {complete ? (
         <Link
-          href="/auth"
+          href={loginHref}
           className={buttonStyles({ variant: "outline", className: "mt-auto" })}
         >
           로그인으로 돌아가기
@@ -252,12 +247,6 @@ function RecoveryPasswordForm({
           className="flex flex-1 flex-col"
           onSubmit={handleSubmit((values) => {
             clearErrors();
-            if (!onSubmit) {
-              setError("root.server", {
-                message: "비밀번호 변경을 준비하고 있어요.",
-              });
-              return;
-            }
             void run(
               (signal) => onSubmit(values, signal),
               () => {

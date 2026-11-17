@@ -1,5 +1,6 @@
 "use client";
 
+import { authEntryPath } from "../lib/auth-entry-path";
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import { ApiError } from "@/shared/http/api-error";
 import { useId } from "react";
@@ -19,18 +20,15 @@ import {
 export function CredentialsForm({
   pending,
   submit,
-  appearance = "default",
   formError,
-  returnTo = "/events",
+  returnTo,
 }: {
   pending: boolean;
-  appearance?: "default" | "auth";
   formError?: string;
-  returnTo?: string;
+  returnTo: string;
   submit: (values: Credentials, onError: (error: Error) => void) => void;
 }) {
   const id = useId();
-  const branded = appearance === "auth";
   const {
     register,
     handleSubmit,
@@ -45,7 +43,7 @@ export function CredentialsForm({
     <form
       noValidate
       aria-label="로그인"
-      className={branded ? "mt-[36.7756px]" : "form-panel"}
+      className="mt-[36.7756px]"
       onSubmit={handleSubmit((values) => {
         if (pending) return;
         clearErrors();
@@ -62,15 +60,9 @@ export function CredentialsForm({
         id={`${id}-email`}
         label="이메일"
         error={errors.email?.message}
-        className={
-          branded
-            ? "gap-[7px] [&+div]:mt-[7px] [&_input]:mx-auto [&_input]:w-[calc(100%-8px)]"
-            : undefined
-        }
-        labelClassName={branded ? "text-label text-white/80" : undefined}
-        errorClassName={
-          branded ? "m-0 px-4 font-semibold text-brand-ink" : undefined
-        }
+        className="gap-[7px] [&+div]:mt-[7px] [&_input]:mx-auto [&_input]:w-[calc(100%-8px)]"
+        labelClassName="text-label text-white/80"
+        errorClassName="m-0 px-4 font-semibold text-brand-ink"
       >
         {(attributes) => (
           <Input
@@ -80,8 +72,8 @@ export function CredentialsForm({
             autoComplete="email"
             autoCapitalize="none"
             spellCheck={false}
-            placeholder={branded ? "이메일을 입력해주세요" : undefined}
-            variant={branded ? "pill" : "default"}
+            placeholder="이메일을 입력해주세요"
+            variant="pill"
             {...register("email")}
             required
             maxLength={254}
@@ -91,25 +83,19 @@ export function CredentialsForm({
       </FormField>
       <FormField
         id={`${id}-password`}
-        label={branded ? "비밀번호" : "비밀번호 (8~16자)"}
+        label="비밀번호"
         error={errors.password?.message}
-        className={
-          branded
-            ? "gap-[7px] [&+div]:mt-[7px] [&_input]:mx-auto [&_input]:w-[calc(100%-8px)]"
-            : undefined
-        }
-        labelClassName={branded ? "text-label text-white/80" : undefined}
-        errorClassName={
-          branded ? "m-0 px-4 font-semibold text-brand-ink" : undefined
-        }
+        className="gap-[7px] [&+div]:mt-[7px] [&_input]:mx-auto [&_input]:w-[calc(100%-8px)]"
+        labelClassName="text-label text-white/80"
+        errorClassName="m-0 px-4 font-semibold text-brand-ink"
       >
         {(attributes) => (
           <Input
             {...attributes}
             type="password"
             autoComplete="current-password"
-            placeholder={branded ? "비밀번호를 입력해주세요" : undefined}
-            variant={branded ? "pill" : "default"}
+            placeholder="비밀번호를 입력해주세요"
+            variant="pill"
             {...register("password")}
             required
             minLength={8}
@@ -117,37 +103,29 @@ export function CredentialsForm({
           />
         )}
       </FormField>
-      <div className={branded ? "mt-[7px] min-h-[19px] px-4" : undefined}>
+      <div className="mt-[7px] min-h-[19px] px-4">
         <FormError
           message={errors.root?.server?.message ?? formError}
-          className={
-            branded
-              ? "m-0 text-control font-semibold text-accent wrap-anywhere"
-              : undefined
-          }
+          className="m-0 text-control font-semibold text-accent wrap-anywhere"
         />
       </div>
       <Button
         type="submit"
         loading={pending}
-        variant={branded ? "ink" : "solid"}
-        className={branded ? "mt-[41px] w-full" : undefined}
+        variant="ink"
+        className="mt-[41px] w-full"
       >
         {pending ? "처리 중…" : "로그인"}
       </Button>
-      {branded && (
-        <>
-          <KakaoButton returnTo={returnTo} disabled={pending} />
-          <div className="mt-[26px] text-center">
-            <Link
-              href="/auth/recovery"
-              className="text-caption text-black/70 underline underline-offset-2"
-            >
-              비밀번호를 잊으셨나요?
-            </Link>
-          </div>
-        </>
-      )}
+      <KakaoButton returnTo={returnTo} disabled={pending} />
+      <div className="mt-[26px] text-center">
+        <Link
+          href={authEntryPath("/auth/recovery", returnTo)}
+          className="text-caption text-black/70 underline underline-offset-2"
+        >
+          비밀번호를 잊으셨나요?
+        </Link>
+      </div>
     </form>
   );
 }

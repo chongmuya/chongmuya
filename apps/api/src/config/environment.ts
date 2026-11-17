@@ -25,7 +25,20 @@ const environmentSchema = z
     }),
     KAKAO_CLIENT_ID: z.string().min(1).regex(/^\S+$/).optional(),
     KAKAO_CLIENT_SECRET: z.string().min(1).regex(/^\S+$/).optional(),
-    KAKAO_REDIRECT_URI: z.url().optional(),
+    KAKAO_REDIRECT_URI: z
+      .url()
+      .refine((value) => {
+        const url = new URL(value);
+        return (
+          ["http:", "https:"].includes(url.protocol) &&
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !url.hash &&
+          url.pathname === "/api/v1/auth/kakao/callback"
+        );
+      })
+      .optional(),
     AUTH_SECRET: z.string().min(32),
     RESEND_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
     RESEND_FROM: z
@@ -104,13 +117,13 @@ const environmentSchema = z
           });
       if (
         env.KAKAO_REDIRECT_URI &&
-        env.KAKAO_REDIRECT_URI !==
-          `${env.WEB_ORIGIN}/api/v1/auth/kakao/callback`
+        env.NODE_ENV === "production" &&
+        !env.KAKAO_REDIRECT_URI.startsWith("https://")
       )
         ctx.addIssue({
           code: "custom",
           path: ["KAKAO_REDIRECT_URI"],
-          message: "Must match web callback",
+          message: "HTTPS required",
         });
     }
     const mailFields = [

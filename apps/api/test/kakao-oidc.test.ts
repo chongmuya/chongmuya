@@ -32,7 +32,7 @@ test("Kakao OIDC verifies real JWS, required claims, PKCE, state and UserInfo su
       WEB_ORIGIN: "http://localhost:3000",
       KAKAO_CLIENT_ID: "test-client",
       KAKAO_CLIENT_SECRET: "test-secret",
-      KAKAO_REDIRECT_URI: "http://localhost:3000/api/v1/auth/kakao/callback",
+      KAKAO_REDIRECT_URI: "http://localhost:3001/api/v1/auth/kakao/callback",
     }),
   } as ConfigService);
   let kid = "test-key";

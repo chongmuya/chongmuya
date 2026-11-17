@@ -15,6 +15,15 @@ export function configureHttp(
 ) {
   app.disable("x-powered-by");
   app.use(requestContext(log));
+  app.enableCors({
+    origin: (origin, callback) =>
+      callback(null, origin === environment.webOrigin),
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-CSRF-Protection"],
+    exposedHeaders: ["x-request-id"],
+    optionsSuccessStatus: 204,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

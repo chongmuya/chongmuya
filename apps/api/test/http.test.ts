@@ -18,7 +18,10 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   t.after(() => app.close());
 
   const live = await fetch(`${url}/health`, {
-    headers: { "x-request-id": "untrusted-value" },
+    headers: {
+      "x-request-id": "untrusted-value",
+      Origin: "http://localhost:3000",
+    },
   });
   assert.equal(live.status, 200);
   assert.deepEqual(await live.json(), {
@@ -29,12 +32,74 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   assert.match(live.headers.get("x-request-id") ?? "", /^[\da-f-]{36}$/);
   assert.equal(live.headers.get("x-powered-by"), null);
 
+  const assertCors = (response: Response) => {
+    assert.equal(
+      response.headers.get("access-control-allow-origin"),
+      "http://localhost:3000",
+    );
+    assert.equal(
+      response.headers.get("access-control-allow-credentials"),
+      "true",
+    );
+    assert.match(
+      response.headers.get("access-control-expose-headers") ?? "",
+      /x-request-id/i,
+    );
+  };
+  assertCors(live);
+  const preflight = await fetch(`${url}/api/v1/auth/login`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "http://localhost:3000",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type,x-csrf-protection",
+    },
+  });
+  assert.equal(preflight.status, 204);
+  assertCors(preflight);
+  assert.match(
+    preflight.headers.get("access-control-allow-headers") ?? "",
+    /content-type/i,
+  );
+  assert.match(
+    preflight.headers.get("access-control-allow-headers") ?? "",
+    /x-csrf-protection/i,
+  );
+  for (const origin of [
+    "http://localhost:3000.evil.test",
+    "http://127.0.0.1:3000",
+    "null",
+  ]) {
+    const denied = await fetch(`${url}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { Origin: origin, "X-CSRF-Protection": "1" },
+    });
+    assert.equal(denied.status, 403);
+    assert.equal(denied.headers.get("access-control-allow-origin"), null);
+    const options = await fetch(`${url}/api/v1/auth/login`, {
+      method: "OPTIONS",
+      headers: { Origin: origin, "Access-Control-Request-Method": "POST" },
+    });
+    assert.equal(options.headers.get("access-control-allow-origin"), null);
+  }
+  const csrf = await fetch(`${url}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { Origin: "http://localhost:3000" },
+  });
+  assert.equal(csrf.status, 403);
+  assertCors(csrf);
+
   for (const [endpoint, status, code] of [
     ["/ready", 503, "SERVICE_UNAVAILABLE"],
     ["/missing?token=private-query", 404, "NOT_FOUND"],
     ["/test/error", 500, "INTERNAL_SERVER_ERROR"],
+    ["/test/limited", 429, "TOO_MANY_REQUESTS"],
+    ["/api/v1/auth/me", 401, "SESSION_INVALID"],
   ] as const) {
-    const response = await fetch(url + endpoint);
+    const response = await fetch(url + endpoint, {
+      headers: { Origin: "http://localhost:3000" },
+    });
+    assertCors(response);
     assert.equal(response.status, status);
     const body = await response.json();
     assert.deepEqual(Object.keys(body).sort(), [

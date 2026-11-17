@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { authEntryPath } from "../../lib/auth-entry-path";
+import { safeReturnPath } from "../../lib/return-path";
 import { ApiError } from "@/shared/http/api-error";
 import { useAuth, notifySessionChange } from "../auth-provider";
 import {
@@ -16,6 +18,10 @@ import {
 export function RecoveryScreen({ reset = false }: { reset?: boolean }) {
   const { client } = useAuth();
   const router = useRouter();
+  const params = useSearchParams();
+  const [next] = useState(() => safeReturnPath(params.get("next")));
+  const loginHref = authEntryPath("/auth", next);
+  const recoveryHref = authEntryPath("/auth/recovery", next);
   const token = useRef<string | null>(null);
   const [state, setState] = useState<RecoveryLinkState>("checking");
   const [attempt, setAttempt] = useState(0);
@@ -28,7 +34,7 @@ export function RecoveryScreen({ reset = false }: { reset?: boolean }) {
       window.history.replaceState(
         window.history.state,
         "",
-        window.location.pathname,
+        authEntryPath("/auth/reset-password", next),
       );
     }
     const controller = new AbortController();
@@ -52,16 +58,17 @@ export function RecoveryScreen({ reset = false }: { reset?: boolean }) {
           );
       });
     return () => controller.abort();
-  }, [client, reset, attempt]);
+  }, [client, reset, attempt, next]);
   return reset ? (
     <RecoveryPassword
+      loginHref={loginHref}
       linkState={state}
-      onBack={() => router.push("/auth/recovery")}
+      onBack={() => router.push(recoveryHref)}
       onRetry={() => {
         if (state === "error") {
           setState("checking");
           setAttempt((value) => value + 1);
-        } else router.push("/auth/recovery");
+        } else router.push(recoveryHref);
       }}
       onSubmit={async (values, signal) => {
         await savePasswordReset(
@@ -78,9 +85,10 @@ export function RecoveryScreen({ reset = false }: { reset?: boolean }) {
     />
   ) : (
     <RecoveryEmail
-      onBack={() => router.push("/auth")}
+      loginHref={loginHref}
+      onBack={() => router.push(loginHref)}
       onRequest={(email, signal) =>
-        requestPasswordReset(client.request.bind(client), email, signal)
+        requestPasswordReset(client.request.bind(client), email, signal, next)
       }
     />
   );

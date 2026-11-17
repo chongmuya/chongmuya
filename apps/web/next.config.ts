@@ -1,44 +1,24 @@
 import type { NextConfig } from "next";
 
-const apiUrl = new URL(process.env.API_URL ?? "http://127.0.0.1:3001");
+import { apiOrigin } from "./shared/http/api-origin";
 
-if (!["http:", "https:"].includes(apiUrl.protocol)) {
-  throw new Error("API_URL must be an HTTP or HTTPS URL.");
-}
+apiOrigin();
 
 const nextConfig: NextConfig = {
   logging: {
     incomingRequests: {
-      ignore: [
-        /^\/api\/v1\/auth\/(kakao|password-reset)/,
-        /^\/auth\/reset-password/,
-      ],
+      // Do not log codes from stale console redirects, even though this route is now 404.
+      ignore: [/^\/auth\/reset-password/, /^\/api\/v1\/auth\/kakao\/callback/],
     },
   },
   async headers() {
-    return [
-      "/auth/reset-password",
-      "/auth/kakao/:path*",
-      "/api/v1/auth/kakao/:path*",
-    ].map((source) => ({
+    return ["/auth/reset-password", "/auth/kakao/:path*"].map((source) => ({
       source,
       headers: [
         { key: "Referrer-Policy", value: "no-referrer" },
         { key: "Cache-Control", value: "no-store" },
       ],
     }));
-  },
-  async rewrites() {
-    return [
-      {
-        source: "/api/v1/:path*",
-        destination: new URL("/api/v1/:path*", apiUrl).toString(),
-      },
-      {
-        source: "/api/health",
-        destination: new URL("/health", apiUrl).toString(),
-      },
-    ];
   },
 };
 

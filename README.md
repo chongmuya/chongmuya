@@ -33,17 +33,16 @@ pnpm dev
 
 install·build·서버 시작은 migration을 자동 적용하지 않습니다. `synchronize`, `migrationsRun`, `dropSchema`는 모두 false입니다. 개발 서버는 `Ctrl+C`, DB는 `pnpm db:down`으로 종료합니다. `db:down`은 데이터를 보존합니다.
 
-| 주소                               | 용도                                                     |
-| ---------------------------------- | -------------------------------------------------------- |
-| <http://localhost:3000>            | 비로그인 공개 홈                                         |
-| <http://localhost:3000/start>      | 시작 화면: 가입·로그인·공개 홈 선택                      |
-| <http://localhost:3000/auth>       | 이메일·카카오 로그인 (`?mode=signup`은 새 가입으로 이동) |
-| <http://localhost:3000/events>     | 로그인한 계정의 전체 행사·개인 행사 생성                 |
-| <http://localhost:3000/mypage>     | 모임 목록·생성·이름 수정, 계정·로그아웃                  |
-| <http://localhost:3001/health>     | DB와 독립된 liveness                                     |
-| <http://localhost:3001/ready>      | 실제 DB 쿼리; 정상 200, 가용성 장애 503                  |
-| <http://localhost:3000/api/health> | Next rewrite를 거친 liveness                             |
-| <http://localhost:3001/docs>       | 개발용 Swagger; 변경 요청은 Origin·CSRF 헤더 필요        |
+| 주소                           | 용도                                                     |
+| ------------------------------ | -------------------------------------------------------- |
+| <http://localhost:3000>        | 비로그인 공개 홈                                         |
+| <http://localhost:3000/start>  | 시작 화면: 가입·로그인·공개 홈 선택                      |
+| <http://localhost:3000/auth>   | 이메일·카카오 로그인 (`?mode=signup`은 새 가입으로 이동) |
+| <http://localhost:3000/events> | 로그인한 계정의 전체 행사·개인 행사 생성                 |
+| <http://localhost:3000/mypage> | 모임 목록·생성·이름 수정, 계정·로그아웃                  |
+| <http://localhost:3001/health> | DB와 독립된 liveness                                     |
+| <http://localhost:3001/ready>  | 실제 DB 쿼리; 정상 200, 가용성 장애 503                  |
+| <http://localhost:3001/docs>   | 개발용 Swagger; 변경 요청은 Origin·CSRF 헤더 필요        |
 
 모임이 없어도 행사명과 선택적 일정으로 개인 행사를 만들 수 있습니다. 생성 시 본인 모임을 선택하거나 개인 행사 상세에서 나중에 연결할 수 있습니다. 연결은 행사 소유자와 기록을 유지하며 다른 사용자에게 권한을 주지 않습니다. 모임 명단 불러오기·연결 해제·다른 모임 이동·소유권 이전은 제공하지 않습니다.
 
@@ -53,18 +52,18 @@ install·build·서버 시작은 migration을 자동 적용하지 않습니다. 
 
 ## 환경변수
 
-| 변수                | 위치                           | 기본값·조건                                             |
-| ------------------- | ------------------------------ | ------------------------------------------------------- |
-| `DATABASE_URL`      | API `.env` 또는 실행 환경      | 필수. 호스트·DB 이름이 있는 PostgreSQL URL              |
-| `AUTH_SECRET`       | API `.env` 또는 실행 환경      | 필수. 32자 이상; 운영은 암호학적 난수                   |
-| `WEB_ORIGIN`        | API `.env` 또는 실행 환경      | 필수. 경로·끝 슬래시 없는 웹 origin. production은 HTTPS |
-| `API_PORT`          | API `.env` 또는 실행 환경      | 3001; 1~65535                                           |
-| `NODE_ENV`          | API 실행 환경                  | development; test/production 허용                       |
-| `API_DOCS_ENABLED`  | API `.env` 또는 실행 환경      | true/false; production 기본 false                       |
-| `API_URL`           | 웹 `.env.local` 또는 실행 환경 | `http://127.0.0.1:3001`; 서버 전용                      |
-| `TEST_DATABASE_URL` | 테스트 실행 환경               | DB 통합 테스트용 격리 PostgreSQL                        |
+| 변수                     | 위치                           | 기본값·조건                                                     |
+| ------------------------ | ------------------------------ | --------------------------------------------------------------- |
+| `DATABASE_URL`           | API `.env` 또는 실행 환경      | 필수. 호스트·DB 이름이 있는 PostgreSQL URL                      |
+| `AUTH_SECRET`            | API `.env` 또는 실행 환경      | 필수. 32자 이상; 운영은 암호학적 난수                           |
+| `WEB_ORIGIN`             | API `.env` 또는 실행 환경      | 필수. 경로·끝 슬래시 없는 웹 origin. production은 HTTPS         |
+| `API_PORT`               | API `.env` 또는 실행 환경      | 3001; 1~65535                                                   |
+| `NODE_ENV`               | API 실행 환경                  | development; test/production 허용                               |
+| `API_DOCS_ENABLED`       | API `.env` 또는 실행 환경      | true/false; production 기본 false                               |
+| `NEXT_PUBLIC_API_ORIGIN` | 웹 `.env.local` 또는 빌드 환경 | 개발 기본 `http://localhost:3001`; production 빌드·실행 시 필수 |
+| `TEST_DATABASE_URL`      | 테스트 실행 환경               | DB 통합 테스트용 격리 PostgreSQL                                |
 
-API는 `.env`보다 지정된 셸 환경변수를 우선하며 Zod로 검증합니다. 오류에는 변수 이름만 표시합니다. 로컬 DB는 `127.0.0.1:15432`에만 열립니다. API 주소 변경 시 웹 개발 서버를 재시작하고 production 빌드는 다시 만듭니다. 브라우저는 `/api/v1/*`와 `/api/health` 상대 경로를 사용합니다. `API_URL`에 `NEXT_PUBLIC_`을 붙이지 않습니다.
+API는 `.env`보다 지정된 셸 환경변수를 우선하며 Zod로 검증합니다. 오류에는 변수 이름만 표시합니다. 로컬 DB는 `127.0.0.1:15432`에만 열립니다. 브라우저는 `NEXT_PUBLIC_API_ORIGIN`의 `/api/v1/*`와 `/health`를 `credentials: include`로 직접 호출합니다. Next API·health rewrite와 카카오 콜백 중계는 없습니다. 주소는 경로·끝 슬래시 없는 origin이며 공개 API 주소 이외의 비밀값은 NEXT_PUBLIC에 넣지 않습니다. 로컬 웹과 API는 각각 `http://localhost:3000`, `http://localhost:3001`로 통일하고 `127.0.0.1`과 혼용하지 않습니다. API 주소 변경 시 개발 서버를 재시작하고 웹을 다시 빌드·배포합니다. 빌드에 포함된 공개 변수는 실행 시 바꾸는 것만으로 갱신되지 않습니다. 운영 설정이 없으면 빌드를 중단합니다.
 
 HttpOnly 쿠키, CSRF Origin·전용 헤더, Refresh 회전 정책은 [인증 기준](docs/authentication.md)을 따릅니다. 홈의 연결 성공 표시는 liveness이며 DB 정상 여부는 `/ready`로 확인합니다.
 
@@ -90,7 +89,7 @@ docs/      아키텍처·인증·협업 문서
 | `pnpm --filter @chongmuya/api dev`             | API만 실행                                          |
 | `pnpm db:up` / `pnpm db:down` / `pnpm db:logs` | 로컬 DB 실행·종료·로그                              |
 
-의존성은 실제 사용하는 앱에 선언합니다. Turbo는 앱 빌드 산출물을 캐시하며 개발 서버는 캐시하지 않습니다. 웹 API_URL·환경변수 파일은 빌드 입력에 포함됩니다.
+의존성은 실제 사용하는 앱에 선언합니다. Turbo는 앱 빌드 산출물을 캐시하며 개발 서버는 캐시하지 않습니다. 웹 NEXT_PUBLIC_API_ORIGIN·환경변수 파일은 빌드 입력에 포함됩니다.
 
 ## 데이터와 migration
 

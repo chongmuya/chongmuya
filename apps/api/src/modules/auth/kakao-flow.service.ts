@@ -203,7 +203,9 @@ export class KakaoFlowService {
         throw new DomainHttpException(
           parameters.get("error") === "access_denied"
             ? "KAKAO_CANCELLED"
-            : "KAKAO_INVALID",
+            : parameters.get("error") === "invalid_scope"
+              ? "KAKAO_CONFIGURATION"
+              : "KAKAO_INVALID",
         );
       if (!parameters.get("code"))
         throw new DomainHttpException("KAKAO_INVALID");
@@ -246,7 +248,9 @@ export class KakaoFlowService {
           ? "KAKAO_CANCELLED"
           : row.errorCode === "KAKAO_UNAVAILABLE"
             ? "KAKAO_UNAVAILABLE"
-            : "KAKAO_INVALID",
+            : row.errorCode === "KAKAO_CONFIGURATION"
+              ? "KAKAO_CONFIGURATION"
+              : "KAKAO_INVALID",
       );
     if (row.status !== "verified" || row.issuer !== KAKAO_ISSUER || !row.sub)
       throw new DomainHttpException("KAKAO_INVALID");

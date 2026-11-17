@@ -1,5 +1,6 @@
 "use client";
 import type { KakaoStatus } from "../../api/kakao.api";
+import { KakaoButton } from "../kakao-button";
 import { cancelKakao } from "../../api/kakao.api";
 
 import { useEffect, useRef, useState } from "react";
@@ -29,6 +30,31 @@ export function SignupScreen() {
   return <SignupScreenContent key={returnTo} returnTo={returnTo} />;
 }
 export function KakaoSignupScreen({ context }: { context: KakaoStatus }) {
+  const { status } = useAuth();
+  const [expired, setExpired] = useState(
+    () => Date.parse(context.expiresAt) <= Date.now(),
+  );
+  useEffect(() => {
+    const check = () => {
+      if (Date.now() >= Date.parse(context.expiresAt)) setExpired(true);
+    };
+    const timer = setTimeout(
+      check,
+      Math.max(0, Date.parse(context.expiresAt) - Date.now()),
+    );
+    window.addEventListener("focus", check);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("focus", check);
+    };
+  }, [context.expiresAt]);
+  if (expired && status === "anonymous")
+    return (
+      <main className="app-page">
+        <p role="alert">카카오 인증 시간이 만료되었어요. 다시 인증해 주세요.</p>
+        <KakaoButton returnTo={safeReturnPath(context.next)} />
+      </main>
+    );
   return (
     <SignupScreenContent
       key={context.expiresAt}
@@ -139,10 +165,18 @@ function SignupScreenContent({
         signup.error.code === "KAKAO_LINK_REQUIRED" && (
           <aside className="app-page" role="alert">
             <p>
-              기존 계정으로 로그인한 뒤 마이페이지에서 카카오를 연결해 주세요.
+              가입할 때 사용한 이메일 또는 카카오로 로그인해 주세요. 다른
+              카카오로 교체하거나 계정을 합칠 수는 없습니다.
             </p>
             <Link href="/auth?next=%2Fmypage">기존 계정 로그인</Link>
-            <Link href="/auth/recovery">비밀번호 재설정</Link>
+          </aside>
+        )}
+      {kakao &&
+        signup.error instanceof ApiError &&
+        ["KAKAO_EXPIRED", "KAKAO_INVALID"].includes(signup.error.code) && (
+          <aside className="app-page" role="alert">
+            <p>카카오 인증을 다시 시작해 주세요.</p>
+            <KakaoButton returnTo={returnTo} />
           </aside>
         )}
       <SignupFlow

@@ -100,7 +100,10 @@ test("password reset preserves response privacy, consumes atomically, rolls back
     `${randomUUID()}@example.test`,
     social.body.email,
   ]) {
-    const response = await post("password-reset/request", { email });
+    const response = await post("password-reset/request", {
+      email,
+      next: "/mypage",
+    });
     responses.push({ status: response.status, body: await response.json() });
   }
   assert.deepEqual(
@@ -113,7 +116,7 @@ test("password reset preserves response privacy, consumes atomically, rolls back
   assert.equal(deliveries.length, 1);
   const link = new URL(deliveries[0].text.split("\n").at(-1)!);
   assert.equal(link.origin, headers.Origin);
-  assert.equal(link.search, "");
+  assert.equal(link.searchParams.get("next"), "/mypage");
   const token = new URLSearchParams(link.hash.slice(1)).get("token")!;
   const hash = tokenHash(`password-reset:${token}`);
   await until(
@@ -344,9 +347,17 @@ test("reset reissue races create one delivery, invalidate old links and retain a
       mail.push(text);
     },
   );
-  const issue = () => service.request(fixture.body.email, randomUUID());
+  const issue = () =>
+    service.request(
+      fixture.body.email,
+      randomUUID(),
+      "https://evil.example/return",
+    );
   await Promise.all([issue(), issue()]);
   assert.equal(mail.length, 1);
+  const safeLink = new URL(mail[0].split("\n").at(-1)!);
+  assert.equal(safeLink.origin, headers.Origin);
+  assert.equal(safeLink.searchParams.get("next"), "/events");
   const getToken = (text: string) =>
     new URLSearchParams(new URL(text.split("\n").at(-1)!).hash.slice(1)).get(
       "token",

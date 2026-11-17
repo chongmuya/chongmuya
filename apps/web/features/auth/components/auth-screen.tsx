@@ -2,33 +2,24 @@
 
 import Link from "next/link";
 import { authEntryPath } from "../lib/auth-entry-path";
-import { useEffect } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError } from "@/shared/http/api-error";
 import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import { LoadingState } from "@/shared/ui/states";
 import { safeReturnPath } from "../lib/return-path";
 import { useAuth } from "./auth-provider";
 import { AuthRecovery } from "./auth-recovery";
-import { CredentialsForm } from "./credentials-form";
 import { profileQueryOptions } from "../api/auth.queries";
 import { useAuthActions } from "../hooks/use-auth-actions";
 import { authErrorMessage } from "../lib/auth-error-message";
 
 export function AuthScreen() {
   const { client, status, account } = useAuth();
-  const router = useRouter();
-  const pathname = usePathname();
   const params = useSearchParams();
   const returnTo = safeReturnPath(params?.get("next"));
-  useEffect(() => {
-    if (status === "authenticated" && pathname === "/auth")
-      router.replace(returnTo);
-  }, [status, pathname, router, returnTo]);
-  const { login, logout, restore, signIn } = useAuthActions();
-  const pending = login.isPending || logout.isPending || restore.isPending;
+  const { logout, restore } = useAuthActions();
+  const pending = logout.isPending || restore.isPending;
   const profile = useQuery(
     profileQueryOptions(
       client,
@@ -40,12 +31,7 @@ export function AuthScreen() {
       ? logout.error
       : status === "unavailable"
         ? restore.error
-        : status === "anonymous"
-          ? login.error instanceof ApiError &&
-            login.error.code === "VALIDATION_FAILED"
-            ? null
-            : login.error
-          : null;
+        : null;
   if (status === "loading")
     return <LoadingState>로그인 상태 확인 중…</LoadingState>;
   return (
@@ -79,10 +65,7 @@ export function AuthScreen() {
       ) : (
         <>
           <Link href={authEntryPath("/auth/signup", returnTo)}>회원가입</Link>
-          <CredentialsForm
-            pending={pending}
-            submit={(values, onError) => signIn(values, onError)}
-          />
+          <Link href={authEntryPath("/auth", returnTo)}>로그인</Link>
         </>
       )}
     </section>

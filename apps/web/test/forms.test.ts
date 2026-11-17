@@ -354,30 +354,17 @@ test("late group and event mutations after leaving the screen never recreate cac
   }
 });
 
-test("auth form preserves login and failed-logout recovery without caching credentials", async () => {
+test("account panel preserves failed-logout recovery and provides login navigation afterwards", async () => {
   const original = globalThis.fetch;
-  const calls: string[] = [];
   let logoutCalls = 0;
-  let authenticated = false;
-  globalThis.fetch = async (input, options) => {
+  let authenticated = true;
+  globalThis.fetch = async (input) => {
     const path = String(input);
-    calls.push(path);
     if (path.endsWith("restore"))
       return Response.json({
         authenticated,
         account: authenticated ? { id: "a", email: "user@example.com" } : null,
       });
-    if (path.endsWith("login")) {
-      assert.deepEqual(JSON.parse(String(options?.body)), {
-        email: "user@example.com",
-        password: "test-pass-123",
-      });
-      authenticated = true;
-      return Response.json({
-        authenticated: true,
-        account: { id: "a", email: "user@example.com" },
-      });
-    }
     if (path.endsWith("logout")) {
       logoutCalls++;
       if (logoutCalls > 1) authenticated = false;
@@ -393,27 +380,8 @@ test("auth form preserves login and failed-logout recovery without caching crede
     "/events?event=00000000-0000-4000-8000-000000000001",
   );
   try {
-    await until(() => assert(view.container.querySelector("form")));
-    await submit(view.container);
-    assert.match(view.container.textContent!, /이메일을 확인/);
-    await fill(view.container, "email", "USER@example.com");
-    await fill(view.container, "password", "test-pass-123");
-    await submit(view.container);
     await until(() =>
       assert.match(view.container.textContent!, /계정으로 로그인했습니다/),
-    );
-    assert(
-      !JSON.stringify(
-        view.cache
-          .getMutationCache()
-          .getAll()
-          .map((m) => m.state),
-      ).includes("test-pass-123"),
-    );
-    assert(
-      view.navigations.includes(
-        "/events?event=00000000-0000-4000-8000-000000000001",
-      ),
     );
     await click(view.container, "로그아웃");
     await until(() =>
@@ -427,7 +395,9 @@ test("auth form preserves login and failed-logout recovery without caching crede
         .every((query) => query.state.data === undefined),
     );
     await click(view.container, "로그아웃 다시 시도");
-    await until(() => assert(view.container.querySelector("form")));
+    await until(() =>
+      assert(view.container.querySelector('a[href^="/auth?next="]')),
+    );
     assert.equal(logoutCalls, 2);
   } finally {
     await view.unmount();
@@ -1448,6 +1418,7 @@ test("password recovery routes accept requests, remove fragment tokens, retry lo
     const input = JSON.parse(String(options?.body));
     if (String(path).endsWith("/request")) {
       assert.equal(input.email, "recover@example.test");
+      assert.equal(input.next, "/mypage");
       return Response.json({ accepted: true }, { status: 202 });
     }
     assert.equal(input.token, token);
@@ -1465,6 +1436,8 @@ test("password recovery routes accept requests, remove fragment tokens, retry lo
   };
   let view = await render(
     createElement(AuthProvider, null, createElement(RecoveryScreen)),
+    client(),
+    "/mypage",
   );
   try {
     await fill(view.container, "email", "recover@example.test");
@@ -1476,7 +1449,7 @@ test("password recovery routes accept requests, remove fragment tokens, retry lo
     window.history.replaceState(
       null,
       "",
-      `/auth/reset-password#token=${token}`,
+      `/auth/reset-password?next=%2Fmypage#token=${token}`,
     );
     view = await render(
       createElement(
@@ -1484,12 +1457,17 @@ test("password recovery routes accept requests, remove fragment tokens, retry lo
         null,
         createElement(RecoveryScreen, { reset: true }),
       ),
+      client(),
+      "/mypage",
     );
     await until(() =>
       assert.match(view.container.textContent!, /링크를 확인할 수 없어요/),
     );
     assert.equal(window.location.hash, "");
-    assert.equal(window.location.search, "");
+    assert.equal(
+      new URLSearchParams(window.location.search).get("next"),
+      "/mypage",
+    );
     await click(view.container, "링크 다시 확인");
     await until(() =>
       assert(view.container.querySelector('input[name="password"]')),
@@ -1501,6 +1479,7 @@ test("password recovery routes accept requests, remove fragment tokens, retry lo
       assert.match(view.container.textContent!, /비밀번호를 변경했어요/),
     );
     assert.equal(saved, 1);
+    assert(view.container.querySelector('a[href="/auth?next=%2Fmypage"]'));
     assert.deepEqual(view.navigations, []);
     const cached = JSON.stringify([
       ...view.cache
@@ -1565,7 +1544,7 @@ test("Kakao button bypasses empty email form validation and linking requires con
       view.container.querySelector('input[aria-invalid="true"]'),
       null,
     );
-    assert(view.container.querySelector('a[href="/auth/recovery"]'));
+    assert(view.container.querySelector('a[href^="/auth/recovery?next="]'));
     await view.unmount();
     globalThis.fetch = async (path, options) => {
       if (String(path).endsWith("restore"))
@@ -1635,7 +1614,7 @@ test("Kakao button bypasses empty email form validation and linking requires con
   }
 });
 
-test("Kakao completion cancels without logging in and directs existing emails to real login/recovery/link paths", async () => {
+test("Kakao completion cancels without logging in and directs conflicting identities to their existing login method", async () => {
   const original = globalThis.fetch;
   try {
     for (const kind of ["existing", "login", "link"] as const) {
@@ -1677,7 +1656,10 @@ test("Kakao completion cancels without logging in and directs existing emails to
           assert(
             view.container.querySelector('a[href="/auth?next=%2Fmypage"]'),
           );
-          assert(view.container.querySelector('a[href="/auth/recovery"]'));
+          assert.equal(
+            view.container.querySelector('a[href^="/auth/recovery"]'),
+            null,
+          );
         } else {
           await until(() =>
             assert.match(
@@ -1813,6 +1795,95 @@ test("Kakao signup keeps verified provider email separate, never asks for a pass
     assert.deepEqual(view.navigations, ["/getting-started?next=%2Fmypage"]);
   } finally {
     await view.unmount();
+    globalThis.fetch = original;
+  }
+});
+
+test("expired Kakao signup leaves the form and restarts a fresh server attempt with a safe next", async () => {
+  const original = globalThis.fetch;
+  let starts = 0;
+  globalThis.fetch = async (path, options) => {
+    if (String(path).endsWith("restore"))
+      return Response.json({ authenticated: false, account: null });
+    if (String(path).endsWith("kakao/status"))
+      return Response.json({
+        id: "00000000-0000-4000-8000-000000000079",
+        kind: "signup",
+        email: null,
+        trustedEmail: false,
+        next: "/mypage",
+        expiresAt: new Date(Date.now() + 150).toISOString(),
+      });
+    if (String(path).endsWith("/terms"))
+      return Response.json({ terms: previewTerms });
+    assert(String(path).endsWith("kakao/start"));
+    assert.deepEqual(JSON.parse(String(options?.body)), { next: "/mypage" });
+    starts++;
+    // Exercise retry failure without navigating jsdom to an external provider.
+    return Response.json(
+      {
+        statusCode: 503,
+        code: "KAKAO_CONFIGURATION",
+        message: "private-provider-response",
+        requestId: "00000000-0000-4000-8000-000000000001",
+      },
+      { status: 503 },
+    );
+  };
+  const view = await render(
+    createElement(AuthProvider, null, createElement(KakaoCompleteScreen)),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /인증 시간이 만료/),
+    );
+    assert.equal(view.container.querySelector("form"), null);
+    await click(view.container, "카카오 계정으로 계속하기");
+    await until(() => assert.equal(starts, 1));
+    await until(() =>
+      assert.match(view.container.textContent!, /로그인 설정 확인/),
+    );
+    assert.doesNotMatch(view.container.textContent!, /private-provider/);
+    assert.deepEqual(view.navigations, []);
+  } finally {
+    await view.unmount();
+    globalThis.fetch = original;
+  }
+});
+
+test("recovery never carries an external or authentication-loop destination", async () => {
+  const original = globalThis.fetch;
+  const destinations: string[] = [];
+  globalThis.fetch = async (path, options) => {
+    if (String(path).endsWith("restore"))
+      return Response.json({ authenticated: false, account: null });
+    assert(String(path).endsWith("password-reset/request"));
+    destinations.push(JSON.parse(String(options?.body)).next);
+    return Response.json({ accepted: true }, { status: 202 });
+  };
+  try {
+    for (const destination of [
+      "https://evil.example",
+      "/auth/reset-password",
+    ]) {
+      const view = await render(
+        createElement(AuthProvider, null, createElement(RecoveryScreen)),
+        client(),
+        destination,
+      );
+      try {
+        await fill(view.container, "email", "test@example.test");
+        await submit(view.container);
+        await until(() =>
+          assert.match(view.container.textContent!, /재설정 가능한 계정이면/),
+        );
+        assert(view.container.querySelector('a[href="/auth?next=%2Fevents"]'));
+      } finally {
+        await view.unmount();
+      }
+    }
+    assert.deepEqual(destinations, ["/events", "/events"]);
+  } finally {
     globalThis.fetch = original;
   }
 });

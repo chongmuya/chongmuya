@@ -1,5 +1,11 @@
 import { Transform } from "class-transformer";
-import { IsEmail, IsString, Matches, MaxLength } from "class-validator";
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from "class-validator";
 export class RequestPasswordResetDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim().toLowerCase() : value,
@@ -7,6 +13,7 @@ export class RequestPasswordResetDto {
   @IsEmail()
   @MaxLength(254)
   email!: string;
+  @IsOptional() @IsString() @MaxLength(1000) next?: string;
 }
 export class CheckPasswordResetDto {
   @IsString() @Matches(/^[A-Za-z0-9_-]{43}$/) token!: string;
