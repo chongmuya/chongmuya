@@ -93,7 +93,9 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       onBack={() =>
         params.get("view") && mode === "mypage"
           ? router.push("/mypage")
-          : router.push("/")
+          : router.push(
+              params.get("group") ? `/?group=${params.get("group")}` : "/",
+            )
       }
     >
       {mode === "mypage" && params.get("view") === "account" ? (

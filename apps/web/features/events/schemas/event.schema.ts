@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const eventSchema = z.object({
-  groupId: z.union([z.literal(""), z.uuid("모임을 확인해 주세요.")]),
   name: z
     .string()
     .trim()
@@ -18,16 +17,12 @@ export const eventSchema = z.object({
 });
 export type EventFormValues = z.infer<typeof eventSchema>;
 
-export function eventInput(values: EventFormValues) {
+export function eventInput(values: EventFormValues, groupId?: string) {
   return {
     name: values.name,
-    groupId: values.groupId || undefined,
+    groupId,
     scheduledAt: values.date
       ? new Date(`${values.date}+09:00`).toISOString()
       : undefined,
   };
 }
-
-export const linkGroupSchema = z.object({
-  groupId: z.uuid("연결할 모임을 선택해 주세요."),
-});

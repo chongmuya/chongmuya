@@ -167,11 +167,11 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
     "/api/v1/groups",
     "/api/v1/groups/{groupId}",
     "/api/v1/events",
-    "/api/v1/events/{eventId}/group",
     "/api/v1/events/{eventId}",
   ])
     assert(spec.paths[path], `registered module route: ${path}`);
   assert(!spec.paths["/api/v1/groups/{groupId}/events"]);
+  assert(!spec.paths["/api/v1/events/{eventId}/group"]);
   assert(spec.components.schemas.ErrorResponseDto.properties.fieldErrors);
   for (const name of [
     "GroupInput",

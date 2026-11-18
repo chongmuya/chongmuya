@@ -4,7 +4,6 @@ import type { SessionRequest } from "@/features/auth/types";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { dateLabel } from "../lib/format-event-date";
 import { eventQueryOptions } from "../api/events.queries";
-import { LinkEventGroupForm } from "./link-event-group-form";
 
 export function EventDetail({
   accountId,
@@ -23,23 +22,7 @@ export function EventDetail({
     <article className="mb-7 space-y-3">
       <h2 className="text-2xl font-bold">{event.name}</h2>
       <p className="text-xs text-secondary">{dateLabel(event.scheduledAt)}</p>
-      {!event.groupId && (
-        <>
-          <p className="text-xs text-secondary">개인 행사</p>
-          <details className="text-xs">
-            <summary className="cursor-pointer text-secondary">
-              모임 연결
-            </summary>
-            <LinkEventGroupForm
-              key={event.version}
-              accountId={accountId}
-              event={event}
-              request={request}
-              refresh={() => void detail.refetch()}
-            />
-          </details>
-        </>
-      )}
+      {!event.groupId && <p className="text-xs text-secondary">개인 행사</p>}
     </article>
   );
 }

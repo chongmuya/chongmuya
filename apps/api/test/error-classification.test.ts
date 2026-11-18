@@ -63,11 +63,6 @@ test("expected HTTP/auth errors, DB outages and unexpected errors remain distinc
       "CONFLICT",
     ],
     [new DomainHttpException("VERSION_CONFLICT"), 409, "VERSION_CONFLICT"],
-    [
-      new DomainHttpException("EVENT_ALREADY_LINKED"),
-      409,
-      "EVENT_ALREADY_LINKED",
-    ],
     ...["ACCESS_EXPIRED", "SESSION_INVALID", "INVALID_CREDENTIALS"].map(
       (code) =>
         [new AuthError(code as "ACCESS_EXPIRED"), 401, code] as [

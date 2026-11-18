@@ -276,10 +276,6 @@ const messages: Record<string, { status: number; message: string }> = {
     status: 409,
     message: "행사가 변경되었습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.",
   },
-  EVENT_ALREADY_LINKED: {
-    status: 409,
-    message: "이미 모임에 연결된 행사입니다.",
-  },
   ACCESS_EXPIRED: { status: 401, message: "로그인 상태를 다시 확인해 주세요." },
   SESSION_INVALID: { status: 401, message: "다시 로그인해 주세요." },
   INVALID_CREDENTIALS: {

@@ -221,7 +221,7 @@ test("signup keeps values and consent across details/back, validates steps and s
     await fill(view.container, "passwordConfirm", data.passwordConfirm);
     await click(view.container, "이전 단계로 돌아가기");
     await click(view.container, "이용약관 동의 상세 보기");
-    assert.match(view.container.textContent!, /개발 미리보기 약관/);
+    assert.match(view.container.textContent!, /테스트 약관 본문/);
     await click(view.container, "이전 단계로 돌아가기");
     assert.equal(view.container.querySelectorAll("input:checked").length, 3);
     await submit(view.container);

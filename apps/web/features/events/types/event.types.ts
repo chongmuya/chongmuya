@@ -11,4 +11,3 @@ export type EventInput = {
   scheduledAt?: string;
   groupId?: string;
 };
-export type LinkGroupInput = { groupId: string; expectedVersion: number };

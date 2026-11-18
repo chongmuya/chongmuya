@@ -249,10 +249,6 @@ const domainErrors = {
     status: 409,
     message: "행사가 변경되었습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.",
   },
-  EVENT_ALREADY_LINKED: {
-    status: 409,
-    message: "이미 모임에 연결된 행사입니다.",
-  },
 } as const;
 
 export type FieldError = {

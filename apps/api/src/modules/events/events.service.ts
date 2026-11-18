@@ -6,7 +6,6 @@ import { DomainHttpException } from "../../common/http/domain-http.exception.js"
 import { GroupsService } from "../groups/groups.service.js";
 import { Event } from "./entities/event.entity.js";
 import type { EventInput } from "./dto/request/create-event.request.dto.js";
-import type { LinkEventGroupInput } from "./dto/request/link-event-group.request.dto.js";
 import type { UpdateEventInput } from "./dto/request/update-event.request.dto.js";
 import type { EventDto } from "./dto/response/event.response.dto.js";
 
@@ -73,30 +72,6 @@ export class EventsService {
   async get(ownerId: string, id: string): Promise<EventDto> {
     const db = await this.database.connect();
     return this.assertOwned(ownerId, id, db.manager);
-  }
-
-  async linkGroup(
-    ownerId: string,
-    id: string,
-    input: LinkEventGroupInput,
-  ): Promise<EventDto> {
-    const db = await this.database.connect();
-    return db.transaction(async (manager) => {
-      const repository = manager.getRepository(Event);
-      const event = await repository.findOne({
-        where: { id, ownerId },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!event) throw new NotFoundException();
-      await this.groups.assertOwned(ownerId, input.groupId, manager);
-      if (event.version !== input.expectedVersion)
-        throw new DomainHttpException("VERSION_CONFLICT");
-      if (event.groupId !== null)
-        throw new DomainHttpException("EVENT_ALREADY_LINKED");
-      event.groupId = input.groupId;
-      event.version += 1;
-      return eventDto(await repository.save(event));
-    });
   }
 
   async update(

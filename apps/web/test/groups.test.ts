@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { EventSummary } from "../features/events/components/event-summary";
 import { WorkspaceContent } from "../app/workspace-screen";
 
 const router = {
@@ -44,6 +45,15 @@ function render(
     ),
   );
 }
+function summary(cache: QueryClient, groupId?: string, accountId = "a") {
+  return renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client: cache },
+      createElement(EventSummary, { accountId, request, groupId }),
+    ),
+  );
+}
 function fixture() {
   const cache = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -75,7 +85,8 @@ test("accounts without groups can view personal events and create one without on
   cache.setQueryData(["user", "b", "events", "list"], []);
   const html = render(cache, null, "b");
   assert.match(html, /행사 만들기|개인 행사/);
-  assert.match(html, /아직 행사가 없어요/);
+  assert.doesNotMatch(html, /내 행사 목록|모임 연결/);
+  assert.match(summary(cache, undefined, "b"), /등록된 행사가 없어요/);
   assert.doesNotMatch(html, /첫 모임을 만들어|첫 모임 비공개 행사/);
   cache.setQueryData(["user", "b", "events", "detail", "e2"], {
     id: "e2",
@@ -86,15 +97,16 @@ test("accounts without groups can view personal events and create one without on
     scheduledAt: null,
   });
   assert.match(render(cache, "unused-group", "b", "e2"), /개인 일정/);
+  assert.doesNotMatch(render(cache, null, "b", "e2"), /모임 연결|모임에 연결/);
   assert.doesNotMatch(render(cache, null, "a", "e2"), /개인 일정/);
   cache.clear();
 });
 test("switching groups and accounts never renders another scope's cached events", () => {
   const cache = fixture();
-  assert.match(render(cache, "g1"), /첫 모임 비공개 행사/);
-  assert.doesNotMatch(render(cache, "g2"), /첫 모임 비공개 행사/);
-  assert.match(render(cache, "g2"), /아직 행사가 없어요/);
-  assert.doesNotMatch(render(cache, "g1", "b"), /첫 모임 비공개 행사/);
+  assert.match(summary(cache, "g1"), /첫 모임 비공개 행사/);
+  assert.doesNotMatch(summary(cache, "g2"), /첫 모임 비공개 행사/);
+  assert.match(summary(cache, "g2"), /등록된 행사가 없어요/);
+  assert.doesNotMatch(summary(cache, "g1", "b"), /첫 모임 비공개 행사/);
   assert.match(
     render(cache, "foreign", "a", null, "mypage"),
     /접근할 수 없는 모임/,
@@ -102,7 +114,8 @@ test("switching groups and accounts never renders another scope's cached events"
   const page = render(cache, "g1", "a", null, "mypage");
   assert.match(page, /모임 추가/);
   assert.match(page, /모임 이름 수정/);
-  assert.match(page, /mypage\?group=g2/);
+  assert.match(page, /모임 전환/);
+  assert.doesNotMatch(page, /mypage\?view=groups&amp;group=g2/);
   cache.clear();
 });
 test("query failure hides cached events and offers retry; recovery restores list", async () => {
@@ -116,10 +129,10 @@ test("query failure hides cached events and offers retry; recovery restores list
       },
     }),
   );
-  const failed = render(cache, "g1");
+  const failed = summary(cache, "g1");
   assert.match(failed, /다시 시도/);
   assert.doesNotMatch(failed, /첫 모임 비공개 행사/);
   await cache.fetchQuery({ queryKey: key, queryFn: async () => [] });
-  assert.match(render(cache, "g1"), /아직 행사가 없어요/);
+  assert.match(summary(cache, "g1"), /등록된 행사가 없어요/);
   cache.clear();
 });

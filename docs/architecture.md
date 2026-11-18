@@ -1,6 +1,6 @@
 # 기본 아키텍처
 
-총무야는 Next.js App Router 웹과 NestJS API로 구성한다. 프론트는 라우팅·기능·공용 코드의 책임을 나누고, 인증 계약은 [authentication.md](authentication.md)를 따른다. 행사는 생성한 계정이 소유한다. 모임 연결은 선택이며 연결해도 행사 소유자와 기존 기록은 유지된다. 이메일·비밀번호 또는 카카오로 로그인한 뒤 API의 HttpOnly 세션 쿠키를 사용한다.
+총무야는 Next.js App Router 웹과 NestJS API로 구성한다. 프론트는 라우팅·기능·공용 코드의 책임을 나누고, 인증 계약은 [authentication.md](authentication.md)를 따른다. 행사는 생성한 계정이 소유한다. 모임은 생성 시 선택적으로 확정하며 이후 연결·변경하지 않는다. 이메일·비밀번호 또는 카카오로 로그인한 뒤 API의 HttpOnly 세션 쿠키를 사용한다.
 
 ## 책임과 폴더
 
@@ -35,8 +35,8 @@ apps/web/
       client.ts              HomeScreen 공개
     events/
       api/                   events.api.ts, events.queries.ts
-      components/            EventSummary, EventDetail, EventForm, 모임 연결 폼
-      hooks/                 생성·모임 연결 mutation
+      components/            EventSummary, EventDetail, EventForm
+      hooks/                 생성 mutation
       lib/                   한국 시간 표시·행사 캐시 갱신
       schemas/               event.schema.ts
       types/                 event.types.ts
@@ -55,7 +55,7 @@ apps/api/
     common/http/        안전한 업무/필드 오류·requestId·요청 로그
     modules/auth/       인증·세션·시도 제한, 공개 Guard/사용자 타입/데코레이터
     modules/groups/     모임·기본 명단 저장과 소유권 검증, GroupsService 공개
-    modules/events/     행사 소유권·조회·생성·수정·선택적 모임 연결
+    modules/events/     행사 소유권·조회·생성·수정
     modules/health/     DB와 독립된 liveness·실제 쿼리 readiness
     # 각 업무 모듈의 파일 배치
       *.module.ts / *.controller.ts / *.service.ts
@@ -74,13 +74,13 @@ compose.yaml            로컬 PostgreSQL만 실행
 .github/workflows/ci.yml 검증 워크플로
 ```
 
-웹에 별도 entities/widgets 계층, 공통 패키지, 빈 폴더는 만들지 않는다. feature 내부는 게더와 같이 역할별 폴더로 구분한다. `api/`에는 API 함수와 query key/options, `hooks/`에는 mutation 등 React 훅, `components/`에는 화면과 폼, `schemas/`에는 입력 검증, `types/`에는 데이터 계약, `lib/`에는 React와 무관한 로직을 둔다. health에는 폼이나 mutation이 없으므로 schemas/hooks 폴더를 만들지 않는다. API 함수가 단순해도 경로·HTTP 계약을 화면에서 분리한다. 다른 feature가 사용하는 모임 조회는 공개 useGroups 훅으로 제공한다. 내부에서만 사용하는 query options에는 불필요한 래퍼를 만들지 않는다.
+웹에 별도 entities/widgets 계층, 공통 패키지, 빈 폴더는 만들지 않는다. feature 내부는 게더와 같이 역할별 폴더로 구분한다. `api/`에는 API 함수와 query key/options, `hooks/`에는 mutation 등 React 훅, `components/`에는 화면과 폼, `schemas/`에는 입력 검증, `types/`에는 데이터 계약, `lib/`에는 React와 무관한 로직을 둔다. API 함수가 단순해도 경로·HTTP 계약을 화면에서 분리한다. 다른 feature가 사용하는 모임 조회는 공개 useGroups 훅으로 제공한다. 내부에서만 사용하는 query options에는 불필요한 래퍼를 만들지 않는다.
 
 ## 프론트엔드
 
 ### 공개 경계와 페이지 조합
 
-`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?view=groups&group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 이용 유형 확인창의 문구·아이콘·저장은 onboarding이 맡고, shared/ui의 Dialog는 native showModal·초기 포커스·취소·포커스 복귀·스크롤 잠금만 담당한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`은 `/getting-started`로 이동하는 이전 링크다.
+`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 개인 행사 생성 폼이며, 홈의 EventSummary가 행사 목록을 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 홈에서 선택한 모임에 고정된 행사 생성 폼이며 `/mypage?view=groups&group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 이용 유형 확인창의 문구·아이콘·저장은 onboarding이 맡고, shared/ui의 Dialog는 native showModal·초기 포커스·취소·포커스 복귀·스크롤 잠금만 담당한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`은 `/getting-started`로 이동하는 이전 링크다.
 
 공개 홈은 비로그인 접근을 허용한다. home은 auth·groups·events의 공개 진입점으로 실제 계정·선택 모임·행사를 조합한다. `/groups/new`는 첫 설정과 홈에서 재사용하는 등록 화면이다. 선택적인 유형·명단을 모두 저장한 응답을 받은 후 완료창을 표시한다. 모임 없는 홈에서는 개인 행사로 바로 진입한다. `/intro`와 `/start`는 auth의 공개 소개·가입 진입 화면이다. 개발 화면은 데모 계정의 실제 서비스 경로로 확인한다.
 
@@ -100,21 +100,20 @@ app과 다른 feature에서 접근하는 공개 경로는 다음과 같다.
 
 컴포넌트 → query options / mutation → feature API → SessionClient.request → shared JSON 전송 → Nest API 순서다. 세션의 Access 만료 갱신, 한 번 재시도, 계정 변경 감지, 로그아웃 대기·실패 복구는 기존 SessionClient를 유지한다. 업무 API 함수를 단독 fetch로 우회하지 않는다. profile은 인증 feature가 소유한다.
 
-| 데이터         | Query key                                       | 정책                                      |
-| -------------- | ----------------------------------------------- | ----------------------------------------- |
-| profile        | `user / accountId / profile`                    | 인증 상태에서만 조회                      |
-| 내 모임        | `user / accountId / groups`                     | 계정마다 별도 목록                        |
-| 모임 기본 명단 | `user / accountId / groups / groupId / members` | 소유자만 조회, 행사 명단과 별개           |
-| 내 행사        | `user / accountId / events / list`              | 개인·모임 연결 행사 전체                  |
-| 모임별 내 행사 | `user / accountId / groups / groupId / events`  | 모임 필터에도 행사 소유권 적용            |
-| 행사 상세      | `user / accountId / events / detail / eventId`  | 모임과 독립된 식별                        |
-| health         | `health`                                        | 비활성 탭 제외 5초 polling, 3초 요청 제한 |
+| 데이터         | Query key                                       | 정책                            |
+| -------------- | ----------------------------------------------- | ------------------------------- |
+| profile        | `user / accountId / profile`                    | 인증 상태에서만 조회            |
+| 내 모임        | `user / accountId / groups`                     | 계정마다 별도 목록              |
+| 모임 기본 명단 | `user / accountId / groups / groupId / members` | 소유자만 조회, 행사 명단과 별개 |
+| 내 행사        | `user / accountId / events / list`              | 개인·모임 연결 행사 전체        |
+| 모임별 내 행사 | `user / accountId / groups / groupId / events`  | 모임 필터에도 행사 소유권 적용  |
+| 행사 상세      | `user / accountId / events / detail / eventId`  | 모임과 독립된 식별              |
 
 업무 query는 `staleTime: 0`, `retry: false`이며 Query 기본 마운트·포커스·재연결 재조회를 사용한다. 실패는 오류 UI와 사용자의 다시 시도로 복구한다. placeholder로 이전 계정·모임 데이터를 재사용하지 않는다. 최초 조회 실패는 오류 화면으로 표시한다. 같은 자원의 배경 재조회 실패는 기존 데이터와 입력을 유지하며 안내하고, 권한 상실은 쓰기를 차단한다. Query의 AbortSignal을 API까지 전달한다.
 
 mutation은 자동 재시도하지 않는다. 모임 저장 성공 시 진행 중인 목록 조회를 취소하고 해당 계정의 목록을 응답으로 갱신한 뒤 stale로 표시한다. 캐시 갱신과 생성 후 이동은 같은 보호된 콜백에서 처리한다.
 
-행사 생성·모임 연결 성공 시 전체 내 행사 목록, 연결된 모임별 목록과 상세의 진행 중 조회를 취소한다. 기존 목록의 해당 항목과 행사 상세를 응답으로 갱신하고 두 목록을 무효화한다. 활성 목록은 재조회하며 비활성 목록은 다음 사용 시 재조회한다. 다른 계정·다른 모임의 목록은 건드리지 않는다. 재조회 실패는 생성·연결을 자동 반복하지 않는다.
+행사 생성 성공 시 전체 내 행사 목록, 연결된 모임별 목록과 상세의 진행 중 조회를 취소한다. 기존 목록의 해당 항목과 행사 상세를 응답으로 갱신하고 두 목록을 무효화한다. 활성 목록은 재조회하며 비활성 목록은 다음 사용 시 재조회한다. 다른 계정·다른 모임의 목록은 건드리지 않는다. 재조회 실패는 생성을 자동 반복하지 않는다.
 
 계정·모드·URL이 바뀌면 화면 key를 바꿔 폼과 mutation observer를 분리한다. 캐시 처리 전후 화면 생존을 검사하고 이동은 마운트된 observer의 콜백에서 실행한다. SessionClient도 계정 변경·로그아웃 이전 요청의 결과를 거부한다. AuthProvider는 `user` query 취소·제거와 mutation cache 정리를 담당한다. 늦은 응답이 이전 캐시나 화면 이동을 복원하면 안 된다.
 
@@ -152,7 +151,7 @@ Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 �
 
 의존 방향은 `events → groups → auth`, `events → auth`입니다. GroupsModule은 GroupsService를, AuthModule은 AccessGuard·AuthService를 Nest `exports`에 공개합니다. 사용하는 쪽은 해당 Module을 `imports`에 넣고 실제 Service/Guard 파일에서 named import합니다. `AuthUser`와 `CurrentUser`는 공개 타입·데코레이터로 직접 사용합니다. `.module.ts`는 DI 조립만 맡으며 내부 구현을 TypeScript로 재수출하지 않습니다. 내부 Repository/Entity는 외부 모듈에서 직접 사용하지 않습니다. Event FK는 테이블 이름 `accounts`·`groups`로 지정해 Entity import 없이 기존 제약 이름과 스키마를 유지합니다.
 
-`AccessGuard`가 인증을 확인하고 `@CurrentUser()`가 검증된 id/email을 제공합니다. 모임 소유권은 GroupsService, 행사 소유권은 EventsService가 검사합니다. 행사 상세·수정·연결은 id와 ownerId로 조회하며 타인 자원과 없는 자원은 모두 404입니다. 목록을 모임으로 필터링해도 행사 ownerId 조건을 유지합니다. 이름 trim·길이, nullable 일정·시간대 검증, 고정 목록 정렬과 no-store를 적용합니다.
+`AccessGuard`가 인증을 확인하고 `@CurrentUser()`가 검증된 id/email을 제공합니다. 모임 소유권은 GroupsService, 행사 소유권은 EventsService가 검사합니다. 행사 상세·수정은 id와 ownerId로 조회하며 타인 자원과 없는 자원은 모두 404입니다. 목록을 모임으로 필터링해도 행사 ownerId 조건을 유지합니다. 이름 trim·길이, nullable 일정·시간대 검증, 고정 목록 정렬과 no-store를 적용합니다.
 
 ### 모임·행사 API
 
@@ -167,9 +166,8 @@ Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 �
 | POST /events                                 | `{ name, scheduledAt?, groupId? }`. ownerId는 인증 계정                                                    |
 | GET /events/:eventId                         | 행사 소유자 상세 조회                                                                                      |
 | PATCH /events/:eventId                       | `{ expectedVersion, name?, scheduledAt? }`. ownerId·groupId 입력 금지                                      |
-| PUT /events/:eventId/group                   | `{ expectedVersion, groupId }`. 개인 행사에 본인 모임 연결                                                 |
 
-EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`, `version`입니다. 이름은 trim 후 1~100자, 일정은 생략/null 또는 시간대가 있는 ISO 8601입니다. groupId는 생성에서 생략/null을 허용하고 연결 명령에서는 필수 UUID입니다. expectedVersion은 1 이상의 정수입니다. 서버 결정 필드와 알 수 없는 입력을 ValidationPipe가 거부합니다. 이전 `/groups/:groupId/events` 중첩 API는 제공하지 않습니다.
+EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`, `version`입니다. 이름은 trim 후 1~100자, 일정은 생략/null 또는 시간대가 있는 ISO 8601입니다. groupId는 생성에서만 생략/null 또는 본인 모임 UUID를 허용합니다. expectedVersion은 1 이상의 정수입니다. 서버 결정 필드와 알 수 없는 입력을 ValidationPipe가 거부합니다. 이전 `/groups/:groupId/events` 중첩 API는 제공하지 않습니다.
 
 ### DB 작업과 트랜잭션
 
@@ -181,7 +179,7 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. AuthAttemptsRepository는 원자적인 시도 제한 upsert만 담당하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
 
-업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 연결 명령은 행사 id/ownerId 조건으로 행을 FOR UPDATE 잠금하고, 같은 manager로 모임 소유권을 확인한 뒤 expectedVersion과 미연결 상태를 검사합니다. groupId와 version만 갱신하며 소유자·일정·생성 시각은 그대로 둡니다. 일반 수정도 같은 행사 잠금·버전 검사를 사용합니다. 동시 연결 중 먼저 커밋한 요청만 반영되고 뒤의 요청은 VERSION_CONFLICT입니다. 최신 버전으로 이미 연결된 행사를 다시 연결하면 EVENT_ALREADY_LINKED입니다. 현재 모임 소유자 변경·삭제 API는 없으며, 향후 추가 시 동시 권한 변경에 대한 잠금 정책도 함께 설계해야 합니다.
+업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 행사 수정은 id/ownerId 조건의 FOR UPDATE 잠금과 expectedVersion 검사로 경합을 처리하며 groupId는 변경하지 않습니다. 현재 모임 소유자 변경·삭제 API는 없으며, 향후 추가 시 동시 권한 변경에 대한 잠금 정책도 함께 설계해야 합니다.
 
 AuthService는 이메일·휴대폰 인증 소비·가입 계정·동의·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
 
@@ -208,7 +206,7 @@ AuthService는 이메일·휴대폰 인증 소비·가입 계정·동의·세션
 }
 ```
 
-오류 메시지는 코드가 정의한 안전 문구로 제한합니다. DomainHttpException의 `VALIDATION_FAILED`(400), `VERSION_CONFLICT`(409), `EVENT_ALREADY_LINKED`(409)만 명시적으로 전달합니다. 임의 HttpException의 code/message는 신뢰하지 않으며 인증의 ACCESS_EXPIRED·SESSION_INVALID·INVALID_CREDENTIALS와 기존 공통 코드는 유지합니다.
+오류 메시지는 코드가 정의한 안전 문구로 제한합니다. DomainHttpException에 정의한 업무 오류 코드와 문구만 명시적으로 전달합니다. 임의 HttpException의 code/message는 신뢰하지 않으며 인증의 ACCESS_EXPIRED·SESSION_INVALID·INVALID_CREDENTIALS와 기존 공통 코드는 유지합니다.
 
 DTO 검증 오류는 선택적 `fieldErrors: Array<{ field: string; code: string }>`를 제공합니다. code는 INVALID_TYPE·INVALID_LENGTH·INVALID_EMAIL·INVALID_UUID·INVALID_FORMAT·INVALID_VALUE 중 하나입니다. field는 DTO property path이며 알 수 없는 입력 키와 validator 원문·target·value는 포함하지 않습니다. 예: `[{ "field": "name", "code": "INVALID_LENGTH" }]`. 메시지·SQL·stack·비밀번호·토큰 등 입력이나 예외 원문을 응답·로그에 남기지 않습니다.
 
