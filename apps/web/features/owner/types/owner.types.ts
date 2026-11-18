@@ -17,6 +17,12 @@ export type RestaurantDraft = {
   id: string;
   restaurantId: string | null;
   version: number;
+  restaurantVersion?: number | null;
+  currentRestaurant?: {
+    version: number;
+    published: boolean;
+    data: RegistrationData;
+  } | null;
   step: number;
   data: RegistrationData;
   selectedAddress: VerifiedAddress | null;

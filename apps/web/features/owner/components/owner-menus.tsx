@@ -82,7 +82,20 @@ export function OwnerMenus({
                       {m.available ? "판매 중" : "판매 중단"} · {m.unit}
                     </small>
                   </span>
-                  <Button variant="outline" onClick={() => form.reset(m)}>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      form.reset({
+                        id: m.id,
+                        name: m.name,
+                        kind: m.kind,
+                        price: m.price,
+                        unit: m.unit,
+                        available: m.available,
+                        position: m.position,
+                      })
+                    }
+                  >
                     수정
                   </Button>
                 </div>

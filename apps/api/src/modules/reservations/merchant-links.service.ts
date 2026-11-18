@@ -5,7 +5,6 @@ import {
   createHash,
   createHmac,
   randomBytes,
-  randomUUID,
   timingSafeEqual,
 } from "node:crypto";
 import type { EntityManager } from "typeorm";
@@ -17,7 +16,6 @@ import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { MerchantReplyLink } from "./entities/merchant-reply-link.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
-import { ReservationOperation } from "./entities/merchant-reply.entity.js";
 const digest = (raw: string) => createHash("sha256").update(raw).digest("hex");
 @Injectable()
 export class MerchantLinksService {
@@ -212,47 +210,5 @@ export class MerchantLinksService {
     )
       this.invalid();
     return c;
-  }
-  async regenerate(
-    targetId: string,
-    actor: string,
-    reason: string,
-    dryRun: boolean,
-  ) {
-    if (!actor.trim() || !reason.trim())
-      throw new DomainHttpException("VALIDATION_FAILED");
-    const db = await this.database.connect();
-    return db.transaction(async (m) => {
-      const c = await this.context(targetId, m, true);
-      const [reasons] = await this.restaurants.deliveryEligibility(
-        [this.recipient(c.target, c.link)],
-        m,
-        true,
-      );
-      if (
-        reasons.length ||
-        c.request.closedAt ||
-        new Date(c.request.snapshot.startsAt).getTime() <= Date.now()
-      )
-        throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
-      if (!dryRun) {
-        await this.create(
-          c.target,
-          c.request,
-          m,
-          (c.link?.generation ?? 0) + 1,
-          this.recipient(c.target, c.link),
-        );
-        await m.save(ReservationOperation, {
-          id: randomUUID(),
-          targetId,
-          action: "LINK_REGENERATED",
-          actor,
-          reason,
-          createdAt: new Date(),
-        });
-      }
-      return { targetId, dryRun, generation: (c.link?.generation ?? 0) + 1 };
-    });
   }
 }

@@ -5,7 +5,10 @@ import { ApiError } from "@/shared/http/api-error";
 import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { ownerWrite, ownerKey } from "../api/owner.api";
-import type { RegistrationData } from "../schemas/registration.schema";
+import {
+  registrationSchema,
+  type RegistrationData,
+} from "../schemas/registration.schema";
 import type { RestaurantDraft } from "../types/owner.types";
 export function useDraftSave(
   accountId: string,
@@ -16,6 +19,26 @@ export function useDraftSave(
     active = useActiveScreen(),
     chain = useRef(Promise.resolve());
   const [error, setError] = useState<unknown>(null);
+  const [conflict, setConflict] = useState<RestaurantDraft | null>(null);
+  const conflictRef = useRef<RestaurantDraft | null>(null);
+  const latest = useCallback(async () => {
+    const current = await request<RestaurantDraft>(
+      `/api/v1/owner/drafts/${draft.id}`,
+    );
+    if (!active.current) throw new Error("Screen left");
+    return current;
+  }, [active, draft.id, request]);
+  const review = useCallback((current: RestaurantDraft | null) => {
+    conflictRef.current = current;
+    setConflict(current);
+  }, []);
+  const recover = useCallback(async () => {
+    try {
+      review(await latest());
+    } catch (e) {
+      if (active.current) setError(e);
+    }
+  }, [active, latest, review]);
   const mutation = useMutation({
     mutationKey: [...ownerKey(accountId), "draft-save", draft.id],
     retry: false,
@@ -24,42 +47,74 @@ export function useDraftSave(
       data: RegistrationData;
       step: number;
       addressId?: string;
+      resume?: boolean;
     }) => {
+      const reviewed = conflictRef.current;
+      if (reviewed && !input.resume)
+        throw new ApiError("", 409, "RESTAURANT_VERSION_CONFLICT");
+      const expected =
+        input.resume && reviewed ? reviewed.version : version.current;
       try {
-        return await ownerWrite<RestaurantDraft>(
+        const result = await ownerWrite<RestaurantDraft>(
           request,
           `drafts/${draft.id}`,
-          { ...input, version: version.current },
+          {
+            data: input.data,
+            step: input.step,
+            addressId: input.addressId,
+            version: expected,
+            ...(input.resume && reviewed?.currentRestaurant
+              ? { restaurantVersion: reviewed.currentRestaurant.version }
+              : {}),
+          },
           "PUT",
         );
-      } catch (error) {
-        if (
-          error instanceof ApiError &&
-          error.code === "RESTAURANT_VERSION_CONFLICT"
-        ) {
-          const current = await request<RestaurantDraft>(
-            `/api/v1/owner/drafts/${draft.id}`,
-          );
-          // The final submit may have committed even when its response was lost.
+        return result;
+      } catch (e) {
+        if (!active.current) throw e;
+        // Read after a lost response too. Matching saved content proves success; differing
+        // content always needs explicit review before using the newer version.
+        const current = await latest().catch(() => null);
+        if (current) {
           if (current.submitted) return current;
+          const stored = registrationSchema.parse(current.data);
+          const submitted = registrationSchema.parse(input.data);
+          if (
+            current.version > expected &&
+            current.step === input.step &&
+            JSON.stringify(stored) === JSON.stringify(submitted) &&
+            (!input.addressId ||
+              current.selectedAddress?.id === input.addressId) &&
+            (!input.resume ||
+              !reviewed?.currentRestaurant ||
+              current.restaurantVersion === reviewed.currentRestaurant.version)
+          )
+            return current;
+          if (current.version !== expected || input.resume) review(current);
         }
-        throw error;
+        throw e;
       }
     },
   });
   const mutateAsync = mutation.mutateAsync;
   const save = useCallback(
-    (data: RegistrationData, step: number, addressId?: string) => {
+    (
+      data: RegistrationData,
+      step: number,
+      addressId?: string,
+      resume = false,
+    ) => {
       let result: RestaurantDraft;
       const run = chain.current
         .catch(() => undefined)
         .then(async () => {
           if (!active.current) throw new Error("Screen left");
           try {
-            result = await mutateAsync({ data, step, addressId });
+            result = await mutateAsync({ data, step, addressId, resume });
             if (active.current) {
               version.current = result.version;
               setError(null);
+              review(null);
             }
           } catch (e) {
             if (active.current) setError(e);
@@ -69,7 +124,14 @@ export function useDraftSave(
       chain.current = run;
       return run.then(() => result!);
     },
-    [active, mutateAsync],
+    [active, mutateAsync, review],
   );
-  return { save, error, pending: mutation.isPending, version };
+  return {
+    save,
+    recover,
+    conflict,
+    error,
+    pending: mutation.isPending,
+    version,
+  };
 }

@@ -206,3 +206,29 @@ test("server return path retains attendance tab/round and bounded owner routes",
   assert.equal(safeReturnPath("/events?view=evil&round=bad"), "/events");
   assert.equal(safeReturnPath("//evil.test/owner"), "/events");
 });
+
+test("SOLAPI status codes classify progress, completion and failures in the direct send response", async (t) => {
+  const provider = new MessageProvider(config());
+  for (const [code, status, stage] of [
+    ["2000", "ACCEPTED", undefined],
+    ["3000", "ACCEPTED", undefined],
+    ["4000", "DELIVERED", undefined],
+    ["1030", "FAILED", "SUBMISSION"],
+    ["2230", "FAILED", "SUBMISSION"],
+    ["3032", "FAILED", "DELIVERY"],
+    ["3047", "FAILED", "DELIVERY"],
+    ["5000", "FAILED", "DELIVERY"],
+  ] as const) {
+    t.mock.method(globalThis, "fetch", async () =>
+      Response.json({
+        failedMessageList: [],
+        groupInfo: { groupId: "status-group" },
+        messageList: [{ messageId: "status-message", statusCode: code }],
+      }),
+    );
+    const result = await provider.send(id, "01099990000", "fake test");
+    assert.equal(result.status, status, code);
+    assert.equal(result.failureStage, stage, code);
+    if (stage) assert.equal(result.errorCode, `PROVIDER_${code}`);
+  }
+});

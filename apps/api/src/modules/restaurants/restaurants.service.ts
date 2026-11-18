@@ -134,7 +134,7 @@ export class RestaurantsService {
       bookingPolicy: r.bookingPolicy,
       depositPolicy: r.depositPolicy,
       menuPolicy: r.menuPolicy,
-      ...(r.policies ? policyDescriptions(r.policies) : {}),
+      ...(r.policies ? policyDescriptions(r.policies, r) : {}),
       cancellationPolicy: r.cancellationPolicy,
       isDemo: r.isDemo,
       inquiryAvailable: contacts.some((c) => c.restaurantId === r.id),
