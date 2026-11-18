@@ -3,7 +3,7 @@ import { Restaurant } from "../../modules/restaurants/entities/restaurant.entity
 import { RestaurantSpace } from "../../modules/restaurants/entities/restaurant-space.entity.js";
 import { RestaurantMenu } from "../../modules/restaurants/entities/restaurant-menu.entity.js";
 import { RestaurantContact } from "../../modules/restaurants/entities/restaurant-contact.entity.js";
-import { RequestTarget } from "../../modules/reservations/entities/request-target.entity.js";
+import { claimSeedContact } from "./claim-contact.seed.js";
 
 export const demoRestaurantIds = [1, 2, 3, 4].map(
   (n) => `c0210000-0000-4000-8000-${String(n).padStart(12, "0")}`,
@@ -129,7 +129,7 @@ export async function seedDemoRestaurants(db: DataSource) {
         .orIgnore()
         .execute();
       const contactId = `c0240000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`;
-      if (await manager.existsBy(RequestTarget, { contactId })) continue;
+      if (!(await claimSeedContact(manager, contactId))) continue;
       await manager
         .createQueryBuilder()
         .insert()

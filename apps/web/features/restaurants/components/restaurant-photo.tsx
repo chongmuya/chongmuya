@@ -2,8 +2,6 @@
 import Image from "next/image";
 import { useState } from "react";
 
-const placeholder = "/images/restaurant-placeholder.png";
-
 export function RestaurantPhoto({
   src,
   alt,
@@ -16,12 +14,9 @@ export function RestaurantPhoto({
   eager?: boolean;
 }) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
-  const [failedPlaceholder, setFailedPlaceholder] = useState(false);
-  const source = src && failedSource !== src ? src : placeholder;
-  const isPlaceholder = source === placeholder;
   return (
     <div className="relative w-full bg-background" style={{ height }}>
-      {isPlaceholder && failedPlaceholder ? (
+      {!src || failedSource === src ? (
         <div
           className="flex h-full items-center justify-center text-caption text-muted"
           role="img"
@@ -31,16 +26,14 @@ export function RestaurantPhoto({
         </div>
       ) : (
         <Image
-          key={source}
-          src={source}
-          alt={isPlaceholder ? "" : alt}
+          key={src}
+          src={src}
+          alt={alt}
           fill
           sizes="(max-width: 408px) 100vw, 408px"
-          loading={eager || isPlaceholder ? "eager" : "lazy"}
+          loading={eager ? "eager" : "lazy"}
           className="object-cover"
-          onError={() =>
-            isPlaceholder ? setFailedPlaceholder(true) : setFailedSource(src)
-          }
+          onError={() => setFailedSource(src)}
         />
       )}
     </div>

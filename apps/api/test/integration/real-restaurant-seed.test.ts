@@ -11,6 +11,7 @@ import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.en
 import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
 import { RestaurantMenu } from "../../src/modules/restaurants/entities/restaurant-menu.entity.js";
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
+import { RestaurantContactSeedReceipt } from "../../src/modules/restaurants/entities/restaurant-contact-seed-receipt.entity.js";
 
 import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
 import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
@@ -104,6 +105,47 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     assert.equal(await spaces.countBy({ restaurantId: In(ids) }), 11);
     assert.equal(await menus.countBy({ restaurantId: In(ids) }), 146);
     assert.equal(await contacts.countBy({ restaurantId: In(ids) }), 4);
+    const noInquiryContactId = restaurantSeedId("contact", keys[1]!);
+    assert.equal(
+      await db
+        .getRepository(RequestTarget)
+        .existsBy({ contactId: noInquiryContactId }),
+      false,
+    );
+    await contacts.delete({ id: noInquiryContactId });
+    await Promise.all([
+      seedRestaurants(db, fixture, privateFixture),
+      seedRestaurants(db, fixture, privateFixture),
+    ]);
+    assert.equal(await contacts.existsBy({ id: noInquiryContactId }), false);
+    assert.equal(
+      (await (await call(`restaurants/${ids[1]}`)).json()).inquiryAvailable,
+      false,
+    );
+
+    for (const [region, expectedKeys] of [
+      ["", keys],
+      ["세종대 · 어린이대공원", ["gaemijiptu", "bakmulje", "otaesik-sejong"]],
+      [
+        "  세종대 · · 어린이대공원 · 세종대  ",
+        ["gaemijiptu", "bakmulje", "otaesik-sejong"],
+      ],
+      ["건대 후문", ["gaemijiptu", "bakmulje"]],
+      ["광나루로 379", ["otaesik-sejong"]],
+      ["%", []],
+      ["_", []],
+    ] as [string, string[]][]) {
+      const result = (await (
+        await call(`restaurants?region=${encodeURIComponent(region)}`)
+      ).json()) as { items: { id: string }[] };
+      assert.deepEqual(
+        result.items
+          .filter((r) => ids.includes(r.id))
+          .map((r) => r.id)
+          .sort(),
+        expectedKeys.map((key) => restaurantSeedId("restaurant", key)).sort(),
+      );
+    }
     const catalog = await (await call("restaurants")).json();
     const detail = await (await call(`restaurants/${gaemijipId}`)).json();
     const publicJson = JSON.stringify({ catalog, detail });
@@ -275,6 +317,9 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
       await db.getRepository(ReservationRequest).delete({ id: requestId });
     }
     await contacts.delete({ restaurantId: In(cleanupIds) });
+    await db.getRepository(RestaurantContactSeedReceipt).delete({
+      contactId: In(keys.map((key) => restaurantSeedId("contact", key))),
+    });
     await menus.delete({ restaurantId: In(cleanupIds) });
     await spaces.delete({ restaurantId: In(cleanupIds) });
     await restaurants.delete({ id: In(cleanupIds) });

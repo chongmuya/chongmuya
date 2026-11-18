@@ -270,6 +270,42 @@ test("migrations preserve existing account, group, event and session records and
     await runner.query("DELETE FROM restaurant_contacts WHERE id=$1", [
       historicalContact,
     ]);
+    await runner.query("SAVEPOINT seed_receipts");
+    const liveContact = randomUUID();
+    await runner.query(
+      "INSERT INTO restaurant_contacts(id,restaurant_id,name,phone) VALUES($1,$2,'보존 담당자','00000000000')",
+      [liveContact, restaurant],
+    );
+    const contactsBeforeReceipts = await runner.query(
+      "SELECT * FROM restaurant_contacts ORDER BY id",
+    );
+    const { RestaurantContactSeedReceipts1795312800000 } =
+      await import("../../src/database/migrations/1795312800000-RestaurantContactSeedReceipts.js");
+    const receipts = new RestaurantContactSeedReceipts1795312800000();
+    await receipts.up(runner);
+    const receiptIds = (await runner.query(
+      "SELECT contact_id FROM restaurant_contact_seed_receipts ORDER BY contact_id",
+    )) as { contact_id: string }[];
+    assert(receiptIds.some((r) => r.contact_id === historicalContact));
+    assert(receiptIds.some((r) => r.contact_id === liveContact));
+    assert.deepEqual(
+      await runner.query("SELECT * FROM restaurant_contacts ORDER BY id"),
+      contactsBeforeReceipts,
+    );
+    await runner.query("DELETE FROM restaurant_contacts WHERE id=$1", [
+      liveContact,
+    ]);
+    assert.equal(
+      (
+        await runner.query(
+          "SELECT contact_id FROM restaurant_contact_seed_receipts WHERE contact_id=$1",
+          [liveContact],
+        )
+      ).length,
+      1,
+    );
+    await assert.rejects(receipts.down(runner), /preserving deleted contacts/);
+    await runner.query("ROLLBACK TO SAVEPOINT seed_receipts");
     assert.deepEqual(
       await runner.query("SELECT * FROM reservation_requests"),
       requestsBeforeAttendance,

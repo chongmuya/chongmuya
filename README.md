@@ -99,6 +99,20 @@ docs/      아키텍처·인증·협업 문서
 
 Entity 변경 시 로컬 개발 DB에서 `pnpm --filter @chongmuya/api db:migration:generate src/database/migrations/<이름>`으로 SQL을 생성할 수 있습니다. 검토 후 다시 build하고 명시적으로 적용합니다. CLI는 컴파일한 `dist/database/data-source.js`를 읽으며 `migration:show`도 이력 테이블을 생성할 수 있습니다. 운영 DB에 검증 명령이나 reset/drop을 실행하지 않습니다.
 
+### 매장 시드
+
+로컬 PostgreSQL과 `NODE_ENV=development` 또는 `test`에서 실행합니다. 실제 매장 4곳·공간 11개·메뉴 146개를 추가하며, 기존 값은 덮어쓰지 않습니다. 미확인 가격은 null로 보존합니다.
+
+```sh
+pnpm --filter @chongmuya/api build
+pnpm --filter @chongmuya/api db:migration:run
+pnpm --filter @chongmuya/api db:seed:restaurants
+# 가상 데이터만 필요하면 db:seed:restaurants:demo 사용
+pnpm --filter @chongmuya/api db:seed:restaurants --contacts-file src/database/seeds/data/restaurant-contacts.private.json
+```
+
+연락처 파일은 `apps/api/src/database/seeds/data/restaurant-contacts.private.json`에 `{ "contacts": [...] }` 형식으로 두며 Git·빌드에서 제외됩니다. 항목은 `restaurantKey`(`gaemijiptu`, `bakmulje`, `otaesik-sejong`, `sijang-kondae`), `name`, `phone`(숫자 문자열), `active`(기본 true), `requestConsentAt`(실제 수신 동의 시각, 시간대 포함 ISO 문자열 또는 null), `consentNote`입니다. 파일은 위 옵션을 지정해야 읽으며, 활성·수신 동의가 있는 담당자만 문의 대상으로 사용할 수 있습니다. 파일만으로 기존 연락처를 수정하거나 삭제된 담당자를 재등록하지 않습니다. 등록 이력에는 ID만 남깁니다. 실제 문자 발송·매장 답변은 포함하지 않습니다.
+
 ## 검증
 
 `.nvmrc`의 Node 버전을 활성화한 뒤 실행합니다. GitHub Actions도 `node-version-file: .nvmrc`로 같은 패치를 사용합니다.
@@ -126,6 +140,5 @@ Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 
 
 - [아키텍처](docs/architecture.md): 책임·의존 방향·API·캐시·오류·migration
 - [인증 기준](docs/authentication.md): Passport·쿠키·CSRF·세션·개인 자원 접근
-- [실제 매장 시드](docs/restaurant-seed.md): 실제 매장 4곳·룸·메뉴·비공개 담당자 입력
 - [협업 규칙](docs/CONTRIBUTING.md): 커밋·브랜치·PR과 검증
 - [PR 템플릿](.github/pull_request_template.md)
