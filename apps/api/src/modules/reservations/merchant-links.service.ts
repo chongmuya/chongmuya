@@ -1,12 +1,11 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+  merchantTokenDigest as digest,
+  merchantEncryptionKey,
+  issueMerchantToken,
+  merchantLinkUrl,
+} from "./lib/merchant-link-codec.js";
 import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
@@ -16,7 +15,6 @@ import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { MerchantReplyLink } from "./entities/merchant-reply-link.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
-const digest = (raw: string) => createHash("sha256").update(raw).digest("hex");
 @Injectable()
 export class MerchantLinksService {
   constructor(
@@ -24,41 +22,13 @@ export class MerchantLinksService {
     private readonly config: ConfigService,
     private readonly restaurants: RestaurantsService,
   ) {}
-  private encryptionKey() {
-    const e = this.config.environment;
-    if (e.merchantReplyTokenEncryptionKey)
-      return Buffer.from(e.merchantReplyTokenEncryptionKey, "hex");
-    if (e.nodeEnv !== "production")
-      return createHash("sha256")
-        .update(`development-merchant-encryption:${e.authSecret}`)
-        .digest();
-    return null;
-  }
-  private encrypt(raw: string) {
-    const key = this.encryptionKey();
-    if (!key) return null;
-    const iv = randomBytes(12),
-      cipher = createCipheriv("aes-256-gcm", key, iv);
-    const value = Buffer.concat([cipher.update(raw, "utf8"), cipher.final()]);
-    return [iv, cipher.getAuthTag(), value]
-      .map((v) => v.toString("base64url"))
-      .join(".");
-  }
   url(link: MerchantReplyLink) {
-    const key = this.encryptionKey();
-    if (!key || !link.encryptedToken)
-      throw new DomainHttpException("MESSAGE_CONFIGURATION");
     try {
-      const [iv, tag, value] = link.encryptedToken
-        .split(".")
-        .map((v) => Buffer.from(v, "base64url"));
-      const decipher = createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(tag);
-      const raw = Buffer.concat([
-        decipher.update(value),
-        decipher.final(),
-      ]).toString("utf8");
-      return `${this.config.environment.webOrigin}/merchant-reply?target=${link.targetId}#token=${raw}`;
+      return merchantLinkUrl(
+        this.config.environment.webOrigin,
+        link,
+        merchantEncryptionKey(this.config.environment),
+      );
     } catch {
       throw new DomainHttpException("MESSAGE_CONFIGURATION");
     }
@@ -73,13 +43,14 @@ export class MerchantLinksService {
       contactPhone: target.contactPhone,
     },
   ) {
-    const raw = randomBytes(32).toString("base64url");
+    const token = issueMerchantToken(
+      merchantEncryptionKey(this.config.environment),
+    );
     return manager.save(MerchantReplyLink, {
       targetId: target.id,
       contactId: recipient.contactId,
       phoneSnapshot: recipient.contactPhone,
-      digest: digest(raw),
-      encryptedToken: this.encrypt(raw),
+      ...token,
       generation,
       revokedAt: null,
       expiresAt: new Date(
@@ -118,7 +89,6 @@ export class MerchantLinksService {
     const [reasons] = await this.restaurants.deliveryEligibility(
       [this.recipient(target, link)],
       m,
-      true,
     );
     if (
       request.closedAt ||
@@ -156,16 +126,21 @@ export class MerchantLinksService {
       (await this.reasons(c.target, c.request, c.link, db.manager)).length
     )
       this.invalid();
+    const accessExpiresAt = Math.min(
+      Date.now() + 3600_000,
+      c.link.expiresAt.getTime(),
+    );
     const payload = Buffer.from(
       JSON.stringify({
         targetId,
         generation: c.link.generation,
-        expiresAt: Math.min(Date.now() + 3600_000, c.link.expiresAt.getTime()),
+        expiresAt: accessExpiresAt,
       }),
     ).toString("base64url");
     return {
       accessToken: `${payload}.${this.sign(payload)}`,
-      expiresAt: c.link.expiresAt.toISOString(),
+      accessExpiresAt: new Date(accessExpiresAt).toISOString(),
+      linkExpiresAt: c.link.expiresAt.toISOString(),
     };
   }
   private sign(value: string) {
@@ -205,10 +180,11 @@ export class MerchantLinksService {
       decoded.targetId !== targetId ||
       decoded.generation !== c.link?.generation ||
       typeof decoded.expiresAt !== "number" ||
-      decoded.expiresAt <= Date.now() ||
       (await this.reasons(c.target, c.request, c.link, m)).length
     )
       this.invalid();
+    if (decoded.expiresAt! <= Date.now())
+      throw new DomainHttpException("MERCHANT_ACCESS_EXPIRED");
     return c;
   }
 }

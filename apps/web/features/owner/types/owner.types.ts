@@ -1,3 +1,6 @@
+import type { z } from "zod";
+import type { menuInputSchema } from "../schemas/registration.schema";
+import type { Reply } from "@/features/merchant-replies/types";
 import type {
   RegistrationData,
   VerifiedAddress,
@@ -33,4 +36,30 @@ export type DuplicateResult = {
   duplicate: boolean;
   ownRestaurantId: string | null;
   supportEmail: string | null;
+};
+
+export type MenuInput = z.infer<typeof menuInputSchema>;
+export type MenuRecord = Omit<MenuInput, "id"> & { id: string };
+export type MenuList = { version: number; menus: MenuRecord[] };
+export type PhoneChallenge = {
+  id: string;
+  phone: string;
+  message: string;
+  receiver: string;
+  status: string;
+  nextCheckAt: string;
+};
+export type InquiryList = {
+  inquiries: {
+    targetId: string;
+    restaurantId: string;
+    restaurantName: string;
+    eventName: string;
+    startsAt: string;
+    receivedAt: string;
+    expectedGuests: number;
+    response: Reply | null;
+    closed: boolean;
+  }[];
+  nextCursor: string | null;
 };

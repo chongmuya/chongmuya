@@ -107,7 +107,7 @@ Entity 변경 시 로컬 개발 DB에서 `pnpm --filter @chongmuya/api db:migrat
 pnpm --filter @chongmuya/api build
 pnpm --filter @chongmuya/api db:migration:run
 pnpm --filter @chongmuya/api db:seed:restaurants
-# 가상 데이터만 필요하면 db:seed:restaurants:demo 사용
+# 가상 매장·계정·행사는 db:seed:demo로 함께 생성
 pnpm --filter @chongmuya/api db:seed:restaurants --contacts-file src/database/seeds/data/restaurant-contacts.private.json
 ```
 
@@ -158,19 +158,62 @@ API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery`, `DeliveryLi
 - 발신번호 등록·잔액, 실제 Nest 송신 공인 IP/NAT IP와 SOLAPI 허용 IP의 일치, 키의 send-sms/send-lms/read 권한, 실제 수신번호·동의·공개 상태는 실행 환경에서 별도 확인한다. 키 발급과 Geocoding 활성화를 다시 할 필요는 없다.
 - `TRUSTED_PROXY_CIDRS`는 실제 ingress의 IP/CIDR만 명시한다. 기본은 직접 연결 IP이며 임의 X-Forwarded-For를 신뢰하지 않는다. 참석 제한은 차수·IP별 열기/저장 각 600회/15분, 식별 조합별 각 20회, IP·차수·이름별 열기 30회다.
 
-운영 명령은 서버 접근 권한이 있는 실행자가 `pnpm --filter @chongmuya/api merchant:operations --action ...`으로 실행한다. 변경은 기본 dry-run이며 `--execute --actor <실행자> --reason <확인 사유>`가 있어야 적용한다. `--output <새 파일>`은 0600·wx로 결과를 저장한다. 비밀 토큰이나 문자 본문은 출력하지 않는다.
+정상 문의는 DB 저장 후 서버가 문자를 자동 발송한다. 아래 도구는 서버 접근 권한이 있는 운영자의 매장 관리·장애 확인용이며 평소 문의마다 실행할 필요가 없다. API 빌드 후 실행한다. 조회는 읽기 전용이며 전화번호를 마스킹한 표와 다음 조치를 바로 표시한다. 원본 연락처/접수 이력 파일이 필요할 때만 `--output <새 파일>`을 추가한다(0600·wx, 기존 파일 덮어쓰기 금지). 링크 토큰·문자 본문은 출력하지 않는다.
 
-| action              | 추가 인자·효과                                                                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `owner-link`        | `--restaurant <UUID> --account <owner Account UUID>`; 다른 소유자는 덮어쓰지 않음                                                                                                                 |
-| `publish`           | `--restaurant <UUID>`; `--unpublish`로 비공개                                                                                                                                                     |
-| `normalize-address` | `--restaurant <UUID> --version <현재 버전> --query <검색 주소> --base-address <정확한 선택 결과> --detail-address <층·호수>`; dry-run 확인 후 실행, 중복 충돌 시 중단                             |
-| `deliveries`        | 발송 상태/ID 조회, 만료된 PROCESSING은 UNKNOWN으로 분류                                                                                                                                           |
-| `retry`             | `--delivery <UUID>`; PENDING 또는 명확한 SUBMISSION 실패만 현재 동의·번호·공개·링크를 재검사해 처리                                                                                               |
-| `reconcile`         | `--delivery <UUID>`; 공급자 ID 또는 번호·시간 범위 조회 후 deliveryId 대조. UNKNOWN이 해소되지 않으면 재발송 금지                                                                                 |
-| `record-contact`    | `--restaurant <UUID> --input <0600 JSON>`; `{id:고정 UUID,name,phone,requestConsentAt:실제 동의 시각 또는 null,consentNote}`. 기존 번호를 덮어쓰지 않고 확인한 새 담당자 저장, null 동의는 비활성 |
-| `change-recipient`  | `--target ID --contact NEW_CONTACT_ID`; 원래 접수·발송 이력을 보존하고 확인된 새 수신자와 링크로 전환. 반환한 deliveryId를 별도 `retry`로 발송                                                    |
-| `regenerate-link`   | `--target <UUID>`; `--execute` 시 새 링크·발송 기록을 함께 저장한 뒤 즉시 발송 시도·결과 반환. 이전 접근 폐기, 문의·발송·답변 이력 보존. PENDING/PROCESSING/UNKNOWN은 먼저 해소                   |
-| `record-reply`      | `--target <UUID> --input <0600 JSON>`; `{method:"PHONE" 또는 "SMS",confirmedAt:ISO시각,reply:응답 API 본문}`. 확인 주체·사유와 version/revision 보존                                              |
+```bash
+pnpm --filter @chongmuya/api merchant:operations --action deliveries
+pnpm --filter @chongmuya/api merchant:operations --action deliveries --status PENDING
+# FAILED / UNKNOWN / PROCESSING / ACCEPTED / DELIVERED / HELD / CANCELLED도 사용 가능
+# 특정 발송만 확인: --delivery <UUID>
+```
 
-문의 트랜잭션 커밋 뒤 같은 Nest에서 직접 발송한다. 종료 시 남은 PENDING은 자동 복구하지 않는다. 타임아웃·접수 결과 저장 실패·만료 lease는 UNKNOWN이며 자동 재시도하지 않는다. `reservations:pending`은 PENDING의 수동 점검용 내보내기다. 이미 접수한 문자를 다시 보내는 목록으로 사용하지 말고 위 delivery ID 명령을 사용한다. 실제 시드 CLI는 여전히 development/test의 로컬 DB 전용이며 운영 이관 명령이 아니다.
+| action           | 용도·추가 인자                                                                                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `publish`        | 매장 공개/비공개: `--restaurant <UUID> [--unpublish]`                                                                                                                                                       |
+| `owner-link`     | 기존 매장 계정 연결: `--restaurant <UUID> --account <owner Account UUID>`; 다른 소유자는 덮어쓰지 않음                                                                                                      |
+| `record-contact` | 담당자 번호·동의 등록: `--restaurant <UUID> --input <0600 JSON>`; `{id:고정 UUID,name,phone,requestConsentAt:실제 동의 시각 또는 null,consentNote}`. 기존 번호/과거 문의를 덮어쓰지 않고 null 동의는 비활성 |
+| `deliveries`     | 상태/발송 ID 필터 조회, 현재·이전 기록·실패/보류 사유·다음 조치 표시                                                                                                                                        |
+| `retry`          | `--delivery <UUID>`; PENDING 또는 명확한 SUBMISSION 실패만 현재 동의·번호·공개·링크를 재검사해 발송                                                                                                         |
+| `reconcile`      | `--delivery <UUID>`; 만료된 PROCESSING을 UNKNOWN으로 기록한 뒤 공급자 결과 조회·반영. 아직 처리 중이면 대기 안내. 결과가 불명확하면 UNKNOWN 유지; 재발송 없음                                               |
+
+변경 작업은 기본 dry-run이며 `--actor <실행자> --reason <확인 사유>`가 필요하다. `--execute`를 추가해야 적용한다. 예를 들어 결과 미확인 건은 아래처럼 확인한 뒤 실행한다.
+
+```bash
+pnpm --filter @chongmuya/api merchant:operations --action reconcile --delivery <UUID> --actor <실행자> --reason '발송 결과 확인'
+# 실제 결과 조회·반영은 같은 명령에 --execute 추가
+```
+
+드문 예외 처리도 같은 도구에 유지한다: `regenerate-link --target <UUID>`는 실행 시 이전 링크 폐기·새 링크/발송 기록 저장 후 즉시 발송을 시도한다. `change-recipient --target <UUID> --contact <UUID>`는 이미 접수된 문의의 담당자를 전환하고 발송 대기 기록을 만든다. 새 담당자 등록과 별개이며 발송은 반환한 deliveryId로 `retry`한다. `record-reply --target <UUID> --input <0600 JSON>`은 확인한 전화/일반 문자 답변을 대신 기록하는 선택 경로다. 입력은 `{method:"PHONE" 또는 "SMS",confirmedAt:ISO시각,reply:응답 API 본문}`이며 version과 확인 주체/사유를 보존한다. 사장님의 문자 링크 직접 답변이 기본이다. `--help`로 인자를 확인할 수 있다.
+
+별도 자동 복구 워커는 없다. 종료 시 남은 PENDING은 조회 후 명시적으로 retry한다. UNKNOWN/PROCESSING은 재발송·수신자 전환·링크 재발급으로 우회하지 않는다. 조회/dry-run은 DB 상태를 바꾸지 않으며 reconcile dry-run은 외부 조회도 하지 않는다. 만료 처리와 결과 확인은 reconcile 한 작업에서 운영 이력으로 남긴다.
+
+기존 주소 표준화가 필요한 경우에만 API 폴더에서 `node scripts/normalize-restaurant-address.mjs --restaurant <UUID> --version <현재 버전> --query '<검색 주소>' --base-address '<정확한 결과>' --detail-address '<층·호수>' --actor <실행자> --reason '<확인 사유>'`로 dry-run을 확인한 뒤 `--execute`로 반영한다. 필요하면 `--output <새 파일>`로 결과를 저장한다. 동시 변경·중복은 차단하며 일상 발송 운영 명령에는 포함하지 않는다. 실제 시드 CLI는 로컬 development/test DB 전용이며 운영 이관 명령이 아니다.
+
+### 전체 로컬 데모
+
+기존 로컬 PostgreSQL과 `apps/api/.env`의 `DATABASE_URL`, `AUTH_SECRET`, `WEB_ORIGIN=http://localhost:3000`을 사용한다. API와 시드는 **같은 AUTH_SECRET/링크 암호화 키**를 사용해야 한다. `MESSAGE_PROVIDER=fake`, `GEOCODING_PROVIDER=fake`로 실행하며 실제 공급자 키는 필요 없다. 운영 환경의 fake는 시작 시 거절한다. migration CLI는 DB 설정만 검증하므로 문자·지도·메일 설정 오류에 막히지 않는다.
+
+```bash
+# 저장소 루트, .nvmrc의 Node와 packageManager의 pnpm 사용
+pnpm --filter @chongmuya/api build
+pnpm --filter @chongmuya/api db:migration:run
+MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo
+pnpm dev
+```
+
+계정은 `organizer.a@example.test`(모임 2개·참석/답변 대기/응답 비교), `organizer.b@example.test`(별도 모임·행사), `organizer.empty@example.test`(빈 총무), `owner.a@example.test`(가상 온기홀), `owner.empty@example.test`(등록 시작)이다. 신규 계정 다섯 개의 기본 비밀번호는 **`Demo1234!`**이며 일반 이메일 로그인으로 사용한다. 원하는 경우에만 `DEMO_SEED_PASSWORD`로 변경한다(공백 없는 ASCII 8~16자). 이미 생성한 계정의 비밀번호는 재실행해도 바뀌지 않는다. 인증 시각과 동의는 로컬 합성 fixture이며 Resend/Octomo 인증이나 실제 수신 동의가 아니다. 전화번호 `01000000001`~`05`는 테스트 값일 뿐 실제 미사용 번호라는 보장은 없으며 데모 실발송은 차단한다.
+
+확인 순서: 총무 A 로그인 → `/events`의 참석 관리(1차 열림·2차 마감) → 답변 대기/응답 비교 → 새 행사에서 가상 매장 문의 → 링크 파일의 해당 매장 답변 URL을 별도 브라우저에서 열어 저장 → 총무 문의 재조회 → 사장님 A `/owner/menus?restaurant=<출력 ID>`에서 수정·판매 중단 → 빈 총무/빈 사장님 화면. 참석은 김민수/0012, 최초 번호 연결은 이서연, 중복 조합은 정수빈/7788로 확인한다. QR 방문만으로 응답을 기록하지 않는다.
+
+기본 링크 파일은 저장소 `.local/demo-seed-<set>-<시각>.links.json`이다. 참석 링크와 유효한 데모 답변 링크만 새 `0600` 파일로 저장하고 원문 URL·비밀번호는 로그에 출력하지 않는다. 화면에서 새 문의를 만든 뒤에는 다음 명령으로 **현재 링크를 회전 없이** 내보낸다.
+
+```bash
+MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:demo:links
+# 만료된 사례를 새로 만들 때만 새 세트 이름 지정
+MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo --set second
+# 선택: --output ../../.local/my-demo.links.json (기존 파일 덮어쓰기 금지)
+```
+
+재실행은 기존 계정 비밀번호·인증 상태·명단·답변·매장 수정/삭제·소유권 해제를 보존한다. 공용 계정/모임/매장 루트가 삭제된 경우 새로 복원하지 않고 충돌로 보고한다. 새 세트는 기존 계정·모임·매장을 재사용하며 행사 시나리오만 추가한다. 링크/제안 만료는 연장하지 않는다. 매장 소유자/ID/이메일 충돌은 롤백하며 기존 소유권을 가져오지 않는다. 기존 데모 연락처가 `000...`이면 보존되므로 사장님 A 매장 수정에서 계정의 기인증 테스트 번호 `01000000004`로 바꾸고 개발용 수신 동의를 선택한다. 다른 사용자 수정 번호·철회 동의는 시드로 덮어쓰지 않는다. 가상 확인중식당의 미동의 상태도 유지한다.
+
+실제 매장 시드/비공개 연락처 입력은 독립 명령 그대로다. 두 시드 모두 로컬 development/test DB 전용이며 운영 이관 도구가 아니다. 데모는 외부 HTTP 없이 Entity와 공유 codec으로 생성하고 fake ACCEPTED만 기록한다. 실제 휴대폰 전달·SOLAPI/NAVER 운영 검증·제안 수락·예약 확정·결제·정산을 구현/검증한 것으로 보지 않는다.

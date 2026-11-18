@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { ApiError } from "@/shared/http/api-error";
 import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
-import { ownerWrite, ownerKey } from "../api/owner.api";
+import { saveDraft, getDraft, ownerKey } from "../api/owner.api";
 import {
   registrationSchema,
   type RegistrationData,
@@ -22,9 +22,7 @@ export function useDraftSave(
   const [conflict, setConflict] = useState<RestaurantDraft | null>(null);
   const conflictRef = useRef<RestaurantDraft | null>(null);
   const latest = useCallback(async () => {
-    const current = await request<RestaurantDraft>(
-      `/api/v1/owner/drafts/${draft.id}`,
-    );
+    const current = await getDraft(request, draft.id);
     if (!active.current) throw new Error("Screen left");
     return current;
   }, [active, draft.id, request]);
@@ -55,20 +53,15 @@ export function useDraftSave(
       const expected =
         input.resume && reviewed ? reviewed.version : version.current;
       try {
-        const result = await ownerWrite<RestaurantDraft>(
-          request,
-          `drafts/${draft.id}`,
-          {
-            data: input.data,
-            step: input.step,
-            addressId: input.addressId,
-            version: expected,
-            ...(input.resume && reviewed?.currentRestaurant
-              ? { restaurantVersion: reviewed.currentRestaurant.version }
-              : {}),
-          },
-          "PUT",
-        );
+        const result = await saveDraft(request, draft.id, {
+          data: input.data,
+          step: input.step,
+          addressId: input.addressId,
+          version: expected,
+          ...(input.resume && reviewed?.currentRestaurant
+            ? { restaurantVersion: reviewed.currentRestaurant.version }
+            : {}),
+        });
         return result;
       } catch (e) {
         if (!active.current) throw e;

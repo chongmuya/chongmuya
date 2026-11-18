@@ -173,12 +173,11 @@ export class RestaurantsService {
     manager: EntityManager,
     liveDelivery = false,
   ) {
-    const restaurants =
-      liveDelivery && targets.length
-        ? await manager.findBy(Restaurant, {
-            id: In(targets.map((t) => t.restaurantId)),
-          })
-        : [];
+    const restaurants = targets.length
+      ? await manager.findBy(Restaurant, {
+          id: In(targets.map((t) => t.restaurantId)),
+        })
+      : [];
     const contacts = targets.length
       ? await manager.findBy(RestaurantContact, {
           id: In(targets.map((t) => t.contactId)),
@@ -190,11 +189,9 @@ export class RestaurantsService {
           c.id === target.contactId && c.restaurantId === target.restaurantId,
       );
       const reasons: string[] = [];
+      const restaurant = restaurants.find((r) => r.id === target.restaurantId);
+      if (!restaurant?.published) reasons.push("RESTAURANT_UNPUBLISHED");
       if (liveDelivery) {
-        const restaurant = restaurants.find(
-          (r) => r.id === target.restaurantId,
-        );
-        if (!restaurant?.published) reasons.push("RESTAURANT_UNPUBLISHED");
         if (
           restaurant?.isDemo ||
           /^0+$/.test(target.contactPhone) ||
@@ -224,11 +221,7 @@ export class RestaurantsService {
     });
     if (!contact) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
     const recipient = { restaurantId, contactId, contactPhone: contact.phone };
-    const [reasons] = await this.deliveryEligibility(
-      [recipient],
-      manager,
-      true,
-    );
+    const [reasons] = await this.deliveryEligibility([recipient], manager);
     if (reasons.length) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
     return recipient;
   }

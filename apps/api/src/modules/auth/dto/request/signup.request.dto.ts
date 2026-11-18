@@ -1,3 +1,4 @@
+import { passwordPattern } from "../../utils/password.js";
 import { ApiProperty } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
@@ -42,7 +43,7 @@ export class SignupDto {
   @IsString()
   @MinLength(8)
   @MaxLength(16)
-  @Matches(/^[\x21-\x7e]+$/)
+  @Matches(passwordPattern)
   password!: string;
   @ApiProperty({ maxLength: 100 })
   @IsString()

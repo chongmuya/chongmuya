@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,7 +11,11 @@ import { FormError } from "@/shared/ui/form-error";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
-import { replyQuery, type ReplyAccess } from "../api/replies.api";
+import {
+  replyQuery,
+  isMerchantAccessError,
+  type ReplyAccess,
+} from "../api/replies.api";
 import { useReplyAction } from "../hooks/use-reply-action";
 import { replySchema, type MerchantReplyInput } from "../schemas/reply.schema";
 import type { MerchantInquiry } from "../types/reply.types";
@@ -52,7 +56,28 @@ export function ReplyWorkspace({
   targetId: string;
   access: ReplyAccess;
 }) {
-  const q = useQuery(replyQuery(targetId, access));
+  const expiresAt =
+    access.kind === "link" ? Date.parse(access.accessExpiresAt) : Infinity;
+  const [denied, setDenied] = useState(false),
+    [expired, setExpired] = useState(() => expiresAt <= Date.now());
+  useEffect(() => {
+    if (!Number.isFinite(expiresAt)) return;
+    const timer = setTimeout(
+      () => setExpired(true),
+      Math.max(0, expiresAt - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [expiresAt]);
+  const q = useQuery({
+    ...replyQuery(targetId, access),
+    enabled: (query) =>
+      !denied && !expired && !isMerchantAccessError(query.state.error),
+  });
+  const blocked = denied || expired || isMerchantAccessError(q.error);
+  const notice = isMerchantAccessError(q.error)
+    ? safeErrorMessage(q.error)
+    : "접근 권한이 만료됐습니다. 문자에 있는 원래 링크를 다시 열어 주세요.";
+  if (blocked && !q.data) return <p role="alert">{notice}</p>;
   if (q.isError && !q.data)
     return (
       <ErrorState retry={() => void q.refetch()}>
@@ -62,7 +87,13 @@ export function ReplyWorkspace({
   if (!q.data) return <LoadingState>예약 문의 확인 중…</LoadingState>;
   return (
     <>
-      {q.isError && (
+      {blocked && (
+        <p role="alert" className="mb-4">
+          {notice} 현재 탭의 입력은 유지되지만, 새 탭으로 자동 복원되지는
+          않습니다.
+        </p>
+      )}
+      {q.isError && !blocked && (
         <div
           role="alert"
           className="mb-4 rounded-control border border-field p-4"
@@ -78,22 +109,31 @@ export function ReplyWorkspace({
           </Button>
         </div>
       )}
-      <ReplyForm inquiry={q.data} access={access} />
+      <ReplyForm
+        inquiry={q.data}
+        access={access}
+        blocked={blocked}
+        onAccessFailure={() => setDenied(true)}
+      />
     </>
   );
 }
 function ReplyForm({
   inquiry: q,
   access,
+  blocked,
+  onAccessFailure,
 }: {
   inquiry: MerchantInquiry;
   access: ReplyAccess;
+  blocked: boolean;
+  onAccessFailure: () => void;
 }) {
   const form = useForm<MerchantReplyInput>({
     resolver: zodResolver(replySchema),
     defaultValues: initial(q),
   });
-  const mutation = useReplyAction(q.targetId, access),
+  const mutation = useReplyAction(q.targetId, access, onAccessFailure),
     active = useActiveScreen(),
     sending = useRef(false);
   const [kind, setKind] = useState(q.response?.kind ?? "AVAILABLE"),
@@ -143,7 +183,7 @@ function ReplyForm({
         className="mt-7 space-y-5"
         onSubmit={(event) =>
           void form.handleSubmit(async (input) => {
-            if (sending.current || changed) return;
+            if (sending.current || changed || blocked) return;
             sending.current = true;
             setSaved(false);
             const fingerprint = JSON.stringify({
@@ -170,7 +210,7 @@ function ReplyForm({
         }
       >
         <fieldset
-          disabled={mutation.isPending || changed}
+          disabled={mutation.isPending || changed || blocked}
           className="space-y-5"
         >
           <legend className="mb-4 text-xl font-bold">문의에 답변하기</legend>
@@ -411,7 +451,7 @@ function ReplyForm({
         <Button
           type="submit"
           className="w-full"
-          disabled={changed}
+          disabled={changed || blocked}
           loading={mutation.isPending}
         >
           답변 저장

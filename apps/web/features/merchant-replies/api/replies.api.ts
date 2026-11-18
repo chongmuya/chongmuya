@@ -1,10 +1,17 @@
+import { ApiError } from "@/shared/http/api-error";
 import { queryOptions } from "@tanstack/react-query";
 import { requestJson } from "@/shared/http/request";
 import type { SessionRequest } from "@/features/auth/types";
 import type { MerchantReplyInput } from "../schemas/reply.schema";
 import type { MerchantInquiry, Reply } from "../types/reply.types";
 export type ReplyAccess =
-  | { kind: "link"; access: string; scope: string }
+  | {
+      kind: "link";
+      access: string;
+      scope: string;
+      accessExpiresAt: string;
+      linkExpiresAt: string;
+    }
   | { kind: "owner"; accountId: string; request: SessionRequest };
 export const replyKey = (targetId: string, a: ReplyAccess) =>
   a.kind === "owner"
@@ -33,6 +40,8 @@ export function saveReply(
   a: ReplyAccess,
   reply: MerchantReplyInput,
 ) {
+  if (a.kind === "link" && Date.parse(a.accessExpiresAt) <= Date.now())
+    throw new ApiError("", 403, "MERCHANT_ACCESS_EXPIRED");
   const options = { method: "POST", body: JSON.stringify({ reply }) };
   return a.kind === "owner"
     ? a.request<{ version: number; response: Reply }>(path(id, a), options)
@@ -46,7 +55,18 @@ export const exchangeLink = (
   token: string,
   signal?: AbortSignal,
 ) =>
-  requestJson<{ accessToken: string; expiresAt: string }>(
-    `/api/v1/merchant-replies/${targetId}/access`,
-    { method: "POST", body: JSON.stringify({ token }), signal },
+  requestJson<{
+    accessToken: string;
+    accessExpiresAt: string;
+    linkExpiresAt: string;
+  }>(`/api/v1/merchant-replies/${targetId}/access`, {
+    method: "POST",
+    body: JSON.stringify({ token }),
+    signal,
+  });
+
+export const isMerchantAccessError = (error: unknown) =>
+  error instanceof ApiError &&
+  ["MERCHANT_ACCESS_EXPIRED", "MERCHANT_LINK_INVALID"].includes(
+    error.code ?? "",
   );

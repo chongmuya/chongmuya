@@ -3,9 +3,9 @@ import { createHash, createHmac } from "node:crypto";
 import { test } from "node:test";
 import { ConfigService } from "../src/config/config.service.js";
 import { parseEnvironment } from "../src/config/environment.js";
-import { MessageProvider } from "../src/modules/reservations/providers/message.provider.js";
-import { GeocodingProvider } from "../src/modules/restaurants/providers/geocoding.provider.js";
-import { validSolapiSignature } from "../src/modules/reservations/message-delivery.service.js";
+import { SolapiMessageGateway } from "../src/modules/reservations/providers/solapi-message.gateway.js";
+import { NaverGeocoder } from "../src/modules/restaurants/providers/naver.geocoder.js";
+import { validSolapiSignature } from "../src/modules/reservations/providers/solapi-webhook.js";
 import { safeReturnPath } from "../src/modules/auth/utils/return-path.js";
 const id = "752fb868-6dc0-4ef8-8f4a-0ed7049ff010";
 const config = () =>
@@ -18,6 +18,7 @@ const config = () =>
       MESSAGE_PROVIDER: "solapi",
       SOLAPI_API_KEY: "fake-api-key",
       SOLAPI_API_SECRET: "fake-api-secret",
+      SOLAPI_WEBHOOK_SECRET: "test-webhook-secret-123456",
       SOLAPI_SENDER_NUMBER: "0299999999",
       GEOCODING_PROVIDER: "naver",
       NAVER_MAP_CLIENT_ID: "fake-naver-id",
@@ -25,7 +26,7 @@ const config = () =>
     }),
   }) as ConfigService;
 test("direct SOLAPI LMS contract, scoped endpoint, no automatic retry and filtered lookup", async (t) => {
-  const provider = new MessageProvider(config());
+  const provider = new SolapiMessageGateway(config());
   let calls = 0;
   t.mock.method(
     globalThis,
@@ -115,7 +116,7 @@ test("direct SOLAPI LMS contract, scoped endpoint, no automatic retry and filter
   );
 });
 test("NAVER adapter uses server headers, validated x/y and preserves multiple/empty results", async (t) => {
-  const provider = new GeocodingProvider(config());
+  const provider = new NaverGeocoder(config());
   t.mock.method(globalThis, "fetch", async (url: URL, options: RequestInit) => {
     assert.equal(
       url.origin + url.pathname,
@@ -208,7 +209,7 @@ test("server return path retains attendance tab/round and bounded owner routes",
 });
 
 test("SOLAPI status codes classify progress, completion and failures in the direct send response", async (t) => {
-  const provider = new MessageProvider(config());
+  const provider = new SolapiMessageGateway(config());
   for (const [code, status, stage] of [
     ["2000", "ACCEPTED", undefined],
     ["3000", "ACCEPTED", undefined],

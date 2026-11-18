@@ -20,7 +20,6 @@ import { RestaurantContactSeedReceipt } from "../../src/modules/restaurants/enti
 
 import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
 import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
-import { ReservationsService } from "../../src/modules/reservations/reservations.service.js";
 
 import publicFixture from "../../src/database/seeds/data/restaurants.json" with { type: "json" };
 
@@ -67,6 +66,26 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
   try {
     await seedRestaurants(db, fixture);
     assert.equal(await restaurants.countBy({ id: In(ids) }), 4);
+    const realAddress = await restaurants.findOneByOrFail({ id: ids[0]! });
+    await assert.rejects(
+      app.get(RestaurantManagementService).normalizeAddress({
+        restaurantId: realAddress.id,
+        actor: "test",
+        reason: "fake must not overwrite real address",
+        query: "가상 검색 결과",
+        baseAddress: "가상 검색 결과",
+        detailAddress: "",
+        version: realAddress.version,
+        dryRun: false,
+      }),
+      (error) =>
+        (error as { code?: string }).code === "ADDRESS_SELECTION_REQUIRED",
+    );
+    assert.equal(
+      (await restaurants.findOneByOrFail({ id: realAddress.id })).address,
+      realAddress.address,
+    );
+
     assert.equal(await spaces.countBy({ restaurantId: In(ids) }), 11);
     assert.equal(await menus.countBy({ restaurantId: In(ids) }), 146);
     assert.equal(
@@ -295,10 +314,17 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     await contacts.delete({ id: contactId });
     await seedRestaurants(db, fixture, privateFixture);
     assert.equal(await contacts.existsBy({ id: contactId }), false);
-    const pending = await app.get(ReservationsService).pendingForOperations();
-    assert(!pending.eligible.some((target) => target.request_id === requestId));
+    const pending = await app
+      .get(MessageDeliveryService)
+      .listForOperations({ status: "PENDING" });
     assert(
-      pending.held
+      !pending.some(
+        (target) =>
+          target.request_id === requestId && !target.holdReasons.length,
+      ),
+    );
+    assert(
+      pending
         .find((target) => target.request_id === requestId)
         ?.holdReasons.includes("CONTACT_DELETED"),
     );

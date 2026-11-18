@@ -3,15 +3,13 @@ import { createHmac, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { ConfigService } from "../../../config/config.service.js";
 import { DomainHttpException } from "../../../common/http/domain-http.exception.js";
-export type SendResult = {
-  status: "ACCEPTED" | "DELIVERED" | "FAILED" | "UNKNOWN";
-  failureStage?: "SUBMISSION" | "DELIVERY";
-  messageId?: string;
-  groupId?: string;
-  errorCode?: string;
-  provider: "fake" | "solapi";
-};
-const messageSchema = z.object({
+import {
+  MessageGateway,
+  type SendResult,
+  type MessageReport,
+  type MessageLookup,
+} from "./message.gateway.js";
+export const solapiMessageSchema = z.object({
   messageId: z.string().max(100),
   groupId: z.string().max(100).optional(),
   statusCode: z.string().regex(/^\d{4}$/),
@@ -25,9 +23,9 @@ const messageSchema = z.object({
 const sendSchema = z.object({
   failedMessageList: z.array(z.object({ statusCode: z.string().optional() })),
   groupInfo: z.object({ groupId: z.string().max(100) }),
-  messageList: z.array(messageSchema).optional(),
+  messageList: z.array(solapiMessageSchema).optional(),
 });
-export type ProviderReport = z.infer<typeof messageSchema>;
+
 // SOLAPI: 2000/3000 are in progress, 4000 is delivered; all other codes are failures.
 // https://solapi.com/developers/api/msgstatus
 export function solapiOutcome(code: string) {
@@ -44,8 +42,11 @@ export function solapiOutcome(code: string) {
   };
 }
 @Injectable()
-export class MessageProvider {
-  constructor(private readonly config: ConfigService) {}
+export class SolapiMessageGateway extends MessageGateway {
+  readonly requiresRealRecipient = true;
+  constructor(private readonly config: ConfigService) {
+    super();
+  }
   private headers() {
     const e = this.config.environment;
     if (!e.solapiApiKey || !e.solapiApiSecret)
@@ -67,15 +68,6 @@ export class MessageProvider {
     attempt = 1,
   ): Promise<SendResult> {
     const e = this.config.environment;
-    if (e.messageProvider === "fake")
-      return e.nodeEnv === "production"
-        ? { status: "FAILED", errorCode: "CONFIGURATION", provider: "fake" }
-        : {
-            status: "ACCEPTED",
-            messageId: `fake-${deliveryId}`,
-            groupId: `fake-group-${deliveryId}`,
-            provider: "fake",
-          };
     if (!e.solapiApiKey || !e.solapiApiSecret || !e.solapiSenderNumber)
       return {
         status: "FAILED",
@@ -158,15 +150,8 @@ export class MessageProvider {
       provider: "solapi",
     };
   }
-  async lookup(input: {
-    messageId?: string | null;
-    groupId?: string | null;
-    to: string;
-    startedAt: Date;
-    deliveryId: string;
-  }): Promise<ProviderReport[]> {
-    if (this.config.environment.messageProvider !== "solapi") return [];
-    const found: ProviderReport[] = [];
+  async lookup(input: MessageLookup): Promise<MessageReport[]> {
+    const found: MessageReport[] = [];
     let startKey: string | undefined;
     // Bounded read-only reconciliation. No customFields search filter is assumed.
     for (let page = 0; page < 10; page++) {
@@ -202,21 +187,40 @@ export class MessageProvider {
       const parsed = z
         .object({
           nextKey: z.string().nullish(),
-          messageList: z.record(z.string(), messageSchema),
+          messageList: z.record(z.string(), solapiMessageSchema),
         })
         .safeParse(await response.json().catch(() => null));
       if (!parsed.success)
         throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
       found.push(
-        ...Object.values(parsed.data.messageList).filter(
-          (r) =>
-            r.customFields?.deliveryId === input.deliveryId ||
-            r.messageId === input.messageId,
-        ),
+        ...Object.values(parsed.data.messageList)
+          .filter(
+            (r) =>
+              r.customFields?.deliveryId === input.deliveryId ||
+              r.messageId === input.messageId,
+          )
+          .map(normalizeSolapiReport),
       );
       startKey = parsed.data.nextKey ?? undefined;
       if (!startKey) break;
     }
     return found;
   }
+}
+
+export function normalizeSolapiReport(
+  row: z.infer<typeof solapiMessageSchema>,
+): MessageReport {
+  return {
+    ...solapiOutcome(row.statusCode),
+    provider: "solapi",
+    messageId: row.messageId,
+    groupId: row.groupId,
+    statusCode: row.statusCode,
+    deliveryId: row.customFields?.deliveryId,
+    deliveryAttempt:
+      row.customFields?.deliveryAttempt === undefined
+        ? undefined
+        : Number(row.customFields.deliveryAttempt),
+  };
 }

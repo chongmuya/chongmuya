@@ -8,12 +8,15 @@ import { RestaurantContact } from "../../src/modules/restaurants/entities/restau
 import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
 import { RestaurantMenu } from "../../src/modules/restaurants/entities/restaurant-menu.entity.js";
 import { RestaurantManagementService } from "../../src/modules/restaurants/restaurant-management.service.js";
-import { MessageProvider } from "../../src/modules/reservations/providers/message.provider.js";
+import { MessageGateway } from "../../src/modules/reservations/providers/message.gateway.js";
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
 import { MerchantLinksService } from "../../src/modules/reservations/merchant-links.service.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
 import { MerchantReplyLink } from "../../src/modules/reservations/entities/merchant-reply-link.entity.js";
-import { MerchantReplyRevision } from "../../src/modules/reservations/entities/merchant-reply.entity.js";
+import {
+  MerchantReplyRevision,
+  ReservationOperation,
+} from "../../src/modules/reservations/entities/merchant-reply.entity.js";
 import type { RegistrationData } from "../../src/modules/restaurants/types/registration.js";
 const json = async <T = Record<string, unknown>>(r: Response, status = 200) => {
   const b = await r.json();
@@ -308,6 +311,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     published: true,
     dryRun: false,
   });
+  assert.equal(r.isDemo, true, "fake geocoding keeps source provenance");
   const unownedId = randomUUID();
   await db.getRepository(Restaurant).save({
     ...r,
@@ -327,7 +331,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     requestConsentAt: new Date(),
     consentNote: "가짜 fixture",
   });
-  const provider = app.get(MessageProvider),
+  const provider = app.get(MessageGateway),
     sent: string[] = [];
   t.mock.method(provider, "send", async (id: string, to: string) => {
     sent.push(id);
@@ -599,9 +603,48 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   assert.equal(retryCalls, 1);
   await db.getRepository(MessageDelivery).update(uncertain.id, {
     status: "PROCESSING",
-    leaseUntil: new Date(Date.now() - 1),
+    leaseUntil: new Date(Date.now() + 60000),
   });
+  const lookup = t.mock.method(provider, "lookup", async () => []);
+  const active = await app
+    .get(MessageDeliveryService)
+    .reconcile(uncertain.id, "ops", "active lease");
+  assert.equal(active.status, "PROCESSING");
+  assert.equal(active.queryAttempted, false);
+  assert.equal(lookup.mock.callCount(), 0);
+  await db
+    .getRepository(MessageDelivery)
+    .update(uncertain.id, { leaseUntil: new Date(Date.now() - 1) });
+  const operationCount = await db.manager.count(ReservationOperation);
   await app.get(MessageDeliveryService).dispatch(uncertain.id);
+  const filtered = await app
+    .get(MessageDeliveryService)
+    .listForOperations({ status: "PROCESSING", deliveryId: uncertain.id });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].leaseExpired, true);
+  await app
+    .get(MessageDeliveryService)
+    .reconcile(uncertain.id, "ops", "dry-run", true);
+  assert.equal(
+    (await db.manager.findOneByOrFail(MessageDelivery, { id: uncertain.id }))
+      .status,
+    "PROCESSING",
+  );
+  assert.equal(await db.manager.count(ReservationOperation), operationCount);
+  assert.equal(lookup.mock.callCount(), 0);
+  const reconciled = await app
+    .get(MessageDeliveryService)
+    .reconcile(uncertain.id, "ops", "expired processing reconciliation", false);
+  assert.equal(reconciled.leaseChanged, true);
+  assert.equal(reconciled.queryAttempted, true);
+  assert.equal(reconciled.unresolved, true);
+  assert.equal(lookup.mock.callCount(), 1);
+  assert.equal(
+    await db.manager.count(ReservationOperation, {
+      where: { targetId: uncertain.targetId, action: "DELIVERY_LEASE_EXPIRED" },
+    }),
+    1,
+  );
   assert.equal(
     (
       await db
@@ -639,6 +682,31 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     ),
     { code: "DELIVERY_RETRY_BLOCKED" },
   );
+  // Reconciliation can recover provider evidence, but never submits another message.
+  await db.manager.update(
+    MessageDelivery,
+    { id: uncertain.id },
+    { provider: "solapi" },
+  );
+  lookup.mock.restore();
+  t.mock.method(provider, "lookup", async () => [
+    {
+      deliveryId: uncertain.id,
+      messageId: "fake-retry",
+      groupId: "fake-retry-group",
+      status: "DELIVERED" as const,
+      provider: "solapi" as const,
+      statusCode: "4000",
+    },
+  ]);
+  const recovered = await deliveryService.reconcile(
+    uncertain.id,
+    "ops",
+    "공급자 결과 확인",
+  );
+  assert.equal(recovered.status, "DELIVERED");
+  assert.equal(recovered.unresolved, false);
+  assert.equal(retryCalls, 1);
   let sentLink = "";
   t.mock.method(
     provider,
@@ -786,12 +854,24 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     await db.getRepository(RestaurantContact).countBy({ id: newContact }),
     1,
   );
+  // Reproduce a server stop before dispatch: the old recipient still has a queued message.
+  await db
+    .getRepository(MessageDelivery)
+    .update(rotation2.deliveryId!, { status: "PENDING" });
   const handover = await deliveries.changeRecipient(
     target.id,
     newContact,
     "ops",
     "담당자 확인",
     false,
+  );
+  assert.equal(
+    (
+      await db
+        .getRepository(MessageDelivery)
+        .findOneByOrFail({ id: rotation2.deliveryId! })
+    ).status,
+    "CANCELLED",
   );
   const repeatedHandover = await deliveries.changeRecipient(
     target.id,
@@ -844,6 +924,8 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     ).status,
     "DELIVERED",
   );
+  await deliveries.regenerateLink(target.id, "ops", "handover completed", true);
+
   const original = await db.query(
     "SELECT contact_id, contact_phone FROM reservation_request_targets WHERE id = $1",
     [target.id],

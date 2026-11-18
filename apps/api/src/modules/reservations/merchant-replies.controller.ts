@@ -1,3 +1,5 @@
+import { MerchantInquiriesQuery } from "./merchant-inquiries.query.js";
+import { SolapiWebhookDecoder } from "./providers/solapi-webhook.js";
 import {
   Body,
   Controller,
@@ -9,6 +11,7 @@ import {
   ParseUUIDPipe,
   Post,
   Req,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
@@ -66,9 +69,12 @@ export class MerchantRepliesController {
 @Controller("api/v1/owner/inquiries")
 @UseGuards(AccessGuard)
 export class OwnerInquiriesController {
-  constructor(private readonly replies: MerchantRepliesService) {}
-  @Get() list(@CurrentUser() user: AuthUser) {
-    return this.replies.list(user);
+  constructor(
+    private readonly replies: MerchantRepliesService,
+    private readonly inquiries: MerchantInquiriesQuery,
+  ) {}
+  @Get() list(@CurrentUser() user: AuthUser, @Query("cursor") cursor?: string) {
+    return this.inquiries.list(user, cursor);
   }
   @Get(":id") get(
     @CurrentUser() user: AuthUser,
@@ -92,14 +98,18 @@ export class OwnerInquiriesController {
 }
 @Controller("api/v1/webhooks/solapi")
 export class SolapiWebhookController {
-  constructor(private readonly delivery: MessageDeliveryService) {}
+  constructor(
+    private readonly delivery: MessageDeliveryService,
+    private readonly decoder: SolapiWebhookDecoder,
+  ) {}
   @Post()
   @HttpCode(200)
   webhook(
     @Headers("x-solapi-signature") signature: string | undefined,
     @Req() req: Request & { rawBody?: Buffer },
-    @Body() body: unknown,
   ) {
-    return this.delivery.webhook(signature, req.rawBody, body);
+    return this.delivery.applyReports(
+      this.decoder.decode(signature, req.rawBody),
+    );
   }
 }
