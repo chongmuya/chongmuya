@@ -94,6 +94,26 @@ export class RestaurantCatalogModel1795564800000 implements MigrationInterface {
       ADD normalized_detail_address text GENERATED ALWAYS AS (restaurant_identity_text(coalesce(detail_address,''))) STORED,
       ADD identity_conflict boolean NOT NULL DEFAULT false,
       ADD identity_review varchar(40)`);
+    // TypeORM needs the stored expressions when inspecting generated columns.
+    // Keep this explicit migration usable in an isolated schema as well as the CLI.
+    await q.query(`CREATE TABLE IF NOT EXISTS typeorm_metadata (
+      type varchar NOT NULL, database varchar, schema varchar,
+      "table" varchar, name varchar, value text
+    )`);
+    for (const [name, expression] of [
+      ["normalized_name", "restaurant_identity_text(name)"],
+      ["normalized_address", "restaurant_identity_text(address)"],
+      ["normalized_base_address", "restaurant_identity_text(base_address)"],
+      [
+        "normalized_detail_address",
+        "restaurant_identity_text(coalesce(detail_address,''))",
+      ],
+    ])
+      await q.query(
+        `INSERT INTO typeorm_metadata(type,database,schema,"table",name,value)
+        VALUES('GENERATED_COLUMN',current_database(),current_schema(),'restaurants',$1,$2)`,
+        [name, expression],
+      );
     await q.query(
       `UPDATE restaurants SET identity_review='UNSTRUCTURED_ADDRESS' WHERE base_address IS NULL`,
     );
