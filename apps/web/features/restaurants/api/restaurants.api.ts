@@ -1,13 +1,17 @@
 import { queryOptions } from "@tanstack/react-query";
 import { requestJson } from "@/shared/http/request";
-import type { Restaurant } from "../types/restaurant.types";
+import type {
+  Restaurant,
+  RestaurantSummary,
+  RestaurantMap,
+} from "../types/restaurant.types";
 
 export const restaurantsQuery = (region = "", page = 1) =>
   queryOptions({
     queryKey: ["public", "restaurants", "list", region, page],
     queryFn: ({ signal }) =>
       requestJson<{
-        items: Restaurant[];
+        items: RestaurantSummary[];
         total: number;
         page: number;
         pageSize: number;
@@ -27,4 +31,16 @@ export const restaurantQuery = (id: string) =>
       }),
     staleTime: 0,
     retry: false,
+  });
+
+export const restaurantMapQuery = (region = "") =>
+  queryOptions({
+    queryKey: ["public", "restaurants", "map", region],
+    queryFn: ({ signal }) =>
+      requestJson<RestaurantMap[]>(
+        `/api/v1/restaurants/map?${new URLSearchParams({ region })}`,
+        { signal },
+      ),
+    retry: false,
+    staleTime: 0,
   });

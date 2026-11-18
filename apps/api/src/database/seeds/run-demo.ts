@@ -48,26 +48,35 @@ async function run() {
   const env = parsed.data;
   let set = "default",
     output: string | undefined;
+  let recreate = false,
+    explicitSet = false;
   for (let i = 0; i < args.length; i += 2) {
+    if (args[i] === "--recreate" && command === "seed") {
+      recreate = true;
+      i--;
+      continue;
+    }
     if (!args[i + 1]) throw new DemoSeedConflict("INVALID_ARGUMENTS");
-    if (args[i] === "--set" && command === "seed") set = args[i + 1]!;
-    else if (args[i] === "--output") output = args[i + 1];
+    if (args[i] === "--set" && command === "seed") {
+      set = args[i + 1]!;
+      explicitSet = true;
+    } else if (args[i] === "--output") output = args[i + 1];
     else throw new DemoSeedConflict("INVALID_ARGUMENTS");
   }
+  if (recreate && !explicitSet)
+    throw new DemoSeedConflict("RECREATE_REQUIRES_EXPLICIT_SET");
   if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(set))
     throw new DemoSeedConflict("INVALID_SET_KEY");
   // This CLI already rejects production, remote databases and real messaging.
   const password = process.env.DEMO_SEED_PASSWORD ?? "Demo1234!";
   if (command === "seed" && !passwordPattern.test(password))
     throw new DemoSeedConflict("INVALID_ENVIRONMENT:DEMO_SEED_PASSWORD");
-  const path = resolve(
-    output ?? `../../.local/demo-${command}-${set}-${Date.now()}.links.json`,
-  );
-  if (!path.endsWith(".links.json"))
+  const path = output ? resolve(output) : undefined;
+  if (path && !path.endsWith(".links.json"))
     throw new DemoSeedConflict("OUTPUT_MUST_END_WITH_LINKS_JSON");
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  // Reserve a new file before any DB mutation. Never overwrite or follow an existing link.
-  const file = await open(path, "wx", 0o600);
+  if (path) await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  // Optional exports remain new private files; stdout capabilities require a local interactive terminal.
+  const file = path ? await open(path, "wx", 0o600) : undefined;
   const db = new DataSource(databaseOptions({ databaseUrl: env.DATABASE_URL }));
   try {
     await db.initialize();
@@ -80,17 +89,50 @@ async function run() {
     });
     const result =
       command === "seed"
-        ? await seedDemo(db, { password, set, encryptionKey: key })
+        ? await seedDemo(db, { password, set, encryptionKey: key, recreate })
         : null;
     const links = await demoLinks(db, env.WEB_ORIGIN, key);
-    await file.writeFile(JSON.stringify(links, null, 2) + "\n");
-    if (result) console.log(JSON.stringify(result, null, 2));
-    console.log(`로컬 링크 파일 (0600): ${path}`);
-    console.log(
-      `참석 링크 ${links.attendance.length}개, 현재 유효한 가상 매장 답변 링크 ${links.merchantReplies.length}개. 실제 문자 발송 없음.`,
-    );
+    if (file) await file.writeFile(JSON.stringify(links, null, 2) + "\n");
+    if (result) {
+      console.log(
+        `생성 ${result.counts.created} · 보존 ${result.counts.preserved} · 재생성 세트 ${recreate ? set : "없음"}`,
+      );
+      console.table(
+        result.accounts.map(({ email, role }) => ({
+          이메일: email,
+          유형: role,
+        })),
+      );
+      console.table(
+        result.events.map((event) => ({
+          행사: event.name,
+          경로: event.path,
+          만료: event.expired,
+        })),
+      );
+      console.log(`매장 ID: ${result.restaurantIds.join(", ")}`);
+      if (result.expiredLinks)
+        console.log(
+          `만료된 답변 링크 ${result.expiredLinks}개. --set 새이름으로 새 시나리오를 만들 수 있습니다.`,
+        );
+    }
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      console.log("로컬 데모 링크 (실제 문자 발송 없음)");
+      for (const link of links.attendance)
+        console.log(
+          `${link.eventName} · ${link.title}${link.closed ? " (마감)" : ""}\n${link.url}`,
+        );
+      for (const link of links.merchantReplies)
+        console.log(
+          `${link.eventName} · ${link.restaurantName} 답변\n${link.url}`,
+        );
+    } else if (!file)
+      console.log(
+        "링크는 로컬 대화형 터미널에서 확인하거나 --output <새파일.links.json>으로 저장하세요.",
+      );
+    if (file) console.log(`로컬 링크 파일 (0600): ${path}`);
   } finally {
-    await file.close();
+    await file?.close();
     if (db.isInitialized) await db.destroy();
   }
 }

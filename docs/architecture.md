@@ -35,15 +35,11 @@ apps/web/
       client.ts              HomeScreen 공개
     events/
       api/                   events.api.ts, events.queries.ts
-      components/            EventList, EventDetail, EventForm, 모임 연결 폼
+      components/            EventSummary, EventDetail, EventForm, 모임 연결 폼
       hooks/                 생성·모임 연결 mutation
       lib/                   한국 시간 표시·행사 캐시 갱신
       schemas/               event.schema.ts
       types/                 event.types.ts
-      client.ts              외부 컴포넌트 공개
-    health/
-      api/                   health 요청·응답 검증·polling options
-      components/            연결 상태 UI
       client.ts              외부 컴포넌트 공개
   shared/
     http/                    JSON 전송, 취소·타임아웃, ApiError
@@ -84,9 +80,9 @@ compose.yaml            로컬 PostgreSQL만 실행
 
 ### 공개 경계와 페이지 조합
 
-`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 이용 유형 확인창의 문구·아이콘·저장은 onboarding이 맡고, shared/ui의 Dialog는 native showModal·초기 포커스·취소·포커스 복귀·스크롤 잠금만 담당한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`에서도 내 행사로 시작할 수 있다.
+`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?view=groups&group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 이용 유형 확인창의 문구·아이콘·저장은 onboarding이 맡고, shared/ui의 Dialog는 native showModal·초기 포커스·취소·포커스 복귀·스크롤 잠금만 담당한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`은 `/getting-started`로 이동하는 이전 링크다.
 
-공개 홈은 비로그인 접근을 허용한다. home은 auth·groups·events의 공개 진입점으로 실제 계정·선택 모임·행사를 조합한다. `/groups/new`는 첫 설정과 홈에서 재사용하는 등록 화면이다. 선택적인 유형·명단을 모두 저장한 응답을 받은 후 완료창을 표시한다. 모임 없는 홈에서는 개인 행사로 바로 진입한다. `/intro`와 `/start`는 auth의 공개 소개·가입 진입 화면이고, 개발용 `/dev/auth`는 기존 인증 미리보기와 health 연결 상태를 제공한다.
+공개 홈은 비로그인 접근을 허용한다. home은 auth·groups·events의 공개 진입점으로 실제 계정·선택 모임·행사를 조합한다. `/groups/new`는 첫 설정과 홈에서 재사용하는 등록 화면이다. 선택적인 유형·명단을 모두 저장한 응답을 받은 후 완료창을 표시한다. 모임 없는 홈에서는 개인 행사로 바로 진입한다. `/intro`와 `/start`는 auth의 공개 소개·가입 진입 화면이다. 개발 화면은 데모 계정의 실제 서비스 경로로 확인한다.
 
 개인 화면은 인증 상태를 확인하고 로그인 링크에 원래 경로를 전달한다. auth의 safeReturnPath는 지원하는 내부 페이지와 UUID query만 재구성하며 외부 URL·프로토콜 상대 URL·역슬래시·제어 문자·인증/API 경로를 반환하지 않는다. next가 없는 새 가입·로그인은 홈으로 이동하고, 유효하지 않은 next의 안전한 기본값은 `/events`다. 실제 자료 권한은 Nest에서 검사한다.
 
@@ -114,7 +110,7 @@ app과 다른 feature에서 접근하는 공개 경로는 다음과 같다.
 | 행사 상세      | `user / accountId / events / detail / eventId`  | 모임과 독립된 식별                        |
 | health         | `health`                                        | 비활성 탭 제외 5초 polling, 3초 요청 제한 |
 
-업무 query는 `staleTime: 0`, `retry: false`이며 Query 기본 마운트·포커스·재연결 재조회를 사용한다. 실패는 오류 UI와 사용자의 다시 시도로 복구한다. placeholder로 이전 계정·모임 데이터를 재사용하지 않는다. `isError`를 잔존 성공 데이터보다 우선한다. Query의 AbortSignal을 API까지 전달한다.
+업무 query는 `staleTime: 0`, `retry: false`이며 Query 기본 마운트·포커스·재연결 재조회를 사용한다. 실패는 오류 UI와 사용자의 다시 시도로 복구한다. placeholder로 이전 계정·모임 데이터를 재사용하지 않는다. 최초 조회 실패는 오류 화면으로 표시한다. 같은 자원의 배경 재조회 실패는 기존 데이터와 입력을 유지하며 안내하고, 권한 상실은 쓰기를 차단한다. Query의 AbortSignal을 API까지 전달한다.
 
 mutation은 자동 재시도하지 않는다. 모임 저장 성공 시 진행 중인 목록 조회를 취소하고 해당 계정의 목록을 응답으로 갱신한 뒤 stale로 표시한다. 캐시 갱신과 생성 후 이동은 같은 보호된 콜백에서 처리한다.
 

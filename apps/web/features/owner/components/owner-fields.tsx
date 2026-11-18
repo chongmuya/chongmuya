@@ -62,7 +62,7 @@ export function OwnerField({
           />
           {fieldState.error && (
             <span role="alert" className="text-sm text-danger">
-              입력값을 확인해 주세요.
+              {fieldState.error.message ?? "입력값을 확인해 주세요."}
             </span>
           )}
         </label>

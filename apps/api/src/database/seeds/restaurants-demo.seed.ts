@@ -1,3 +1,4 @@
+import { catalogPolicies } from "../../modules/restaurants/lib/restaurant-policy.js";
 import type { DataSource, EntityManager } from "typeorm";
 import { Restaurant } from "../../modules/restaurants/entities/restaurant.entity.js";
 import { RestaurantSpace } from "../../modules/restaurants/entities/restaurant-space.entity.js";
@@ -43,18 +44,17 @@ export async function seedDemoRestaurantRows(
         longitude: i === 3 ? null : 127.07 + i * 0.001,
         maxCapacity: unknown ? null : [40, 60, 0, 20][i]!,
         photoPath: i < 2 ? `/images/restaurants/demo-${i + 1}.png` : null,
-        operatingHours: unknown ? null : "17:00~23:00 · 테스트용 예시",
-        facilities: unknown ? null : "화장실 · 이용 조건은 문의 후 확인",
-        bookingPolicy: unknown
-          ? null
-          : "최소 1일 전 문의 · 실시간 좌석 재고 아님",
-        depositPolicy: unknown
-          ? null
-          : "예약금은 문의 후 협의 · 이 정보로 송금하지 마세요",
-        menuPolicy: unknown
-          ? null
-          : "일반 메뉴 주문 · 확정 기한은 문의 후 확인",
-        cancellationPolicy: null,
+        facilities: unknown ? null : "화장실",
+        policies: catalogPolicies(
+          unknown
+            ? {}
+            : {
+                operatingHours: "17:00~23:00",
+                bookingPolicy: "최소 1일 전 문의",
+                depositPolicy: "예약금은 문의 후 협의",
+                menuPolicy: "일반 메뉴 주문 · 확정 기한은 문의 후 확인",
+              },
+        ),
         published: true,
         isDemo: true,
         verifiedAt: unknown ? null : new Date("2026-11-18T00:00:00Z"),
@@ -72,12 +72,12 @@ export async function seedDemoRestaurantRows(
           spacePhotos: [
             {
               path: "/images/restaurants/demo-2.png",
-              description: "가상 공간 사진 예시 2 · 실제 매장 아님",
+              description: "홀 안쪽 공간",
               position: 2,
             },
             {
               path: "/images/restaurants/demo-1.png",
-              description: "가상 공간 사진 예시 1 · 실제 매장 아님",
+              description: "입구 쪽 공간",
               position: 1,
             },
           ],

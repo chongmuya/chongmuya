@@ -68,8 +68,8 @@ export class Restaurant {
   registrationKey!: string | null;
   @Column({ type: "integer", name: "minimum_guests", nullable: true })
   minimumGuests!: number | null;
-  @Column({ type: "jsonb", nullable: true })
-  policies!: StoredRestaurantPolicies | null;
+  @Column({ type: "jsonb" })
+  policies!: StoredRestaurantPolicies;
   @Column({ type: "varchar", length: 100 }) name!: string;
   @Column({ type: "varchar", length: 240 }) address!: string;
   @Column({ type: "varchar", length: 80 }) region!: string;
@@ -85,17 +85,7 @@ export class Restaurant {
   photoPath!: string | null;
   @Column({ type: "jsonb", name: "space_photos", default: [] })
   spacePhotos!: { path: string; description: string; position: number }[];
-  @Column({ type: "text", name: "operating_hours", nullable: true })
-  operatingHours!: string | null;
   @Column({ type: "text", nullable: true }) facilities!: string | null;
-  @Column({ type: "text", name: "booking_policy", nullable: true })
-  bookingPolicy!: string | null;
-  @Column({ type: "text", name: "deposit_policy", nullable: true })
-  depositPolicy!: string | null;
-  @Column({ type: "text", name: "menu_policy", nullable: true }) menuPolicy!:
-    string | null;
-  @Column({ type: "text", name: "cancellation_policy", nullable: true })
-  cancellationPolicy!: string | null;
   @Column({ type: "boolean", default: false }) published!: boolean;
   @Column({ type: "boolean", name: "is_demo", default: false })
   isDemo!: boolean;

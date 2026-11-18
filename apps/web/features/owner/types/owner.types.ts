@@ -17,6 +17,7 @@ export type OwnerContext = {
   supportEmail: string | null;
 };
 export type RestaurantDraft = {
+  duplicate?: DuplicateResult;
   id: string;
   restaurantId: string | null;
   version: number;

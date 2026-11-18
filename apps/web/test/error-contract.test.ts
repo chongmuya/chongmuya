@@ -181,3 +181,19 @@ test("login return preserves attendance views and owner paths without arbitrary 
   );
   assert.equal(safeReturnPath("/owner/arbitrary"), "/events");
 });
+
+test("restaurant page and roster continuation queries are bounded and preserved", () => {
+  const id = "12345678-1234-4234-8234-123456789abc";
+  const path = safeReturnPath(
+    `/restaurants?selected=${id}&event=${id}&inquiry=1&view=map&region=서울&page=2&redirect=https://evil.test`,
+  );
+  const parsed = new URL(path, "https://local.test");
+  assert.equal(parsed.searchParams.get("view"), "map");
+  assert.equal(parsed.searchParams.get("region"), "서울");
+  assert.equal(parsed.searchParams.get("selected"), id);
+  assert.equal(parsed.searchParams.has("redirect"), false);
+  assert.equal(
+    safeReturnPath(`/events?event=${id}&view=roster&action=add`),
+    `/events?event=${id}&action=add&view=roster`,
+  );
+});

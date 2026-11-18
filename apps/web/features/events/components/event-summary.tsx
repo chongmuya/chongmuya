@@ -65,11 +65,6 @@ export function EventSummary({
           등록된 행사가 없어요. 행사를 추가해 준비해봐요.
         </p>
       )}
-      {groupId && (
-        <Link className="ml-4 text-caption text-link underline" href="/events">
-          개인 행사·전체 행사 보기
-        </Link>
-      )}
     </section>
   );
 }

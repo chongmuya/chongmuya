@@ -5,7 +5,7 @@ export function HomeNavigation({ groupId }: { groupId?: string }) {
   return (
     <nav
       aria-label="주요 메뉴"
-      className="sticky bottom-0 z-10 mt-auto grid grid-cols-4 bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] text-center shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
+      className="sticky bottom-0 z-10 mt-auto grid grid-cols-2 bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] text-center shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
     >
       <Link
         href={groupId ? `/?group=${encodeURIComponent(groupId)}` : "/"}
@@ -29,16 +29,11 @@ export function HomeNavigation({ groupId }: { groupId?: string }) {
         </span>
         홈
       </Link>
-      <span
-        aria-disabled="true"
-        className="flex flex-col items-center gap-1 text-[10px] text-muted"
-      >
-        <Image src="/images/home/calendar.svg" alt="" width={22} height={22} />
-        캘린더 · 준비 중
-      </span>
       <Link
         href={
-          groupId ? `/mypage?group=${encodeURIComponent(groupId)}` : "/mypage"
+          groupId
+            ? `/mypage?view=groups&group=${encodeURIComponent(groupId)}`
+            : "/mypage?view=groups"
         }
         className="flex flex-col items-center gap-1 text-[10px] text-muted"
       >
@@ -51,13 +46,6 @@ export function HomeNavigation({ groupId }: { groupId?: string }) {
         />
         모임 명단
       </Link>
-      <span
-        aria-disabled="true"
-        className="flex flex-col items-center gap-1 text-[10px] text-muted"
-      >
-        <Image src="/images/home/records.svg" alt="" width={22} height={22} />
-        모임 기록 · 준비 중
-      </span>
     </nav>
   );
 }

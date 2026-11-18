@@ -1,3 +1,4 @@
+import { catalogPolicies } from "../../modules/restaurants/lib/restaurant-policy.js";
 import { createHash } from "node:crypto";
 import type { DataSource } from "typeorm";
 import { z } from "zod";
@@ -132,6 +133,7 @@ export async function seedRestaurants(
         .into(Restaurant)
         .values({
           ...fields,
+          policies: catalogPolicies(fields),
           id: restaurantId,
           isDemo: false,
           verifiedAt: verifiedAt ? new Date(verifiedAt) : null,

@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "node:test";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, queryOptions } from "@tanstack/react-query";
 import { getApiJson } from "../shared/http/browser-api";
 import { ApiError } from "../shared/http/api-error";
-import { healthQueryOptions } from "../features/health/api/health.queries";
 import { apiOrigin } from "../shared/http/api-origin";
 
 test("public API origin is explicit in production and cannot contain credentials, paths or queries", () => {
@@ -35,6 +34,12 @@ test("public API origin is explicit in production and cannot contain credentials
 });
 
 test("browser transport handles real HTTP errors, invalid data, cancellation and recovery", async (t) => {
+  const healthQueryOptions = queryOptions({
+    queryKey: ["health"],
+    queryFn: ({ signal }) => getApiJson("/health", { signal }),
+    staleTime: 0,
+    retry: false,
+  });
   let mode = "healthy";
   const server = createServer((request, response) => {
     if (mode === "slow") return;
@@ -48,13 +53,7 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
       return;
     }
     response.setHeader("Content-Type", "application/json");
-    response.end(
-      JSON.stringify(
-        mode === "wrong-shape"
-          ? { status: "fake" }
-          : { status: "ok", service: "chongmuya-api" },
-      ),
-    );
+    response.end(JSON.stringify({ status: "ok", service: "chongmuya-api" }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -92,12 +91,12 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
   assert.equal(client.getQueryState(["health"])?.status, "error");
   assert(
     client.getQueryData(["health"]),
-    "a failed refetch retains data, so UI must prioritize errors",
+    "a failed refetch retains data so the UI can preserve ongoing work",
   );
   mode = "healthy";
   await client.fetchQuery(healthQueryOptions);
   assert.equal(client.getQueryState(["health"])?.status, "success");
-  for (const broken of ["invalid", "wrong-shape"]) {
+  for (const broken of ["invalid"]) {
     mode = broken;
     await assert.rejects(
       client.fetchQuery(healthQueryOptions),

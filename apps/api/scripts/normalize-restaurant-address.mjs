@@ -28,34 +28,46 @@ try {
         "output",
       ]
         .map((key) => [key, { type: "string" }])
-        .concat([["execute", { type: "boolean", default: false }]]),
+        .concat([
+          ["execute", { type: "boolean", default: false }],
+          ["list", { type: "boolean", default: false }],
+        ]),
     ),
   });
-  requireOperator(v);
-  const restaurantId = operationId(v.restaurant);
-  if (
-    !/^\d+$/.test(v.version ?? "") ||
-    !v.query?.trim() ||
-    !v["base-address"]?.trim()
-  )
-    throw new Error("INVALID_ADDRESS_INPUT");
-  if (v.output) output = await open(v.output, "wx", 0o600);
-  app = await NestFactory.createApplicationContext(AppModule, {
-    logger: false,
-    abortOnError: false,
-  });
-  const result = await app.get(RestaurantManagementService).normalizeAddress({
-    restaurantId,
-    version: Number(v.version),
-    query: v.query,
-    baseAddress: v["base-address"],
-    detailAddress: v["detail-address"] ?? "",
-    actor: v.actor,
-    reason: v.reason,
-    dryRun: !v.execute,
-  });
-  if (output) await output.writeFile(JSON.stringify(result, null, 2) + "\n");
-  printOperation("normalize-address", result, v);
+  if (v.list) {
+    if (v.execute || v.restaurant) throw new Error("INVALID_ADDRESS_INPUT");
+    app = await NestFactory.createApplicationContext(AppModule, {
+      logger: false,
+      abortOnError: false,
+    });
+    console.table(await app.get(RestaurantManagementService).addressReview());
+  } else {
+    requireOperator(v);
+    const restaurantId = operationId(v.restaurant);
+    if (
+      !/^\d+$/.test(v.version ?? "") ||
+      !v.query?.trim() ||
+      !v["base-address"]?.trim()
+    )
+      throw new Error("INVALID_ADDRESS_INPUT");
+    if (v.output) output = await open(v.output, "wx", 0o600);
+    app = await NestFactory.createApplicationContext(AppModule, {
+      logger: false,
+      abortOnError: false,
+    });
+    const result = await app.get(RestaurantManagementService).normalizeAddress({
+      restaurantId,
+      version: Number(v.version),
+      query: v.query,
+      baseAddress: v["base-address"],
+      detailAddress: v["detail-address"] ?? "",
+      actor: v.actor,
+      reason: v.reason,
+      dryRun: !v.execute,
+    });
+    if (output) await output.writeFile(JSON.stringify(result, null, 2) + "\n");
+    printOperation("normalize-address", result, v);
+  }
 } catch (error) {
   printOperationError(error);
   process.exitCode = 1;

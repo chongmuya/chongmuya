@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -24,6 +24,7 @@ import {
   ReplySummary,
   spaceLabel,
   seatingLabel,
+  money,
 } from "./reply-summary";
 const localDate = (value: string | null | undefined) =>
   value
@@ -89,8 +90,7 @@ export function ReplyWorkspace({
     <>
       {blocked && (
         <p role="alert" className="mb-4">
-          {notice} 현재 탭의 입력은 유지되지만, 새 탭으로 자동 복원되지는
-          않습니다.
+          {notice}
         </p>
       )}
       {q.isError && !blocked && (
@@ -99,7 +99,6 @@ export function ReplyWorkspace({
           className="mb-4 rounded-control border border-field p-4"
         >
           <p>최신 문의를 불러오지 못했어요. 작성 중인 답변은 유지됩니다.</p>
-          <p className="mt-2 text-sm">{safeErrorMessage(q.error)}</p>
           <Button
             variant="outline"
             className="mt-3"
@@ -143,13 +142,17 @@ function ReplyForm({
         q.defaults.proposal.deposit.kind,
     );
   const last = useRef<{ fingerprint: string; key: string } | null>(null);
+  const offered = useWatch({ control: form.control, name: "proposal" });
+  const deadline = useWatch({ control: form.control, name: "expiresAt" });
   const changed = q.version !== form.getValues("expectedVersion");
   return (
     <>
       <h1 className="text-2xl font-bold">{q.restaurantName} 예약 문의</h1>
-      <p className="my-4 text-sm text-muted">
-        이 링크는 해당 예약 문의의 답변·수정용입니다. 외부에 공유하지 마세요.
-      </p>
+      {access.kind === "link" && (
+        <p className="my-4 text-xs text-muted">
+          답변·수정용 링크입니다. 외부에 공유하지 마세요.
+        </p>
+      )}
       <section className="rounded-control bg-surface p-5 shadow-card">
         <RequestSummary snapshot={q.snapshot} />
         <p className="mt-3 text-sm">담당자: {q.organizerName}</p>
@@ -180,6 +183,7 @@ function ReplyForm({
         </div>
       )}
       <form
+        noValidate
         className="mt-7 space-y-5"
         onSubmit={(event) =>
           void form.handleSubmit(async (input) => {
@@ -248,6 +252,7 @@ function ReplyForm({
                 className="min-h-24 w-full rounded-control border border-field bg-surface p-3"
                 maxLength={1000}
               />
+              <FormError message={form.formState.errors.reason?.message} />
             </label>
           ) : (
             <>
@@ -301,104 +306,107 @@ function ReplyForm({
                   </label>
                 </>
               )}
-              {kind === "AVAILABLE" && (
-                <p className="text-sm">
-                  요청한 일시·인원·공간·착석 조건으로 답변합니다. 변경이
-                  필요하면 ‘조건 변경 제안’을 선택해 주세요.
-                </p>
-              )}
               <div className="rounded-control bg-surface p-3 text-sm text-muted">
                 현재 매장 안내:{" "}
                 {q.defaults.bookingDescription ?? "기본 조건 확인 필요"}
                 <br />
                 {q.defaults.depositDescription ?? "예약금 확인 필요"}
               </div>
-              {(
-                [
-                  ["minimumSpend", "최소 이용금액 (원)"],
-                  ["separateFee", "별도 대관료 (원)"],
-                ] as const
-              ).map(([key, label]) => (
-                <Controller
-                  key={key}
-                  name={`proposal.${key}`}
-                  control={form.control}
-                  render={({ field }) => (
-                    <label className="block space-y-2">
-                      {label}
-                      <Input
-                        type="number"
-                        min={0}
-                        value={field.value ?? ""}
-                        onChange={(e) =>
-                          field.onChange(
-                            e.target.value === ""
-                              ? null
-                              : Number(e.target.value),
-                          )
-                        }
-                        placeholder="미확인 (없음은 0)"
-                      />
-                    </label>
-                  )}
-                />
-              ))}
-              <label className="block space-y-2">
-                예약금
-                <Select
-                  value={deposit}
-                  onChange={(e) => {
-                    const v = e.target.value as typeof deposit;
-                    setDeposit(v);
-                    form.setValue("proposal.deposit", {
-                      kind: v,
-                      amount: v === "NONE" ? 0 : null,
-                    });
-                  }}
-                >
-                  <option value="UNKNOWN">미확인</option>
-                  <option value="NONE">없음 (0원)</option>
-                  <option value="FIXED">확정 금액</option>
-                  <option value="PER_RESERVATION">예약별 협의</option>
-                </Select>
-              </label>
-              {deposit === "FIXED" && (
-                <Controller
-                  name="proposal.deposit.amount"
-                  control={form.control}
-                  render={({ field }) => (
-                    <label className="block space-y-2">
-                      예약금 (원)
-                      <Input
-                        type="number"
-                        min={1}
-                        value={field.value ?? ""}
-                        onChange={(e) =>
-                          field.onChange(
-                            e.target.value === ""
-                              ? null
-                              : Number(e.target.value),
-                          )
-                        }
-                      />
-                    </label>
-                  )}
-                />
-              )}
-              <Controller
-                name="proposal.menuDeadlineAt"
-                control={form.control}
-                render={({ field }) => (
-                  <label className="block space-y-2">
-                    메뉴 확정 기한 (미확인 시 비워 두세요)
-                    <Input
-                      type="datetime-local"
-                      value={localDate(field.value)}
-                      onChange={(e) => field.onChange(isoDate(e.target.value))}
+              <details className="rounded-control border border-field p-4">
+                <summary className="cursor-pointer font-semibold">
+                  금액·메뉴 조건 수정
+                </summary>
+                <div className="mt-5 space-y-5">
+                  {(
+                    [
+                      ["minimumSpend", "최소 이용금액 (원)"],
+                      ["separateFee", "별도 대관료 (원)"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <Controller
+                      key={key}
+                      name={`proposal.${key}`}
+                      control={form.control}
+                      render={({ field }) => (
+                        <label className="block space-y-2">
+                          {label}
+                          <Input
+                            type="number"
+                            min={0}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ""
+                                  ? null
+                                  : Number(e.target.value),
+                              )
+                            }
+                            placeholder="미확인 (없음은 0)"
+                          />
+                        </label>
+                      )}
                     />
+                  ))}
+                  <label className="block space-y-2">
+                    예약금
+                    <Select
+                      value={deposit}
+                      onChange={(e) => {
+                        const v = e.target.value as typeof deposit;
+                        setDeposit(v);
+                        form.setValue("proposal.deposit", {
+                          kind: v,
+                          amount: v === "NONE" ? 0 : null,
+                        });
+                      }}
+                    >
+                      <option value="UNKNOWN">미확인</option>
+                      <option value="NONE">없음 (0원)</option>
+                      <option value="FIXED">확정 금액</option>
+                      <option value="PER_RESERVATION">예약별 협의</option>
+                    </Select>
                   </label>
-                )}
-              />
+                  {deposit === "FIXED" && (
+                    <Controller
+                      name="proposal.deposit.amount"
+                      control={form.control}
+                      render={({ field }) => (
+                        <label className="block space-y-2">
+                          예약금 (원)
+                          <Input
+                            type="number"
+                            min={1}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ""
+                                  ? null
+                                  : Number(e.target.value),
+                              )
+                            }
+                          />
+                        </label>
+                      )}
+                    />
+                  )}
+                  <Controller
+                    name="proposal.menuDeadlineAt"
+                    control={form.control}
+                    render={({ field }) => (
+                      <label className="block space-y-2">
+                        메뉴 확정 기한 (미확인 시 비워 두세요)
+                        <Input
+                          type="datetime-local"
+                          value={localDate(field.value)}
+                          onChange={(e) =>
+                            field.onChange(isoDate(e.target.value))
+                          }
+                        />
+                      </label>
+                    )}
+                  />
+                </div>
+              </details>
               <Controller
                 name="expiresAt"
                 control={form.control}
@@ -410,10 +418,9 @@ function ReplyForm({
                       value={localDate(field.value)}
                       onChange={(e) => field.onChange(isoDate(e.target.value))}
                     />
-                    <span className="block text-xs text-muted">
-                      미래 시각이며 행사 시작·메뉴 확정 이전이어야 해요. 기본
-                      12시간을 적용할 수 없으면 직접 입력해 주세요.
-                    </span>
+                    <FormError
+                      message={form.formState.errors.expiresAt?.message}
+                    />
                   </label>
                 )}
               />
@@ -425,13 +432,55 @@ function ReplyForm({
                   maxLength={1500}
                 />
               </label>
+              {offered && (
+                <dl className="space-y-2 rounded-control bg-surface p-4 text-sm">
+                  <div>
+                    <dt>최소 이용금액 · 별도 대관료</dt>
+                    <dd>
+                      {money(offered.minimumSpend)} ·{" "}
+                      {money(offered.separateFee)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>예약금</dt>
+                    <dd>
+                      {offered.deposit.kind === "PER_RESERVATION"
+                        ? "예약별 협의"
+                        : money(offered.deposit.amount)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>메뉴 확정 기한</dt>
+                    <dd>
+                      {offered.menuDeadlineAt
+                        ? new Date(offered.menuDeadlineAt).toLocaleString(
+                            "ko-KR",
+                          )
+                        : "미확인"}
+                    </dd>
+                  </div>
+                </dl>
+              )}
+              <FormError
+                message={
+                  form.formState.errors.proposal?.note?.message ??
+                  form.formState.errors.proposal?.deposit?.amount?.message ??
+                  form.formState.errors.proposal?.menuDeadlineAt?.message
+                }
+              />
               <label className="flex items-start gap-3 text-sm">
                 <Checkbox {...form.register("holdConfirmed")} />
                 <span>
-                  이 일시·인원·공간으로 받을 수 있으며 선택 기한까지 좌석을
-                  유지할 수 있음을 확인합니다.
+                  이 조건으로 받을 수 있으며{" "}
+                  {deadline
+                    ? new Date(deadline).toLocaleString("ko-KR")
+                    : "선택 기한"}
+                  까지 좌석을 유지할 수 있어요.
                 </span>
               </label>
+              <FormError
+                message={form.formState.errors.holdConfirmed?.message}
+              />
             </>
           )}
         </fieldset>
@@ -445,7 +494,7 @@ function ReplyForm({
         />
         {saved && (
           <p role="status" className="text-sm text-brand">
-            답변을 저장했어요. 예약 확정은 아직 진행되지 않았어요.
+            답변을 저장했어요.
           </p>
         )}
         <Button

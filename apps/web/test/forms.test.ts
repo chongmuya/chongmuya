@@ -1,3 +1,4 @@
+import { AttendanceWorkspace } from "../features/attendance/components/attendance-workspace";
 import "./support/dom";
 import { OwnerMenus } from "../features/owner/components/owner-menus";
 import { OwnerRegistration } from "../features/owner/components/owner-registration";
@@ -27,7 +28,7 @@ import { AuthProvider } from "../features/auth/components/auth-provider";
 import { AuthEntryScreen } from "../features/auth/components/auth-entry-screen";
 import { GettingStartedScreen } from "../features/onboarding/components/getting-started-screen";
 import { SignupScreen } from "../features/auth/components/signup/signup-screen";
-import { previewTerms } from "../features/auth/components/preview/preview-fixtures";
+import { previewTerms } from "./support/signup-terms";
 import { AuthScreen } from "../features/auth/components/auth-screen";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
@@ -379,7 +380,11 @@ test("account panel preserves failed-logout recovery and provides login navigati
   );
   try {
     await until(() =>
-      assert.match(view.container.textContent!, /계정으로 로그인했습니다/),
+      assert(
+        view.container
+          .querySelector("button")
+          ?.textContent?.includes("로그아웃"),
+      ),
     );
     await click(view.container, "로그아웃");
     await until(() =>
@@ -2450,6 +2455,124 @@ test("merchant access expiration keeps current-tab input and stops writes and fo
     assert.equal(requests, count);
     assert.equal(field.value, "만료되어도 보존할 입력");
     assert(view.container.querySelector("fieldset")!.disabled);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("attendance background errors preserve the open editor and revoke writes after access loss", async () => {
+  let failure = 0;
+  const request: SessionRequest = async <T>() => {
+    if (failure)
+      throw new ApiError(
+        "",
+        failure,
+        failure === 403 ? "FORBIDDEN" : "NETWORK_ERROR",
+      );
+    return { rounds: [], nextTitle: "1차" } as T;
+  };
+  const view = await render(
+    createElement(AttendanceWorkspace, {
+      accountId: "attendance-owner",
+      eventId: crypto.randomUUID(),
+      roundId: null,
+      request,
+    }),
+  );
+  try {
+    await until(() => assert.match(view.container.textContent!, /차수 만들기/));
+    await click(view.container, "차수 만들기");
+    await fill(view.container, "title", "작성 중인 차수");
+    const input = view.container.querySelector<HTMLInputElement>(
+      'input[name="title"]',
+    )!;
+    failure = 503;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    assert.equal(view.container.querySelector('input[name="title"]'), input);
+    assert.equal(input.value, "작성 중인 차수");
+    failure = 0;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    assert.equal(input.value, "작성 중인 차수");
+    failure = 403;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    await until(() => assert(input.closest("fieldset[disabled]")));
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("owner next saves one draft version and unchanged mount/step does not autosave", async () => {
+  let stored: RestaurantDraft = {
+    id: crypto.randomUUID(),
+    restaurantId: null,
+    version: 1,
+    data: {
+      ...emptyRegistration(),
+      name: "한 번 저장",
+      addressQuery: "서울 테스트길 1",
+      phone: merchantAccount.phone!,
+    },
+    step: 0,
+    selectedAddress: {
+      id: crypto.randomUUID(),
+      query: "서울 테스트길 1",
+      baseAddress: "서울 테스트길 1",
+      roadAddress: "서울 테스트길 1",
+      jibunAddress: "",
+      latitude: 37.5,
+      longitude: 127,
+      region: "서울",
+      source: "fake",
+    },
+    verifiedPhone: merchantAccount.phone!,
+    submitted: false,
+  };
+  const writes: { version: number; step: number; advance: boolean }[] = [];
+  const request: SessionRequest = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    if (path.endsWith("/context"))
+      return { restaurants: [], drafts: [], supportEmail: null } as T;
+    if (options?.method === "PUT") {
+      const body = JSON.parse(String(options.body));
+      writes.push(body);
+      stored = {
+        ...stored,
+        data: body.data,
+        step: body.step,
+        version: stored.version + 1,
+      };
+    }
+    return structuredClone(stored) as T;
+  };
+  const view = await render(
+    createElement(OwnerRegistration, {
+      account: merchantAccount,
+      request,
+      draft: structuredClone(stored),
+      onNavigate() {},
+    }),
+  );
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+    assert.equal(writes.length, 0);
+    await click(view.container, "다음");
+    await until(() => assert.equal(stored.step, 1));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].advance, true);
+    assert.equal(writes[0].version, 1);
   } finally {
     await view.unmount();
   }

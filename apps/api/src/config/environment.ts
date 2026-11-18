@@ -246,7 +246,28 @@ const environmentSchema = z
 export type Environment = z.infer<typeof environmentSchema>;
 
 export function parseEnvironment(env: NodeJS.ProcessEnv): Environment {
-  const result = environmentSchema.safeParse(env);
+  const selected = { ...env };
+  // Inactive adapters do not consume credentials. Validate the selected adapter
+  // without requiring local fake runs to repair unrelated provider settings.
+  if ((selected.MESSAGE_PROVIDER ?? "fake") === "fake") {
+    for (const key of [
+      "SOLAPI_API_KEY",
+      "SOLAPI_API_SECRET",
+      "SOLAPI_SENDER_NUMBER",
+    ])
+      delete selected[key];
+    // A valid signing secret may still verify recorded webhook contracts in local tests.
+    if (
+      !selected.SOLAPI_WEBHOOK_SECRET ||
+      selected.SOLAPI_WEBHOOK_SECRET.length < 16
+    )
+      delete selected.SOLAPI_WEBHOOK_SECRET;
+  }
+  if ((selected.GEOCODING_PROVIDER ?? "fake") === "fake") {
+    delete selected.NAVER_MAP_CLIENT_ID;
+    delete selected.NAVER_MAP_CLIENT_SECRET;
+  }
+  const result = environmentSchema.safeParse(selected);
   if (!result.success) {
     // Never log a ZodError: issues can contain input values or credentials.
     const fields = [

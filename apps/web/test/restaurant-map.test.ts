@@ -32,6 +32,13 @@ test("the map uses coordinates, cleans up after auth failure and shows addresses
           destroyed++;
         }
         fitBounds() {}
+        getCenter() {
+          return { lat: () => 37.5, lng: () => 127.1 };
+        }
+        getZoom() {
+          return 15;
+        }
+        setCenter() {}
       },
       LatLng: class {},
       Marker: class {
@@ -69,6 +76,29 @@ test("the map uses coordinates, cleans up after auth failure and shows addresses
       }
     });
     assert.equal(created, 1);
+    await act(async () =>
+      root.render(
+        createElement(RestaurantMap, {
+          restaurants: [
+            {
+              id: "known",
+              name: "새 마커 이름",
+              address: "주소",
+              region: "지역",
+              latitude: 37.5,
+              longitude: 127.1,
+            },
+          ],
+          onOpen() {},
+        }),
+      ),
+    );
+    assert.equal(
+      created,
+      1,
+      "refetches update markers without recreating the map",
+    );
+    assert.equal(destroyed, 0);
     await act(async () => window.navermap_authFailure?.());
     assert.match(container.textContent!, /지도를 표시할 수 없어요/);
     assert.equal(destroyed, 1);

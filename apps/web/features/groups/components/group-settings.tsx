@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import type { SessionRequest } from "@/features/auth/types";
 import type { Group } from "../types/group.types";
 import { GroupForm } from "./group-form";
 import { GroupRoster } from "./group-roster";
-import { buttonStyles } from "@/shared/ui/button";
+import { Button, buttonStyles } from "@/shared/ui/button";
 
 export function GroupSettings({
   accountId,
@@ -18,26 +20,43 @@ export function GroupSettings({
   selected: Group;
   groups: Group[];
 }) {
+  const [switching, setSwitching] = useState(false);
   return (
     <>
-      <h2>관리할 모임 전환</h2>
-      {selected.groupType && <p>모임 유형: {selected.groupType}</p>}
-      <Link href={`/events?group=${encodeURIComponent(selected.id)}`}>
-        이 모임의 내 행사 보기
-      </Link>
-      <ul>
-        {groups.map((group) => (
-          <li key={group.id}>
-            <Link
-              aria-current={group.id === selected.id ? "true" : undefined}
-              href={`/mypage?group=${encodeURIComponent(group.id)}`}
-            >
-              {group.name}
-              {group.id === selected.id ? " (현재 모임)" : ""}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">{selected.name}</h2>
+        <Button variant="outline" onClick={() => setSwitching(true)}>
+          모임 전환
+        </Button>
+      </div>
+      {switching && (
+        <BottomSheet title="모임 전환" onClose={() => setSwitching(false)}>
+          <ul className="space-y-3">
+            {groups.map((group) => (
+              <li key={group.id}>
+                <Link
+                  className={buttonStyles({
+                    variant: group.id === selected.id ? "solid" : "outline",
+                    className: "w-full",
+                  })}
+                  href={`/mypage?view=groups&group=${group.id}`}
+                >
+                  {group.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link
+            className={buttonStyles({
+              variant: "outline",
+              className: "mt-5 w-full",
+            })}
+            href="/groups/new"
+          >
+            모임 만들기
+          </Link>
+        </BottomSheet>
+      )}
       <GroupForm
         key={selected.id}
         accountId={accountId}

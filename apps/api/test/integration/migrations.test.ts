@@ -500,3 +500,72 @@ test("migrations preserve existing account, group, event and session records and
     await runner.release();
   }
 });
+
+test("catalog migration preserves survey text and ambiguous rows while enforcing new identities", async (t) => {
+  assert(process.env.TEST_DATABASE_URL);
+  const { app } = await startTestApplication(process.env.TEST_DATABASE_URL);
+  t.after(() => app.close());
+  const db = await app.get(DatabaseService).connect();
+  const q = db.createQueryRunner();
+  await q.connect();
+  await q.startTransaction();
+  try {
+    const schema = `catalog_${randomUUID().replaceAll("-", "")}`;
+    await q.query(`CREATE SCHEMA ${schema}`);
+    await q.query(`SET LOCAL search_path TO ${schema}`);
+    const migrations = [...db.migrations].sort((a, b) =>
+      a.constructor.name
+        .slice(-13)
+        .localeCompare(b.constructor.name.slice(-13)),
+    );
+    for (const migration of migrations)
+      if (!migration.constructor.name.startsWith("RestaurantCatalogModel"))
+        await migration.up(q);
+    const ids = [randomUUID(), randomUUID(), randomUUID()];
+    await q.query(
+      "INSERT INTO restaurants(id,name,address,region,booking_policy,deposit_policy,photo_path) VALUES ($1,'보존 식당','서울 길 1 2층','지역','전체 대관은 협의','금액 미정','/images/preserved.png'),($2,' 중복  식당 ','서울 길 2','지역',null,null,null),($3,'중복 식당','서울 길 2','지역',null,null,null)",
+      ids,
+    );
+    const { RestaurantCatalogModel1795564800000 } =
+      await import("../../src/database/migrations/1795564800000-RestaurantCatalogModel.js");
+    await new RestaurantCatalogModel1795564800000().up(q);
+    const [preserved] = await q.query(
+      "SELECT policies,booking_policy,deposit_policy,photo_path,base_address,identity_review FROM restaurants WHERE id=$1",
+      [ids[0]],
+    );
+    assert.equal(
+      preserved.policies.sourceDescriptions.bookingPolicy,
+      "전체 대관은 협의",
+    );
+    assert.equal(
+      preserved.policies.sourceDescriptions.depositPolicy,
+      "금액 미정",
+    );
+    assert.equal(preserved.policies.deposit.amount, null);
+    assert.equal(preserved.booking_policy, "전체 대관은 협의");
+    assert.equal(preserved.photo_path, "/images/preserved.png");
+    assert.equal(preserved.base_address, null);
+    assert.equal(preserved.identity_review, "UNSTRUCTURED_ADDRESS");
+    const conflicts = await q.query(
+      "SELECT id FROM restaurants WHERE identity_review='DUPLICATE_IDENTITY'",
+    );
+    assert.equal(conflicts.length, 2);
+    await q.query("SAVEPOINT duplicate_attempt");
+    await assert.rejects(
+      q.query(
+        "INSERT INTO restaurants(id,name,address,region) VALUES ($1,'중복 식당','서울 길 2','지역')",
+        [randomUUID()],
+      ),
+      (error: unknown) => (error as { code: string }).code === "23505",
+    );
+    await q.query("ROLLBACK TO SAVEPOINT duplicate_attempt");
+    assert.equal(
+      (await q.query("SELECT count(*)::int AS count FROM restaurants"))[0]
+        .count,
+      3,
+    );
+  } finally {
+    await q.rollbackTransaction();
+    await q.release();
+  }
+});

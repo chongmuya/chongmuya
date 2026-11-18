@@ -1,6 +1,6 @@
 import "./support/dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { previewTerms } from "../features/auth/components/preview/preview-fixtures";
+import { previewTerms } from "./support/signup-terms";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement, type ReactElement } from "react";
@@ -23,7 +23,6 @@ import {
 import { credentialsSchema } from "../features/auth/schemas/credentials.schema";
 import { ApiError } from "../shared/http/api-error";
 import { GettingStartedFlow } from "../features/onboarding/components/getting-started-flow";
-import AuthPreviewPage from "../app/dev/auth/page";
 
 async function render(element: ReactElement) {
   const container = document.createElement("div");
@@ -467,23 +466,6 @@ test("recovery request/reset handles loading, retry, matching passwords and unav
     );
     assert.equal(view.container.querySelector("form"), null);
     await view.unmount();
-  }
-});
-
-test("production preview route refuses direct access", async () => {
-  const previous = process.env.NODE_ENV;
-  Reflect.set(process.env, "NODE_ENV", "production");
-  try {
-    await assert.rejects(
-      AuthPreviewPage(),
-      (error) =>
-        error instanceof Error &&
-        "digest" in error &&
-        error.digest === "NEXT_HTTP_ERROR_FALLBACK;404",
-    );
-  } finally {
-    if (previous === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
-    else Reflect.set(process.env, "NODE_ENV", previous);
   }
 });
 

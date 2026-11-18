@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
@@ -24,14 +23,7 @@ export function EventDetail({
     <article className="mb-7 space-y-3">
       <h2 className="text-2xl font-bold">{event.name}</h2>
       <p className="text-xs text-secondary">{dateLabel(event.scheduledAt)}</p>
-      {event.groupId ? (
-        <p role="status" className="text-xs text-secondary">
-          모임에 연결된 행사입니다.{" "}
-          <Link href={`/events?group=${encodeURIComponent(event.groupId)}`}>
-            모임별 내 행사 보기
-          </Link>
-        </p>
-      ) : (
+      {!event.groupId && (
         <>
           <p className="text-xs text-secondary">개인 행사</p>
           <details className="text-xs">

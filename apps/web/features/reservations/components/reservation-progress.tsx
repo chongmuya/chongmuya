@@ -18,13 +18,7 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
     <section className="my-6 space-y-7 text-copy">
       <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
         <p className="text-sm font-semibold text-brand">문의 접수 완료</p>
-        <h2 className="mt-2 text-xl font-bold">
-          매장별 전달·답변 상태를 확인해 주세요
-        </h2>
-        <p className="mt-2 text-sm text-muted">
-          문자 접수와 실제 전달은 구분돼요. 매장 답변은 아래에 반영되며, 아직
-          예약이 확정된 상태는 아니에요.
-        </p>
+        <h2 className="mt-2 text-xl font-bold">매장 답변</h2>
       </div>
       <div className="space-y-3">
         <h3 className="text-xl font-bold">{c.eventName}</h3>
@@ -42,7 +36,10 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
                     PENDING: "발송 대기",
                     PROCESSING: "발송 요청 중",
                     ACCEPTED: "발송 접수",
-                    DELIVERED: "전달 완료",
+                    DELIVERED:
+                      t.delivery?.provider === "fake"
+                        ? "체험 발송"
+                        : "전달 완료",
                     FAILED: "전달 실패",
                     UNKNOWN: "접수 확인 필요",
                     HELD: "발송 보류",
@@ -53,16 +50,9 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
             </div>
             <p className="mt-1 text-xs text-muted">{t.address}</p>
             {t.delivery?.provider === "fake" && (
-              <p className="mt-2 text-xs text-muted">
-                개발용 발송 대역 결과 · 실제 문자 발송 아님
-              </p>
+              <p className="mt-2 text-xs text-muted">체험 발송</p>
             )}
             {t.response && <ReplySummary response={t.response} />}
-            {t.isDemo && (
-              <p className="text-xs text-brand">
-                개발용 가상 매장 · 실제 발송 안 함
-              </p>
-            )}
           </li>
         ))}
       </ul>
@@ -86,10 +76,6 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
           }}
         />
       </details>
-      <p className="text-xs text-muted">
-        접수 후 조건 수정·매장 추가·같은 행사 재문의는 할 수 없어요. 이후 행사
-        정보를 바꿔도 보낸 조건은 그대로 보존됩니다.
-      </p>
       <Link
         className={buttonStyles({ variant: "outline", className: "w-full" })}
         href={`/events?event=${inquiry.eventId}`}
@@ -113,7 +99,7 @@ export function ReservationProgress({
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
   });
-  if (result.isError)
+  if (result.isError && result.data === undefined)
     return (
       <ErrorState retry={() => void result.refetch()}>
         문의 진행 상태를 확인하지 못했어요.
@@ -123,6 +109,11 @@ export function ReservationProgress({
     return <LoadingState>문의 확인 중…</LoadingState>;
   return result.data ? (
     <>
+      {result.isError && (
+        <ErrorState retry={() => void result.refetch()}>
+          최신 문의 상태를 불러오지 못했어요.
+        </ErrorState>
+      )}
       <InquiryReceipt inquiry={result.data} />
       <Button
         variant="outline"
@@ -157,6 +148,10 @@ export function InquiryDetails({
 }) {
   return (
     <dl className="mt-3 space-y-3">
+      <div>
+        <dt>희망 지역</dt>
+        <dd>{c.region}</dd>
+      </div>
       <div>
         <dt>함께 착석</dt>
         <dd>

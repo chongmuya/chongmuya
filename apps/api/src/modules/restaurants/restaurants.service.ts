@@ -1,13 +1,23 @@
 import { policyDescriptions } from "./lib/restaurant-policy.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { In, IsNull, Not, type EntityManager } from "typeorm";
+import {
+  In,
+  IsNull,
+  Not,
+  type EntityManager,
+  type SelectQueryBuilder,
+} from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { Restaurant } from "./entities/restaurant.entity.js";
 import { RestaurantContact } from "./entities/restaurant-contact.entity.js";
 import { RestaurantSpace } from "./entities/restaurant-space.entity.js";
 import { RestaurantMenu } from "./entities/restaurant-menu.entity.js";
-import type { RestaurantDto } from "./dto/response/restaurant.response.dto.js";
+import type {
+  RestaurantDto,
+  RestaurantSummaryDto,
+  RestaurantMapDto,
+} from "./dto/response/restaurant.response.dto.js";
 import type { RestaurantsQuery } from "./dto/request/restaurants-query.request.dto.js";
 
 @Injectable()
@@ -38,12 +48,10 @@ export class RestaurantsService {
   async replyDefaults(id: string, manager: EntityManager) {
     const r = await manager.findOneBy(Restaurant, { id });
     if (!r) throw new NotFoundException();
-    return {
-      policies: r.policies,
-      depositPolicy: r.depositPolicy,
-      menuPolicy: r.menuPolicy,
-      bookingPolicy: r.bookingPolicy,
-    };
+    const { depositPolicy, menuPolicy, bookingPolicy } = policyDescriptions(
+      r.policies,
+    );
+    return { policies: r.policies, depositPolicy, menuPolicy, bookingPolicy };
   }
   async list(input: RestaurantsQuery) {
     const db = await this.database.connect();
@@ -51,11 +59,26 @@ export class RestaurantsService {
       .getRepository(Restaurant)
       .createQueryBuilder("r")
       .where("r.published = true");
+    this.filterRegion(query, input.region);
+    const [rows, total] = await query
+      .orderBy("r.name", "ASC")
+      .addOrderBy("r.id", "ASC")
+      .skip(((input.page ?? 1) - 1) * 24)
+      .take(24)
+      .getManyAndCount();
+    return {
+      items: await this.summaries(rows, db.manager),
+      total,
+      page: input.page ?? 1,
+      pageSize: 24,
+    };
+  }
+  private filterRegion(query: SelectQueryBuilder<Restaurant>, region?: string) {
     // A displayed area such as '세종대 · 어린이대공원' means either area.
     // Preserve spaces within an area name and escape literal SQL wildcards.
     const regions = [
       ...new Set(
-        (input.region ?? "")
+        (region ?? "")
           .split("·")
           .map((value) => value.trim())
           .filter(Boolean),
@@ -71,18 +94,34 @@ export class RestaurantsService {
           ]),
         ),
       );
-    const [rows, total] = await query
+  }
+  async map(region?: string): Promise<RestaurantMapDto[]> {
+    const db = await this.database.connect();
+    const query = db
+      .getRepository(Restaurant)
+      .createQueryBuilder("r")
+      .where("r.published=true");
+    this.filterRegion(query, region);
+    const rows = await query
+      .select([
+        "r.id",
+        "r.name",
+        "r.address",
+        "r.region",
+        "r.latitude",
+        "r.longitude",
+      ])
       .orderBy("r.name", "ASC")
       .addOrderBy("r.id", "ASC")
-      .skip(((input.page ?? 1) - 1) * 24)
-      .take(24)
-      .getManyAndCount();
-    return {
-      items: await this.publicDetails(rows, db.manager),
-      total,
-      page: input.page ?? 1,
-      pageSize: 24,
-    };
+      .getMany();
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      address: r.address,
+      region: r.region,
+      latitude: r.latitude,
+      longitude: r.longitude,
+    }));
   }
   async get(id: string): Promise<RestaurantDto> {
     const db = await this.database.connect();
@@ -92,22 +131,31 @@ export class RestaurantsService {
     if (!row) throw new NotFoundException();
     return (await this.publicDetails([row], db.manager))[0]!;
   }
-  private async publicDetails(
+  private async summaries(
     rows: Restaurant[],
     manager: EntityManager,
-  ): Promise<RestaurantDto[]> {
+    existingSpaces?: RestaurantSpace[],
+  ): Promise<RestaurantSummaryDto[]> {
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
-    const [spaces, menus, contacts] = await Promise.all([
-      manager.getRepository(RestaurantSpace).find({
-        where: { restaurantId: In(ids) },
-        order: { label: "ASC", id: "ASC" },
-      }),
-      manager.getRepository(RestaurantMenu).find({
-        where: { restaurantId: In(ids), available: true },
-        order: { position: "ASC", name: "ASC", id: "ASC" },
-      }),
-      manager.getRepository(RestaurantContact).find({
+    const [spaces, contacts] = await Promise.all([
+      existingSpaces
+        ? Promise.resolve(existingSpaces)
+        : manager.find(RestaurantSpace, {
+            where: { restaurantId: In(ids) },
+            select: {
+              id: true,
+              restaurantId: true,
+              label: true,
+              kind: true,
+              availability: true,
+              capacity: true,
+              minGuests: true,
+              togetherSeating: true,
+            },
+            order: { label: "ASC", id: "ASC" },
+          }),
+      manager.find(RestaurantContact, {
         select: { restaurantId: true },
         where: {
           restaurantId: In(ids),
@@ -126,18 +174,45 @@ export class RestaurantsService {
       longitude: r.longitude,
       maxCapacity: r.maxCapacity,
       minimumGuests: r.minimumGuests,
-      minimumOrder: r.policies?.minimumOrder ?? null,
       photoPath: r.photoPath,
-      spacePhotos: [...r.spacePhotos].sort((a, b) => a.position - b.position),
-      operatingHours: r.operatingHours,
-      facilities: r.facilities,
-      bookingPolicy: r.bookingPolicy,
-      depositPolicy: r.depositPolicy,
-      menuPolicy: r.menuPolicy,
-      ...(r.policies ? policyDescriptions(r.policies, r) : {}),
-      cancellationPolicy: r.cancellationPolicy,
       isDemo: r.isDemo,
       inquiryAvailable: contacts.some((c) => c.restaurantId === r.id),
+      spaces: spaces
+        .filter((s) => s.restaurantId === r.id)
+        .map((s) => ({
+          id: s.id,
+          label: s.label,
+          kind: s.kind,
+          availability: s.availability,
+          capacity: s.capacity,
+          minGuests: s.minGuests,
+          togetherSeating: s.togetherSeating,
+        })),
+    }));
+  }
+  private async publicDetails(
+    rows: Restaurant[],
+    manager: EntityManager,
+  ): Promise<RestaurantDto[]> {
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.id);
+    const [spaces, menus] = await Promise.all([
+      manager.find(RestaurantSpace, {
+        where: { restaurantId: In(ids) },
+        order: { label: "ASC", id: "ASC" },
+      }),
+      manager.find(RestaurantMenu, {
+        where: { restaurantId: In(ids), available: true },
+        order: { position: "ASC", name: "ASC", id: "ASC" },
+      }),
+    ]);
+    const summaries = await this.summaries(rows, manager, spaces);
+    return rows.map((r, index) => ({
+      ...summaries[index]!,
+      minimumOrder: r.policies.minimumOrder,
+      spacePhotos: [...r.spacePhotos].sort((a, b) => a.position - b.position),
+      facilities: r.facilities,
+      ...policyDescriptions(r.policies),
       spaces: spaces
         .filter((s) => s.restaurantId === r.id)
         .map((s) => ({

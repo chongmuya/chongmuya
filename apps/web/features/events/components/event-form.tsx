@@ -148,8 +148,6 @@ export function EventForm({
             </ErrorState>
           ) : !groups.data ? (
             <p role="status">모임 확인 중…</p>
-          ) : !groups.data.length ? (
-            <p>모임이 없어도 개인 행사를 만들 수 있습니다.</p>
           ) : null}
         </div>
         <div className="space-y-3">

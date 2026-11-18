@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AuthScreen,
@@ -14,7 +14,7 @@ import type { Account, SessionRequest } from "@/features/auth/types";
 import { useGroups } from "@/features/groups/client";
 import { EventSummary } from "@/features/events/client";
 import { Button, buttonStyles } from "@/shared/ui/button";
-import { Dialog } from "@/shared/ui/dialog";
+import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { HomeNavigation } from "./home-navigation";
 
@@ -120,8 +120,7 @@ function AccountHome({
   const params = useSearchParams();
   const router = useRouter();
   const groups = useGroups(account.id, request);
-  const [dialog, setDialog] = useState<"guide" | "groups" | null>(null);
-  const id = useId();
+  const [dialog, setDialog] = useState<"groups" | null>(null);
   const requested = params.get("group");
   const selected = groups.isError
     ? undefined
@@ -142,7 +141,9 @@ function AccountHome({
           <Button
             className="min-w-0 border-0 px-1 text-left font-medium"
             variant="outline"
-            onClick={() => setDialog(selected ? "groups" : "guide")}
+            onClick={() =>
+              selected ? setDialog("groups") : router.push(createPath)
+            }
           >
             <span className="truncate">{selected?.name ?? "모임 만들기"}</span>
             <span aria-hidden="true" className="ml-2 text-placeholder">
@@ -187,16 +188,17 @@ function AccountHome({
           </section>
         )}
         {owner ? (
-          <p className="rounded-control bg-surface p-5 text-caption shadow-control">
-            사장님은 총무용 모임이나 명단을 등록하지 않아도 돼요. 계정 정보와
-            카카오 연결은 마이페이지에서 확인할 수 있어요.
-            <Link
-              className={buttonStyles({ className: "mt-4 w-full" })}
-              href="/owner"
-            >
-              내 매장 관리하기
+          <div className="grid gap-3">
+            <Link className={buttonStyles()} href="/owner">
+              내 매장
             </Link>
-          </p>
+            <Link
+              className={buttonStyles({ variant: "outline" })}
+              href="/owner/inquiries"
+            >
+              받은 문의
+            </Link>
+          </div>
         ) : (
           <>
             {groups.isError ? (
@@ -241,52 +243,8 @@ function AccountHome({
           <HomeNavigation groupId={selected?.id ?? requested ?? undefined} />
         </>
       )}
-      {dialog === "guide" && (
-        <Dialog
-          showCloseButton
-          labelledBy={`${id}-guide`}
-          onClose={() => setDialog(null)}
-          className="max-w-[362px] space-y-7 text-center"
-        >
-          <Image
-            src="/images/enrollment/group.svg"
-            alt=""
-            className="mx-auto"
-            width={92.2137}
-            height={51.95}
-          />
-          <h2 id={`${id}-guide`} className="text-2xl leading-normal font-bold">
-            행사가 여러 번이라면,
-            <br />
-            모임으로 관리해요
-          </h2>
-          <ul className="list-disc space-y-1 pl-5 text-left text-caption text-muted">
-            <li>기본 명단을 저장해 두고 확인할 수 있어요.</li>
-            <li>모임별 행사 일정을 모아 볼 수 있어요.</li>
-            <li>명단 등록과 모임 만들기는 선택이에요.</li>
-          </ul>
-          <div className="space-y-2">
-            <Link
-              href={createPath}
-              className={buttonStyles({ className: "w-full" })}
-            >
-              모임 만들기
-            </Link>
-            <Button
-              className="w-full"
-              variant="brand-outline"
-              onClick={() => setDialog(null)}
-            >
-              지금은 괜찮아요
-            </Button>
-          </div>
-        </Dialog>
-      )}
       {dialog === "groups" && (
-        <Dialog labelledBy={`${id}-groups`} onClose={() => setDialog(null)}>
-          <h2 id={`${id}-groups`} className="text-label">
-            관리할 모임 선택
-          </h2>
+        <BottomSheet title="모임 전환" onClose={() => setDialog(null)}>
           <ul className="my-5 space-y-2">
             {groups.data?.map((group) => (
               <li key={group.id}>
@@ -307,7 +265,7 @@ function AccountHome({
           <Button
             variant="brand-outline"
             className="w-full"
-            onClick={() => setDialog("guide")}
+            onClick={() => router.push(createPath)}
           >
             새 모임 만들기
           </Button>
@@ -318,7 +276,7 @@ function AccountHome({
           >
             닫기
           </Button>
-        </Dialog>
+        </BottomSheet>
       )}
     </main>
   );

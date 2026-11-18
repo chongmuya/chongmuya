@@ -1,5 +1,6 @@
 import {
   IsInt,
+  IsBoolean,
   IsObject,
   IsOptional,
   IsString,
@@ -13,6 +14,7 @@ export class DraftCreateInput {
   @IsOptional() @IsUUID() restaurantId?: string;
 }
 export class DraftSaveInput {
+  @IsOptional() @IsBoolean() advance?: boolean;
   @IsInt() @Min(1) version!: number;
   @IsOptional() @IsInt() @Min(1) restaurantVersion?: number;
   @IsInt() @Min(0) @Max(5) step!: number;

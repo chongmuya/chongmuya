@@ -13,6 +13,7 @@ const descriptionFields: Record<
   bookingPolicy: ["advance", "minimumOrder", "guestDeadline", "usage"],
   depositPolicy: ["deposit"],
   menuPolicy: ["menuDeadline"],
+  cancellationPolicy: [],
 };
 const descriptionKeys = Object.keys(
   descriptionFields,
@@ -39,26 +40,35 @@ export function policyValues(p: RestaurantPolicies): RestaurantPolicies {
     deposit,
   };
 }
-function overrides(p: StoredRestaurantPolicies) {
-  // Rows saved before provenance existed: only known structured values supersede legacy text.
-  const empty = emptyRegistration().policies;
-  return (
-    p.descriptionOverrides ??
-    descriptionKeys.filter((key) =>
-      descriptionFields[key].some(
-        (field) => !isDeepStrictEqual(p[field], empty[field]),
-      ),
-    )
-  );
+// Survey descriptions and typed edits share one persisted model. Text is never parsed into money or deadlines.
+export function catalogPolicies(
+  source: Partial<Record<PolicyDescriptionKey, string | null>> = {},
+): StoredRestaurantPolicies {
+  return {
+    ...emptyRegistration().policies,
+    descriptionOverrides: [],
+    sourceDescriptions: {
+      operatingHours: source.operatingHours ?? null,
+      bookingPolicy: source.bookingPolicy ?? null,
+      depositPolicy: source.depositPolicy ?? null,
+      menuPolicy: source.menuPolicy ?? null,
+      cancellationPolicy: source.cancellationPolicy ?? null,
+    },
+  };
 }
 export function savePolicies(
   next: RestaurantPolicies,
   previous: StoredRestaurantPolicies | null,
   isNew: boolean,
-): StoredRestaurantPolicies | null {
-  if (isNew) return { ...next, descriptionOverrides: descriptionKeys };
-  const before = previous ?? emptyRegistration().policies;
-  const replaced = new Set(previous ? overrides(previous) : []);
+): StoredRestaurantPolicies {
+  if (isNew)
+    return {
+      ...catalogPolicies(),
+      ...next,
+      descriptionOverrides: descriptionKeys,
+    };
+  const before = previous ?? catalogPolicies();
+  const replaced = new Set(before.descriptionOverrides);
   for (const key of descriptionKeys)
     if (
       descriptionFields[key].some(
@@ -66,16 +76,15 @@ export function savePolicies(
       )
     )
       replaced.add(key);
-  return !previous && replaced.size === 0
-    ? null
-    : { ...next, descriptionOverrides: [...replaced] };
+  return {
+    ...next,
+    sourceDescriptions: before.sourceDescriptions,
+    descriptionOverrides: [...replaced],
+  };
 }
 export const normalizeRestaurantText = (value: string) =>
   value.normalize("NFC").trim().replace(/\s+/g, " ");
-export function policyDescriptions(
-  p: StoredRestaurantPolicies,
-  legacy: Partial<Record<PolicyDescriptionKey, string | null>> = {},
-) {
+export function policyDescriptions(p: StoredRestaurantPolicies) {
   const deadline = (d: RestaurantPolicies["menuDeadline"]) =>
     d.kind === "UNKNOWN"
       ? "확인 필요"
@@ -91,7 +100,8 @@ export function policyDescriptions(
         : p.holidays.kind === "IRREGULAR"
           ? `비정기 휴무${p.holidays.note ? `: ${p.holidays.note}` : ""}`
           : "휴무 확인 필요";
-  const descriptions = {
+  const descriptions: Record<PolicyDescriptionKey, string | null> = {
+    cancellationPolicy: p.sourceDescriptions.cancellationPolicy,
     operatingHours: p.hours
       ? `${p.hours.start}~${p.hours.endDayOffset ? "익일 " : ""}${p.hours.end} / ${holidays}`
       : `영업시간 확인 필요 / ${holidays}`,
@@ -106,9 +116,8 @@ export function policyDescriptions(
             : "예약금 확인 필요",
     menuPolicy: `메뉴 확정: ${deadline(p.menuDeadline)}`,
   };
-  const replaced = overrides(p);
+  const replaced = p.descriptionOverrides;
   for (const key of descriptionKeys)
-    if (!replaced.includes(key) && legacy[key])
-      descriptions[key] = legacy[key]!;
+    if (!replaced.includes(key)) descriptions[key] = p.sourceDescriptions[key];
   return descriptions;
 }
