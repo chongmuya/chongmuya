@@ -6,7 +6,6 @@ import { localDatabaseEnvironmentSchema } from "../../config/database-environmen
 import { databaseOptions } from "../database-options.js";
 import fixture from "./data/restaurants.json" with { type: "json" };
 import { seedRestaurants } from "./restaurants.seed.js";
-import { seedDemoRestaurants } from "./restaurants-demo.seed.js";
 
 // Offline entry point. Never bootstrap the HTTP app, auth or message providers.
 
@@ -16,13 +15,10 @@ async function runSeed(): Promise<void> {
   config({ quiet: true });
   const [name, ...args] = process.argv.slice(2);
   if (
-    !["restaurants", "restaurants-demo"].includes(name ?? "") ||
+    name !== "restaurants" ||
     !(
       args.length === 0 ||
-      (name === "restaurants" &&
-        args.length === 2 &&
-        args[0] === "--contacts-file" &&
-        args[1])
+      (args.length === 2 && args[0] === "--contacts-file" && args[1])
     )
   )
     throw new Error();
@@ -44,8 +40,7 @@ async function runSeed(): Promise<void> {
     if (await db.showMigrations()) throw new Error();
     failureMessage =
       "시드를 저장하지 못했습니다. 시드·연락처 형식과 DB 스키마를 확인하세요. 이번 저장은 롤백됩니다.";
-    if (name === "restaurants") await seedRestaurants(db, fixture, contacts);
-    else await seedDemoRestaurants(db);
+    await seedRestaurants(db, fixture, contacts);
     failureMessage =
       "시드는 저장됐지만 DB 연결 종료에 실패했습니다. 기존 행을 보존하므로 재실행할 수 있습니다.";
   } finally {

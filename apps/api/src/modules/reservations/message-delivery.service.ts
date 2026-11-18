@@ -18,6 +18,7 @@ import {
 } from "./entities/merchant-reply.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import type { ReservationRequest } from "./entities/reservation-request.entity.js";
+import type { DeliveryState } from "./types/merchant-reply.js";
 
 @Injectable()
 export class MessageDeliveryService {
@@ -154,7 +155,7 @@ export class MessageDeliveryService {
         text: `[총무야] ${v.restaurantName}\n${v.eventName} 예약 문의\n${new Date(v.startsAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} / ${v.expectedGuests}명 / ${v.space}\n가능·조건 변경·불가 답변: ${url}\n예약 확정 전 문의입니다. 링크를 공유하지 마세요.`,
       };
     });
-    if (!claimed) return;
+    if (!claimed) return { dispatchAttempted: false };
     const result = await this.provider.send(
       claimed.row.id,
       claimed.row.phoneSnapshot,
@@ -183,6 +184,7 @@ export class MessageDeliveryService {
       }
       await this.persist(row, m);
     });
+    return { dispatchAttempted: true };
   }
   private async applyReport(report: MessageReport, m: EntityManager) {
     const id = report.deliveryId;
@@ -430,23 +432,30 @@ export class MessageDeliveryService {
     });
     if (!prepared.deliveryId) return prepared;
     // Commit first, then await the existing dispatcher. No raw URL leaves this service.
-    await this.dispatch(prepared.deliveryId);
+    const dispatched = await this.dispatch(prepared.deliveryId);
     const row = await db
       .getRepository(MessageDelivery)
       .findOneByOrFail({ id: prepared.deliveryId });
     return {
       ...prepared,
+      ...dispatched,
       status: row.status,
       failureStage: row.failureStage,
       errorCode: row.errorCode,
     };
   }
-  async listForOperations() {
+  async listForOperations(
+    filter: { status?: DeliveryState; deliveryId?: string } = {},
+  ) {
     const db = await this.database.connect();
     return db.transaction("REPEATABLE READ", async (m) => {
-      const rows = await m
-        .getRepository(MessageDelivery)
-        .find({ order: { createdAt: "ASC", id: "ASC" } });
+      const rows = await m.getRepository(MessageDelivery).find({
+        where: {
+          ...(filter.status ? { status: filter.status } : {}),
+          ...(filter.deliveryId ? { id: filter.deliveryId } : {}),
+        },
+        order: { createdAt: "ASC", id: "ASC" },
+      });
       const result = [];
       for (const row of rows) {
         const c = await this.links.context(row.targetId, m);
@@ -506,25 +515,11 @@ export class MessageDeliveryService {
       return result;
     });
   }
-  async pendingForOperations() {
-    const rows = (await this.listForOperations()).filter(
-      (row) => row.status === "PENDING",
-    );
-    return {
-      eligible: rows.filter((row) => !row.holdReasons.length),
-      held: rows.filter((row) => row.holdReasons.length),
-    };
-  }
-  async expireLease(
-    id: string,
-    actor: string,
-    reason: string,
-    dryRun: boolean,
-  ) {
+  async reconcile(id: string, actor: string, reason: string, dryRun = false) {
     if (!actor.trim() || !reason.trim())
       throw new DomainHttpException("VALIDATION_FAILED");
     const db = await this.database.connect();
-    return db.transaction(async (m) => {
+    const prepared = await db.transaction(async (m) => {
       const existing = await m.findOneByOrFail(MessageDelivery, { id });
       await this.lockDeliveryTarget(existing.targetId, m);
       await this.links.context(existing.targetId, m, true);
@@ -549,18 +544,33 @@ export class MessageDeliveryService {
           createdAt: new Date(),
         });
       }
-      return {
-        deliveryId: id,
-        status: row.status,
-        leaseExpired: expired,
-        changed: expired && !dryRun,
-        dryRun,
-      };
+      return { row, leaseExpired: expired, leaseChanged: expired && !dryRun };
     });
-  }
-  async reconcile(id: string, actor: string, reason: string) {
-    const db = await this.database.connect();
-    const row = await db.getRepository(MessageDelivery).findOneByOrFail({ id });
+    const { row } = prepared;
+    const summary = (
+      current: MessageDelivery,
+      matches: number,
+      queried: boolean,
+    ) => ({
+      deliveryId: id,
+      status: current.status,
+      failureStage: current.failureStage,
+      errorCode: current.errorCode,
+      leaseExpired: prepared.leaseExpired,
+      leaseChanged: prepared.leaseChanged,
+      matches,
+      queryAttempted: queried,
+      unresolved:
+        current.status === "UNKNOWN" || current.status === "PROCESSING",
+      dryRun,
+    });
+    // A live lease still belongs to its sender. Pending/held/cancelled rows have
+    // no uncertain provider submission to recover. Dry-run never calls a provider.
+    if (
+      dryRun ||
+      ["PROCESSING", "PENDING", "HELD", "CANCELLED"].includes(row.status)
+    )
+      return summary(row, 0, false);
     const reports = await this.provider.lookup({
       messageId: row.providerMessageId,
       groupId: row.providerGroupId,
@@ -568,7 +578,16 @@ export class MessageDeliveryService {
       startedAt: row.startedAt ?? row.createdAt,
       deliveryId: id,
     });
-    await db.transaction(async (m) => {
+    return db.transaction(async (m) => {
+      await this.lockDeliveryTarget(row.targetId, m);
+      await this.links.context(row.targetId, m, true);
+      const current = await m.findOneOrFail(MessageDelivery, {
+        where: { id },
+        lock: { mode: "pessimistic_write" },
+      });
+      // Do not apply a lookup for an earlier send attempt after an operator retry.
+      if (current.attempts !== row.attempts)
+        throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
       for (const report of reports) await this.applyReport(report, m);
       await m.save(ReservationOperation, {
         id: randomUUID(),
@@ -578,11 +597,11 @@ export class MessageDeliveryService {
         reason,
         createdAt: new Date(),
       });
+      return summary(
+        await m.findOneByOrFail(MessageDelivery, { id }),
+        reports.length,
+        true,
+      );
     });
-    return {
-      deliveryId: id,
-      matches: reports.length,
-      unresolved: !reports.length,
-    };
   }
 }

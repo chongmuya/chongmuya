@@ -8,7 +8,7 @@ import { claimSeedContact } from "./claim-contact.seed.js";
 export const demoRestaurantIds = [1, 2, 3, 4].map(
   (n) => `c0210000-0000-4000-8000-${String(n).padStart(12, "0")}`,
 );
-// Explicit opt-in CLI/test fixture; never invoked during install/build/start/migration.
+// Internal test fixture; the public demo command creates accounts and scenarios together.
 // Fixed IDs + DO NOTHING make reruns safe and preserve operator edits and inquiry references.
 export async function seedDemoRestaurants(db: DataSource) {
   await db.transaction((manager) => seedDemoRestaurantRows(manager));

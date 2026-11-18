@@ -286,10 +286,13 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
   );
   const operations = await app
     .get(MessageDeliveryService)
-    .pendingForOperations();
+    .listForOperations({ status: "PENDING" });
   assert(
-    operations.eligible.some(
-      (r) => r.request_id === one.id && r.recipient_phone === "00000000000",
+    operations.some(
+      (r) =>
+        r.request_id === one.id &&
+        r.recipient_phone === "00000000000" &&
+        !r.holdReasons.length,
     ),
   );
   assert.doesNotMatch(
@@ -384,20 +387,26 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     await db.getRepository(RestaurantContact).update(contact.id, change);
     const pending = await app
       .get(MessageDeliveryService)
-      .pendingForOperations();
+      .listForOperations({ status: "PENDING" });
     assert(
-      !pending.eligible.some(
-        (r) => r.request_id === one.id && r.contact_id === contact.id,
+      !pending.some(
+        (r) =>
+          r.request_id === one.id &&
+          r.contact_id === contact.id &&
+          !r.holdReasons.length,
       ),
     );
-    const held = pending.held.find(
+    const held = pending.find(
       (r) => r.request_id === one.id && r.contact_id === contact.id,
     )!;
     assert(held.holdReasons.includes(reason));
     assert.equal(held.recipient_phone, contact.phone);
     assert(
-      pending.eligible.some(
-        (r) => r.request_id === one.id && r.contact_id !== contact.id,
+      pending.some(
+        (r) =>
+          r.request_id === one.id &&
+          r.contact_id !== contact.id &&
+          !r.holdReasons.length,
       ),
     );
     await db.getRepository(RestaurantContact).save(contact);
@@ -411,9 +420,9 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     );
     const pending = await app
       .get(MessageDeliveryService)
-      .pendingForOperations();
+      .listForOperations({ status: "PENDING" });
     assert(
-      pending.held
+      pending
         .find((r) => r.request_id === one.id && r.contact_id === contact.id)
         ?.holdReasons.includes("CONTACT_DELETED"),
     );

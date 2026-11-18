@@ -316,10 +316,15 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     assert.equal(await contacts.existsBy({ id: contactId }), false);
     const pending = await app
       .get(MessageDeliveryService)
-      .pendingForOperations();
-    assert(!pending.eligible.some((target) => target.request_id === requestId));
+      .listForOperations({ status: "PENDING" });
     assert(
-      pending.held
+      !pending.some(
+        (target) =>
+          target.request_id === requestId && !target.holdReasons.length,
+      ),
+    );
+    assert(
+      pending
         .find((target) => target.request_id === requestId)
         ?.holdReasons.includes("CONTACT_DELETED"),
     );

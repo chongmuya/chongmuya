@@ -307,6 +307,6 @@ DB CLI는 `database-environment`만 검증하고 런타임 환경은 그 정의�
 
 링크 접근은 현재 연락처·동의·공개·문의·generation·만료를 검사하되 로컬 데모 접근을 허용한다. 실제 메시지 경계에는 추가로 데모/가상 수신자 차단을 적용한다. 발송 생성은 공유 생성 함수, 수신자/재발급은 target advisory lock → target row → delivery row 순서다. 웹훅 묶음은 target ID 순서로 잠근다. 문의 생성의 event → 정렬한 restaurant → contact 잠금과 커밋 뒤 awaited dispatch 진입점은 유지한다. Redis/워커는 없다.
 
-운영 조회는 읽기 전용이며 이전 PENDING은 수신자 전환 트랜잭션에서 CANCELLED로 보존한다. UNKNOWN/PROCESSING은 세대와 관계없이 우회하지 않는다. `reservations:pending`은 발송 서비스의 현재 generation/연락처 판정에 위임하는 호환 도구다. 만료 lease의 영속 변경은 실행자·사유가 있는 `expire-lease` 명령만 수행한다.
+운영 조회는 읽기 전용이며 이전 PENDING은 수신자 전환 트랜잭션에서 CANCELLED로 보존한다. UNKNOWN/PROCESSING은 세대와 관계없이 우회하지 않는다. `merchant:operations --action deliveries`가 현재 generation/연락처 판정과 상태 필터를 사용하는 단일 운영 조회다. 터미널은 마스킹된 projection만 출력하며 명시적 비공개 파일 내보내기에만 원래 수신자 이력을 포함한다. 만료 lease의 영속 변경은 실행자·사유가 있는 `reconcile --execute`에서 공급자 결과 확인에 앞서 수행한다. 활성 lease와 불명 결과는 재발송하지 않으며 dry-run은 외부 조회·DB 변경을 하지 않는다.
 
 사장님 문의 목록은 소유 매장을 SQL에서 제한한 projection이며 접수 시각+target ID 커서로 20개씩 조회한다. 웹은 endpoint별 typed API와 필요한 캐시만 갱신한다. 메뉴의 편집 snapshot/baseVersion은 배경 조회로 교체하지 않고 명시적 다시 적용/불러오기로 복구한다. 비회원 accessExpiresAt(최대 1시간)과 linkExpiresAt은 별개다. 접근 만료 시 현재 탭의 입력은 유지하고 재조회/쓰기를 멈춘다. 원래 문자 링크를 다시 열어야 하며 capability는 영구 브라우저 저장소에 보관하지 않는다.

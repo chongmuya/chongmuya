@@ -82,6 +82,7 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
       { DATABASE_URL: "postgresql://localhost/catalog?host=secret-sentinel" },
     ],
     [["restaurants", "--unknown", "secret-sentinel"], {}],
+    [["restaurants-demo"], {}],
     [["restaurants-demo", "--contacts-file", "secret-sentinel"], {}],
     [["restaurants", "--contacts-file", "secret-sentinel"], {}],
   ] as [string[], NodeJS.ProcessEnv][]) {
@@ -152,10 +153,8 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
         result.stdout + result.stderr,
         /00000000000|CLI 테스트 담당자/,
       );
-      assert.equal(run(["restaurants-demo"]).status, 0);
     }
     assert.equal(await restaurants.countBy({ id: In(ids), isDemo: false }), 4);
-    assert.equal(await restaurants.countBy({ isDemo: true }), 4);
     assert.equal(await spaces.countBy({ restaurantId: In(ids) }), 11);
     assert.equal(await menus.countBy({ restaurantId: In(ids) }), 146);
     assert.equal(await contacts.countBy({ restaurantId: In(ids) }), 4);
@@ -248,5 +247,58 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
     JSON.parse(await readFile(path.join(directory, "fresh.links.json"), "utf8"))
       .merchantReplies,
     manifest.merchantReplies,
+  );
+  await cp(
+    new URL("../../../scripts/", import.meta.url),
+    path.join(directory, "scripts"),
+    { recursive: true },
+  );
+  const operations = (args: string[]) =>
+    spawnSync(
+      process.execPath,
+      [path.join(directory, "scripts/merchant-operations.mjs"), ...args],
+      {
+        cwd: directory,
+        env: {
+          ...demoEnv,
+          SOLAPI_SENDER_NUMBER: undefined,
+          RESEND_API_KEY: "re_test_only",
+          RESEND_FROM: "Test <test@example.test>",
+          EMAIL_VERIFICATION_SECRET:
+            "test-email-secret-with-at-least-32-characters",
+        },
+        encoding: "utf8",
+        timeout: 15000,
+      },
+    );
+  const output = path.join(directory, "deliveries.json");
+  const queried = operations([
+    "--action",
+    "deliveries",
+    "--status",
+    "ACCEPTED",
+    "--output",
+    output,
+  ]);
+  assert.equal(queried.status, 0, queried.stderr);
+  assert.match(queried.stdout, /가상 온기홀/);
+  assert.match(queried.stdout, /\*\*\*-\*\*\*\*-/);
+  assert.doesNotMatch(
+    queried.stdout + queried.stderr,
+    /01000000004|00000000000|#token=|Demo1234!/,
+  );
+  const records = JSON.parse(await readFile(output, "utf8"));
+  assert(records.length > 0);
+  assert(records.every((r: { status: string }) => r.status === "ACCEPTED"));
+  assert.equal((await stat(output)).mode & 0o777, 0o600);
+  const savedOutput = await readFile(output, "utf8");
+  assert.equal(
+    operations(["--action", "deliveries", "--output", output]).status,
+    1,
+  );
+  assert.equal(await readFile(output, "utf8"), savedOutput);
+  assert.equal(
+    operations(["--action", "deliveries", "--status", "NOT_A_STATUS"]).status,
+    1,
   );
 });
