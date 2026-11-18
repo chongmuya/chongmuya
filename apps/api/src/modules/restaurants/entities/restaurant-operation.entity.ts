@@ -2,7 +2,9 @@ import { Column, Entity, ForeignKey, PrimaryColumn } from "typeorm";
 @Entity("restaurant_operations")
 export class RestaurantOperation {
   @PrimaryColumn("uuid") id!: string;
-  @ForeignKey("restaurants", "id")
+  @ForeignKey("restaurants", "id", {
+    name: "restaurant_operations_restaurant_id_fkey",
+  })
   @Column({ type: "uuid", name: "restaurant_id" })
   restaurantId!: string;
   @Column({ type: "varchar", length: 40 }) action!: string;

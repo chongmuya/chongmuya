@@ -4,22 +4,27 @@ import {
   Entity,
   ForeignKey,
   Index,
+  Unique,
   PrimaryColumn,
 } from "typeorm";
 import type { DeliveryState } from "../types/merchant-reply.js";
 @Entity("message_deliveries")
-@Index(
-  "message_deliveries_logical_unique",
-  ["targetId", "purpose", "contactId", "channel"],
-  { unique: true },
-)
+@Unique("message_deliveries_logical_unique", [
+  "targetId",
+  "purpose",
+  "contactId",
+  "channel",
+])
+@Index("message_deliveries_provider_id", ["providerMessageId"])
 @Check(
   "message_deliveries_status_check",
   "status IN ('PENDING','PROCESSING','ACCEPTED','DELIVERED','FAILED','UNKNOWN','HELD','CANCELLED')",
 )
 export class MessageDelivery {
   @PrimaryColumn("uuid") id!: string;
-  @ForeignKey("reservation_request_targets", "id")
+  @ForeignKey("reservation_request_targets", "id", {
+    name: "message_deliveries_target_id_fkey",
+  })
   @Column({ type: "uuid", name: "target_id" })
   targetId!: string;
   @Column({ type: "varchar", length: 32, default: "NEW_INQUIRY" })

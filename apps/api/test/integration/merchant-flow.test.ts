@@ -341,6 +341,11 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     }),
   ]);
   assert.deepEqual(changedReplies.map((r) => r.status).sort(), [200, 409]);
+  // Replaying a lost old response must not grant the version of someone else's newer edit.
+  const oldReplay = await json<{ version: number }>(
+    await publicCall(target.id, "POST", { reply }),
+  );
+  assert.equal(oldReplay.version, 1);
   const decline = {
     ...reply,
     requestKey: randomUUID(),

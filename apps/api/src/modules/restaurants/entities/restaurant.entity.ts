@@ -10,6 +10,15 @@ import {
 
 @Entity("restaurants")
 @Index("restaurants_public_region", ["published", "region"])
+@Index("restaurants_owner", ["ownerAccountId"])
+@Check(
+  "restaurants_minimum_guests_check",
+  "minimum_guests IS NULL OR minimum_guests >= 0",
+)
+@Check(
+  "restaurants_policies_check",
+  "policies IS NULL OR jsonb_typeof(policies)='object'",
+)
 @Check(
   "restaurants_capacity_check",
   '"max_capacity" IS NULL OR "max_capacity" > 0',
@@ -22,7 +31,7 @@ import {
 export class Restaurant {
   @PrimaryColumn("uuid", { primaryKeyConstraintName: "restaurants_pkey" })
   id!: string;
-  @ForeignKey("accounts", "id")
+  @ForeignKey("accounts", "id", { name: "restaurants_owner_account_id_fkey" })
   @Column({ type: "uuid", name: "owner_account_id", nullable: true })
   ownerAccountId!: string | null;
   @Column({ type: "integer", default: 1 }) version!: number;

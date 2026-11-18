@@ -1,7 +1,10 @@
-import { Column, Entity, ForeignKey, PrimaryColumn } from "typeorm";
+import { Check, Column, Entity, ForeignKey, PrimaryColumn } from "typeorm";
 @Entity("merchant_reply_links")
+@Check("merchant_reply_links_generation_check", "generation > 0")
 export class MerchantReplyLink {
-  @ForeignKey("reservation_request_targets", "id")
+  @ForeignKey("reservation_request_targets", "id", {
+    name: "merchant_reply_links_target_id_fkey",
+  })
   @PrimaryColumn("uuid", { name: "target_id" })
   targetId!: string;
   @Column({ type: "uuid", name: "contact_id" }) contactId!: string;

@@ -1,19 +1,27 @@
-import { Column, Entity, ForeignKey, Index, PrimaryColumn } from "typeorm";
+import {
+  Check,
+  Column,
+  Entity,
+  ForeignKey,
+  Unique,
+  PrimaryColumn,
+} from "typeorm";
 import type {
   RegistrationData,
   VerifiedAddress,
 } from "../types/registration.js";
 @Entity("restaurant_drafts")
-@Index("restaurant_drafts_account_slot", ["accountId", "slot"], {
-  unique: true,
-})
+@Unique("restaurant_drafts_account_slot", ["accountId", "slot"])
+@Check("restaurant_drafts_step_check", "step BETWEEN 0 AND 5")
 export class RestaurantDraft {
   @PrimaryColumn("uuid") id!: string;
-  @ForeignKey("accounts", "id")
+  @ForeignKey("accounts", "id", { name: "restaurant_drafts_account_id_fkey" })
   @Column({ type: "uuid", name: "account_id" })
   accountId!: string;
   @Column({ type: "varchar", length: 36 }) slot!: string;
-  @ForeignKey("restaurants", "id")
+  @ForeignKey("restaurants", "id", {
+    name: "restaurant_drafts_restaurant_id_fkey",
+  })
   @Column({ type: "uuid", name: "restaurant_id", nullable: true })
   restaurantId!: string | null;
   @Column({ type: "integer", default: 1 }) version!: number;

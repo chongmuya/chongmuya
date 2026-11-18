@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { ApiError } from "@/shared/http/api-error";
 import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { ownerWrite, ownerKey } from "../api/owner.api";
@@ -19,17 +20,32 @@ export function useDraftSave(
     mutationKey: [...ownerKey(accountId), "draft-save", draft.id],
     retry: false,
     gcTime: 0,
-    mutationFn: (input: {
+    mutationFn: async (input: {
       data: RegistrationData;
       step: number;
       addressId?: string;
-    }) =>
-      ownerWrite<RestaurantDraft>(
-        request,
-        `drafts/${draft.id}`,
-        { ...input, version: version.current },
-        "PUT",
-      ),
+    }) => {
+      try {
+        return await ownerWrite<RestaurantDraft>(
+          request,
+          `drafts/${draft.id}`,
+          { ...input, version: version.current },
+          "PUT",
+        );
+      } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.code === "RESTAURANT_VERSION_CONFLICT"
+        ) {
+          const current = await request<RestaurantDraft>(
+            `/api/v1/owner/drafts/${draft.id}`,
+          );
+          // The final submit may have committed even when its response was lost.
+          if (current.submitted) return current;
+        }
+        throw error;
+      }
+    },
   });
   const mutateAsync = mutation.mutateAsync;
   const save = useCallback(

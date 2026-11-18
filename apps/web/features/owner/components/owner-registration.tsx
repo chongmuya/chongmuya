@@ -124,12 +124,19 @@ export function OwnerRegistration({
   const persist = async (nextStep: number) => {
     clearTimeout(debounce.current);
     const saved = await saveDraft(form.getValues(), nextStep, addressId);
-    if (active.current) setStep(nextStep);
+    if (active.current) {
+      setStep(nextStep);
+      if (saved.submitted && saved.restaurantId) {
+        form.reset(saved.data);
+        setComplete(saved.restaurantId);
+      }
+    }
     return saved;
   };
   const next = async () => {
     try {
       const saved = await persist(step);
+      if (saved.submitted) return;
       if (step === 0) {
         if (!saved.selectedAddress) {
           setSearchNotice("주소 검색 결과를 선택해 주세요.");

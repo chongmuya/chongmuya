@@ -207,7 +207,7 @@ export class MerchantRepliesService {
           throw new DomainHttpException("MERCHANT_REPLY_CONFLICT");
         return {
           response: replyView(existing),
-          version: c.target.replyVersion,
+          version: existing.revision,
         };
       }
       if (c.target.replyVersion !== input.expectedVersion)
