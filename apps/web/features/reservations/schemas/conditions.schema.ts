@@ -14,7 +14,7 @@ export const conditionsSchema = z
       .refine((v) => Number(v) <= 100000, "100,000명 이하로 입력해 주세요."),
     region: z.string().trim().min(1, "희망 지역을 입력해 주세요.").max(80),
     seating: z.enum(["CLOSE", "SEPARATED", "ANY"]),
-    space: z.enum(["HALL", "FLOOR", "WHOLE", "ANY"]),
+    space: z.enum(["HALL", "ROOM", "FLOOR", "WHOLE", "ANY"]),
     seatingImportance: z.enum(["REQUIRED", "PREFERRED"]),
     spaceImportance: z.enum(["REQUIRED", "PREFERRED"]),
     budgetBasis: z.enum(["PER_PERSON", "TOTAL"]),

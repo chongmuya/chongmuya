@@ -1,7 +1,7 @@
 export type RestaurantSpaceDto = {
   id: string;
   label: string;
-  kind: "HALL" | "FLOOR" | "WHOLE";
+  kind: "HALL" | "ROOM" | "FLOOR" | "WHOLE";
   availability: "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
   togetherSeating: "YES" | "NO" | "UNKNOWN";
   capacity: number | null;

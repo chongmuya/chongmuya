@@ -1,15 +1,16 @@
 import type { DataSource } from "typeorm";
-import { Restaurant } from "./entities/restaurant.entity.js";
-import { RestaurantSpace } from "./entities/restaurant-space.entity.js";
-import { RestaurantMenu } from "./entities/restaurant-menu.entity.js";
-import { RestaurantContact } from "./entities/restaurant-contact.entity.js";
+import { Restaurant } from "../../modules/restaurants/entities/restaurant.entity.js";
+import { RestaurantSpace } from "../../modules/restaurants/entities/restaurant-space.entity.js";
+import { RestaurantMenu } from "../../modules/restaurants/entities/restaurant-menu.entity.js";
+import { RestaurantContact } from "../../modules/restaurants/entities/restaurant-contact.entity.js";
+import { RequestTarget } from "../../modules/reservations/entities/request-target.entity.js";
 
 export const demoRestaurantIds = [1, 2, 3, 4].map(
   (n) => `c0210000-0000-4000-8000-${String(n).padStart(12, "0")}`,
 );
 // Explicit opt-in CLI/test fixture; never invoked during install/build/start/migration.
 // Fixed IDs + DO NOTHING make reruns safe and preserve operator edits and inquiry references.
-export async function seedDevelopmentRestaurants(db: DataSource) {
+export async function seedDemoRestaurants(db: DataSource) {
   await db.transaction(async (manager) => {
     for (const [i, id] of demoRestaurantIds.entries()) {
       const unknown = i === 2;
@@ -127,12 +128,14 @@ export async function seedDevelopmentRestaurants(db: DataSource) {
         })
         .orIgnore()
         .execute();
+      const contactId = `c0240000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`;
+      if (await manager.existsBy(RequestTarget, { contactId })) continue;
       await manager
         .createQueryBuilder()
         .insert()
         .into(RestaurantContact)
         .values({
-          id: `c0240000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+          id: contactId,
           restaurantId: id,
           name: "가상 운영 담당자",
           phone: "00000000000",

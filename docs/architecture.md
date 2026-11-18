@@ -70,6 +70,8 @@ apps/api/
       guards/ / strategies/ / decorators/
       repositories/ / types/ / utils/ / exceptions/
     database/           TypeORM 옵션·CLI DataSource·연결 생명주기·오류 분류
+      migrations/       명시적으로 적용하는 스키마 변경
+      seeds/            독립 CLI·시드 함수·입력 데이터
       migrations/       인증·행사·계정 확장·GroupRoster 데이터 보존 migration
   test/                 설정·HTTP 계약 테스트와 DB 통합 테스트
 tools/                  ESLint 의존 경계 규칙과 회귀 테스트
@@ -259,13 +261,17 @@ Entity는 `modules/<업무>/entities/*.entity.ts`에 실제로 필요한 모델�
 
 TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수 있으므로 대상 DB를 확인합니다. 운영 DB reset/drop은 수행하지 않습니다.
 
+### 시드 실행 경계
+
+`src/database/seeds`의 독립 CLI에서 실행 옵션·로컬 DB 연결·종료를 처리하고, 매장/가상 시드는 각각 하나의 트랜잭션으로 저장한다. 시드는 Entity와 공통 DB 옵션만 참조하며 AppModule·업무 Service·발송 provider를 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않도록 ESLint로 검사한다. 공개 JSON만 빌드하며, 같은 data 폴더의 `*.private.json`은 Git·빌드에서 제외하고 명시적 파일 옵션으로 읽는다. 실행 방법과 재실행 정책은 [매장 시드](restaurant-seed.md)를 따른다.
+
 ## 의존 경계 검사와 CI
 
 ESLint 로컬 규칙으로 의존 경계를 검사합니다. 상대 경로·웹 `@/` 별칭·`@chongmuya/` 패키지 경로의 정적 import/export, 문자열 리터럴 dynamic import/require를 검사합니다.
 
 - 앱 간 직접 소스 import 금지.
 - 웹 shared → features/app, features → app 역방향 금지. app과 다른 feature는 client/types/server 공개 진입점만 사용하며, feature 간 순환 의존은 타입 참조까지 검사한다.
-- API common/config/database → 업무 modules 금지. 업무 module에서 bootstrap·app.module 역참조 금지.
+- API common/config/database 실행 코드 → 업무 modules 금지. 독립 실행하는 database/seeds만 Entity와 공통 DB 옵션을 참조하며, 서버 코드 → seeds 및 seeds → 업무 Service·AppModule 참조는 금지. 업무 module에서 bootstrap·app.module 역참조 금지.
 - API 업무 모듈 간 `.module` 및 명시적 공개 Service·Guard·타입·데코레이터 import를 허용합니다. `tools/eslint-boundaries.mjs`의 `apiPublicImports` 목록은 실제 Nest exports와 함께 관리합니다. 모든 `*.service`를 무조건 공개하지 않으며 내부 Repository·Entity·미공개 Service와 module 재수출을 차단합니다. 소스 정적 import/export 그래프의 순환은 테스트에서 검사하고, 실제 DI 연결은 HTTP/통합 테스트로 검증합니다. 편의상 forwardRef·전역 모듈을 추가하지 않습니다.
 
 계산된 dynamic import, 새로 추가한 별칭, 런타임 DI 의존 관계는 정적 규칙이 모두 검사하지 못합니다. 우회 경로를 만들지 않고 새 별칭 도입 시 규칙과 테스트를 함께 수정합니다. 타입 전용 import도 같은 경계를 지킵니다. ESLint 오류는 내부 파일 직접 참조, feature 순환 의존, 클라이언트의 서버 전용 참조를 구분해 표시합니다.

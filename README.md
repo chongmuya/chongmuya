@@ -72,7 +72,7 @@ HttpOnly 쿠키, CSRF Origin·전용 헤더, Refresh 회전 정책은 [인증 �
 ```text
 apps/web/   app → features → shared
 apps/api/   bootstrap, config, common/http, modules, database
-            Entity는 각 업무 모듈, migration은 src/database/migrations
+            Entity는 각 업무 모듈, migration은 src/database/migrations, 시드는 src/database/seeds
 tools/     ESLint 의존 경계 규칙과 검사
 docs/      아키텍처·인증·협업 문서
 ```
@@ -126,5 +126,6 @@ Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 
 
 - [아키텍처](docs/architecture.md): 책임·의존 방향·API·캐시·오류·migration
 - [인증 기준](docs/authentication.md): Passport·쿠키·CSRF·세션·개인 자원 접근
+- [실제 매장 시드](docs/restaurant-seed.md): 실제 매장 4곳·룸·메뉴·비공개 담당자 입력
 - [협업 규칙](docs/CONTRIBUTING.md): 커밋·브랜치·PR과 검증
 - [PR 템플릿](.github/pull_request_template.md)

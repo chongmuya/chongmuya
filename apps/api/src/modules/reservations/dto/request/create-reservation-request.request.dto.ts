@@ -28,8 +28,8 @@ export class InquiryConditionsInput {
   @IsInt() @Min(1) @Max(100000) expectedGuests!: number;
   @Transform(trim) @IsString() @Length(1, 80) region!: string;
   @IsIn(["CLOSE", "SEPARATED", "ANY"]) seating!: "CLOSE" | "SEPARATED" | "ANY";
-  @IsIn(["HALL", "FLOOR", "WHOLE", "ANY"]) space!:
-    "HALL" | "FLOOR" | "WHOLE" | "ANY";
+  @IsIn(["HALL", "ROOM", "FLOOR", "WHOLE", "ANY"]) space!:
+    "HALL" | "ROOM" | "FLOOR" | "WHOLE" | "ANY";
   @IsOptional() @IsIn(["REQUIRED", "PREFERRED"]) seatingImportance?:
     "REQUIRED" | "PREFERRED" | null;
   @IsOptional() @IsIn(["REQUIRED", "PREFERRED"]) spaceImportance?:

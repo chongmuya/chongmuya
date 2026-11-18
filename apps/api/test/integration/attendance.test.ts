@@ -8,9 +8,9 @@ import type {
   ParticipantDto,
 } from "../../src/modules/events/dto/response/attendance.response.dto.js";
 import {
-  seedDevelopmentRestaurants,
+  seedDemoRestaurants,
   demoRestaurantIds,
-} from "../../src/modules/restaurants/development-seed.js";
+} from "../../src/database/seeds/restaurants-demo.seed.js";
 import { AttendanceResponse } from "../../src/modules/events/entities/attendance-response.entity.js";
 import { AttendanceRound } from "../../src/modules/events/entities/attendance-round.entity.js";
 import { AuthAttempt } from "../../src/modules/auth/entities/auth-attempt.entity.js";
@@ -142,7 +142,7 @@ test("event roster imports preserve 20 identities; round responses, public first
     await call(`groups/${group.id}/members`, owner),
   );
   assert.equal(groupRoster[0].phoneLast4, null);
-  await seedDevelopmentRestaurants(db);
+  await seedDemoRestaurants(db);
   const inquiry = await json<{
     id: string;
     snapshot: { expectedGuests: number };

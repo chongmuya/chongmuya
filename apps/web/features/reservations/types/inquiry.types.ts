@@ -3,7 +3,7 @@ export type InquiryConditions = {
   expectedGuests: number;
   region: string;
   seating: "CLOSE" | "SEPARATED" | "ANY";
-  space: "HALL" | "FLOOR" | "WHOLE" | "ANY";
+  space: "HALL" | "ROOM" | "FLOOR" | "WHOLE" | "ANY";
   seatingImportance: "REQUIRED" | "PREFERRED" | null;
   spaceImportance: "REQUIRED" | "PREFERRED" | null;
   budgetBasis: "PER_PERSON" | "TOTAL" | null;

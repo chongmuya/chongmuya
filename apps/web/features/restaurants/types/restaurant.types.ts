@@ -1,7 +1,7 @@
 export type RestaurantSpace = {
   id: string;
   label: string;
-  kind: "HALL" | "FLOOR" | "WHOLE";
+  kind: "HALL" | "ROOM" | "FLOOR" | "WHOLE";
   availability: "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
   togetherSeating: "YES" | "NO" | "UNKNOWN";
   capacity: number | null;
@@ -42,5 +42,5 @@ export type Restaurant = {
 export type RestaurantConditions = {
   expectedGuests: number;
   seating: "CLOSE" | "SEPARATED" | "ANY";
-  space: "HALL" | "FLOOR" | "WHOLE" | "ANY";
+  space: "HALL" | "ROOM" | "FLOOR" | "WHOLE" | "ANY";
 };

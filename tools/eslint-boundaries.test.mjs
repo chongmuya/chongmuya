@@ -240,6 +240,60 @@ test("boundary diagnostics distinguish internal imports, cycles and server-only 
   }
 });
 
+test("offline seeds can use entities but remain isolated from runtime services", async () => {
+  const eslint = new ESLint({ cwd: path.join(root, "apps/api") });
+  const cases = [
+    [
+      "database/seeds/probe.ts",
+      "../../modules/restaurants/entities/restaurant.entity.js",
+      false,
+    ],
+    ["database/seeds/probe.ts", "../database-options.js", false],
+    ["database/seeds/probe.ts", "./restaurants.seed.js", false],
+    [
+      "database/seeds/probe.ts",
+      "../../modules/restaurants/restaurants.service.js",
+      true,
+    ],
+    [
+      "database/seeds/probe.ts",
+      "../../modules/restaurants/restaurants.module.js",
+      true,
+    ],
+    ["database/seeds/probe.ts", "../../app.module.js", true],
+    ["database/seeds/probe.ts", "../database.service.js", true],
+    [
+      "database/probe.ts",
+      "../modules/restaurants/entities/restaurant.entity.js",
+      true,
+    ],
+    [
+      "modules/restaurants/probe.ts",
+      "../../database/seeds/restaurants.seed.js",
+      true,
+    ],
+    [
+      "modules/restaurants/probe.ts",
+      "../../database/seeds/data/restaurants.json",
+      true,
+    ],
+    ["database/probe.ts", "./seeds/restaurants.seed.js", true],
+    ["app.module.ts", "./database/seeds/run-seed.js", true],
+  ];
+  for (const [file, specifier, blocked] of cases) {
+    const [result] = await eslint.lintText(`import "${specifier}";`, {
+      filePath: path.join(root, "apps/api/src", file),
+    });
+    assert.equal(
+      result.messages.some(
+        (message) => message.ruleId === "boundaries/imports",
+      ),
+      blocked,
+      `${file} → ${specifier}`,
+    );
+  }
+});
+
 test("feature cycles are rejected across multiple edges, including type dependencies", async () => {
   const { hasDependencyPath } = await import("./eslint-boundaries.mjs");
   const graph = new Map([
