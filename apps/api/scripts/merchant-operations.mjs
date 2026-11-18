@@ -6,7 +6,6 @@ import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../dist/app.module.js";
 import { RestaurantManagementService } from "../dist/modules/restaurants/restaurant-management.service.js";
 import { MessageDeliveryService } from "../dist/modules/reservations/message-delivery.service.js";
-import { MerchantLinksService } from "../dist/modules/reservations/merchant-links.service.js";
 import { MerchantRepliesService } from "../dist/modules/reservations/merchant-replies.service.js";
 config({ quiet: true });
 let app;
@@ -125,8 +124,8 @@ try {
       : { deliveryId: id, dryRun: true };
   } else if (v.action === "regenerate-link")
     result = await app
-      .get(MerchantLinksService)
-      .regenerate(uuid(v.target), v.actor, v.reason, !v.execute);
+      .get(MessageDeliveryService)
+      .regenerateLink(uuid(v.target), v.actor, v.reason, !v.execute);
   else if (v.action === "change-recipient")
     result = await app
       .get(MessageDeliveryService)

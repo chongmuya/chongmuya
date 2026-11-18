@@ -53,14 +53,34 @@ export function ReplyWorkspace({
   access: ReplyAccess;
 }) {
   const q = useQuery(replyQuery(targetId, access));
-  if (q.isError)
+  if (q.isError && !q.data)
     return (
       <ErrorState retry={() => void q.refetch()}>
         {safeErrorMessage(q.error)}
       </ErrorState>
     );
   if (!q.data) return <LoadingState>예약 문의 확인 중…</LoadingState>;
-  return <ReplyForm inquiry={q.data} access={access} />;
+  return (
+    <>
+      {q.isError && (
+        <div
+          role="alert"
+          className="mb-4 rounded-control border border-field p-4"
+        >
+          <p>최신 문의를 불러오지 못했어요. 작성 중인 답변은 유지됩니다.</p>
+          <p className="mt-2 text-sm">{safeErrorMessage(q.error)}</p>
+          <Button
+            variant="outline"
+            className="mt-3"
+            onClick={() => void q.refetch()}
+          >
+            다시 확인
+          </Button>
+        </div>
+      )}
+      <ReplyForm inquiry={q.data} access={access} />
+    </>
+  );
 }
 function ReplyForm({
   inquiry: q,

@@ -54,6 +54,12 @@ export const policiesSchema = z
   })
   .strict();
 export type RestaurantPolicies = z.infer<typeof policiesSchema>;
+export type PolicyDescriptionKey =
+  "operatingHours" | "bookingPolicy" | "depositPolicy" | "menuPolicy";
+// Server-owned provenance inside the existing JSONB; never accepted from registration inputs.
+export type StoredRestaurantPolicies = RestaurantPolicies & {
+  descriptionOverrides?: PolicyDescriptionKey[];
+};
 export const spaceInputSchema = z
   .object({
     id: z.uuid().optional(),

@@ -1,4 +1,4 @@
-import type { RestaurantPolicies } from "../types/registration.js";
+import type { StoredRestaurantPolicies } from "../types/registration.js";
 import {
   Check,
   Column,
@@ -69,7 +69,7 @@ export class Restaurant {
   @Column({ type: "integer", name: "minimum_guests", nullable: true })
   minimumGuests!: number | null;
   @Column({ type: "jsonb", nullable: true })
-  policies!: RestaurantPolicies | null;
+  policies!: StoredRestaurantPolicies | null;
   @Column({ type: "varchar", length: 100 }) name!: string;
   @Column({ type: "varchar", length: 240 }) address!: string;
   @Column({ type: "varchar", length: 80 }) region!: string;

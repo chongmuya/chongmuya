@@ -21,7 +21,11 @@ import { RestaurantMenu } from "./entities/restaurant-menu.entity.js";
 import { RestaurantOperation } from "./entities/restaurant-operation.entity.js";
 import { RestaurantsService } from "./restaurants.service.js";
 import { GeocodingProvider } from "./providers/geocoding.provider.js";
-import { normalizeRestaurantText as norm } from "./lib/restaurant-policy.js";
+import {
+  normalizeRestaurantText as norm,
+  policyValues,
+  savePolicies,
+} from "./lib/restaurant-policy.js";
 import {
   emptyRegistration,
   registrationSchema,
@@ -88,84 +92,7 @@ export class RestaurantManagementService {
       const r = restaurantId
         ? await this.restaurants.assertOwned(user.id, restaurantId, m, true)
         : null;
-      const data = emptyRegistration();
-      let address: RestaurantDraft["selectedAddress"] = null;
-      let proof: RestaurantDraft["verifiedContact"] = null;
-      if (r) {
-        const contact = await m.findOne(RestaurantContact, {
-          where: { restaurantId: r.id },
-          order: { active: "DESC", id: "ASC" },
-        });
-        const spaces = await m.findBy(RestaurantSpace, { restaurantId: r.id });
-        Object.assign(data, {
-          name: r.name,
-          branchName: r.branchName ?? "",
-          addressQuery: r.baseAddress ?? r.address,
-          detailAddress: r.baseAddress ? (r.detailAddress ?? "") : "",
-          category: ["한식", "호프·주점", "기타 음식점"].includes(
-            r.category ?? "",
-          )
-            ? r.category
-            : "기타 음식점",
-          phone: contact?.phone ?? "",
-          receiveConsent: !!contact?.active && !!contact.requestConsentAt,
-          maxCapacity: r.maxCapacity,
-          minimumGuests: {
-            kind:
-              r.minimumGuests === null
-                ? "UNKNOWN"
-                : r.minimumGuests === 0
-                  ? "NONE"
-                  : "AT_LEAST",
-            value: r.minimumGuests,
-          },
-          spaces: spaces.map(
-            ({
-              id,
-              label,
-              kind,
-              availability,
-              togetherSeating,
-              capacity,
-              minGuests,
-              minSpend,
-              separateFee,
-              conditions,
-            }) => ({
-              id,
-              label,
-              kind,
-              availability,
-              togetherSeating,
-              capacity,
-              minGuests,
-              minSpend,
-              separateFee,
-              conditions,
-            }),
-          ),
-          policies: r.policies ?? data.policies,
-        });
-        address = {
-          id: randomUUID(),
-          query: data.addressQuery,
-          baseAddress: data.addressQuery,
-          roadAddress: r.baseAddress ?? "",
-          jibunAddress: r.jibunAddress ?? "",
-          latitude: r.latitude,
-          longitude: r.longitude,
-          region: r.region,
-          source: "existing",
-        };
-        // Existing operational contacts retain their provenance; a changed number needs new proof.
-        if (contact)
-          proof = {
-            phone: contact.phone,
-            verifiedAt:
-              contact.requestConsentAt?.toISOString() ??
-              new Date().toISOString(),
-          };
-      }
+      const { data, address, proof } = await this.contents(r, m);
       const draft = await m.save(RestaurantDraft, {
         id: previous?.id ?? randomUUID(),
         accountId: user.id,
@@ -183,11 +110,92 @@ export class RestaurantManagementService {
       return this.view(draft);
     });
   }
+  private async contents(r: Restaurant | null, m: EntityManager) {
+    const data = emptyRegistration();
+    let address: RestaurantDraft["selectedAddress"] = null;
+    let proof: RestaurantDraft["verifiedContact"] = null;
+    if (r) {
+      const contact = await m.findOne(RestaurantContact, {
+        where: { restaurantId: r.id },
+        order: { active: "DESC", id: "ASC" },
+      });
+      const spaces = await m.findBy(RestaurantSpace, { restaurantId: r.id });
+      Object.assign(data, {
+        name: r.name,
+        branchName: r.branchName ?? "",
+        addressQuery: r.baseAddress ?? r.address,
+        detailAddress: r.baseAddress ? (r.detailAddress ?? "") : "",
+        category: ["한식", "호프·주점", "기타 음식점"].includes(
+          r.category ?? "",
+        )
+          ? r.category
+          : "기타 음식점",
+        phone: contact?.phone ?? "",
+        receiveConsent: !!contact?.active && !!contact.requestConsentAt,
+        maxCapacity: r.maxCapacity,
+        minimumGuests: {
+          kind:
+            r.minimumGuests === null
+              ? "UNKNOWN"
+              : r.minimumGuests === 0
+                ? "NONE"
+                : "AT_LEAST",
+          value: r.minimumGuests,
+        },
+        spaces: spaces.map(
+          ({
+            id,
+            label,
+            kind,
+            availability,
+            togetherSeating,
+            capacity,
+            minGuests,
+            minSpend,
+            separateFee,
+            conditions,
+          }) => ({
+            id,
+            label,
+            kind,
+            availability,
+            togetherSeating,
+            capacity,
+            minGuests,
+            minSpend,
+            separateFee,
+            conditions,
+          }),
+        ),
+        policies: r.policies ? policyValues(r.policies) : data.policies,
+      });
+      address = {
+        id: randomUUID(),
+        query: data.addressQuery,
+        baseAddress: data.addressQuery,
+        roadAddress: r.baseAddress ?? "",
+        jibunAddress: r.jibunAddress ?? "",
+        latitude: r.latitude,
+        longitude: r.longitude,
+        region: r.region,
+        source: "existing",
+      };
+      // Existing operational contacts retain their provenance; a changed number needs new proof.
+      if (contact)
+        proof = {
+          phone: contact.phone,
+          verifiedAt:
+            contact.requestConsentAt?.toISOString() ?? new Date().toISOString(),
+        };
+    }
+    return { data, address, proof };
+  }
   private view(d: RestaurantDraft) {
     return {
       id: d.id,
       restaurantId: d.restaurantId,
       version: d.version,
+      restaurantVersion: d.restaurantVersion,
       step: d.step,
       data: d.data,
       selectedAddress: d.selectedAddress,
@@ -211,7 +219,20 @@ export class RestaurantManagementService {
   }
   async getDraft(user: AuthUser, id: string) {
     const db = await this.database.connect();
-    return this.view(await this.draft(user, id, db.manager));
+    const d = await this.draft(user, id, db.manager);
+    const r = d.restaurantId
+      ? await this.restaurants.assertOwned(user.id, d.restaurantId, db.manager)
+      : null;
+    return {
+      ...this.view(d),
+      currentRestaurant: r
+        ? {
+            version: r.version,
+            published: r.published,
+            data: (await this.contents(r, db.manager)).data,
+          }
+        : null,
+    };
   }
   async saveDraft(user: AuthUser, id: string, input: DraftSaveInput) {
     const parsed = registrationSchema.safeParse(input.data);
@@ -221,6 +242,19 @@ export class RestaurantManagementService {
       const d = await this.draft(user, id, m, true);
       if (d.version !== input.version || d.submittedAt)
         throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
+      // Explicit confirmation of the latest restaurant; never silently rebase an edit.
+      if (input.restaurantVersion !== undefined) {
+        if (!d.restaurantId) throw new DomainHttpException("VALIDATION_FAILED");
+        const r = await this.restaurants.assertOwned(
+          user.id,
+          d.restaurantId,
+          m,
+          true,
+        );
+        if (r.version !== input.restaurantVersion)
+          throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
+        d.restaurantVersion = r.version;
+      }
       if (
         d.selectedAddress &&
         parsed.data.addressQuery !== d.selectedAddress.baseAddress
@@ -404,13 +438,11 @@ export class RestaurantManagementService {
         longitude: address.longitude,
         maxCapacity: data.maxCapacity,
         minimumGuests: data.minimumGuests.value,
-        policies:
-          previous &&
-          !previous.policies &&
-          JSON.stringify(data.policies) ===
-            JSON.stringify(emptyRegistration().policies)
-            ? null
-            : data.policies,
+        policies: savePolicies(
+          data.policies,
+          previous?.policies ?? null,
+          !previous,
+        ),
       });
       if (!previous)
         Object.assign(row, {
@@ -486,10 +518,20 @@ export class RestaurantManagementService {
     );
     return {
       version: r.version,
-      menus: await db.getRepository(RestaurantMenu).find({
-        where: { restaurantId },
-        order: { position: "ASC", id: "ASC" },
-      }),
+      menus: (
+        await db.getRepository(RestaurantMenu).find({
+          where: { restaurantId },
+          order: { position: "ASC", id: "ASC" },
+        })
+      ).map(({ id, name, kind, price, unit, available, position }) => ({
+        id,
+        name,
+        kind,
+        price,
+        unit,
+        available,
+        position,
+      })),
     };
   }
   async saveMenu(

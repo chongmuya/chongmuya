@@ -14,6 +14,7 @@ import type { DeliveryState } from "../types/merchant-reply.js";
   "purpose",
   "contactId",
   "channel",
+  "linkGeneration",
 ])
 @Index("message_deliveries_provider_id", ["providerMessageId"])
 @Check(

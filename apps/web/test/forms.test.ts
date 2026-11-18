@@ -1,4 +1,10 @@
 import "./support/dom";
+import { OwnerMenus } from "../features/owner/components/owner-menus";
+import { OwnerRegistration } from "../features/owner/components/owner-registration";
+import { emptyRegistration } from "../features/owner/schemas/registration.schema";
+import type { RestaurantDraft } from "../features/owner/types/owner.types";
+import { ReplyWorkspace } from "../features/merchant-replies/components/reply-workspace";
+import type { MerchantInquiry } from "../features/merchant-replies/types/reply.types";
 import { RecoveryScreen } from "../features/auth/components/recovery/recovery-screen";
 import { KakaoCompleteScreen } from "../features/auth/components/kakao-complete-screen";
 import { KakaoConnection } from "../features/auth/components/kakao-connection";
@@ -2008,5 +2014,306 @@ test("home preserves the selected group and never falls back to personal creatio
     }
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+const merchantAccount = {
+  id: "752fb868-6dc0-4ef8-8f4a-0ed7049ff010",
+  accountType: "owner" as const,
+  email: "owner@example.test",
+  name: "테스트 사장님",
+  nickname: null,
+  phone: "01012345678",
+  phoneVerifiedAt: "2026-01-01T00:00:00Z",
+  emailVerifiedAt: "2026-01-01T00:00:00Z",
+};
+test("existing owner menu response fields cannot leak into edit input; edit and stop sale persist", async () => {
+  const menu = {
+    id: crypto.randomUUID(),
+    restaurantId: crypto.randomUUID(),
+    name: "기존 메뉴",
+    kind: "REGULAR",
+    price: null,
+    unit: "1인분",
+    available: true,
+    position: 0,
+  };
+  let version = 1;
+  let written: Record<string, unknown> | undefined;
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "PUT") {
+      const body = JSON.parse(String(options.body));
+      assert.equal(body.version, version);
+      assert.equal(body.menu.restaurantId, undefined);
+      written = body.menu;
+      Object.assign(menu, body.menu);
+      return { version: ++version } as T;
+    }
+    return { version, menus: [menu] } as T;
+  };
+  const view = await render(
+    createElement(OwnerMenus, {
+      account: merchantAccount,
+      request,
+      restaurantId: menu.restaurantId,
+      onNavigate: () => {},
+    }),
+  );
+  try {
+    await until(() => assert.match(view.container.textContent!, /기존 메뉴/));
+    await click(view.container, "수정");
+    await fill(view.container, "name", "수정 메뉴");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[name="available"]')!
+        .click(),
+    );
+    await submit(view.container);
+    await until(() => assert.equal(written?.available, false));
+    assert.equal(written?.name, "수정 메뉴");
+    assert.equal(written?.id, menu.id);
+    await click(view.container, "수정");
+    await fill(view.container, "name", "다시 수정");
+    await submit(view.container);
+    await until(() => assert.equal(written?.name, "다시 수정"));
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("draft autosave recovers a lost success response and uses the saved version on the next edit", async () => {
+  let stored: RestaurantDraft = {
+    id: crypto.randomUUID(),
+    restaurantId: null,
+    version: 1,
+    data: emptyRegistration(),
+    step: 0,
+    selectedAddress: null,
+    verifiedPhone: null,
+    submitted: false,
+  };
+  const versions: number[] = [];
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "PUT") {
+      const body = JSON.parse(String(options.body));
+      versions.push(body.version);
+      assert.equal(body.version, stored.version);
+      stored = {
+        ...stored,
+        version: stored.version + 1,
+        data: body.data,
+        step: body.step,
+      };
+      if (versions.length === 1) throw new TypeError("response lost");
+    }
+    return structuredClone(stored) as T;
+  };
+  const view = await render(
+    createElement(OwnerRegistration, {
+      account: merchantAccount,
+      request,
+      draft: structuredClone(stored),
+      onNavigate: () => {},
+    }),
+  );
+  try {
+    await fill(view.container, "name", "응답 유실 후 유지");
+    await click(view.container, "초안 저장");
+    await until(() => assert.equal(stored.version, 2));
+    await fill(view.container, "name", "이어서 수정");
+    await click(view.container, "초안 저장");
+    await until(() => assert.equal(stored.data.name, "이어서 수정"));
+    assert.deepEqual(versions, [1, 2]);
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /초안을 저장하지 못했어요/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("draft conflicts preserve local input and require review before adopting current draft and restaurant versions", async () => {
+  const draft: RestaurantDraft = {
+    id: crypto.randomUUID(),
+    restaurantId: crypto.randomUUID(),
+    version: 1,
+    restaurantVersion: 1,
+    data: emptyRegistration(),
+    step: 0,
+    selectedAddress: null,
+    verifiedPhone: null,
+    submitted: false,
+  };
+  const latest: RestaurantDraft = {
+    ...draft,
+    version: 3,
+    data: { ...draft.data, name: "다른 탭의 초안" },
+    currentRestaurant: {
+      version: 8,
+      published: true,
+      data: { ...draft.data, name: "현재 매장" },
+    },
+  };
+  const writes: Record<string, unknown>[] = [];
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "PUT") {
+      const body = JSON.parse(String(options.body));
+      writes.push(body);
+      if (body.version !== latest.version)
+        throw new ApiError("", 409, "RESTAURANT_VERSION_CONFLICT");
+      return {
+        ...latest,
+        version: 4,
+        restaurantVersion: 8,
+        data: body.data,
+      } as T;
+    }
+    return structuredClone(latest) as T;
+  };
+  const view = await render(
+    createElement(OwnerRegistration, {
+      account: merchantAccount,
+      request,
+      draft,
+      onNavigate: () => {},
+    }),
+  );
+  try {
+    await fill(view.container, "name", "작성 중인 내 입력");
+    await click(view.container, "초안 저장");
+    await until(() =>
+      assert.match(view.container.textContent!, /최신 정보 확인이 필요/),
+    );
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('input[name="name"]')!
+        .value,
+      "작성 중인 내 입력",
+    );
+    assert.equal(writes.length, 1);
+    await click(view.container, "최신 내용 확인 후 내 입력으로 이어가기");
+    await until(() => assert.equal(writes.length, 2));
+    assert.equal(writes[1].version, 3);
+    assert.equal(writes[1].restaurantVersion, 8);
+    assert.equal(
+      (writes[1].data as { name: string }).name,
+      "작성 중인 내 입력",
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("merchant reply keeps unsaved input through failed refetch and recovery", async () => {
+  const startsAt = new Date(Date.now() + 86400000).toISOString();
+  const inquiry: MerchantInquiry = {
+    targetId: crypto.randomUUID(),
+    restaurantName: "테스트 매장",
+    organizerName: "테스트 총무",
+    version: 0,
+    response: null,
+    linkExpiresAt: startsAt,
+    snapshot: {
+      eventName: "테스트 행사",
+      groupName: null,
+      startsAt,
+      expectedGuests: 20,
+      region: "건대입구",
+      space: "ANY",
+      seating: "ANY",
+      seatingImportance: null,
+      spaceImportance: null,
+      budgetBasis: null,
+      budgetAmount: null,
+      alcohol: null,
+      additionalRequests: null,
+    },
+    defaults: {
+      proposal: {
+        startsAt,
+        expectedGuests: 20,
+        space: "ANY",
+        seating: "ANY",
+        minimumSpend: null,
+        separateFee: null,
+        deposit: { kind: "UNKNOWN", amount: null },
+        menuDeadlineAt: null,
+        note: "",
+      },
+      expiresAt: startsAt,
+      depositDescription: null,
+      bookingDescription: null,
+      menuDescription: null,
+    },
+  };
+  let offline = false,
+    submitted = "";
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "POST") {
+      submitted = JSON.parse(String(options.body)).reply.reason;
+      return { version: ++inquiry.version, response: null } as T;
+    }
+    if (offline) throw new ApiError("", 503, "NETWORK_ERROR");
+    return structuredClone(inquiry) as T;
+  };
+  const view = await render(
+    createElement(ReplyWorkspace, {
+      targetId: inquiry.targetId,
+      access: { kind: "owner", accountId: merchantAccount.id, request },
+    }),
+  );
+  try {
+    await until(() => assert(view.container.querySelector("form")));
+    await act(async () => {
+      const select = view.container.querySelector("select")!;
+      select.value = "DECLINE";
+      select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    const textarea = view.container.querySelector<HTMLTextAreaElement>(
+      'textarea[name="reason"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(textarea, "작성 중인 거절 사유");
+      textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    offline = true;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    await until(() =>
+      assert.match(view.container.textContent!, /작성 중인 답변은 유지/),
+    );
+    assert.equal(
+      view.container.querySelector('textarea[name="reason"]'),
+      textarea,
+    );
+    assert.equal(textarea.value, "작성 중인 거절 사유");
+    offline = false;
+    await click(view.container, "다시 확인");
+    await until(() =>
+      assert.doesNotMatch(
+        view.container.textContent!,
+        /최신 문의를 불러오지 못했어요/,
+      ),
+    );
+    await submit(view.container);
+    await until(() => assert.equal(submitted, "작성 중인 거절 사유"));
+  } finally {
+    await view.unmount();
   }
 });

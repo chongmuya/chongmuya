@@ -10,7 +10,10 @@ import { z } from "zod";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
-import { MessageProvider } from "./providers/message.provider.js";
+import {
+  MessageProvider,
+  solapiOutcome,
+} from "./providers/message.provider.js";
 import type { ProviderReport } from "./providers/message.provider.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
@@ -133,6 +136,9 @@ export class MessageDeliveryService {
   async dispatch(id: string, retry?: { actor: string; reason: string }) {
     const db = await this.database.connect();
     const claimed = await db.transaction(async (m) => {
+      const target = await m.findOneBy(MessageDelivery, { id });
+      if (!target) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+      await this.lockDeliveryTarget(target.targetId, m);
       const row = await m.findOne(MessageDelivery, {
         where: { id },
         lock: { mode: "pessimistic_write" },
@@ -161,7 +167,8 @@ export class MessageDeliveryService {
       const reasons = await this.links.reasons(c.target, c.request, c.link, m);
       if (
         row.contactId !== c.link?.contactId ||
-        row.phoneSnapshot !== c.link?.phoneSnapshot
+        row.phoneSnapshot !== c.link?.phoneSnapshot ||
+        row.linkGeneration !== c.link?.generation
       )
         reasons.push("SNAPSHOT_CHANGED");
       if (reasons.length) {
@@ -231,7 +238,10 @@ export class MessageDeliveryService {
       if (row.status === "PROCESSING" || row.status === "UNKNOWN") {
         row.status = result.status;
         row.errorCode = result.errorCode ?? null;
-        row.failureStage = result.status === "FAILED" ? "SUBMISSION" : null;
+        row.failureStage =
+          result.status === "FAILED"
+            ? (result.failureStage ?? "SUBMISSION")
+            : null;
       }
       await this.persist(row, m);
     });
@@ -281,21 +291,19 @@ export class MessageDeliveryService {
     row.providerMessageId = report.messageId;
     row.providerGroupId ??= report.groupId ?? null;
     row.provider = "solapi";
-    if (report.statusCode === "4000") {
+    const outcome = solapiOutcome(report.statusCode);
+    if (outcome.status === "DELIVERED") {
       row.status = "DELIVERED";
       row.failureStage = null;
       row.errorCode = null;
-    } else if (
-      row.status !== "DELIVERED" &&
-      Number(report.statusCode) >= 4000
-    ) {
+    } else if (row.status !== "DELIVERED" && outcome.status === "FAILED") {
       row.status = "FAILED";
-      row.failureStage = "DELIVERY";
-      row.errorCode = `PROVIDER_${report.statusCode}`;
+      row.failureStage = outcome.failureStage;
+      row.errorCode = outcome.errorCode;
     } else if (
       row.status !== "DELIVERED" &&
-      !(row.status === "FAILED" && row.failureStage === "DELIVERY") &&
-      ["2000", "3000"].includes(report.statusCode)
+      row.status !== "FAILED" &&
+      outcome.status === "ACCEPTED"
     ) {
       row.status = "ACCEPTED";
       row.failureStage = null;
@@ -341,6 +349,7 @@ export class MessageDeliveryService {
       throw new DomainHttpException("VALIDATION_FAILED");
     const db = await this.database.connect();
     return db.transaction(async (m) => {
+      await this.lockDeliveryTarget(targetId, m);
       const c = await this.links.context(targetId, m, true);
       const recipient = await this.restaurants.deliveryRecipient(
         c.target.restaurantId,
@@ -358,9 +367,9 @@ export class MessageDeliveryService {
       });
       if (unresolved) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
       // A fresh contact record is required. Never rewrite the original inquiry or recipient history.
-      const previous = await m.findOneBy(MessageDelivery, {
-        targetId,
-        contactId,
+      const previous = await m.findOne(MessageDelivery, {
+        where: { targetId, contactId },
+        order: { linkGeneration: "DESC" },
       });
       if (previous) {
         if (
@@ -422,6 +431,111 @@ export class MessageDeliveryService {
       });
       return { targetId, deliveryId: row.id, dryRun: false };
     });
+  }
+  private async lockDeliveryTarget(targetId: string, m: EntityManager) {
+    await m.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `merchant-delivery:${targetId}`,
+    ]);
+  }
+  async regenerateLink(
+    targetId: string,
+    actor: string,
+    reason: string,
+    dryRun: boolean,
+  ) {
+    if (!actor.trim() || !reason.trim())
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const db = await this.database.connect();
+    const prepared = await db.transaction(async (m) => {
+      await this.lockDeliveryTarget(targetId, m);
+      const c = await this.links.context(targetId, m, true);
+      const [reasons] = await this.restaurants.deliveryEligibility(
+        [this.links.recipient(c.target, c.link)],
+        m,
+        true,
+      );
+      if (
+        reasons.length ||
+        c.request.closedAt ||
+        new Date(c.request.snapshot.startsAt).getTime() <= Date.now()
+      )
+        throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+      // A queued/in-flight or uncertain delivery must be resolved, not bypassed with a new token.
+      if (
+        await m.existsBy(MessageDelivery, {
+          targetId,
+          status: In(["PENDING", "PROCESSING", "UNKNOWN"]),
+        })
+      )
+        throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+      const generation = (c.link?.generation ?? 0) + 1;
+      if (dryRun)
+        return { targetId, generation, dryRun: true, deliveryId: null };
+      const link = await this.links.create(
+        c.target,
+        c.request,
+        m,
+        generation,
+        this.links.recipient(c.target, c.link),
+      );
+      // Detect missing encryption configuration before committing invalidation of the old link.
+      this.links.url(link);
+      const snapshot = c.request.snapshot;
+      const row = await m.save(MessageDelivery, {
+        id: randomUUID(),
+        targetId,
+        purpose: "LINK_REGENERATED",
+        channel: "LMS",
+        contactId: link.contactId,
+        phoneSnapshot: link.phoneSnapshot,
+        linkGeneration: generation,
+        templateVersion: 1,
+        variables: {
+          restaurantName: c.target.restaurantName,
+          eventName: snapshot.eventName,
+          startsAt: snapshot.startsAt,
+          expectedGuests: snapshot.expectedGuests,
+          space: snapshot.space,
+        },
+        status: "PENDING",
+        attempts: 0,
+        startedAt: null,
+        leaseUntil: null,
+        providerMessageId: null,
+        providerGroupId: null,
+        provider: null,
+        failureStage: null,
+        errorCode: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await m.update(
+        RequestTarget,
+        { id: targetId },
+        { deliveryStatus: "PENDING" },
+      );
+      await m.save(ReservationOperation, {
+        id: randomUUID(),
+        targetId,
+        action: "LINK_REGENERATED",
+        actor,
+        reason,
+        createdAt: new Date(),
+      });
+      return { targetId, generation, dryRun: false, deliveryId: row.id };
+    });
+    if (!prepared.deliveryId) return prepared;
+    // Commit first, then await the existing dispatcher. No raw URL leaves this service.
+    await this.dispatch(prepared.deliveryId);
+    const row = await db
+      .getRepository(MessageDelivery)
+      .findOneByOrFail({ id: prepared.deliveryId });
+    return {
+      ...prepared,
+      status: row.status,
+      failureStage: row.failureStage,
+      errorCode: row.errorCode,
+    };
   }
   async listForOperations() {
     const db = await this.database.connect();

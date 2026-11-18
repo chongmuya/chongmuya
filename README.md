@@ -147,7 +147,7 @@ Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 
 
 `/owner`에서 사장님 첫 설정, 계정별 등록 초안, 정보·메뉴 수정과 받은 문의를 이용한다. 신규 매장은 공개 대기이며, 기존 운영 매장은 계정 연결 없이도 유효 연락처와 수신 동의가 있으면 문자 문의를 받을 수 있다. `/merchant-reply?target=<id>#token=<비밀값>`은 로그인 없는 단일 문의 답변·수정 링크다. 가능·변경 제안은 예약 확정이 아니며, 접수 후 같은 행사 재문의는 계속 금지한다.
 
-API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery` migration을 기존 명시적 `db:migration:run`으로 적용한다. Node/pnpm, `pnpm dev`, 브라우저→Nest 통신은 그대로다. `.env.example`의 서버 설정을 `apps/api/.env` 또는 실제 Nest 프로세스 환경에 주입한다. Turbo 개발 실행에도 전달된다. Compose는 기존 로컬 PostgreSQL만 실행하며 별도 워커·Redis는 없다.
+API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery`, `DeliveryLinkGenerations` migration을 기존 명시적 `db:migration:run`으로 적용한다. Node/pnpm, `pnpm dev`, 브라우저→Nest 통신은 그대로다. `.env.example`의 서버 설정을 `apps/api/.env` 또는 실제 Nest 프로세스 환경에 주입한다. Turbo 개발 실행에도 전달된다. Compose는 기존 로컬 PostgreSQL만 실행하며 별도 워커·Redis는 없다.
 
 - 개발/CI: `MESSAGE_PROVIDER=fake`, `GEOCODING_PROVIDER=fake`. 실제 전달 완료로 표시하지 않는다. 운영에서는 fake를 허용하지 않는다.
 - 실제 연동: 이미 발급한 SOLAPI Key/Secret과 등록 발신번호, 이미 Geocoding을 활성화한 Maps Application의 ID/Secret을 서버에 설정한다. 지도 표시용 `NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`와 서버 Secret을 구분한다.
@@ -170,7 +170,7 @@ API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery` migration을
 | `reconcile`         | `--delivery <UUID>`; 공급자 ID 또는 번호·시간 범위 조회 후 deliveryId 대조. UNKNOWN이 해소되지 않으면 재발송 금지                                                                                 |
 | `record-contact`    | `--restaurant <UUID> --input <0600 JSON>`; `{id:고정 UUID,name,phone,requestConsentAt:실제 동의 시각 또는 null,consentNote}`. 기존 번호를 덮어쓰지 않고 확인한 새 담당자 저장, null 동의는 비활성 |
 | `change-recipient`  | `--target ID --contact NEW_CONTACT_ID`; 원래 접수·발송 이력을 보존하고 확인된 새 수신자와 링크로 전환. 반환한 deliveryId를 별도 `retry`로 발송                                                    |
-| `regenerate-link`   | `--target <UUID>`; 이전 generation과 파생 접근 권한 폐기. 문의·답변 이력 보존                                                                                                                     |
+| `regenerate-link`   | `--target <UUID>`; `--execute` 시 새 링크·발송 기록을 함께 저장한 뒤 즉시 발송 시도·결과 반환. 이전 접근 폐기, 문의·발송·답변 이력 보존. PENDING/PROCESSING/UNKNOWN은 먼저 해소                   |
 | `record-reply`      | `--target <UUID> --input <0600 JSON>`; `{method:"PHONE" 또는 "SMS",confirmedAt:ISO시각,reply:응답 API 본문}`. 확인 주체·사유와 version/revision 보존                                              |
 
 문의 트랜잭션 커밋 뒤 같은 Nest에서 직접 발송한다. 종료 시 남은 PENDING은 자동 복구하지 않는다. 타임아웃·접수 결과 저장 실패·만료 lease는 UNKNOWN이며 자동 재시도하지 않는다. `reservations:pending`은 PENDING의 수동 점검용 내보내기다. 이미 접수한 문자를 다시 보내는 목록으로 사용하지 말고 위 delivery ID 명령을 사용한다. 실제 시드 CLI는 여전히 development/test의 로컬 DB 전용이며 운영 이관 명령이 아니다.

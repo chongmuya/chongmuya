@@ -6,6 +6,7 @@ import { emptyRegistration } from "../../src/modules/restaurants/types/registrat
 import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
 import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
+import { RestaurantMenu } from "../../src/modules/restaurants/entities/restaurant-menu.entity.js";
 import { RestaurantManagementService } from "../../src/modules/restaurants/restaurant-management.service.js";
 import { MessageProvider } from "../../src/modules/reservations/providers/message.provider.js";
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
@@ -146,6 +147,148 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   assert.equal(
     (await call(`owner/restaurants/${r.id}/menus`, winning.alien)).status,
     404,
+  );
+  await t.test(
+    "menu edits and draft conflict recovery preserve current menus, publication and untouched legacy policies",
+    async () => {
+      const legacy = {
+        bookingPolicy: "전체 대관은 매장과 협의",
+        depositPolicy: "예약금은 전화 협의",
+        menuPolicy: "메뉴는 방문 전 협의",
+        operatingHours: "기존 영업시간",
+      };
+      await db
+        .getRepository(Restaurant)
+        .update(r.id, { policies: null, ...legacy });
+      type Draft = Awaited<ReturnType<RestaurantManagementService["getDraft"]>>;
+      const edit = await json<Draft>(
+        await call("owner/drafts", winning.jar, "POST", { restaurantId: r.id }),
+        201,
+      );
+      edit.data.branchName = "유지할 입력";
+      edit.data.policies.hours = {
+        start: "17:00",
+        end: "24:00",
+        endDayOffset: 0,
+      };
+      const saved = await json<Draft>(
+        await call(`owner/drafts/${edit.id}`, winning.jar, "PUT", {
+          version: edit.version,
+          data: edit.data,
+          step: 4,
+        }),
+      );
+      type Menus = Awaited<ReturnType<RestaurantManagementService["menus"]>>;
+      const menuPath = `owner/restaurants/${r.id}/menus`;
+      const first = await json<Menus>(await call(menuPath, winning.jar));
+      await json(
+        await call(menuPath, winning.jar, "PUT", {
+          version: first.version,
+          menu: {
+            name: "테스트 메뉴",
+            kind: "REGULAR",
+            price: null,
+            unit: "1인분",
+            available: true,
+            position: 0,
+          },
+        }),
+      );
+      const menus = await json<Menus>(await call(menuPath, winning.jar));
+      assert(!("restaurantId" in menus.menus[0]));
+      await json(
+        await call(menuPath, winning.jar, "PUT", {
+          version: menus.version,
+          menu: { ...menus.menus[0], name: "수정된 메뉴", available: false },
+        }),
+      );
+      assert.equal(
+        (
+          await call(`owner/drafts/${edit.id}/submit`, winning.jar, "POST", {
+            version: saved.version,
+          })
+        ).status,
+        409,
+      );
+      const reopened = await json<Draft>(
+        await call("owner/drafts", winning.jar, "POST", { restaurantId: r.id }),
+        201,
+      );
+      assert.equal(reopened.data.branchName, "유지할 입력");
+      const review = await json<Draft>(
+        await call(`owner/drafts/${edit.id}`, winning.jar),
+      );
+      assert.equal(
+        (await call(`owner/drafts/${edit.id}`, winning.alien)).status,
+        404,
+      );
+      await app.get(RestaurantManagementService).operate({
+        restaurantId: r.id,
+        actor: "test-operator",
+        reason: "공개 상태 경쟁 검증",
+        published: true,
+        dryRun: false,
+      });
+      assert.equal(
+        (
+          await call(`owner/drafts/${edit.id}`, winning.jar, "PUT", {
+            version: review.version,
+            restaurantVersion: review.currentRestaurant!.version,
+            data: saved.data,
+            step: 4,
+          })
+        ).status,
+        409,
+      );
+      const latest = await json<Draft>(
+        await call(`owner/drafts/${edit.id}`, winning.jar),
+      );
+      const resumed = await json<Draft>(
+        await call(`owner/drafts/${edit.id}`, winning.jar, "PUT", {
+          version: latest.version,
+          restaurantVersion: latest.currentRestaurant!.version,
+          data: saved.data,
+          step: 4,
+        }),
+      );
+      await json(
+        await call(`owner/drafts/${edit.id}/submit`, winning.jar, "POST", {
+          version: resumed.version,
+        }),
+        201,
+      );
+      const current = await db
+        .getRepository(Restaurant)
+        .findOneByOrFail({ id: r.id });
+      assert.equal(current.branchName, "유지할 입력");
+      assert.equal(current.published, true);
+      const after = await json<Menus>(await call(menuPath, winning.jar));
+      assert.equal(after.menus[0].id, menus.menus[0].id);
+      assert.equal(after.menus[0].available, false);
+      const publicView = await json<{
+        bookingPolicy: string;
+        depositPolicy: string;
+        menuPolicy: string;
+        operatingHours: string;
+      }>(await call(`restaurants/${r.id}`));
+      assert.equal(publicView.bookingPolicy, legacy.bookingPolicy);
+      assert.equal(publicView.depositPolicy, legacy.depositPolicy);
+      assert.equal(publicView.menuPolicy, legacy.menuPolicy);
+      assert.match(publicView.operatingHours, /17:00~24:00/);
+      // Persisted provenance is server-only: the next edit remains a valid form input.
+      const again = await json<Draft>(
+        await call("owner/drafts", winning.jar, "POST", { restaurantId: r.id }),
+        201,
+      );
+      assert(!("descriptionOverrides" in again.data.policies));
+      await json(
+        await call(`owner/drafts/${again.id}`, winning.jar, "PUT", {
+          version: again.version,
+          data: again.data,
+          step: 0,
+        }),
+      );
+    },
   );
   const duplicate = await json<{ duplicate: boolean; supportEmail: string }>(
     await call(
@@ -406,6 +549,20 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     });
   }
   assert.equal((await webhook(report, false)).status, 403);
+  for (const [code, stage] of [
+    ["2230", "SUBMISSION"],
+    ["3032", "DELIVERY"],
+    ["3047", "DELIVERY"],
+  ] as const) {
+    await json(await webhook([{ ...report[0], statusCode: code }]));
+    await json(await webhook([{ ...report[0], statusCode: "3000" }]));
+    const failed = await db
+      .getRepository(MessageDelivery)
+      .findOneByOrFail({ id: delivery.id });
+    assert.equal(failed.status, "FAILED");
+    assert.equal(failed.failureStage, stage);
+    assert.equal(failed.errorCode, `PROVIDER_${code}`);
+  }
   await json(await webhook(report));
   await json(await webhook(report));
   await json(await webhook([{ ...report[0], statusCode: "2000" }]));
@@ -454,7 +611,88 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     "UNKNOWN",
   );
   assert.equal(retryCalls, 1);
-  await links.regenerate(target.id, "test-operator", "링크 재발급", false);
+  const deliveryService = app.get(MessageDeliveryService);
+  const beforeRotation = await db
+    .getRepository(MerchantReplyLink)
+    .findOneByOrFail({ targetId: target.id });
+  await deliveryService.regenerateLink(
+    target.id,
+    "test-operator",
+    "dry-run",
+    true,
+  );
+  assert.equal(
+    (
+      await db
+        .getRepository(MerchantReplyLink)
+        .findOneByOrFail({ targetId: target.id })
+    ).digest,
+    beforeRotation.digest,
+  );
+  assert.equal(retryCalls, 1);
+  await assert.rejects(
+    deliveryService.regenerateLink(
+      uncertain.targetId,
+      "ops",
+      "불명 발송 우회 금지",
+      false,
+    ),
+    { code: "DELIVERY_RETRY_BLOCKED" },
+  );
+  let sentLink = "";
+  t.mock.method(
+    provider,
+    "send",
+    async (id: string, _to: string, text: string) => {
+      // The new link/delivery must already be visible outside the creation transaction.
+      assert(
+        await db
+          .getRepository(MessageDelivery)
+          .existsBy({ id, status: "PROCESSING" }),
+      );
+      sentLink = text.match(/https?:\/\/\S+/)![0];
+      return {
+        status: "ACCEPTED",
+        provider: "fake",
+        messageId: `regenerated-${id}`,
+      };
+    },
+  );
+  const rotation = await deliveryService.regenerateLink(
+    target.id,
+    "test-operator",
+    "링크 재발급",
+    false,
+  );
+  assert.equal("status" in rotation && rotation.status, "ACCEPTED");
+  assert(rotation.deliveryId);
+  assert.doesNotMatch(JSON.stringify(rotation), /#token=/);
+  const rotatedLink = await db
+    .getRepository(MerchantReplyLink)
+    .findOneByOrFail({ targetId: target.id });
+  assert.equal(sentLink, links.url(rotatedLink));
+  await assert.rejects(
+    deliveryService.dispatch(rotation.deliveryId, {
+      actor: "ops",
+      reason: "접수된 문자 중복 재시도",
+    }),
+    { code: "DELIVERY_RETRY_BLOCKED" },
+  );
+  // A second explicit rotation keeps both generation records and does not reuse the original delivery.
+  const rotation2 = await deliveryService.regenerateLink(
+    target.id,
+    "test-operator",
+    "두 번째 명시적 재발급",
+    false,
+  );
+  assert.equal(rotation2.generation, rotation.generation + 1);
+  assert.notEqual(rotation2.deliveryId, rotation.deliveryId);
+  assert.equal(
+    await db
+      .getRepository(MessageDelivery)
+      .countBy({ targetId: target.id, purpose: "LINK_REGENERATED" }),
+    2,
+  );
   assert.equal((await publicCall(target.id)).status, 403);
   assert.equal(
     (
@@ -658,9 +896,13 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   await db.query("DELETE FROM reservation_requests WHERE id = $1", [
     inquiry.id,
   ]);
-  await db.query("DELETE FROM restaurant_drafts WHERE id = ANY($1::uuid[])", [
-    [a.id, b.id],
-  ]);
+  await db.query(
+    "DELETE FROM restaurant_drafts WHERE id = ANY($1::uuid[]) OR restaurant_id = ANY($2::uuid[])",
+    [
+      [a.id, b.id],
+      [r.id, unownedId],
+    ],
+  );
   for (const table of [
     "restaurant_operations",
     "restaurant_contacts",
@@ -670,6 +912,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
       `DELETE FROM ${table} WHERE restaurant_id = ANY($1::uuid[])`,
       [[r.id, unownedId]],
     );
+  await db.getRepository(RestaurantMenu).delete({ restaurantId: r.id });
   await db.getRepository(Restaurant).delete(r.id);
   await db.getRepository(Restaurant).delete(unownedId);
 });

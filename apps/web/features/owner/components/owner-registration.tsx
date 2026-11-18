@@ -85,7 +85,7 @@ export function OwnerRegistration({
   const serialized = JSON.stringify(data);
   const saveDraft = save.save;
   useEffect(() => {
-    if (complete) return;
+    if (complete || save.conflict) return;
     const timer = setTimeout(() => {
       const parsed = registrationSchema.safeParse(JSON.parse(serialized));
       if (parsed.success)
@@ -93,7 +93,7 @@ export function OwnerRegistration({
     }, 900);
     debounce.current = timer;
     return () => clearTimeout(timer);
-  }, [serialized, step, addressId, complete, saveDraft]);
+  }, [serialized, step, addressId, complete, saveDraft, save.conflict]);
   const execute = async <T,>(path: string, body?: unknown) => {
     setError(null);
     try {
@@ -121,9 +121,14 @@ export function OwnerRegistration({
         }
       })
       .catch(() => undefined);
-  const persist = async (nextStep: number) => {
+  const persist = async (nextStep: number, resume = false) => {
     clearTimeout(debounce.current);
-    const saved = await saveDraft(form.getValues(), nextStep, addressId);
+    const saved = await saveDraft(
+      form.getValues(),
+      nextStep,
+      addressId,
+      resume,
+    );
     if (active.current) {
       setStep(nextStep);
       if (saved.submitted && saved.restaurantId) {
@@ -166,6 +171,8 @@ export function OwnerRegistration({
       });
       if (active.current) setComplete(result.restaurantId);
     } catch (e) {
+      if (e instanceof ApiError && e.code === "RESTAURANT_VERSION_CONFLICT")
+        await save.recover();
       if (e instanceof ApiError && e.code === "RESTAURANT_DUPLICATE") {
         const result = await execute<DuplicateResult>("duplicate").catch(
           () => null,
@@ -233,6 +240,46 @@ export function OwnerRegistration({
           }
           className="mb-8 px-4"
         />
+        {save.conflict && (
+          <section
+            role="alert"
+            className="mb-5 space-y-4 rounded-control border border-brand p-4"
+          >
+            <h2 className="font-bold">최신 정보 확인이 필요해요</h2>
+            <p>
+              다른 화면에서 정보가 변경됐어요. 작성 중인 입력은 유지했습니다.
+              아래 최신 내용을 확인한 뒤 이어가면 현재 입력한 정보로 초안을
+              저장합니다. 메뉴와 공개 상태는 유지됩니다.
+            </p>
+            <details>
+              <summary>서버에 저장된 초안 확인</summary>
+              <OwnerSummary data={save.conflict.data} />
+            </details>
+            {save.conflict.currentRestaurant && (
+              <details>
+                <summary>
+                  현재 매장 정보 확인 ·{" "}
+                  {save.conflict.currentRestaurant.published
+                    ? "공개 중"
+                    : "공개 대기"}
+                </summary>
+                <OwnerSummary data={save.conflict.currentRestaurant.data} />
+              </details>
+            )}
+            <Button
+              loading={save.pending}
+              onClick={() =>
+                void persist(step, true)
+                  .then(() => {
+                    if (active.current) setError(null);
+                  })
+                  .catch(() => undefined)
+              }
+            >
+              최신 내용 확인 후 내 입력으로 이어가기
+            </Button>
+          </section>
+        )}
         <form
           className="flex flex-1 flex-col"
           onSubmit={(event) => void form.handleSubmit(() => void next())(event)}
@@ -546,6 +593,7 @@ export function OwnerRegistration({
               variant={step === 4 ? "solid" : "brand-outline"}
               className="w-full"
               loading={busy}
+              disabled={!!save.conflict}
             >
               {step === 4 ? "등록 완료하기" : "다음"}
             </Button>
@@ -556,6 +604,11 @@ export function OwnerRegistration({
             >
               초안 저장
             </Button>
+            {!!save.error && !save.conflict && (
+              <Button variant="outline" onClick={() => void save.recover()}>
+                최신 저장 상태 확인
+              </Button>
+            )}
           </div>
         </form>
         {duplicate && (

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { ConfigService } from "../../../config/config.service.js";
 import { DomainHttpException } from "../../../common/http/domain-http.exception.js";
 export type SendResult = {
-  status: "ACCEPTED" | "FAILED" | "UNKNOWN";
+  status: "ACCEPTED" | "DELIVERED" | "FAILED" | "UNKNOWN";
+  failureStage?: "SUBMISSION" | "DELIVERY";
   messageId?: string;
   groupId?: string;
   errorCode?: string;
@@ -27,6 +28,21 @@ const sendSchema = z.object({
   messageList: z.array(messageSchema).optional(),
 });
 export type ProviderReport = z.infer<typeof messageSchema>;
+// SOLAPI: 2000/3000 are in progress, 4000 is delivered; all other codes are failures.
+// https://solapi.com/developers/api/msgstatus
+export function solapiOutcome(code: string) {
+  if (code === "4000") return { status: "DELIVERED" as const };
+  if (code === "2000" || code === "3000")
+    return { status: "ACCEPTED" as const };
+  return {
+    status: "FAILED" as const,
+    failureStage:
+      code.startsWith("1") || code.startsWith("2")
+        ? ("SUBMISSION" as const)
+        : ("DELIVERY" as const),
+    errorCode: `PROVIDER_${code}`,
+  };
+}
 @Injectable()
 export class MessageProvider {
   constructor(private readonly config: ConfigService) {}
@@ -124,14 +140,19 @@ export class MessageProvider {
       return {
         status: "FAILED",
         groupId: groupInfo.groupId,
-        errorCode: "PROVIDER_REJECTED",
+        failureStage: "SUBMISSION",
+        errorCode: /^\d{4}$/.test(failedMessageList[0].statusCode ?? "")
+          ? `PROVIDER_${failedMessageList[0].statusCode}`
+          : "PROVIDER_REJECTED",
         provider: "solapi",
       };
     const message =
       messageList?.find((m) => m.customFields?.deliveryId === deliveryId) ??
       (messageList?.length === 1 ? messageList[0] : undefined);
     return {
-      status: "ACCEPTED",
+      ...(message
+        ? solapiOutcome(message.statusCode)
+        : { status: "ACCEPTED" as const }),
       groupId: groupInfo.groupId,
       messageId: message?.messageId,
       provider: "solapi",
