@@ -23,6 +23,8 @@ export class GroupMember {
   @Column({ type: "varchar", length: 100 }) name!: string;
   @Column({ type: "varchar", length: 4, name: "phone_last4", nullable: true })
   phoneLast4!: string | null;
+  @Column({ type: "varchar", length: 40, nullable: true }) label!:
+    string | null;
   @Column({ type: "integer" }) position!: number;
   @Column({ type: "timestamptz", name: "created_at" }) createdAt!: Date;
 }

@@ -11,6 +11,8 @@ export const rosterRowSchema = z.object({
   phoneLast4: z
     .string()
     .regex(/^(?:[0-9]{4})?$/, "뒤 4자리를 입력하거나 비워 주세요."),
+  label: z.string().trim().max(40, "구분 표시는 40자 이내로 입력해 주세요."),
+  match: z.string(),
   parseError: z.string().max(0, "해석되지 않은 행을 수정하거나 제외해 주세요."),
 });
 export const groupRegistrationSchema = groupSchema.extend({

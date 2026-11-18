@@ -116,6 +116,8 @@ function AccountHome({
     ? undefined
     : (groups.data?.find((group) => group.id === requested) ??
       (!requested ? groups.data?.[0] : undefined));
+  const groupsReady =
+    !!groups.data && !groups.isError && (!requested || !!selected);
   const complete = isFirstSetupComplete(account);
   const owner = account.accountType === "owner";
   const eventPath = selected ? `/events?group=${selected.id}` : "/events";
@@ -192,10 +194,12 @@ function AccountHome({
                 </Link>
               </div>
             ) : null}
-            <EventBanner
-              href={complete ? eventPath : firstSetupPath(eventPath)}
-            />
-            {complete && (
+            {groupsReady && (
+              <EventBanner
+                href={complete ? eventPath : firstSetupPath(eventPath)}
+              />
+            )}
+            {complete && groupsReady && (
               <EventSummary
                 key={`${account.id}:${selected?.id ?? "all"}`}
                 accountId={account.id}
@@ -206,7 +210,9 @@ function AccountHome({
           </>
         )}
       </div>
-      {!owner && <HomeNavigation groupId={selected?.id} />}
+      {!owner && (
+        <HomeNavigation groupId={selected?.id ?? requested ?? undefined} />
+      )}
       {dialog === "guide" && (
         <Dialog
           showCloseButton

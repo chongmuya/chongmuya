@@ -3,6 +3,8 @@ import type {
   Group,
   GroupMember,
   CreateGroupInput,
+  AddGroupMembersInput,
+  AddedGroupMembers,
 } from "../types/group.types";
 import type { GroupInput } from "../schemas/group.schema";
 
@@ -30,3 +32,13 @@ export const renameGroup = (
     method: "PATCH",
     body: JSON.stringify(input),
   });
+
+export const addGroupMembers = (
+  request: SessionRequest,
+  id: string,
+  input: AddGroupMembersInput,
+) =>
+  request<AddedGroupMembers>(
+    `/api/v1/groups/${encodeURIComponent(id)}/members`,
+    { method: "POST", body: JSON.stringify(input) },
+  );

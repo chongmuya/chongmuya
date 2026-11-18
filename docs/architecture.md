@@ -165,7 +165,7 @@ Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 �
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | GET /groups, POST /groups                    | 내 모임 목록, `{ name, groupType?, creationKey?, members?, duplicatesConfirmed? }`로 모임·명단 원자적 생성 |
 | GET /groups/:groupId, PATCH /groups/:groupId | 소유 모임 조회, `{ name }`으로 이름 수정                                                                   |
-| GET /groups/:groupId/members                 | 소유자에게만 기본 명단의 ID·이름·선택 뒤 4자리 반환                                                        |
+| GET /groups/:groupId/members                 | 소유자에게만 기본 명단의 ID·이름·구분 표시·선택 뒤 4자리 반환                                              |
 | GET /events                                  | 전체 내 행사. 선택적 `groupId` query로 필터                                                                |
 | POST /events                                 | `{ name, scheduledAt?, groupId? }`. ownerId는 인증 계정                                                    |
 | GET /events/:eventId                         | 행사 소유자 상세 조회                                                                                      |
@@ -176,7 +176,11 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 ### DB 작업과 트랜잭션
 
-모임 등록은 groups 업무에서 Group·GroupMember를 같은 EntityManager로 저장한다. `(owner_id, creation_key)` 고유 인덱스와 입력 해시로 같은 등록의 동시 요청·통신 재시도를 처리한다. 명단은 계정이나 행사 명단과 관계없는 비공개 기본 자료다. 동명이인은 확인 후 별도 행으로 보존하며 전화번호 뒤 4자리는 nullable 문자열이다. 그룹 단위 조회에 소유권을 검사하고 응답에 인증·권한 필드를 포함하지 않는다. JSON body는 500명의 긴 UTF-8 이름을 수용하도록 256KB까지 허용하고, DTO의 행 수·필드 길이 제한도 적용한다.
+모임 등록은 groups 업무에서 Group·GroupMember를 같은 EntityManager로 저장한다. `(owner_id, creation_key)` 고유 인덱스와 입력 해시로 같은 등록의 동시 요청·통신 재시도를 처리한다. 명단은 계정이나 행사 명단과 관계없는 비공개 기본 자료다. 동명이인은 총무가 확인하고 서로 다른 구분 표시(label)를 입력한 별도 행으로 보존한다. 이름과 구분 표시는 별도 컬럼이며 전화번호 뒤 4자리는 앞의 0을 보존하는 nullable 문자열이다. 그룹 단위 조회에 소유권을 검사하고 응답에 인증·권한 필드를 포함하지 않는다. JSON body는 500명의 긴 UTF-8 이름을 수용하도록 256KB까지 허용하고, DTO의 행 수·필드 길이 제한도 적용한다.
+
+`POST /groups/:groupId/members`는 `{ requestKey, members, duplicatesConfirmed? }`로 기존 명단에 구성원을 추가한다. 소유한 Group 행을 먼저 잠근 뒤 최신 명단과 이름·구분 표시를 비교한다. 기존 구성원을 선택하면 `existingMemberId`와 해당 구성원의 이름·구분 표시·뒤 4자리를 검증하고 추가나 수정 없이 유지한다. 새 동명이인은 기존 명단과도 구분되는 표시를 요구한다. GroupMember 추가와 GroupRosterAddition의 `(group_id, request_key)` 재시도 기록을 같은 트랜잭션에서 저장한다. 같은 키의 다른 입력은 409이며 기존 행·순서·ID나 행사 명단을 교체하지 않는다. 최초 등록과 `/groups/new?group=<id>`의 추가 등록은 GroupRegistration의 입력·TXT·미리보기를 재사용한다. 변경된 원문만 다시 해석하고 원문이 같으면 편집·제외 결과를 보존한다.
+
+홈의 모임 선택은 `/?group=<id>`로 유지하며 하단 홈과 새 행사 진입에 전달한다. 모임 조회가 미완료·실패했거나 요청한 모임에 접근할 수 없으면 행사 생성 진입을 표시하지 않는다. 조회에 성공한 빈 목록에서는 개인 행사를 바로 시작한다.
 
 단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. AuthAttemptsRepository는 원자적인 시도 제한 upsert만 담당하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
 
@@ -289,3 +293,5 @@ PasswordResetService는 복구 토큰 발급·소비, KakaoFlowService는 브라
 브라우저의 HTTP 전송은 shared/http가 NEXT_PUBLIC_API_ORIGIN에 credentials를 포함해 요청합니다. 업무 요청은 기존 SessionClient를 사용하고, 공개 health 요청은 `/health`를 사용합니다. 인증 SSR과 BFF는 없으며 AuthProvider가 클라이언트에서 세션을 복원합니다. API 호스트의 host-only 쿠키는 Next 서버로 전달되지 않습니다.
 
 카카오 GET 콜백은 명시적인 KAKAO_REDIRECT_URI의 Nest 엔드포인트에서만 처리합니다. 임시 결과를 DB에 저장한 뒤 WEB_ORIGIN의 깨끗한 완료 화면으로 이동하고, 프론트가 Origin·CSRF 헤더를 갖춘 POST로 API에 최종 확정을 요청합니다. 콜백 query는 프론트 URL이나 애플리케이션 로그에 전달하지 않습니다. 운영 ingress·CDN·APM의 query 수집도 배포 설정에서 제외해야 합니다.
+
+`1795132800000-RosterAdditions`는 기존 구성원에 nullable label과 별도 명단 추가 재시도 기록 테이블을 추가한다. 기존 모임·구성원·행사·계정 ID와 데이터는 그대로 유지한다. API 빌드 → 대상 DB 확인 → `pnpm --filter @chongmuya/api db:migration:show` → `pnpm --filter @chongmuya/api db:migration:run` → 새 API/웹 순서로 적용한다. 구분 표시 또는 재시도 기록이 생긴 뒤에는 손실을 막기 위해 down을 거부한다. 새 환경변수는 없다. 신규 동명이인 등록에는 구분 표시가 필수이므로 API와 웹을 함께 갱신한다. 이전 버전의 레이블 없는 중복 등록 요청도 이미 저장된 creationKey가 있으면 기존 결과를 돌려준다.

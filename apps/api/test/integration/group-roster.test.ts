@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { Repository } from "typeorm";
+import { Repository, EntityManager } from "typeorm";
 import { Group } from "../../src/modules/groups/entities/group.entity.js";
 import { GroupMember } from "../../src/modules/groups/entities/group-member.entity.js";
 import { startResourceApplication } from "../support/resource-application.js";
@@ -15,8 +15,8 @@ test("group roster is atomic, private, preserves duplicates and leading zeroes, 
     groupType: "동아리",
     creationKey: randomUUID(),
     members: [
-      { name: "김민수", phoneLast4: "0012" },
-      { name: "김민수" },
+      { name: "김민수", phoneLast4: "0012", label: "운영팀" },
+      { name: "김민수", label: "기획팀" },
       { name: "Alex Kim", phoneLast4: "0012" },
     ],
     duplicatesConfirmed: true,
@@ -156,4 +156,115 @@ test("group roster is atomic, private, preserves duplicates and leading zeroes, 
   });
   assert.equal(retry.status, 201);
   assert.equal((await retry.json()).memberCount, 3);
+});
+
+test("roster additions preserve existing identities, resolve namesakes, enforce ownership and serialize retries", async (t) => {
+  const { db, signup, call } = await startResourceApplication(t);
+  const owner = await signup(),
+    stranger = await signup();
+  const group = await (
+    await call("groups", owner, "POST", {
+      name: "명단은 나중에",
+      creationKey: randomUUID(),
+    })
+  ).json();
+  const path = `groups/${group.id}/members`;
+  const add = (
+    members: unknown[],
+    requestKey = randomUUID(),
+    jar = owner,
+    duplicatesConfirmed = true,
+  ) => call(path, jar, "POST", { members, requestKey, duplicatesConfirmed });
+  assert.equal(
+    (await add([{ name: "A" }], randomUUID(), stranger)).status,
+    404,
+  );
+  assert.equal((await add([{ name: "A" }], randomUUID(), "")).status, 401);
+  assert.equal(
+    (await add([{ name: "A", phoneLast4: "0012" }, { name: "B" }])).status,
+    201,
+  );
+  const before = await (await call(path, owner)).json();
+  const key = randomUUID();
+  const results = await Promise.all([
+    add([{ name: "C" }], key),
+    add([{ name: "C" }], key),
+  ]);
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [201, 201],
+  );
+  assert.deepEqual(await results[0].json(), await results[1].json());
+  const after = await (await call(path, owner)).json();
+  assert.deepEqual(after.slice(0, 2), before);
+  assert.equal(after.length, 3);
+  assert.equal((await add([{ name: "D" }], key)).status, 409);
+  for (const members of [
+    [{ name: "A" }],
+    [
+      { name: "A", label: "동일" },
+      { name: "A", label: "동일" },
+    ],
+  ]) {
+    const response = await add(members);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, "ROSTER_LABEL_REQUIRED");
+  }
+  assert.equal(
+    (await add([{ name: "A", label: "운영팀" }], randomUUID(), owner, false))
+      .status,
+    400,
+  );
+  const same = await add([
+    { name: "A", phoneLast4: "0012", existingMemberId: before[0].id },
+  ]);
+  assert.equal((await same.json()).addedCount, 0);
+  assert.equal(
+    (await add([{ name: "A", existingMemberId: before[0].id }])).status,
+    409,
+  );
+  assert.equal(
+    (await add([{ name: "A", existingMemberId: randomUUID() }])).status,
+    409,
+  );
+  const added = await add([{ name: "A", label: "운영팀" }]);
+  assert.equal(added.status, 201);
+  const saved = await (await call(path, owner)).json();
+  assert.deepEqual(saved.slice(0, 3), after);
+  assert.equal(saved[3].label, "운영팀");
+  assert.equal(saved[3].phoneLast4, null);
+  // Two different requests for a formerly unique name re-check under the group lock.
+  const races = await Promise.all([add([{ name: "E" }]), add([{ name: "E" }])]);
+  assert.deepEqual(races.map((r) => r.status).sort(), [201, 400]);
+  const { GroupRosterAddition } =
+    await import("../../src/modules/groups/entities/group-roster-addition.entity.js");
+  const failKey = randomUUID();
+  const original = EntityManager.prototype.insert;
+  const failure = t.mock.method(
+    EntityManager.prototype,
+    "insert",
+    function (this: EntityManager, ...args: Parameters<typeof original>) {
+      if (args[0] === GroupRosterAddition)
+        throw new Error("injected receipt failure");
+      return original.apply(this, args);
+    },
+  );
+  try {
+    assert.equal((await add([{ name: "rollback" }], failKey)).status, 500);
+    assert.equal(
+      await db
+        .getRepository(GroupMember)
+        .countBy({ groupId: group.id, name: "rollback" }),
+      0,
+    );
+    assert.equal(
+      await db
+        .getRepository(GroupRosterAddition)
+        .countBy({ groupId: group.id, requestKey: failKey }),
+      0,
+    );
+  } finally {
+    failure.mock.restore();
+  }
+  assert.equal((await add([{ name: "rollback" }], failKey)).status, 201);
 });

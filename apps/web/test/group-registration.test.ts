@@ -38,7 +38,10 @@ test("roster import preserves same-name people and zeroes; ambiguous columns req
   assert.throws(() => parseRoster("김민수\n".repeat(501)));
 });
 
-async function setup(request: SessionRequest) {
+async function setup(
+  request: SessionRequest,
+  target?: Parameters<typeof GroupRegistration>[0]["target"],
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -55,6 +58,7 @@ async function setup(request: SessionRequest) {
         QueryClientProvider,
         { client: cache },
         createElement(GroupRegistration, {
+          target,
           accountId: "a",
           request,
           onNavigate: (path) => navigations.push(path),
@@ -161,11 +165,13 @@ test("registration retains edits across back, excludes invalid rows, confirms du
     )!;
     await act(async () => exclude.click());
     await fill(view.container, "members.1.phoneLast4", "0007");
+    await fill(view.container, "members.0.label", "운영팀");
+    await fill(view.container, "members.1.label", "기획팀");
     const back = view.container.querySelector<HTMLButtonElement>(
       '[aria-label="이전 단계로 돌아가기"]',
     )!;
     await act(async () => back.click());
-    await click(view.container, "수정하던 명단 2명으로 돌아가기");
+    await submit(view.container);
     assert.equal(
       view.container.querySelector<HTMLInputElement>(
         '[name="members.1.phoneLast4"]',
@@ -194,8 +200,8 @@ test("registration retains edits across back, excludes invalid rows, confirms du
     assert.deepEqual(writes[0], writes[1]);
     assert.match(writes[0].creationKey, /^[0-9a-f-]{36}$/);
     assert.deepEqual(writes[1].members, [
-      { name: "김민수", phoneLast4: "0012" },
-      { name: "김민수", phoneLast4: "0007" },
+      { name: "김민수", phoneLast4: "0012", label: "운영팀" },
+      { name: "김민수", phoneLast4: "0007", label: "기획팀" },
     ]);
     assert.equal(writes[1].groupType, "동아리");
     assert.equal(writes[1].duplicatesConfirmed, true);
@@ -246,8 +252,8 @@ test("TXT upload validates encoding/type and corrected import errors can be save
     await submit(view.container);
     await until(() => assert.equal(writes.length, 1));
     assert.deepEqual((writes[0] as { members: unknown[] }).members, [
-      { name: "이름 복구", phoneLast4: "0012" },
-      { name: "김총무 수정", phoneLast4: "0007" },
+      { name: "이름 복구", phoneLast4: "0012", label: null },
+      { name: "김총무 수정", phoneLast4: "0007", label: null },
     ]);
     assert.doesNotMatch(view.container.textContent!, /두 열만 입력/);
   } finally {
@@ -280,4 +286,134 @@ test("skip saves an empty roster and late creation after leaving never restores 
   });
   assert.equal(view.cache.getQueryCache().getAll().length, 0);
   assert.deepEqual(view.navigations, []);
+});
+
+test("pasted rows plus direct entry are all saved; unchanged source never restores excluded or edited rows", async () => {
+  const writes: { members: { name: string }[] }[] = [];
+  const view = await setup(async <T>(_path: string, options?: RequestInit) => {
+    writes.push(JSON.parse(String(options?.body)));
+    return { id: "abc", name: "ABC", groupType: null, memberCount: 3 } as T;
+  });
+  try {
+    await fill(view.container, "name", "ABC");
+    await submit(view.container);
+    await fill(view.container, "source", "A\nB");
+    await click(view.container, "한 명씩 직접 추가하기");
+    await fill(view.container, "members.2.name", "C");
+    await submit(view.container);
+    await until(() => assert.equal(writes.length, 1));
+    assert.deepEqual(
+      writes[0].members.map((r) => r.name),
+      ["A", "B", "C"],
+    );
+  } finally {
+    await view.close();
+  }
+  const edited = await setup(
+    async <T>(_path: string, options?: RequestInit) => {
+      writes.push(JSON.parse(String(options?.body)));
+      return {
+        id: "edit",
+        name: "edited",
+        groupType: null,
+        memberCount: 2,
+      } as T;
+    },
+  );
+  try {
+    await fill(edited.container, "name", "edited");
+    await submit(edited.container);
+    await fill(edited.container, "source", "A\nB");
+    await submit(edited.container);
+    await fill(edited.container, "members.0.name", "A 수정");
+    await act(async () =>
+      edited.container
+        .querySelector<HTMLButtonElement>('[aria-label="2번 구성원 제외"]')!
+        .click(),
+    );
+    await act(async () =>
+      edited.container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="이전 단계로 돌아가기"]',
+        )!
+        .click(),
+    );
+    await click(edited.container, "한 명씩 직접 추가하기");
+    await fill(edited.container, "members.1.name", "C");
+    await submit(edited.container);
+    await until(() => assert.equal(writes.length, 2));
+    assert.deepEqual(
+      writes[1].members.map((r) => r.name),
+      ["A 수정", "C"],
+    );
+  } finally {
+    await edited.close();
+  }
+});
+
+test("existing roster addition requires resolving namesakes and labels without updating existing people", async () => {
+  const existing = {
+    id: "00000000-0000-4000-8000-000000000001",
+    name: "A",
+    phoneLast4: "0012",
+    label: null,
+  };
+  const writes: { path: string; body: { members: unknown[] } }[] = [];
+  const view = await setup(
+    async <T>(path: string, options?: RequestInit) => {
+      writes.push({ path, body: JSON.parse(String(options?.body)) });
+      return {
+        group: { id: "g", name: "모임", groupType: null, memberCount: 3 },
+        addedCount: 2,
+      } as T;
+    },
+    {
+      group: { id: "g", name: "모임", groupType: null, memberCount: 1 },
+      members: [existing],
+    },
+  );
+  try {
+    await fill(view.container, "source", "A\nA\nC");
+    await submit(view.container);
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[type="checkbox"]')!
+        .click(),
+    );
+    await submit(view.container);
+    assert.equal(writes.length, 0);
+    assert.match(
+      view.container.textContent!,
+      /기존 구성원인지 새 동명이인인지/,
+    );
+    const selects = view.container.querySelectorAll("select");
+    await act(async () => {
+      selects[0].value = existing.id;
+      selects[0].dispatchEvent(new window.Event("change", { bubbles: true }));
+      selects[1].value = "new";
+      selects[1].dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    await fill(view.container, "members.1.label", "운영팀");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[type="checkbox"]')!
+        .click(),
+    );
+    await submit(view.container);
+    await until(() => assert.equal(writes.length, 1));
+    assert.equal(writes[0].path, "/api/v1/groups/g/members");
+    assert.deepEqual(writes[0].body.members, [
+      {
+        name: "A",
+        phoneLast4: "0012",
+        label: null,
+        existingMemberId: existing.id,
+      },
+      { name: "A", phoneLast4: null, label: "운영팀" },
+      { name: "C", phoneLast4: null, label: null },
+    ]);
+    assert.match(view.container.textContent!, /2명 추가 완료/);
+  } finally {
+    await view.close();
+  }
 });

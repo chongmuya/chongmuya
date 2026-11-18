@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { Group } from "./entities/group.entity.js";
+import { GroupRosterAddition } from "./entities/group-roster-addition.entity.js";
+import type { AddGroupMembersInput } from "./dto/request/add-group-members.request.dto.js";
 import { GroupMember } from "./entities/group-member.entity.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import type { CreateGroupInput } from "./dto/request/create-group.request.dto.js";
@@ -59,12 +61,8 @@ export class GroupsService {
     const members = (input.members ?? []).map((member) => ({
       name: member.name,
       phoneLast4: member.phoneLast4 ?? null,
+      ...(member.label ? { label: member.label } : {}),
     }));
-    if (
-      new Set(members.map((member) => member.name)).size !== members.length &&
-      !input.duplicatesConfirmed
-    )
-      throw new DomainHttpException("ROSTER_DUPLICATES_UNCONFIRMED");
     const groupType = input.groupType ?? null;
     const digest = createHash("sha256")
       .update(JSON.stringify({ name: input.name, groupType, members }))
@@ -104,6 +102,7 @@ export class GroupsService {
             .countBy({ groupId: existing.id }),
         );
       }
+      this.validateNames(members, [], input.duplicatesConfirmed);
       if (members.length)
         await manager.getRepository(GroupMember).insert(
           members.map((member, position) => ({
@@ -115,6 +114,111 @@ export class GroupsService {
           })),
         );
       return groupDto(group, members.length);
+    });
+  }
+
+  private validateNames(
+    members: { name: string; label?: string | null }[],
+    existing: { name: string; label: string | null }[],
+    confirmed?: boolean,
+  ) {
+    const byName = new Map<string, (string | null)[]>();
+    for (const member of [...existing, ...members]) {
+      const labels = byName.get(member.name) ?? [];
+      labels.push(member.label ?? null);
+      byName.set(member.name, labels);
+    }
+    for (const member of members) {
+      const labels = byName.get(member.name)!;
+      if (labels.length <= 1) continue;
+      if (!confirmed)
+        throw new DomainHttpException("ROSTER_DUPLICATES_UNCONFIRMED");
+      if (
+        !member.label ||
+        labels.filter((label) => label === member.label).length > 1
+      )
+        throw new DomainHttpException("ROSTER_LABEL_REQUIRED");
+    }
+  }
+
+  async addMembers(ownerId: string, id: string, input: AddGroupMembersInput) {
+    const rows = input.members.map((row) => ({
+      name: row.name,
+      phoneLast4: row.phoneLast4 ?? null,
+      label: row.label ?? null,
+      existingMemberId: row.existingMemberId ?? null,
+    }));
+    const digest = createHash("sha256")
+      .update(JSON.stringify(rows))
+      .digest("hex");
+    const db = await this.database.connect();
+    return db.transaction(async (manager) => {
+      // All additions lock the owned group before reading its members or retry receipt.
+      const group = await manager.findOne(Group, {
+        where: { id, ownerId },
+        lock: { mode: "pessimistic_write" },
+      });
+      if (!group) throw new NotFoundException();
+      const existing = await manager.find(GroupMember, {
+        where: { groupId: id },
+      });
+      const receipt = await manager.findOneBy(GroupRosterAddition, {
+        groupId: id,
+        requestKey: input.requestKey,
+      });
+      if (receipt) {
+        if (receipt.digest !== digest)
+          throw new DomainHttpException("GROUP_REGISTRATION_CONFLICT");
+        return {
+          group: groupDto(group, existing.length),
+          addedCount: receipt.addedCount,
+        };
+      }
+      const members = rows.filter((row) => !row.existingMemberId);
+      for (const row of rows) {
+        if (!row.existingMemberId) continue;
+        const match = existing.find(
+          (member) => member.id === row.existingMemberId,
+        );
+        // Selecting an existing member is an explicit no-op, never a profile update.
+        if (
+          !match ||
+          match.name !== row.name ||
+          match.phoneLast4 !== row.phoneLast4 ||
+          match.label !== row.label
+        )
+          throw new DomainHttpException("ROSTER_MEMBER_CONFLICT");
+      }
+      this.validateNames(members, existing, input.duplicatesConfirmed);
+      const position = existing.reduce(
+        (max, row) => Math.max(max, row.position + 1),
+        0,
+      );
+      const createdAt = new Date();
+      if (members.length)
+        await manager.insert(
+          GroupMember,
+          members.map(({ name, phoneLast4, label }, index) => ({
+            id: randomUUID(),
+            groupId: id,
+            name,
+            phoneLast4,
+            label,
+            position: position + index,
+            createdAt,
+          })),
+        );
+      await manager.insert(GroupRosterAddition, {
+        groupId: id,
+        requestKey: input.requestKey,
+        digest,
+        addedCount: members.length,
+        createdAt,
+      });
+      return {
+        group: groupDto(group, existing.length + members.length),
+        addedCount: members.length,
+      };
     });
   }
 
@@ -135,8 +239,9 @@ export class GroupsService {
       await db
         .getRepository(GroupMember)
         .find({ where: { groupId: id }, order: { position: "ASC", id: "ASC" } })
-    ).map(({ id: memberId, name, phoneLast4 }) => ({
+    ).map(({ id: memberId, name, phoneLast4, label }) => ({
       id: memberId,
+      label,
       name,
       phoneLast4,
     }));

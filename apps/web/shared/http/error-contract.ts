@@ -33,6 +33,18 @@ const messages: Record<string, { status: number; message: string }> = {
     message:
       "이 등록 요청은 이미 저장되었습니다. 내 모임에서 결과를 확인해 주세요.",
   },
+  OWNER_REGISTRATION_UNAVAILABLE: {
+    status: 400,
+    message: "사장님 가입은 준비 중이에요. 현재는 총무로 시작할 수 있어요.",
+  },
+  ROSTER_LABEL_REQUIRED: {
+    status: 400,
+    message: "새 동명이인마다 서로 다른 구분 표시를 입력해 주세요.",
+  },
+  ROSTER_MEMBER_CONFLICT: {
+    status: 409,
+    message: "기존 구성원 선택을 확인할 수 없어요. 명단을 다시 확인해 주세요.",
+  },
   ROSTER_DUPLICATES_UNCONFIRMED: {
     status: 400,
     message:
