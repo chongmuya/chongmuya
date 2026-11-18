@@ -20,7 +20,6 @@ import { RestaurantContactSeedReceipt } from "../../src/modules/restaurants/enti
 
 import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
 import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
-import { ReservationsService } from "../../src/modules/reservations/reservations.service.js";
 
 import publicFixture from "../../src/database/seeds/data/restaurants.json" with { type: "json" };
 
