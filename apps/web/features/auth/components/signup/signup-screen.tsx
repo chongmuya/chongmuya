@@ -36,13 +36,15 @@ export function KakaoSignupScreen({ context }: { context: KakaoStatus }) {
     () => Date.parse(context.expiresAt) <= Date.now(),
   );
   useEffect(() => {
+    const expiresAt = Date.parse(context.expiresAt);
+    let timer: ReturnType<typeof setTimeout>;
     const check = () => {
-      if (Date.now() >= Date.parse(context.expiresAt)) setExpired(true);
+      clearTimeout(timer);
+      const remaining = expiresAt - Date.now();
+      if (remaining > 0) timer = setTimeout(check, remaining);
+      else setExpired(true);
     };
-    const timer = setTimeout(
-      check,
-      Math.max(0, Date.parse(context.expiresAt) - Date.now()),
-    );
+    timer = setTimeout(check, Math.max(0, expiresAt - Date.now()));
     window.addEventListener("focus", check);
     return () => {
       clearTimeout(timer);

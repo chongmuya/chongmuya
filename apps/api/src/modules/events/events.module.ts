@@ -10,5 +10,6 @@ import { EventsService } from "./events.service.js";
   imports: [DatabaseModule, ConfigModule, AuthModule, GroupsModule],
   controllers: [EventsController],
   providers: [EventsService],
+  exports: [EventsService],
 })
 export class EventsModule {}

@@ -10,6 +10,7 @@ import {
 } from "@/features/auth/client";
 import type { SessionRequest } from "@/features/auth/types";
 import { GroupBoundary, GroupSettings } from "@/features/groups/client";
+import { ReservationProgress } from "@/features/reservations/client";
 import { EventList, EventDetail } from "@/features/events/client";
 
 type Mode = "events" | "mypage" | "onboarding";
@@ -115,11 +116,18 @@ export function WorkspaceContent({
           )}
         </GroupBoundary>
       ) : eventId ? (
-        <EventDetail
-          accountId={accountId}
-          request={request}
-          eventId={eventId}
-        />
+        <>
+          <EventDetail
+            accountId={accountId}
+            request={request}
+            eventId={eventId}
+          />
+          <ReservationProgress
+            accountId={accountId}
+            eventId={eventId}
+            request={request}
+          />
+        </>
       ) : (
         <EventList
           accountId={accountId}

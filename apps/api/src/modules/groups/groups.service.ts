@@ -35,6 +35,16 @@ export class GroupsService {
       throw new NotFoundException();
   }
 
+  async getLabel(
+    ownerId: string,
+    id: string,
+    manager: EntityManager,
+  ): Promise<{ name: string; groupType: string | null }> {
+    const group = await manager.getRepository(Group).findOneBy({ id, ownerId });
+    if (!group) throw new NotFoundException();
+    return { name: group.name, groupType: group.groupType };
+  }
+
   async list(ownerId: string): Promise<GroupDto[]> {
     const db = await this.database.connect();
     const groups = await db
