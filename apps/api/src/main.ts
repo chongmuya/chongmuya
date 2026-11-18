@@ -6,7 +6,9 @@ import { ConfigService } from "./config/config.service.js";
 import { configureHttp } from "./bootstrap/configure-http.js";
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
   const { environment } = app.get(ConfigService);
   configureHttp(app, environment);
   app.enableShutdownHooks();

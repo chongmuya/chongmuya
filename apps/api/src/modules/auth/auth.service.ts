@@ -1,3 +1,4 @@
+import type { EntityManager } from "typeorm";
 import { SessionIssuerService } from "./session-issuer.service.js";
 import { EmailVerificationService } from "./email-verification.service.js";
 import type { FirstSetupDto } from "./dto/request/first-setup.request.dto.js";
@@ -30,6 +31,10 @@ export class AuthService {
     private readonly phone: PhoneVerificationService,
     private readonly terms: SignupTermsService,
   ) {}
+  async assertOwnerAccount(id: string, manager: EntityManager) {
+    if (!(await manager.existsBy(Account, { id, accountType: "owner" })))
+      throw new DomainHttpException("OWNER_REQUIRED");
+  }
   private async limit(ip: string, email: string) {
     const db = await this.database.connect();
     await this.repository.limit(db.manager, `ip:${ip}`, 50);
@@ -122,8 +127,6 @@ export class AuthService {
         account.accountType !== input.accountType
       )
         throw new DomainHttpException("FIRST_SETUP_CONFLICT");
-      if (!account.accountType && input.accountType === "owner")
-        throw new DomainHttpException("OWNER_REGISTRATION_UNAVAILABLE");
       const type = account.accountType ?? input.accountType;
       if (!type || (input.nickname !== undefined && type !== "organizer"))
         throw new DomainHttpException("VALIDATION_FAILED");

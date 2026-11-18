@@ -52,8 +52,9 @@ export function ServiceIntroduction() {
           height={page === 0 ? 126.716 : 51.95}
         />
         <p className="rounded-control bg-brand/10 p-4 text-caption text-muted">
-          여러 매장에 예약 조건을 문의하고 링크·QR로 참석을 받을 수 있어요. 실제
-          문자 발송·매장 응답·정산은 준비 중이에요.
+          여러 매장에 예약 조건을 문자로 문의하고, 링크·QR로 참석을 받을 수
+          있어요. 매장 답변을 확인할 수 있으며 제안 선택·예약 확정·정산은 다음
+          단계예요.
         </p>
       </div>
       <div className="space-y-2">

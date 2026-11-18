@@ -111,7 +111,7 @@ pnpm --filter @chongmuya/api db:seed:restaurants
 pnpm --filter @chongmuya/api db:seed:restaurants --contacts-file src/database/seeds/data/restaurant-contacts.private.json
 ```
 
-연락처 파일은 `apps/api/src/database/seeds/data/restaurant-contacts.private.json`에 `{ "contacts": [...] }` 형식으로 두며 Git·빌드에서 제외됩니다. 항목은 `restaurantKey`(`gaemijiptu`, `bakmulje`, `otaesik-sejong`, `sijang-kondae`), `name`, `phone`(숫자 문자열), `active`(기본 true), `requestConsentAt`(실제 수신 동의 시각, 시간대 포함 ISO 문자열 또는 null), `consentNote`입니다. 파일은 위 옵션을 지정해야 읽으며, 활성·수신 동의가 있는 담당자만 문의 대상으로 사용할 수 있습니다. 파일만으로 기존 연락처를 수정하거나 삭제된 담당자를 재등록하지 않습니다. 등록 이력에는 ID만 남깁니다. 실제 문자 발송·매장 답변은 포함하지 않습니다.
+연락처 파일은 `apps/api/src/database/seeds/data/restaurant-contacts.private.json`에 `{ "contacts": [...] }` 형식으로 두며 Git·빌드에서 제외됩니다. 항목은 `restaurantKey`(`gaemijiptu`, `bakmulje`, `otaesik-sejong`, `sijang-kondae`), `name`, `phone`(숫자 문자열), `active`(기본 true), `requestConsentAt`(실제 수신 동의 시각, 시간대 포함 ISO 문자열 또는 null), `consentNote`입니다. 파일은 위 옵션을 지정해야 읽으며, 활성·수신 동의가 있는 담당자만 문의 대상으로 사용할 수 있습니다. 파일만으로 기존 연락처를 수정하거나 삭제된 담당자를 재등록하지 않습니다. 등록 이력에는 ID만 남깁니다. 시드는 발송하지 않습니다. 문의 접수 후 발송·답변 동작은 아래 사장님 등록·문의 문자 절을 따릅니다.
 
 ## 검증
 
@@ -142,3 +142,35 @@ Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 
 - [인증 기준](docs/authentication.md): Passport·쿠키·CSRF·세션·개인 자원 접근
 - [협업 규칙](docs/CONTRIBUTING.md): 커밋·브랜치·PR과 검증
 - [PR 템플릿](.github/pull_request_template.md)
+
+### 사장님 등록·문의 문자
+
+`/owner`에서 사장님 첫 설정, 계정별 등록 초안, 정보·메뉴 수정과 받은 문의를 이용한다. 신규 매장은 공개 대기이며, 기존 운영 매장은 계정 연결 없이도 유효 연락처와 수신 동의가 있으면 문자 문의를 받을 수 있다. `/merchant-reply?target=<id>#token=<비밀값>`은 로그인 없는 단일 문의 답변·수정 링크다. 가능·변경 제안은 예약 확정이 아니며, 접수 후 같은 행사 재문의는 계속 금지한다.
+
+API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery` migration을 기존 명시적 `db:migration:run`으로 적용한다. Node/pnpm, `pnpm dev`, 브라우저→Nest 통신은 그대로다. `.env.example`의 서버 설정을 `apps/api/.env` 또는 실제 Nest 프로세스 환경에 주입한다. Turbo 개발 실행에도 전달된다. Compose는 기존 로컬 PostgreSQL만 실행하며 별도 워커·Redis는 없다.
+
+- 개발/CI: `MESSAGE_PROVIDER=fake`, `GEOCODING_PROVIDER=fake`. 실제 전달 완료로 표시하지 않는다. 운영에서는 fake를 허용하지 않는다.
+- 실제 연동: 이미 발급한 SOLAPI Key/Secret과 등록 발신번호, 이미 Geocoding을 활성화한 Maps Application의 ID/Secret을 서버에 설정한다. 지도 표시용 `NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`와 서버 Secret을 구분한다.
+- `OWNER_SUPPORT_EMAIL`에는 실제 운영 이메일을 넣는다. 미설정 시 가짜 주소를 보여주지 않는다. 테스트는 `owner@example.test`를 사용한다.
+- `MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY`: `openssl rand -hex 32`로 만든 64자리 hex. 원문 토큰은 AES-256-GCM 암호문과 검증 digest로 분리 저장하며 문자 본문·URL은 이력/로그에 저장하지 않는다. 운영 키를 잃으면 명시적 링크 재발급이 필요하다.
+- `WEB_ORIGIN`은 고정 링크 origin이며 운영은 HTTPS다. `PROVIDER_TIMEOUT_MS=5000`, 브라우저 제한 10초, 최대 3곳을 병렬로 기다린다. 링크는 기본 7일과 행사 시작 중 빠른 시각까지며 제안 선택 기본 12시간과 다르다.
+- 운영자가 SOLAPI 콘솔 등 공식 경로에서 공개 HTTPS `POST /api/v1/webhooks/solapi`와 `SOLAPI_WEBHOOK_SECRET`, `SINGLE-REPORT`를 연결한다. 이 경로만 CSRF 예외이며 원본 본문에 대한 `X-Solapi-Signature`를 검증한다. 연결 전에는 ACCEPTED를 전달 완료로 바꾸지 않는다. 웹훅 본문은 기존 API의 256KB 한도다.
+- 발신번호 등록·잔액, 실제 Nest 송신 공인 IP/NAT IP와 SOLAPI 허용 IP의 일치, 키의 send-sms/send-lms/read 권한, 실제 수신번호·동의·공개 상태는 실행 환경에서 별도 확인한다. 키 발급과 Geocoding 활성화를 다시 할 필요는 없다.
+- `TRUSTED_PROXY_CIDRS`는 실제 ingress의 IP/CIDR만 명시한다. 기본은 직접 연결 IP이며 임의 X-Forwarded-For를 신뢰하지 않는다. 참석 제한은 차수·IP별 열기/저장 각 600회/15분, 식별 조합별 각 20회, IP·차수·이름별 열기 30회다.
+
+운영 명령은 서버 접근 권한이 있는 실행자가 `pnpm --filter @chongmuya/api merchant:operations --action ...`으로 실행한다. 변경은 기본 dry-run이며 `--execute --actor <실행자> --reason <확인 사유>`가 있어야 적용한다. `--output <새 파일>`은 0600·wx로 결과를 저장한다. 비밀 토큰이나 문자 본문은 출력하지 않는다.
+
+| action              | 추가 인자·효과                                                                                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owner-link`        | `--restaurant <UUID> --account <owner Account UUID>`; 다른 소유자는 덮어쓰지 않음                                                                                                                 |
+| `publish`           | `--restaurant <UUID>`; `--unpublish`로 비공개                                                                                                                                                     |
+| `normalize-address` | `--restaurant <UUID> --version <현재 버전> --query <검색 주소> --base-address <정확한 선택 결과> --detail-address <층·호수>`; dry-run 확인 후 실행, 중복 충돌 시 중단                             |
+| `deliveries`        | 발송 상태/ID 조회, 만료된 PROCESSING은 UNKNOWN으로 분류                                                                                                                                           |
+| `retry`             | `--delivery <UUID>`; PENDING 또는 명확한 SUBMISSION 실패만 현재 동의·번호·공개·링크를 재검사해 처리                                                                                               |
+| `reconcile`         | `--delivery <UUID>`; 공급자 ID 또는 번호·시간 범위 조회 후 deliveryId 대조. UNKNOWN이 해소되지 않으면 재발송 금지                                                                                 |
+| `record-contact`    | `--restaurant <UUID> --input <0600 JSON>`; `{id:고정 UUID,name,phone,requestConsentAt:실제 동의 시각 또는 null,consentNote}`. 기존 번호를 덮어쓰지 않고 확인한 새 담당자 저장, null 동의는 비활성 |
+| `change-recipient`  | `--target ID --contact NEW_CONTACT_ID`; 원래 접수·발송 이력을 보존하고 확인된 새 수신자와 링크로 전환. 반환한 deliveryId를 별도 `retry`로 발송                                                    |
+| `regenerate-link`   | `--target <UUID>`; 이전 generation과 파생 접근 권한 폐기. 문의·답변 이력 보존                                                                                                                     |
+| `record-reply`      | `--target <UUID> --input <0600 JSON>`; `{method:"PHONE" 또는 "SMS",confirmedAt:ISO시각,reply:응답 API 본문}`. 확인 주체·사유와 version/revision 보존                                              |
+
+문의 트랜잭션 커밋 뒤 같은 Nest에서 직접 발송한다. 종료 시 남은 PENDING은 자동 복구하지 않는다. 타임아웃·접수 결과 저장 실패·만료 lease는 UNKNOWN이며 자동 재시도하지 않는다. `reservations:pending`은 PENDING의 수동 점검용 내보내기다. 이미 접수한 문자를 다시 보내는 목록으로 사용하지 말고 위 delivery ID 명령을 사용한다. 실제 시드 CLI는 여전히 development/test의 로컬 DB 전용이며 운영 이관 명령이 아니다.

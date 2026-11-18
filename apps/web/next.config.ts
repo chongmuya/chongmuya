@@ -12,7 +12,11 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
-    return ["/auth/reset-password", "/auth/kakao/:path*"].map((source) => ({
+    return [
+      "/auth/reset-password",
+      "/auth/kakao/:path*",
+      "/merchant-reply",
+    ].map((source) => ({
       source,
       headers: [
         { key: "Referrer-Policy", value: "no-referrer" },

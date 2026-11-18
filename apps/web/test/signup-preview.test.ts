@@ -535,7 +535,10 @@ test("post-signup choices preserve selection on back, allow skipping and route g
     }),
   );
   try {
-    assert.match(owner.container.textContent!, /매장 상세 등록은 준비 중/);
+    assert.match(
+      owner.container.textContent!,
+      /매장을 등록해 총무들의 단체 예약 문의/,
+    );
     assert.equal(
       owner.container.querySelectorAll('input[name="usage"]').length,
       0,

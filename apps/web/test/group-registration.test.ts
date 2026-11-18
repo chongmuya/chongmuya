@@ -176,6 +176,7 @@ test("registration retains edits across back, excludes invalid rows, confirms du
       '[aria-label="3번 구성원 제외"]',
     )!;
     await act(async () => exclude.click());
+    await fill(view.container, "members.1.name", "김민수".normalize("NFD"));
     await fill(view.container, "members.1.phoneLast4", "0007");
     await fill(view.container, "members.0.label", "운영팀");
     await fill(view.container, "members.1.label", "기획팀");

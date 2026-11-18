@@ -27,7 +27,6 @@ export function SetupRole() {
         <ChoiceCard
           {...register("accountType")}
           value="owner"
-          disabled
           className="min-h-40 justify-between py-6"
         >
           <Image
@@ -41,7 +40,6 @@ export function SetupRole() {
             <br />
             사장님이에요
           </span>
-          <span className="text-caption text-muted">준비 중</span>
         </ChoiceCard>
         <ChoiceCard
           {...register("accountType")}

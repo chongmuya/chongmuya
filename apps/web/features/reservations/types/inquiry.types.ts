@@ -22,7 +22,9 @@ export type ReservationRequest = {
   eventId: string;
   createdAt: string;
   status: "RECEIVED";
-  responseCount: 0;
+  responseCount: number;
+  proposalCount?: number;
+  declineCount?: number;
   snapshot: InquirySnapshot;
   contact: {
     name: string;
@@ -35,7 +37,22 @@ export type ReservationRequest = {
     restaurantName: string;
     address: string;
     isDemo: boolean;
-    deliveryStatus: "PENDING";
+    deliveryStatus:
+      | "PENDING"
+      | "PROCESSING"
+      | "ACCEPTED"
+      | "DELIVERED"
+      | "FAILED"
+      | "UNKNOWN"
+      | "HELD"
+      | "CANCELLED";
+    delivery?: {
+      provider: "fake" | "solapi" | null;
+      failureStage: "SUBMISSION" | "DELIVERY" | null;
+      errorCode: string | null;
+      updatedAt: string;
+    } | null;
+    response?: import("@/features/merchant-replies/types").Reply | null;
   }[];
 };
 

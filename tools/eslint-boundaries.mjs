@@ -96,6 +96,7 @@ const apiPublicImports = {
   "events/events.service": ["EventsService"],
   "restaurants/restaurants.service": ["RestaurantsService"],
   "auth/guards/jwt-access.guard": ["AccessGuard"],
+  "auth/phone-verification.service": ["PhoneVerificationService"],
   "auth/auth.service": ["AuthService"],
   "auth/decorators/current-user.decorator": ["CurrentUser"],
   "auth/types/auth-user": ["AuthUser"],

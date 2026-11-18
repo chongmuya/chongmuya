@@ -1,3 +1,4 @@
+import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -36,6 +37,11 @@ const body = () => ({
 
 test("public catalog excludes private contacts; one inquiry per owned event, concurrent retries, immutable snapshot and rollback", async (t) => {
   const { app, db, call, signup, logs } = await startResourceApplication(t);
+  t.mock.method(
+    app.get(MessageDeliveryService),
+    "dispatchRequest",
+    async () => undefined,
+  );
   await seedDemoRestaurants(db);
   await seedDemoRestaurants(db);
   const roomId = randomUUID();

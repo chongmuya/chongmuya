@@ -143,6 +143,14 @@ export function RestaurantDetail({
                   {section === "booking" ? (
                     <dl className="space-y-3">
                       {[
+                        [
+                          "최소 단체 인원",
+                          r.minimumGuests == null
+                            ? "확인 필요"
+                            : r.minimumGuests === 0
+                              ? "제한 없음"
+                              : `${r.minimumGuests}명`,
+                        ],
                         ["예약 기준", r.bookingPolicy],
                         ["예약금", r.depositPolicy],
                         ["메뉴 주문", r.menuPolicy],

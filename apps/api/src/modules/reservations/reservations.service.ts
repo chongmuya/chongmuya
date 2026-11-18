@@ -1,3 +1,7 @@
+import { MessageDeliveryService } from "./message-delivery.service.js";
+import { MessageDelivery } from "./entities/message-delivery.entity.js";
+import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
+import { replyView } from "./merchant-replies.service.js";
 import { Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import type { EntityManager } from "typeorm";
@@ -20,6 +24,7 @@ export class ReservationsService {
     private readonly events: EventsService,
     private readonly groups: GroupsService,
     private readonly restaurants: RestaurantsService,
+    private readonly delivery: MessageDeliveryService,
   ) {}
 
   async get(
@@ -64,7 +69,8 @@ export class ReservationsService {
       )
       .digest("hex");
     const db = await this.database.connect();
-    return db.transaction(async (manager) => {
+    let created = false;
+    const result = await db.transaction(async (manager) => {
       const event = await this.events.assertOwned(
         user.id,
         eventId,
@@ -117,7 +123,7 @@ export class ReservationsService {
             : null,
         createdAt: new Date(),
       });
-      await manager.getRepository(RequestTarget).insert(
+      const savedTargets = await manager.getRepository(RequestTarget).save(
         targets.map((target) => ({
           ...target,
           id: randomUUID(),
@@ -125,8 +131,15 @@ export class ReservationsService {
           deliveryStatus: "PENDING" as const,
         })),
       );
+      await this.delivery.prepare(row, savedTargets, manager);
+      created = true;
       return this.dto(row, manager);
     });
+    if (created) {
+      await this.delivery.dispatchRequest(result.id);
+      return (await this.get(user.id, eventId))!;
+    }
+    return result;
   }
   private async dto(
     row: ReservationRequest,
@@ -135,26 +148,55 @@ export class ReservationsService {
     const targets = await manager
       .getRepository(RequestTarget)
       .find({ where: { requestId: row.id }, order: { restaurantId: "ASC" } });
+    const enriched = await Promise.all(
+      targets.map(async (t) => {
+        const response = replyView(
+          await manager.findOneBy(MerchantReplyRevision, {
+            targetId: t.id,
+            revision: t.replyVersion,
+          }),
+        );
+        const delivery = await manager.findOne(MessageDelivery, {
+          where: { targetId: t.id },
+          order: { createdAt: "DESC" },
+        });
+        return {
+          id: t.id,
+          restaurantId: t.restaurantId,
+          restaurantName: t.restaurantName,
+          address: t.address,
+          isDemo: t.isDemo,
+          deliveryStatus: t.deliveryStatus,
+          delivery: delivery
+            ? {
+                provider: delivery.provider,
+                failureStage: delivery.failureStage,
+                errorCode: delivery.errorCode,
+                updatedAt: delivery.updatedAt.toISOString(),
+              }
+            : null,
+          response,
+        };
+      }),
+    );
     return {
       id: row.id,
       eventId: row.eventId,
       createdAt: row.createdAt.toISOString(),
       status: "RECEIVED",
-      responseCount: 0,
+      responseCount: enriched.filter((t) => t.response).length,
+      proposalCount: enriched.filter(
+        (t) => t.response && t.response.kind !== "DECLINE",
+      ).length,
+      declineCount: enriched.filter((t) => t.response?.kind === "DECLINE")
+        .length,
       snapshot: row.snapshot,
       contact: {
         name: row.contactName,
         maskedPhone: `${row.contactPhone.slice(0, 3)}-****-${row.contactPhone.slice(-4)}`,
         phoneVerifiedAt: row.contactPhoneVerifiedAt?.toISOString() ?? null,
       },
-      targets: targets.map((t) => ({
-        id: t.id,
-        restaurantId: t.restaurantId,
-        restaurantName: t.restaurantName,
-        address: t.address,
-        isDemo: t.isDemo,
-        deliveryStatus: t.deliveryStatus,
-      })),
+      targets: enriched,
     };
   }
   // No public HTTP route: available only to an operator with server/DB access.

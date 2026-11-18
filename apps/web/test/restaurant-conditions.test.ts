@@ -77,6 +77,23 @@ test("capacity, availability and seating must match in one space; money is indep
       expected,
     );
   }
+  for (const [minimumGuests, expected] of [
+    [35, "인원·공간 조건 불일치"],
+    [0, "인원·공간 일치"],
+    [null, "인원·공간 확인 필요"],
+  ] as const) {
+    assert.equal(
+      conditionsMatch(
+        {
+          maxCapacity: 60,
+          minimumGuests,
+          spaces: [{ ...space, capacity: 40, minGuests: 0 }],
+        } as Restaurant,
+        condition,
+      ),
+      expected,
+    );
+  }
   for (const label of ["최소 이용금액", "별도 대관료"]) {
     assert.equal(spaceCost(label, null), `${label} 확인 필요`);
     assert.equal(spaceCost(label, 0), `${label} 없음`);

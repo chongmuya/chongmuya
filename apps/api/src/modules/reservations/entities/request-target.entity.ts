@@ -13,7 +13,10 @@ import {
   ["requestId", "restaurantId"],
   { unique: true },
 )
-@Check("reservation_targets_status_check", "delivery_status = 'PENDING'")
+@Check(
+  "reservation_targets_status_check",
+  "delivery_status IN ('PENDING','PROCESSING','ACCEPTED','DELIVERED','FAILED','UNKNOWN','HELD','CANCELLED')",
+)
 export class RequestTarget {
   @PrimaryColumn("uuid", {
     primaryKeyConstraintName: "reservation_request_targets_pkey",
@@ -46,5 +49,7 @@ export class RequestTarget {
     name: "delivery_status",
     default: "PENDING",
   })
-  deliveryStatus!: "PENDING";
+  deliveryStatus!: import("../types/merchant-reply.js").DeliveryState;
+  @Column({ type: "integer", name: "reply_version", default: 0 })
+  replyVersion!: number;
 }

@@ -20,7 +20,8 @@
     "test:integration": "pnpm test:compile && node --test --test-concurrency=1 dist-test/test/integration/*.test.js",
     "db:seed:restaurants": "node dist/database/seeds/run-seed.js restaurants",
     "db:seed:restaurants:demo": "node dist/database/seeds/run-seed.js restaurants-demo",
-    "reservations:pending": "node scripts/pending-reservations.mjs"
+    "reservations:pending": "node scripts/pending-reservations.mjs",
+    "merchant:operations": "node scripts/merchant-operations.mjs"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",

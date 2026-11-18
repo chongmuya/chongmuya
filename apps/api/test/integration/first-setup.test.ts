@@ -38,8 +38,8 @@ test("first setup saves only the signed-in account, resumes after login and pres
     (await save({ accountType: "owner", nickname: "가짜" }, other)).status,
     400,
   );
-  assert.equal((await save({ accountType: "owner" }, other)).status, 400);
-  assert.equal((await me(other)).accountType, null);
+  assert.equal((await save({ accountType: "owner" }, other)).status, 200);
+  assert.equal((await me(other)).accountType, "owner");
   await db
     .getRepository(Account)
     .update({ id: b.id }, { accountType: "owner" });
@@ -62,6 +62,5 @@ test("first setup saves only the signed-in account, resumes after login and pres
     save({ accountType: "owner" }, fresh),
     save({ accountType: "organizer" }, fresh),
   ]);
-  assert.equal(race[1].status, 200);
-  assert([400, 409].includes(race[0].status));
+  assert.deepEqual(race.map((r) => r.status).sort(), [200, 409]);
 });

@@ -195,19 +195,6 @@ export function ConditionsForm({
             height={26}
           />
         </div>
-        <Button
-          disabled
-          variant="outline"
-          className="w-full justify-between rounded-control border-0 bg-soft px-3 py-4 text-xs font-normal disabled:opacity-100"
-        >
-          사장님 제안받기 · 준비 중{" "}
-          <Image
-            src="/images/restaurants/radio-off.svg"
-            alt=""
-            width={26}
-            height={26}
-          />
-        </Button>
       </fieldset>
       <div className="flex justify-end">
         <Button type="submit" className="min-h-[50px] px-5 text-sm">

@@ -4,7 +4,9 @@ export type ReservationRequestDto = {
   eventId: string;
   createdAt: string;
   status: "RECEIVED";
-  responseCount: 0;
+  responseCount: number;
+  proposalCount: number;
+  declineCount: number;
   snapshot: InquirySnapshot;
   contact: {
     name: string;
@@ -17,6 +19,15 @@ export type ReservationRequestDto = {
     restaurantName: string;
     address: string;
     isDemo: boolean;
-    deliveryStatus: "PENDING";
+    deliveryStatus: import("../../types/merchant-reply.js").DeliveryState;
+    delivery: {
+      provider: "fake" | "solapi" | null;
+      failureStage: "SUBMISSION" | "DELIVERY" | null;
+      errorCode: string | null;
+      updatedAt: string;
+    } | null;
+    response: ReturnType<
+      typeof import("../../merchant-replies.service.js").replyView
+    >;
   }[];
 };

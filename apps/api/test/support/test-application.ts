@@ -1,5 +1,13 @@
+import type { Request } from "express";
 import "reflect-metadata";
-import { Body, Controller, Get, Post, HttpException } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  HttpException,
+  Req,
+} from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { Test } from "@nestjs/testing";
 import { IsInt, IsString, Min } from "class-validator";
@@ -21,6 +29,9 @@ class ProbeDto {
 // Exercises global HTTP configuration without shipping example business endpoints.
 @Controller("test")
 class ProbeController {
+  @Get("ip") ip(@Req() req: Request) {
+    return { ip: req.ip };
+  }
   @Post("validate")
   validate(@Body() body: ProbeDto) {
     return body;
@@ -67,6 +78,7 @@ export async function startTestApplication(
     .compile();
   const app = module.createNestApplication<NestExpressApplication>({
     logger: false,
+    rawBody: true,
   });
   const logs: RequestLog[] = [];
   configureHttp(app, environment, (entry) => logs.push(entry));

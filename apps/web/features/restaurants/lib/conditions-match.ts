@@ -14,6 +14,8 @@ export function conditionsMatch(
   const matches = spaces.map((s) => {
     if (
       s.availability === "UNAVAILABLE" ||
+      (r.maxCapacity !== null && r.maxCapacity < expectedGuests) ||
+      (r.minimumGuests != null && r.minimumGuests > expectedGuests) ||
       (s.capacity !== null && s.capacity < expectedGuests) ||
       (s.minGuests !== null && s.minGuests > expectedGuests) ||
       (seating === "CLOSE" && s.togetherSeating === "NO")
@@ -21,6 +23,7 @@ export function conditionsMatch(
       return "인원·공간 조건 불일치";
     if (
       s.availability === "UNKNOWN" ||
+      r.minimumGuests === null ||
       s.capacity === null ||
       s.minGuests === null ||
       (seating === "CLOSE" && s.togetherSeating === "UNKNOWN")

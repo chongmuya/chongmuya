@@ -1,3 +1,8 @@
+import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
+import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
+import { MerchantReplyLink } from "../../src/modules/reservations/entities/merchant-reply-link.entity.js";
+import { RestaurantManagementService } from "../../src/modules/restaurants/restaurant-management.service.js";
+import { RestaurantOperation } from "../../src/modules/restaurants/entities/restaurant-operation.entity.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -31,6 +36,11 @@ type Fixture = {
 
 test("real restaurant seed preserves surveyed conditions, unknown prices, private contacts and operator edits atomically", async (t) => {
   const { app, db, call, signup, logs } = await startResourceApplication(t);
+  t.mock.method(
+    app.get(MessageDeliveryService),
+    "dispatchRequest",
+    async () => undefined,
+  );
   let requestId: string | undefined;
   const fixture = structuredClone(publicFixture) as Fixture;
   const keys = fixture.restaurants.map((restaurant) => restaurant.key);
@@ -190,6 +200,16 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     assert.equal(savedTargets[0]!.deliveryStatus, "PENDING");
     assert.equal(savedTargets[0]!.isDemo, false);
 
+    const ownerJar = await signup();
+    await call("auth/first-setup", ownerJar, "PATCH", { accountType: "owner" });
+    const ownerAccount = await (await call("auth/me", ownerJar)).json();
+    await app.get(RestaurantManagementService).operate({
+      restaurantId: ids[0]!,
+      accountId: ownerAccount.id,
+      actor: "seed-test",
+      reason: "소유권 보존 검증",
+      dryRun: false,
+    });
     const first = fixture.restaurants[0]!;
     const menuId = restaurantSeedId(
       "menu",
@@ -221,6 +241,10 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
       { active: false, requestConsentAt: null },
     );
     await seedRestaurants(db, fixture, privateFixture);
+    assert.equal(
+      (await restaurants.findOneByOrFail({ id: ids[0]! })).ownerAccountId,
+      ownerAccount.id,
+    );
     assert.equal(
       (await restaurants.findOneByOrFail({ id: ids[0]! })).name,
       "운영자가 수정한 상호",
@@ -313,6 +337,15 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
   } finally {
     // Other suites share the isolated test DB and expect their own catalog.
     if (requestId) {
+      const targetIds = (
+        await db.getRepository(RequestTarget).findBy({ requestId })
+      ).map((t) => t.id);
+      await db
+        .getRepository(MessageDelivery)
+        .delete({ targetId: In(targetIds) });
+      await db
+        .getRepository(MerchantReplyLink)
+        .delete({ targetId: In(targetIds) });
       await db.getRepository(RequestTarget).delete({ requestId });
       await db.getRepository(ReservationRequest).delete({ id: requestId });
     }
@@ -322,6 +355,9 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     });
     await menus.delete({ restaurantId: In(cleanupIds) });
     await spaces.delete({ restaurantId: In(cleanupIds) });
+    await db
+      .getRepository(RestaurantOperation)
+      .delete({ restaurantId: In(cleanupIds) });
     await restaurants.delete({ id: In(cleanupIds) });
   }
 });

@@ -12,6 +12,9 @@ export class CsrfGuard implements CanActivate {
   constructor(private readonly config: ConfigService) {}
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<Request>();
+    // This exact machine-to-machine route verifies the raw-body SOLAPI signature.
+    if (request.method === "POST" && request.path === "/api/v1/webhooks/solapi")
+      return true;
     if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return true;
     if (
       request.headers.origin !== this.config.environment.webOrigin ||

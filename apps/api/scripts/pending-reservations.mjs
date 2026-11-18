@@ -26,7 +26,7 @@ try {
     { flag: "wx", mode: 0o600 },
   );
   console.log(
-    `발송 가능 ${targets.eligible.length}건, 보류 ${targets.held.length}건을 권한 0600의 새 파일에 기록했습니다. 발송하거나 상태를 바꾸지 않았습니다.`,
+    `연락처 확인 완료 ${targets.eligible.length}건, 보류 ${targets.held.length}건을 권한 0600의 새 파일에 기록했습니다. 발송하거나 상태를 바꾸지 않았습니다. 실제 처리는 merchant:operations의 delivery ID 명령을 사용하세요.`,
   );
 } catch {
   console.error(

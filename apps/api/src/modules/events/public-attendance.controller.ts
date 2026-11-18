@@ -26,7 +26,7 @@ export class PublicAttendanceController {
   info(@Param("shareId", ParseUUIDPipe) share: string, @Req() req: Request) {
     return this.attendance.publicInfo(
       share,
-      req.socket.remoteAddress ?? "unknown",
+      req.ip ?? req.socket.remoteAddress ?? "unknown",
     );
   }
   @Post("open")
@@ -40,7 +40,7 @@ export class PublicAttendanceController {
     return this.attendance.open(
       share,
       body,
-      req.socket.remoteAddress ?? "unknown",
+      req.ip ?? req.socket.remoteAddress ?? "unknown",
     );
   }
   @Post("response")
@@ -54,7 +54,7 @@ export class PublicAttendanceController {
     return this.attendance.save(
       share,
       body,
-      req.socket.remoteAddress ?? "unknown",
+      req.ip ?? req.socket.remoteAddress ?? "unknown",
     );
   }
 }

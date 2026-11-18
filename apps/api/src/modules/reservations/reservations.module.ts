@@ -1,3 +1,12 @@
+import { MerchantLinksService } from "./merchant-links.service.js";
+import { MerchantRepliesService } from "./merchant-replies.service.js";
+import { MessageDeliveryService } from "./message-delivery.service.js";
+import { MessageProvider } from "./providers/message.provider.js";
+import {
+  MerchantRepliesController,
+  OwnerInquiriesController,
+  SolapiWebhookController,
+} from "./merchant-replies.controller.js";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "../../config/config.module.js";
 import { DatabaseModule } from "../../database/database.module.js";
@@ -16,7 +25,18 @@ import { ReservationsService } from "./reservations.service.js";
     EventsModule,
     RestaurantsModule,
   ],
-  controllers: [ReservationsController],
-  providers: [ReservationsService],
+  controllers: [
+    ReservationsController,
+    MerchantRepliesController,
+    OwnerInquiriesController,
+    SolapiWebhookController,
+  ],
+  providers: [
+    ReservationsService,
+    MerchantLinksService,
+    MerchantRepliesService,
+    MessageDeliveryService,
+    MessageProvider,
+  ],
 })
 export class ReservationsModule {}

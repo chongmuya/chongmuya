@@ -22,6 +22,10 @@ export function safeReturnPath(
       "/getting-started",
       "/groups/new",
       "/restaurants",
+      "/owner",
+      "/owner/register",
+      "/owner/menus",
+      "/owner/inquiries",
     ].includes(url.pathname)
   )
     return "/events";
@@ -48,6 +52,12 @@ export function safeReturnPath(
     ].slice(0, 3);
     if (selected.length) params.set("selected", selected.join(","));
     if (url.searchParams.get("inquiry") === "1") params.set("inquiry", "1");
+  }
+  if (url.pathname.startsWith("/owner")) {
+    for (const key of ["restaurant", "target"]) {
+      const item = url.searchParams.get(key);
+      if (item && uuid.test(item)) params.set(key, item);
+    }
   }
   for (const key of url.pathname === "/events"
     ? ["event", "group", "round"]

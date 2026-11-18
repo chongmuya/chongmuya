@@ -6,12 +6,19 @@ import { DatabaseService } from "../../src/database/database.service.js";
 import { AuthAttempt } from "../../src/modules/auth/entities/auth-attempt.entity.js";
 import { tokenHash } from "../../src/modules/auth/utils/token-hash.js";
 
-export async function startResourceApplication(t: TestContext) {
+export async function startResourceApplication(
+  t: TestContext,
+  environment: NodeJS.ProcessEnv = {},
+) {
   assert(
     process.env.TEST_DATABASE_URL,
     "TEST_DATABASE_URL must point to an isolated test database",
   );
-  const result = await startTestApplication(process.env.TEST_DATABASE_URL);
+  const result = await startTestApplication(
+    process.env.TEST_DATABASE_URL,
+    true,
+    environment,
+  );
   t.after(() => result.app.close());
   const db = await result.app.get(DatabaseService).connect();
   await db.runMigrations();

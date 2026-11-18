@@ -28,6 +28,51 @@ export const fieldErrorSchema = z
 export type FieldError = z.infer<typeof fieldErrorSchema>;
 
 const messages: Record<string, { status: number; message: string }> = {
+  OWNER_REQUIRED: { status: 403, message: "사장님 계정으로 이용해 주세요." },
+  RESTAURANT_DUPLICATE: {
+    status: 409,
+    message: "이미 등록된 매장이 있어요. 관리자에게 문의해 주세요.",
+  },
+  RESTAURANT_VERSION_CONFLICT: {
+    status: 409,
+    message:
+      "매장 정보가 변경됐어요. 최신 내용을 확인한 뒤 다시 저장해 주세요.",
+  },
+  ADDRESS_SELECTION_REQUIRED: {
+    status: 400,
+    message: "주소 검색 결과를 선택해 주세요.",
+  },
+  GEOCODING_CONFIGURATION: {
+    status: 503,
+    message:
+      "주소 검색 설정을 확인하고 있어요. 입력 내용은 보존되며 다시 검색할 수 있어요.",
+  },
+  GEOCODING_LIMIT: {
+    status: 429,
+    message: "주소 검색 요청이 많아요. 잠시 후 다시 검색해 주세요.",
+  },
+  GEOCODING_UNAVAILABLE: {
+    status: 503,
+    message:
+      "주소 검색에 연결하지 못했어요. 입력 내용을 확인하고 다시 검색해 주세요.",
+  },
+  MESSAGE_CONFIGURATION: {
+    status: 503,
+    message: "문자 발송 설정 확인이 필요해요. 저장된 문의는 유지됩니다.",
+  },
+  MERCHANT_LINK_INVALID: {
+    status: 403,
+    message: "사용할 수 없거나 만료된 문의 링크입니다. 총무에게 문의해 주세요.",
+  },
+  MERCHANT_REPLY_CONFLICT: {
+    status: 409,
+    message: "답변이 변경됐어요. 최신 답변을 확인한 뒤 다시 저장해 주세요.",
+  },
+  DELIVERY_RETRY_BLOCKED: {
+    status: 409,
+    message: "접수 여부와 현재 발송 조건을 먼저 확인해야 합니다.",
+  },
+
   ATTENDANCE_CLOSED: {
     status: 409,
     message: "참여자 응답이 마감됐어요. 총무에게 문의해 주세요.",

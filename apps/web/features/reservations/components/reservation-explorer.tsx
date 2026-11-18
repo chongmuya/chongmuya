@@ -176,7 +176,12 @@ function InquiryFlow({
 }) {
   const router = useRouter();
   const event = useEvent(account.id, eventId, request);
-  const existing = useQuery(inquiryQuery(account.id, eventId, request));
+  const existing = useQuery({
+    ...inquiryQuery(account.id, eventId, request),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    staleTime: 0,
+  });
   if (
     (event.isError || existing.isError) &&
     (!event.data || existing.data === undefined)
@@ -375,7 +380,8 @@ function InquiryDraft({
           </h2>
           <p className="my-4 text-sm" id="inquiry-confirm-description">
             접수 후에는 조건 수정·매장 추가·같은 행사 재문의가 불가능해요. 실제
-            문자 전송은 운영 확인 후 진행하며, 지금은 전달 대기로 접수돼요.
+            문의 저장 후 매장에 문자를 전송해요. 매장별 발송·답변 상태를 접수
+            화면에서 확인할 수 있어요.
           </p>
           <p className="mb-5 text-sm">
             {event.name} · {values.expectedGuests}명<br />
