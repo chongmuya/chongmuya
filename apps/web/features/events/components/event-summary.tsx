@@ -19,14 +19,25 @@ export function EventSummary({
   const events = useQuery(eventsQueryOptions(accountId, request, groupId));
   return (
     <section className="space-y-4">
-      <h2 className="text-label">
-        {groupId ? "우리 모임 행사" : "내 행사"}
-        {events.data && !events.isError && (
-          <span className="ml-2 text-caption text-brand">
-            {events.data.length}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-label text-copy">
+          {groupId ? "우리 모임 행사" : "내 행사"}
+          {events.data && !events.isError && (
+            <span className="ml-2 text-caption text-brand">
+              {events.data.length}
+            </span>
+          )}
+        </h2>{" "}
+        <Link
+          href={groupId ? `/events?group=${groupId}` : "/events"}
+          className={buttonStyles({ variant: "ink", className: "text-sm" })}
+        >
+          새 행사{" "}
+          <span aria-hidden="true" className="ml-1">
+            ＋
           </span>
-        )}
-      </h2>
+        </Link>
+      </div>
       {events.isError ? (
         <ErrorState retry={() => void events.refetch()} />
       ) : !events.data ? (
@@ -36,13 +47,13 @@ export function EventSummary({
           {events.data.map((event) => (
             <li key={event.id}>
               <Link
-                className="block rounded-control bg-surface p-4 shadow-control"
+                className="block rounded-control bg-surface p-5 shadow-card"
                 href={`/events?event=${event.id}`}
               >
-                <span className="block font-semibold break-words">
+                <span className="mb-3 block text-copy font-semibold break-words">
                   {event.name}
                 </span>
-                <span className="text-caption text-muted">
+                <span className="text-xs text-secondary">
                   {dateLabel(event.scheduledAt)}
                 </span>
               </Link>
@@ -54,15 +65,6 @@ export function EventSummary({
           등록된 행사가 없어요. 행사를 추가해 준비해봐요.
         </p>
       )}
-      <Link
-        href={groupId ? `/events?group=${groupId}` : "/events"}
-        className={buttonStyles({ variant: "ink", className: "text-caption" })}
-      >
-        새 행사{" "}
-        <span aria-hidden="true" className="ml-1">
-          ＋
-        </span>
-      </Link>
       {groupId && (
         <Link className="ml-4 text-caption text-link underline" href="/events">
           개인 행사·전체 행사 보기

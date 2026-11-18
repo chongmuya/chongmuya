@@ -60,7 +60,7 @@ export function initialConditions(
     date: local.slice(0, 10),
     time: local.slice(11, 16),
     expectedGuests: "",
-    region: "건대입구 · 세종대",
+    region: "",
     seating: "ANY",
     space: "ANY",
     seatingImportance: "PREFERRED",

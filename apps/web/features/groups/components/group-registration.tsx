@@ -1,34 +1,30 @@
 "use client";
-
 import Image from "next/image";
-import { useEffect, useId, useRef, useState } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { useId, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { SessionRequest } from "@/features/auth/types";
+import { RosterEditor } from "@/features/roster/client";
+import type { RosterRow } from "@/features/roster/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { ApiError } from "@/shared/http/api-error";
-import { applyFormError } from "@/shared/lib/apply-form-error";
+import { safeErrorMessage } from "@/shared/http/error-contract";
 import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { Input } from "@/shared/ui/input";
 import { StepHeading, StepLayout } from "@/shared/ui/step-layout";
-import { MAX_ROSTER_BYTES, parseRoster } from "../lib/parse-roster";
 import {
   groupRegistrationSchema,
   type GroupRegistrationValues,
 } from "../schemas/group-registration.schema";
 import { useRegisterGroup } from "../hooks/use-register-group";
-import { reviewRoster } from "../lib/roster-review";
 import type {
   Group,
   GroupMember,
   AddedGroupMembers,
 } from "../types/group.types";
-import { RosterPreview } from "./roster-preview";
-
-type Step = "group" | "input" | "preview";
 export function GroupRegistration({
   accountId,
   request,
@@ -40,92 +36,50 @@ export function GroupRegistration({
   request: SessionRequest;
   onNavigate: (path: string) => void;
 }) {
-  const id = useId();
-  const active = useActiveScreen();
-  const [step, setStep] = useState<Step>(target ? "input" : "group");
-  const [completed, setCompleted] = useState<AddedGroupMembers | null>(null);
-  const [leaving, setLeaving] = useState(false);
-  const [confirmedRows, setConfirmedRows] = useState<string | null>(null);
-  const [fileBusy, setFileBusy] = useState(false);
-  const requestKey = useRef<string | null>(null);
-  const previousSkip = useRef(false);
-  const submitting = useRef(false);
-  const fileVersion = useRef(0);
-  const parsedSource = useRef<string | null>(null);
-  const container = useRef<HTMLDivElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const id = useId(),
+    active = useActiveScreen();
+  const [step, setStep] = useState<"group" | "roster">(
+    target ? "roster" : "group",
+  );
+  const [started, setStarted] = useState(!!target);
+  const [completed, setCompleted] = useState<AddedGroupMembers | null>(null),
+    [leaving, setLeaving] = useState(false),
+    [error, setError] = useState<string>();
+  const requestKey = useRef<string | null>(null),
+    previousSkip = useRef(false),
+    submitting = useRef(false);
   const form = useForm<GroupRegistrationValues>({
     resolver: zodResolver(groupRegistrationSchema),
     defaultValues: {
       name: target?.group.name ?? "",
       groupType: target?.group.groupType ?? "",
-      source: "",
-      members: [],
     },
-    shouldUnregister: false,
   });
-  const { fields, replace, remove, append } = useFieldArray({
-    control: form.control,
-    name: "members",
-  });
-  const rows = useWatch({ control: form.control, name: "members" });
-  const fingerprint = JSON.stringify([rows, target?.members]);
-  const review = reviewRoster(rows, target?.members ?? []);
-  const { duplicates } = review;
-  const confirmed = confirmedRows === fingerprint;
-  const save = useRegisterGroup(accountId, request, (group) =>
-    setCompleted(group),
-  );
-  const busy = save.isPending || fileBusy;
-  const {
-    register,
-    formState: { errors, isDirty },
-    clearErrors,
-    setError,
-    setValue,
-  } = form;
-
-  useEffect(() => {
-    container.current?.querySelector("h1")?.focus();
-  }, [step]);
-  useEffect(() => {
-    if (!isDirty || completed) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [isDirty, completed]);
-
-  const persist = async (values: GroupRegistrationValues, skip = false) => {
+  const save = useRegisterGroup(accountId, request, setCompleted);
+  const persist = async (
+    rows: RosterRow[],
+    duplicatesConfirmed: boolean,
+    skip = false,
+  ) => {
     if (submitting.current) return;
-    if (!skip && duplicates.length && !confirmed) {
-      setError("root.server", {
-        message: "같은 이름의 구성원을 확인해 주세요.",
-      });
-      return;
-    }
-    if (!skip && review.issues.length) {
-      for (const issue of review.issues)
-        setError(`members.${issue.index}.${issue.field}`, {
-          message: issue.message,
-        });
+    if (skip && requestKey.current && !previousSkip.current) {
+      setError(
+        "진행한 등록 결과가 불확실해요. 같은 명단으로 다시 저장하거나 홈에서 확인해 주세요.",
+      );
       return;
     }
     submitting.current = true;
-    requestKey.current ??= crypto.randomUUID();
     previousSkip.current = skip;
-    clearErrors("root.server");
+    requestKey.current ??= crypto.randomUUID();
+    setError(undefined);
+    const metadata = form.getValues();
+    const members = rows.map(({ name, phoneLast4, label, match }) => ({
+      name,
+      phoneLast4: phoneLast4 || null,
+      label: label || null,
+      ...(match && match !== "new" ? { existingMemberId: match } : {}),
+    }));
     try {
-      const members = skip
-        ? []
-        : values.members.map(({ name, phoneLast4, label, match }) => ({
-            name,
-            phoneLast4: phoneLast4 || null,
-            label: label || null,
-            ...(match && match !== "new" ? { existingMemberId: match } : {}),
-          }));
       await save.mutateAsync(
         target
           ? {
@@ -134,322 +88,106 @@ export function GroupRegistration({
               input: {
                 requestKey: requestKey.current,
                 members,
-                duplicatesConfirmed: confirmed,
+                duplicatesConfirmed,
               },
             }
           : {
               kind: "create",
               input: {
-                name: values.name,
-                groupType: values.groupType || null,
+                name: metadata.name.trim(),
+                groupType: metadata.groupType.trim() || null,
                 creationKey: requestKey.current,
                 members,
-                duplicatesConfirmed: !skip && confirmed,
+                duplicatesConfirmed,
               },
             },
       );
-    } catch (error) {
+    } catch (cause) {
       if (
-        error instanceof ApiError &&
-        (error.status === 400 || error.code === "ROSTER_MEMBER_CONFLICT")
+        cause instanceof ApiError &&
+        (cause.status === 400 || cause.code === "ROSTER_MEMBER_CONFLICT")
       )
         requestKey.current = null;
-      if (active.current)
-        applyFormError(error, setError, {
-          name: "name",
-          groupType: "groupType",
-        });
+      throw cause;
     } finally {
       submitting.current = false;
     }
   };
-  const openPreview = (addEmpty = false, source = form.getValues("source")) => {
-    clearErrors();
-    try {
-      // Only a changed source replaces the draft. Back/forward keeps edited/excluded rows.
-      const changed = parsedSource.current !== source;
-      const next = changed ? parseRoster(source) : form.getValues("members");
-      if (addEmpty && next.length >= 500)
-        throw new Error("명단은 한 번에 500명까지 등록할 수 있어요.");
-      const result = addEmpty
-        ? [
-            ...next,
-            { name: "", phoneLast4: "", label: "", match: "", parseError: "" },
-          ]
-        : next;
-      if (!result.length)
-        throw new Error("명단을 입력하거나 한 명씩 직접 추가해 주세요.");
-      if (changed || addEmpty) replace(result);
-      parsedSource.current = source;
-      setValue("source", source, { shouldDirty: true });
-      setStep("preview");
-      if (!addEmpty) void form.trigger("members");
-    } catch (error) {
-      setError("source", {
-        message:
-          error instanceof Error ? error.message : "명단을 읽지 못했어요.",
-      });
-    }
-  };
-  const readFile = async (file: File) => {
-    const version = ++fileVersion.current;
-    clearErrors("source");
-    if (
-      !file.name.toLowerCase().endsWith(".txt") ||
-      file.size > MAX_ROSTER_BYTES
-    ) {
-      setError("source", {
-        message: "128KB 이하의 UTF-8 TXT 파일을 선택해 주세요.",
-      });
-      return;
-    }
-    setFileBusy(true);
-    try {
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(
-        await file.arrayBuffer(),
-      );
-      if (!active.current || version !== fileVersion.current) return;
-      openPreview(false, text);
-    } catch {
-      if (active.current && version === fileVersion.current)
-        setError("source", {
-          message:
-            "TXT를 읽지 못했어요. UTF-8 텍스트인지 확인하거나 명단을 직접 붙여넣어 주세요.",
-        });
-    } finally {
-      if (active.current && version === fileVersion.current) setFileBusy(false);
-    }
-  };
-  const previous = () => {
-    if (step === "group" || (target && step === "input")) {
-      if (isDirty) setLeaving(true);
-      else onNavigate(target ? `/mypage?group=${target.group.id}` : "/");
-    } else {
-      clearErrors("root.server");
-      setStep(step === "preview" ? "input" : "group");
-    }
-  };
-
   return (
-    <div ref={container}>
-      <StepLayout
-        title={target ? "명단 추가" : "모임 등록"}
-        onBack={previous}
-        busy={busy}
-        progress={{ value: step === "group" ? 1 : 2, max: 2 }}
-      >
-        <form
-          noValidate
-          className="flex flex-1 flex-col"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (busy) return;
-            if (step === "group")
-              void form.trigger(["name", "groupType"]).then((valid) => {
-                if (valid && active.current) setStep("input");
-              });
-            else if (step === "input") openPreview();
-            else void form.handleSubmit((values) => persist(values))(event);
-          }}
-        >
-          <fieldset disabled={busy} className="min-w-0 px-[17px]">
-            {step === "group" ? (
-              <>
-                <StepHeading title="어떤 모임을 관리하시나요?" />
-                <p className="-mt-10 mb-12 text-control leading-normal text-muted">
-                  모임을 만들고 행사 내역을 한곳에서 관리해 보세요.
-                </p>
-                <div className="space-y-12">
-                  <FormField
-                    id={`${id}-name`}
-                    label="모임 이름"
-                    required
-                    labelClassName="text-label"
-                    error={errors.name?.message}
-                  >
-                    {(attributes) => (
-                      <Input
-                        {...attributes}
-                        {...register("name")}
-                        variant="pill"
-                        className="shadow-control"
-                        placeholder="예) 사진 소모임"
-                        autoComplete="off"
-                      />
-                    )}
-                  </FormField>
-                  <FormField
-                    id={`${id}-type`}
-                    label="모임 유형 (선택)"
-                    labelClassName="text-label"
-                    error={errors.groupType?.message}
-                  >
-                    {(attributes) => (
-                      <Input
-                        {...attributes}
-                        {...register("groupType")}
-                        list={`${id}-types`}
-                        variant="pill"
-                        className="shadow-control"
-                        placeholder="예) 동아리"
-                      />
-                    )}
-                  </FormField>
-                  <datalist id={`${id}-types`}>
-                    <option value="동아리" />
-                    <option value="학생회" />
-                    <option value="학회" />
-                    <option value="친목 모임" />
-                  </datalist>
-                </div>
-              </>
-            ) : (
-              <>
-                <StepHeading title="구성원을 한 번에 등록해요" />
-                <p className="-mt-10 mb-12 text-control leading-normal text-muted">
-                  명단을 붙여넣거나 파일을 불러오면 여러 명을 한 번에 추가할 수
-                  있어요.
-                </p>
-                {step === "input" ? (
-                  <div className="space-y-5">
-                    <FormField
-                      id={`${id}-source`}
-                      label="명단 직접 입력 · 붙여넣기"
-                      labelClassName="text-label"
-                      hint="한 줄에 한 명씩, 이름과 뒤 4자리는 탭으로 구분해 주세요. 시트에서 복사해도 좋아요."
-                      error={errors.source?.message}
-                    >
-                      {(attributes) => (
-                        <textarea
-                          {...attributes}
-                          {...register("source")}
-                          className="min-h-[200px] w-full resize-y rounded-card bg-surface px-4 py-3.5 text-control leading-6 shadow-control placeholder:text-placeholder"
-                          placeholder={"김총무\n이회장\t0012\n김민지"}
-                        />
-                      )}
-                    </FormField>
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      accept=".txt,text/plain"
-                      className="sr-only"
-                      tabIndex={-1}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        if (file) void readFile(file);
-                      }}
-                    />
-                    <Button
-                      className="w-full gap-2 rounded-control"
-                      variant="brand-outline"
-                      onClick={() => fileInput.current?.click()}
-                    >
-                      <span className="relative">
-                        <Image
-                          src="/images/groups/txt.svg"
-                          alt=""
-                          width={18.1111}
-                          height={23}
-                        />
-                        <span className="absolute bottom-0.5 left-0.5 text-[6px] text-muted">
-                          TXT
-                        </span>
-                      </span>
-                      {fileBusy ? "파일 읽는 중…" : "TXT 파일로 등록하기"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      disabled={rows.length >= 500}
-                      onClick={() => openPreview(true)}
-                    >
-                      한 명씩 직접 추가하기
-                    </Button>
-                  </div>
-                ) : (
-                  <RosterPreview
-                    existing={target?.members ?? []}
-                    form={form}
-                    fields={fields}
-                    duplicates={duplicates}
-                    confirmed={confirmed}
-                    onConfirm={(value) =>
-                      setConfirmedRows(value ? fingerprint : null)
-                    }
-                    onRemove={remove}
-                    onAppend={() =>
-                      append({
-                        name: "",
-                        phoneLast4: "",
-                        label: "",
-                        match: "",
-                        parseError: "",
-                      })
-                    }
+    <>
+      {step === "group" && (
+        <StepLayout title="모임 등록" onBack={() => setLeaving(true)}>
+          <form
+            noValidate
+            onSubmit={form.handleSubmit(() => {
+              setStarted(true);
+              setStep("roster");
+            })}
+            className="flex flex-1 flex-col"
+          >
+            <StepHeading title="어떤 모임을 관리하시나요?" />
+            <div className="space-y-12">
+              <FormField
+                id={`${id}-name`}
+                label="모임 이름"
+                required
+                error={form.formState.errors.name?.message}
+              >
+                {(attributes) => (
+                  <Input
+                    {...attributes}
+                    {...form.register("name")}
+                    variant="pill"
+                    placeholder="예) 사진 소모임"
+                    autoComplete="off"
                   />
                 )}
-              </>
-            )}
-          </fieldset>
-          <div className="mt-auto space-y-2 bg-background pt-8 pb-2">
-            <FormError message={errors.root?.server?.message} />
-            {save.isError && (
-              <p className="text-xs text-muted">
-                입력은 유지돼요. 같은 입력으로 다시 저장해도 중복 등록되지
-                않아요.
-              </p>
-            )}
-            <Button
-              type="submit"
-              className="w-full"
-              variant={step === "preview" ? "solid" : "brand-outline"}
-              disabled={
-                busy ||
-                (step === "preview" &&
-                  (!fields.length || (duplicates.length > 0 && !confirmed)))
-              }
-              loading={save.isPending}
-            >
-              {step === "group"
-                ? "다음"
-                : step === "input"
-                  ? "명단 확인하기"
-                  : save.isPending
-                    ? "저장 중…"
-                    : "등록 완료"}
-            </Button>
-            {!target && step !== "group" && (
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={busy}
-                onClick={() => {
-                  if (requestKey.current && !previousSkip.current) {
-                    setError("root.server", {
-                      message:
-                        "진행한 등록 결과가 불확실해요. 같은 명단으로 다시 저장하거나 홈에서 확인해 주세요.",
-                    });
-                    return;
-                  }
-                  const values = form.getValues();
-                  void persist(
-                    {
-                      ...values,
-                      name: values.name.trim(),
-                      groupType: values.groupType.trim(),
-                      members: [],
-                    },
-                    true,
-                  );
-                }}
+              </FormField>
+              <FormField
+                id={`${id}-type`}
+                label="모임 유형 (선택)"
+                error={form.formState.errors.groupType?.message}
               >
-                명단 없이 모임 만들기
-              </Button>
-            )}
-          </div>
-        </form>
-      </StepLayout>
+                {(attributes) => (
+                  <Input
+                    {...attributes}
+                    {...form.register("groupType")}
+                    variant="pill"
+                    placeholder="예) 동아리"
+                  />
+                )}
+              </FormField>
+            </div>
+            <Button className="mt-auto w-full" type="submit">
+              다음
+            </Button>
+          </form>
+        </StepLayout>
+      )}
+      {started && !completed && (
+        <div hidden={step !== "roster"}>
+          <RosterEditor
+            existing={target?.members}
+            title={target ? "명단 추가" : "모임 등록"}
+            busy={save.isPending}
+            onBack={() => {
+              if (target) setLeaving(true);
+              else setStep("group");
+            }}
+            onSave={(rows, confirmed) => persist(rows, confirmed)}
+            skip={
+              target
+                ? undefined
+                : () => {
+                    void persist([], false, true).catch((cause) => {
+                      if (active.current) setError(safeErrorMessage(cause));
+                    });
+                  }
+            }
+          />
+          <FormError message={error} />
+        </div>
+      )}
       {completed && (
         <Dialog
           showCloseButton
@@ -508,27 +246,25 @@ export function GroupRegistration({
       {leaving && (
         <Dialog labelledBy={`${id}-leave`} onClose={() => setLeaving(false)}>
           <h2 id={`${id}-leave`} className="text-label">
-            {target ? "명단 추가를 나가시겠어요?" : "모임 등록을 나가시겠어요?"}
+            명단 작성을 나가시겠어요?
           </h2>
-          <p className="my-4 text-caption text-muted">
-            아직 저장하지 않은 입력은 사라져요. 모임은 나중에 만들어도 괜찮아요.
+          <p className="my-4 text-caption">
+            아직 저장하지 않은 입력은 사라져요.
           </p>
-          <div className="space-y-2">
-            <Button className="w-full" onClick={() => setLeaving(false)}>
-              계속 작성하기
-            </Button>
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={() =>
-                onNavigate(target ? `/mypage?group=${target.group.id}` : "/")
-              }
-            >
-              {target ? "명단으로 나가기" : "홈으로 나가기"}
-            </Button>
-          </div>
+          <Button className="w-full" onClick={() => setLeaving(false)}>
+            계속 작성하기
+          </Button>
+          <Button
+            className="mt-2 w-full"
+            variant="outline"
+            onClick={() =>
+              onNavigate(target ? `/mypage?group=${target.group.id}` : "/")
+            }
+          >
+            나가기
+          </Button>
         </Dialog>
       )}
-    </div>
+    </>
   );
 }

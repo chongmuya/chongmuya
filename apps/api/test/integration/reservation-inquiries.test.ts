@@ -71,6 +71,66 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     (await (await call("restaurants?region=매장없는지역")).json()).items.length,
     0,
   );
+  const fixtureBase = await db
+    .getRepository(Restaurant)
+    .findOneByOrFail({ id: demoRestaurantIds[0] });
+  const fixtureIds = [randomUUID(), randomUUID()];
+  await db.getRepository(Restaurant).save(
+    fixtureIds.map((id, index) => ({
+      ...fixtureBase,
+      id,
+      isDemo: false,
+      name: `지역 사진 fixture ${index}`,
+      region: index === 0 ? "건대입구" : "세종대",
+      latitude: null,
+      longitude: null,
+      spacePhotos:
+        index === 0
+          ? [
+              {
+                path: "/images/restaurants/demo-2.png",
+                description: "두 번째 공간",
+                position: 2,
+              },
+              {
+                path: "/images/restaurants/demo-1.png",
+                description: "첫 번째 공간",
+                position: 1,
+              },
+            ]
+          : [],
+    })),
+  );
+  try {
+    const unfiltered = await (await call("restaurants")).json();
+    for (const id of fixtureIds)
+      assert(unfiltered.items.some((r: { id: string }) => r.id === id));
+    const photoDetail = await (
+      await call(`restaurants/${fixtureIds[0]}`)
+    ).json();
+    assert.deepEqual(
+      photoDetail.spacePhotos.map(
+        (photo: { position: number }) => photo.position,
+      ),
+      [1, 2],
+    );
+    assert.equal(photoDetail.photoPath, fixtureBase.photoPath);
+    assert.equal(photoDetail.latitude, null);
+    const empty = await (await call(`restaurants/${fixtureIds[1]}`)).json();
+    assert.deepEqual(empty.spacePhotos, []);
+    await seedDevelopmentRestaurants(db);
+    assert.equal(
+      (
+        await db
+          .getRepository(Restaurant)
+          .findOneByOrFail({ id: fixtureIds[0] })
+      ).spacePhotos.length,
+      2,
+    );
+  } finally {
+    for (const id of fixtureIds)
+      await db.getRepository(Restaurant).update(id, { published: false });
+  }
   const hidden = randomUUID();
   const original = await db
     .getRepository(Restaurant)
@@ -184,9 +244,8 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
   );
   const operations = await app.get(ReservationsService).pendingForOperations();
   assert(
-    operations.some(
-      (r: { request_id: string; recipient_phone: string }) =>
-        r.request_id === one.id && r.recipient_phone === "00000000000",
+    operations.eligible.some(
+      (r) => r.request_id === one.id && r.recipient_phone === "00000000000",
     ),
   );
   assert.doesNotMatch(
@@ -268,5 +327,49 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     await db
       .getRepository(RestaurantContact)
       .update(contact.id, { requestConsentAt: contact.requestConsentAt });
+  }
+  // Live contact changes quarantine the original recipient; history and snapshot never change.
+  const targetBefore = await db
+    .getRepository(RequestTarget)
+    .findBy({ requestId: one.id });
+  for (const [change, reason] of [
+    [{ requestConsentAt: null }, "CONSENT_WITHDRAWN"],
+    [{ active: false }, "CONTACT_INACTIVE"],
+    [{ phone: "00000000001" }, "PHONE_CHANGED"],
+  ] as const) {
+    await db.getRepository(RestaurantContact).update(contact.id, change);
+    const pending = await app.get(ReservationsService).pendingForOperations();
+    assert(
+      !pending.eligible.some(
+        (r) => r.request_id === one.id && r.contact_id === contact.id,
+      ),
+    );
+    const held = pending.held.find(
+      (r) => r.request_id === one.id && r.contact_id === contact.id,
+    )!;
+    assert(held.holdReasons.includes(reason));
+    assert.equal(held.recipient_phone, contact.phone);
+    assert(
+      pending.eligible.some(
+        (r) => r.request_id === one.id && r.contact_id !== contact.id,
+      ),
+    );
+    await db.getRepository(RestaurantContact).save(contact);
+  }
+  await db.getRepository(RestaurantContact).delete(contact.id);
+  try {
+    const pending = await app.get(ReservationsService).pendingForOperations();
+    assert(
+      pending.held
+        .find((r) => r.request_id === one.id && r.contact_id === contact.id)
+        ?.holdReasons.includes("CONTACT_DELETED"),
+    );
+    assert.deepEqual(
+      await db.getRepository(RequestTarget).findBy({ requestId: one.id }),
+      targetBefore,
+    );
+    assert.deepEqual((await (await call(path, a)).json()).request, one);
+  } finally {
+    await db.getRepository(RestaurantContact).save(contact);
   }
 });

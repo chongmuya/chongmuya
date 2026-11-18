@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 @theme {
+  --color-copy: #111111;
+  --color-soft: #f8f8f5;
+  --color-field: #e0e0e0;
+  --color-secondary: #858585;
+  --color-choice: #f8eae1;
   --color-brand: #f46224;
   --color-brand-hover: #d94d12;
   --color-brand-ink: #243b33;
@@ -79,6 +84,6 @@
     @apply my-3;
   }
   .form-panel {
-    @apply my-6 space-y-4 rounded-panel border border-border bg-surface p-5;
+    @apply my-6 space-y-4 rounded-control bg-surface px-[22px] py-7 text-sm shadow-card;
   }
 }

@@ -11,6 +11,7 @@ import { Select } from "@/shared/ui/select";
 import { ErrorState } from "@/shared/ui/states";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import Image from "next/image";
 import { FormError } from "@/shared/ui/form-error";
 import {
   eventSchema,
@@ -73,7 +74,7 @@ export function EventForm({
   return (
     <form
       noValidate
-      className="form-panel"
+      className="mb-7 text-copy"
       onSubmit={handleSubmit((values) => {
         if (create.isPending) return;
         if (
@@ -109,86 +110,126 @@ export function EventForm({
         });
       })}
     >
-      <h2>행사 만들기</h2>
-      <div className="space-y-1">
-        <label htmlFor={`${id}-name`}>행사명</label>
-        <Input
-          id={`${id}-name`}
-          {...register("name")}
-          required
-          maxLength={100}
-          disabled={create.isPending}
-          aria-invalid={!!errors.name}
-          aria-describedby={errors.name ? `${id}-name-error` : undefined}
-        />
-        <FormError id={`${id}-name-error`} message={errors.name?.message} />
-      </div>
-      <div className="space-y-1">
-        <label htmlFor={`${id}-date`}>일정 (선택 · 한국 시간)</label>
-        <Input
-          id={`${id}-date`}
-          type="datetime-local"
-          {...register("date")}
-          disabled={create.isPending}
-          aria-invalid={!!errors.date}
-          aria-describedby={errors.date ? `${id}-date-error` : undefined}
-        />
-        <FormError id={`${id}-date-error`} message={errors.date?.message} />
-      </div>
-      <div>
-        <label htmlFor={`${id}-group`}>모임 (선택)</label>
-        <Select
-          id={`${id}-group`}
-          {...groupField}
-          disabled={create.isPending}
-          aria-invalid={!!errors.groupId}
-          aria-describedby={errors.groupId ? `${id}-group-error` : undefined}
-        >
-          {unavailableGroup && (
-            <option value={groupField.value} disabled>
-              {!groups.data && !groups.isError
-                ? "모임 확인 중…"
-                : "모임을 다시 선택해 주세요."}
-            </option>
-          )}
-          <option value="">모임 없이 개인 행사</option>
-          {!groups.isError &&
-            groups.data?.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-        </Select>
-        <FormError id={`${id}-group-error`} message={errors.groupId?.message} />
-        {groups.isError ? (
-          <ErrorState retry={() => void groups.refetch()}>
-            모임을 불러오지 못했습니다. 개인 행사는 만들 수 있습니다.
-          </ErrorState>
-        ) : !groups.data ? (
-          <p role="status">모임 확인 중…</p>
-        ) : !groups.data.length ? (
-          <p>모임이 없어도 개인 행사를 만들 수 있습니다.</p>
-        ) : null}
-      </div>
-      {!onCreated && (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={findVenue}
-            onChange={(e) => setFindVenue(e.target.checked)}
+      <h2 className="mb-7 text-2xl leading-tight font-bold">
+        어떤 행사를 준비하나요?
+      </h2>
+      <div className="space-y-4 rounded-control bg-surface px-[22px] py-7 text-xs shadow-card">
+        <div className="space-y-3">
+          <label htmlFor={`${id}-group`}>모임 (선택)</label>
+          <Select
+            id={`${id}-group`}
+            {...groupField}
             disabled={create.isPending}
+            aria-invalid={!!errors.groupId}
+            aria-describedby={errors.groupId ? `${id}-group-error` : undefined}
+          >
+            {unavailableGroup && (
+              <option value={groupField.value} disabled>
+                {!groups.data && !groups.isError
+                  ? "모임 확인 중…"
+                  : "모임을 다시 선택해 주세요."}
+              </option>
+            )}
+            <option value="">모임 없이 개인 행사</option>
+            {!groups.isError &&
+              groups.data?.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+          </Select>
+          <FormError
+            id={`${id}-group-error`}
+            message={errors.groupId?.message}
           />
-          장소도 함께 알아볼까요? (선택)
-        </label>
-      )}
-      <Button
-        type="submit"
-        disabled={create.isPending}
-        aria-busy={create.isPending}
-      >
-        {create.isPending ? "저장 중…" : "행사 만들기"}
-      </Button>
-      <FormError message={errors.root?.server?.message} />
+          {groups.isError ? (
+            <ErrorState retry={() => void groups.refetch()}>
+              모임을 불러오지 못했습니다. 개인 행사는 만들 수 있습니다.
+            </ErrorState>
+          ) : !groups.data ? (
+            <p role="status">모임 확인 중…</p>
+          ) : !groups.data.length ? (
+            <p>모임이 없어도 개인 행사를 만들 수 있습니다.</p>
+          ) : null}
+        </div>
+        <div className="space-y-3">
+          <label htmlFor={`${id}-name`}>행사 이름</label>
+          <Input
+            variant="form"
+            id={`${id}-name`}
+            {...register("name")}
+            required
+            placeholder="1차 정기 모임"
+            maxLength={100}
+            disabled={create.isPending}
+            aria-invalid={!!errors.name}
+            aria-describedby={errors.name ? `${id}-name-error` : undefined}
+          />
+          <FormError id={`${id}-name-error`} message={errors.name?.message} />
+        </div>
+        <div className="space-y-3">
+          <label htmlFor={`${id}-date`}>일정 (선택 · 한국 시간)</label>
+          <Input
+            variant="form"
+            id={`${id}-date`}
+            type="datetime-local"
+            {...register("date")}
+            disabled={create.isPending}
+            aria-invalid={!!errors.date}
+            aria-describedby={errors.date ? `${id}-date-error` : undefined}
+          />
+          <FormError id={`${id}-date-error`} message={errors.date?.message} />
+        </div>
+        {!onCreated && (
+          <fieldset className="pt-3">
+            <legend className="mb-5 text-sm font-semibold">
+              장소도 함께 알아볼까요?
+            </legend>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { value: true, label: "예약이 필요해요" },
+                { value: false, label: "행사만 만들게요" },
+              ].map((option) => (
+                <label
+                  key={String(option.value)}
+                  className="flex min-h-20 cursor-pointer items-center justify-between gap-2 rounded-control border border-transparent bg-soft px-3 py-5 has-checked:border-brand has-checked:bg-choice has-focus-visible:outline-2 has-focus-visible:outline-brand"
+                >
+                  <input
+                    className="sr-only"
+                    type="radio"
+                    name="findVenue"
+                    checked={findVenue === option.value}
+                    onChange={() => setFindVenue(option.value)}
+                    disabled={create.isPending}
+                  />
+                  <span>{option.label}</span>
+                  <Image
+                    src={
+                      findVenue === option.value
+                        ? "/images/restaurants/radio-on.svg"
+                        : "/images/restaurants/radio-off.svg"
+                    }
+                    alt=""
+                    width={26}
+                    height={26}
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        <div className="flex justify-end pt-3">
+          <Button
+            className="min-h-[50px] px-5 text-sm"
+            type="submit"
+            disabled={create.isPending}
+            aria-busy={create.isPending}
+          >
+            {create.isPending ? "저장 중…" : "행사 만들기"}
+          </Button>
+        </div>
+        <FormError message={errors.root?.server?.message} />
+      </div>
     </form>
   );
 }

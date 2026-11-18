@@ -12,7 +12,11 @@ import {
 } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
 import { EventPicker, useEvent } from "@/features/events/client";
-import { RestaurantBrowser } from "@/features/restaurants/client";
+import {
+  RestaurantBrowser,
+  useRestaurant,
+  useSelectedRestaurants,
+} from "@/features/restaurants/client";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
@@ -28,7 +32,9 @@ import {
   type ConditionsValues,
 } from "../schemas/conditions.schema";
 import { ConditionsForm } from "./conditions-form";
-import { InquiryReceipt } from "./reservation-progress";
+import { ConditionSummary } from "./condition-summary";
+import { ApiError } from "@/shared/http/api-error";
+import { InquiryReceipt, InquiryDetails } from "./reservation-progress";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -79,7 +85,8 @@ export function ReservationExplorer() {
     if (status !== "authenticated" || !account)
       return (
         <StepLayout
-          title="예약 문의"
+          variant="flow"
+          title=""
           onBack={() => router.push(href({ inquiry: null }))}
         >
           {status === "anonymous" ? (
@@ -103,7 +110,8 @@ export function ReservationExplorer() {
     if (!isFirstSetupComplete(account))
       return (
         <StepLayout
-          title="예약 문의"
+          variant="flow"
+          title=""
           onBack={() => router.push("/restaurants")}
         >
           <StepHeading title="첫 설정을 이어서 진행해 주세요" />
@@ -115,6 +123,7 @@ export function ReservationExplorer() {
     if (!eventId || !uuid.test(eventId))
       return (
         <StepLayout
+          variant="flow"
           title="문의할 행사"
           onBack={() => router.push(href({ inquiry: null }))}
         >
@@ -143,10 +152,11 @@ export function ReservationExplorer() {
     );
   }
   return (
-    <StepLayout title="매장 찾기" onBack={() => router.push("/")}>
+    <StepLayout variant="flow" title="" onBack={() => router.push("/")}>
       <StepHeading
-        title="우리 행사에 맞는 매장을 찾아요"
-        description="공개 매장은 로그인 없이 둘러볼 수 있어요. 문의는 내 행사를 선택한 뒤 접수해요."
+        title="우리 모임에 맞는 매장을 찾아요"
+        className="mb-7"
+        description="행사에 맞는 매장을 최대 3곳 선택할 수 있어요."
       />
       <RestaurantBrowser {...browse} onInquiry={start} />
     </StepLayout>
@@ -173,7 +183,8 @@ function InquiryFlow({
   )
     return (
       <StepLayout
-        title="예약 문의"
+        variant="flow"
+        title=""
         onBack={() => router.push(`/events?event=${eventId}`)}
       >
         <ErrorState
@@ -192,13 +203,14 @@ function InquiryFlow({
     );
   if (!event.data || existing.data === undefined)
     return (
-      <StepLayout title="예약 문의" onBack={() => router.push("/events")}>
+      <StepLayout variant="flow" title="" onBack={() => router.push("/events")}>
         <LoadingState>행사와 기존 문의 확인 중…</LoadingState>
       </StepLayout>
     );
   if (existing.data)
     return (
       <StepLayout
+        variant="flow"
         title="문의 진행 상태"
         onBack={() => router.push(`/events?event=${eventId}`)}
       >
@@ -264,7 +276,18 @@ function InquiryDraft({
   const [step, setStep] = useState<"conditions" | "browse">("conditions");
   const [confirmIds, setConfirmIds] = useState<string[] | null>(null);
   const [error, setError] = useState<string>();
-  const [requestKey] = useState(() => crypto.randomUUID());
+  const requestIdentity = useRef<{ fingerprint: string; key: string } | null>(
+    null,
+  );
+  const [initialRestaurantId] = useState(() =>
+    browse.selected.length === 1 ? browse.selected[0] : undefined,
+  );
+  const initialRestaurant = useRestaurant(initialRestaurantId);
+  const targets = useSelectedRestaurants(confirmIds ?? []);
+  const targetsUnavailable = targets.some(
+    (target) => target.isError || !target.data?.inquiryAvailable,
+  );
+  const [confirmationVersion, setConfirmationVersion] = useState(event.version);
   const submitting = useRef(false);
   const cancel = useRef<HTMLButtonElement>(null);
   const create = useCreateInquiry(account.id, event.id, request);
@@ -276,7 +299,8 @@ function InquiryDraft({
   };
   return (
     <StepLayout
-      title="예약 문의"
+      variant="flow"
+      title=""
       busy={create.isPending}
       onBack={() => {
         if (step === "browse") setStep("conditions");
@@ -284,17 +308,23 @@ function InquiryDraft({
       }}
     >
       <StepHeading
+        className="mb-7"
         title={
           step === "conditions"
             ? "매장에 어떤 조건을 전달할까요?"
-            : "우리 행사에 맞는 매장을 찾아요"
+            : "우리 모임에 맞는 매장을 찾아요"
         }
         description={
           step === "conditions"
             ? `${event.name} · 문의 접수 전까지 수정할 수 있어요.`
-            : `${values.expectedGuests}명 · ${values.date} ${values.time} · ${values.region}`
+            : "선택한 매장에 같은 조건을 전달해요. 최대 3곳까지 문의할 수 있어요."
         }
       />
+      {step === "browse" && (
+        <div className="mb-7">
+          <ConditionSummary conditions={inquiryConditions(values)} />
+        </div>
+      )}
       {unavailable && (
         <ErrorState retry={retry}>
           행사 상태 재조회에 실패했어요. 입력은 유지됩니다. 접수 전에 다시
@@ -302,7 +332,11 @@ function InquiryDraft({
         </ErrorState>
       )}
       {step === "conditions" ? (
-        <ConditionsForm initial={values} onContinue={continueWith} />
+        <ConditionsForm
+          initial={values}
+          suggestedRegion={initialRestaurant.data?.region}
+          onContinue={continueWith}
+        />
       ) : (
         <RestaurantBrowser
           {...browse}
@@ -316,6 +350,9 @@ function InquiryDraft({
           onEditConditions={() => setStep("conditions")}
           onInquiry={(ids) => {
             browse.onSelect(ids);
+            setError(undefined);
+            create.reset();
+            setConfirmationVersion(event.version);
             setConfirmIds(ids);
           }}
         />
@@ -344,6 +381,23 @@ function InquiryDraft({
             {event.name} · {values.expectedGuests}명<br />
             {values.date} {values.time} (한국 시간)
           </p>
+          <ul className="space-y-3 text-sm">
+            {confirmIds.map((id, index) => (
+              <li key={id} className="rounded-control bg-background p-3">
+                <strong>{targets[index]?.data?.name ?? "매장 확인 중…"}</strong>
+                <p>{targets[index]?.data?.address}</p>
+              </li>
+            ))}
+          </ul>
+          <InquiryDetails
+            conditions={inquiryConditions(values)}
+            contact={{ name: values.contactName, phone: values.contactPhone }}
+          />
+          {targetsUnavailable && (
+            <p role="alert">
+              대상 매장을 확인하지 못했어요. 돌아가서 다시 확인해 주세요.
+            </p>
+          )}
           <FormError
             message={
               error ??
@@ -363,9 +417,10 @@ function InquiryDraft({
             <Button
               className="flex-1"
               loading={create.isPending}
-              disabled={unavailable}
+              disabled={unavailable || targetsUnavailable}
               onClick={() => {
-                if (submitting.current || unavailable) return;
+                if (submitting.current || unavailable || targetsUnavailable)
+                  return;
                 const parsed = conditionsSchema.safeParse(values);
                 if (!parsed.success) {
                   setError("날짜와 입력 조건을 다시 확인해 주세요.");
@@ -374,19 +429,36 @@ function InquiryDraft({
                   return;
                 }
                 submitting.current = true;
-                create.mutate(
-                  {
-                    requestKey,
-                    mode: "DIRECT",
-                    expectedEventVersion: event.version,
-                    restaurantIds: confirmIds,
-                    conditions: inquiryConditions(parsed.data),
-                    contact: {
-                      name: parsed.data.contactName,
-                      phone: parsed.data.contactPhone,
-                    },
+                const body = {
+                  mode: "DIRECT" as const,
+                  expectedEventVersion: confirmationVersion,
+                  restaurantIds: confirmIds,
+                  conditions: inquiryConditions(parsed.data),
+                  contact: {
+                    name: parsed.data.contactName,
+                    phone: parsed.data.contactPhone,
                   },
+                };
+                const fingerprint = JSON.stringify(body);
+                if (requestIdentity.current?.fingerprint !== fingerprint)
+                  requestIdentity.current = {
+                    fingerprint,
+                    key: crypto.randomUUID(),
+                  };
+                create.mutate(
+                  { ...body, requestKey: requestIdentity.current.key },
                   {
+                    onError: (cause) => {
+                      if (
+                        cause instanceof ApiError &&
+                        cause.code === "VERSION_CONFLICT"
+                      ) {
+                        setConfirmIds(null);
+                        setError(
+                          "행사가 변경되어 최신 정보를 불러왔어요. 입력과 선택은 유지됩니다. 행사 정보를 확인하고 최종 확인을 다시 진행해 주세요.",
+                        );
+                      }
+                    },
                     onSettled: () => {
                       submitting.current = false;
                     },

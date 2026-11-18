@@ -4,8 +4,11 @@ import { extendTailwindMerge } from "tailwind-merge";
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      // Match the custom --text-* font sizes in app/globals.css.
+      // Match the custom theme tokens in app/globals.css.
       text: ["control", "caption", "label"],
+      radius: ["control", "card", "panel", "pill"],
+      spacing: ["control", "input"],
+      shadow: ["control", "card"],
     },
   },
 });

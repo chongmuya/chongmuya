@@ -10,6 +10,7 @@ import { Check, Column, Entity, Index, PrimaryColumn } from "typeorm";
   "restaurants_coordinates_check",
   "(latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)",
 )
+@Check("restaurants_space_photos_check", "jsonb_typeof(space_photos)='array'")
 export class Restaurant {
   @PrimaryColumn("uuid", { primaryKeyConstraintName: "restaurants_pkey" })
   id!: string;
@@ -26,6 +27,8 @@ export class Restaurant {
   maxCapacity!: number | null;
   @Column({ type: "varchar", length: 500, name: "photo_path", nullable: true })
   photoPath!: string | null;
+  @Column({ type: "jsonb", name: "space_photos", default: [] })
+  spacePhotos!: { path: string; description: string; position: number }[];
   @Column({ type: "text", name: "operating_hours", nullable: true })
   operatingHours!: string | null;
   @Column({ type: "text", nullable: true }) facilities!: string | null;

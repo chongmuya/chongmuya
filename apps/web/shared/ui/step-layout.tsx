@@ -9,7 +9,9 @@ export function StepLayout({
   busy,
   progress,
   children,
+  variant = "default",
 }: {
+  variant?: "default" | "flow";
   title: string;
   onBack: () => void;
   busy?: boolean;
@@ -17,8 +19,18 @@ export function StepLayout({
   children: ReactNode;
 }) {
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-[17px] pt-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))] pb-[max(40px,env(safe-area-inset-bottom))]">
-      <header className="relative mb-[18px] flex min-h-control shrink-0 items-center justify-center">
+    <main
+      className={cn(
+        "mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-[17px] pt-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))] pb-[max(40px,env(safe-area-inset-bottom))]",
+        variant === "flow" && "px-5 text-copy",
+      )}
+    >
+      <header
+        className={cn(
+          "relative mb-[18px] flex min-h-control shrink-0 items-center justify-center",
+          variant === "flow" && "mb-11",
+        )}
+      >
         <IconButton
           onClick={onBack}
           disabled={busy}

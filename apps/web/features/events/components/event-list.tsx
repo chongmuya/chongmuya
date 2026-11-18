@@ -19,7 +19,9 @@ export function EventList(props: Props) {
   return (
     <>
       <EventForm {...props} />
-      <h2>{props.groupId ? "모임별 내 행사" : "내 행사 목록"}</h2>
+      <h2 className="mt-10 mb-4 text-label">
+        {props.groupId ? "모임별 내 행사" : "내 행사 목록"}
+      </h2>
       {props.groupId && <Link href="/events">전체 내 행사 보기</Link>}
       {list.isError ? (
         <ErrorState retry={() => void list.refetch()} />
@@ -30,13 +32,21 @@ export function EventList(props: Props) {
           아직 행사가 없어요. 행사명만 입력해 첫 행사를 만들어 보세요.
         </EmptyState>
       ) : (
-        <ul>
+        <ul className="space-y-3">
           {list.data.map((event) => (
-            <li key={event.id}>
-              <Link href={`/events?event=${encodeURIComponent(event.id)}`}>
+            <li
+              key={event.id}
+              className="rounded-control bg-surface p-5 shadow-card"
+            >
+              <Link
+                className="block font-semibold"
+                href={`/events?event=${encodeURIComponent(event.id)}`}
+              >
                 {event.name}
               </Link>
-              <p>{dateLabel(event.scheduledAt)}</p>
+              <p className="mt-3 text-xs text-secondary">
+                {dateLabel(event.scheduledAt)}
+              </p>
             </li>
           ))}
         </ul>

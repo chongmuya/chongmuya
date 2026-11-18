@@ -26,6 +26,15 @@ test("cn preserves custom font sizes alongside colors and resolves size override
   assert.equal(cn("text-label text-control text-caption"), "text-caption");
 });
 
+test("cn resolves project radius, control height and shadow overrides", () => {
+  assert.equal(cn("rounded-pill", "rounded-control"), "rounded-control");
+  assert.equal(cn("rounded-panel", "rounded-none"), "rounded-none");
+  assert.equal(cn("rounded-lg", "rounded-card"), "rounded-card");
+  assert.equal(cn("min-h-control", "min-h-[69px]"), "min-h-[69px]");
+  assert.equal(cn("h-10", "h-input"), "h-input");
+  assert.equal(cn("shadow-control", "shadow-card"), "shadow-card");
+});
+
 test("form schemas preserve name, optional schedule and credential constraints", () => {
   assert.equal(groupSchema.safeParse({ name: "  " }).success, false);
   assert.equal(groupSchema.safeParse({ name: "x".repeat(101) }).success, false);

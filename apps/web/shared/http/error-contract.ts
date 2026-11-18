@@ -28,6 +28,55 @@ export const fieldErrorSchema = z
 export type FieldError = z.infer<typeof fieldErrorSchema>;
 
 const messages: Record<string, { status: number; message: string }> = {
+  ATTENDANCE_CLOSED: {
+    status: 409,
+    message: "참여자 응답이 마감됐어요. 총무에게 문의해 주세요.",
+  },
+  ATTENDANCE_ACCESS_INVALID: {
+    status: 403,
+    message: "참여자 정보를 다시 입력해 내 응답을 열어 주세요.",
+  },
+  ATTENDANCE_IDENTITY_CHANGED: {
+    status: 409,
+    message:
+      "행사 명단의 식별 정보가 변경됐어요. 이름과 뒤 4자리를 다시 확인해 주세요.",
+  },
+  ATTENDANCE_MISMATCH: {
+    status: 400,
+    message: "입력한 이름과 뒤 4자리를 확인해 주세요.",
+  },
+  ATTENDANCE_CONFLICT: {
+    status: 409,
+    message:
+      "명단이나 응답이 변경됐어요. 최신 내용을 확인한 뒤 다시 저장해 주세요.",
+  },
+  ATTENDANCE_REVIEW_CONFLICT: {
+    status: 409,
+    message:
+      "접수 또는 대상자의 응답이 변경됐어요. 최신 두 답변을 확인하고 다시 처리해 주세요.",
+  },
+  ATTENDANCE_PHONE_CONFLICT: {
+    status: 409,
+    message:
+      "대상자에게 다른 뒤 4자리가 있어요. 행사 명단을 먼저 바로잡아 주세요.",
+  },
+  ATTENDANCE_CHOICE_REQUIRED: {
+    status: 400,
+    message: "기존 응답 유지 또는 접수된 응답 적용을 선택해 주세요.",
+  },
+  ROSTER_SAVE_CONFLICT: {
+    status: 409,
+    message:
+      "같은 요청으로 다른 명단을 저장할 수 없어요. 등록 결과를 확인해 주세요.",
+  },
+  ROSTER_LIMIT: {
+    status: 400,
+    message: "행사 명단은 500명까지 등록할 수 있어요.",
+  },
+  EVENT_GROUP_REQUIRED: {
+    status: 400,
+    message: "모임에 연결한 행사에서 모임 명단을 가져올 수 있어요.",
+  },
   EVENT_REQUEST_EXISTS: {
     status: 409,
     message:
@@ -56,10 +105,6 @@ const messages: Record<string, { status: number; message: string }> = {
   OWNER_REGISTRATION_UNAVAILABLE: {
     status: 400,
     message: "사장님 가입은 준비 중이에요. 현재는 총무로 시작할 수 있어요.",
-  },
-  ROSTER_LABEL_REQUIRED: {
-    status: 400,
-    message: "새 동명이인마다 서로 다른 구분 표시를 입력해 주세요.",
   },
   ROSTER_MEMBER_CONFLICT: {
     status: 409,

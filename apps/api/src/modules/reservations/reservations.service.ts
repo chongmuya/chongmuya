@@ -160,32 +160,56 @@ export class ReservationsService {
   // No public HTTP route: available only to an operator with server/DB access.
   async pendingForOperations() {
     const db = await this.database.connect();
-    return db
-      .getRepository(RequestTarget)
-      .createQueryBuilder("target")
-      .innerJoin(
-        ReservationRequest,
-        "request",
-        "request.id = target.request_id",
-      )
-      .select([
-        "request.id AS request_id",
-        "request.event_id AS event_id",
-        "request.created_at AS received_at",
-        "request.snapshot AS conditions",
-        "request.contact_name AS organizer_name",
-        "request.contact_phone AS organizer_phone",
-        "target.id AS target_id",
-        "target.restaurant_name AS restaurant_name",
-        "target.is_demo AS is_demo",
-        "target.contact_name AS recipient_name",
-        "target.contact_phone AS recipient_phone",
-        "target.consent_at AS consent_at",
-        "target.delivery_status AS delivery_status",
-      ])
-      .where("target.delivery_status = :status", { status: "PENDING" })
-      .orderBy("request.created_at", "ASC")
-      .addOrderBy("target.id", "ASC")
-      .getRawMany();
+    return db.transaction("REPEATABLE READ", async (manager) => {
+      const targets = await manager
+        .getRepository(RequestTarget)
+        .createQueryBuilder("target")
+        .innerJoin(
+          ReservationRequest,
+          "request",
+          "request.id = target.request_id",
+        )
+        .select([
+          "request.id AS request_id",
+          "request.event_id AS event_id",
+          "request.created_at AS received_at",
+          "request.snapshot AS conditions",
+          "request.contact_name AS organizer_name",
+          "request.contact_phone AS organizer_phone",
+          "target.id AS target_id",
+          "target.contact_id AS contact_id",
+          "target.restaurant_id AS restaurant_id",
+          "target.restaurant_name AS restaurant_name",
+          "target.is_demo AS is_demo",
+          "target.contact_name AS recipient_name",
+          "target.contact_phone AS recipient_phone",
+          "target.consent_at AS consent_at",
+          "target.delivery_status AS delivery_status",
+        ])
+        .where("target.delivery_status = :status", { status: "PENDING" })
+        .orderBy("request.created_at", "ASC")
+        .addOrderBy("target.id", "ASC")
+        .getRawMany<{
+          request_id: string;
+          contact_id: string;
+          restaurant_id: string;
+          recipient_phone: string;
+          [key: string]: unknown;
+        }>();
+      const decisions = await this.restaurants.deliveryEligibility(
+        targets.map((t) => ({
+          contactId: t.contact_id,
+          restaurantId: t.restaurant_id,
+          contactPhone: t.recipient_phone,
+        })),
+        manager,
+      );
+      return {
+        eligible: targets.filter((_t, i) => !decisions[i]!.length),
+        held: targets.flatMap((t, i) =>
+          decisions[i]!.length ? [{ ...t, holdReasons: decisions[i] }] : [],
+        ),
+      };
+    });
   }
 }

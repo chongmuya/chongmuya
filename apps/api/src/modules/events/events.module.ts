@@ -5,11 +5,19 @@ import { AuthModule } from "../auth/auth.module.js";
 import { GroupsModule } from "../groups/groups.module.js";
 import { EventsController } from "./events.controller.js";
 import { EventsService } from "./events.service.js";
+import { AttendanceService } from "./attendance.service.js";
+import { EventRosterService } from "./event-roster.service.js";
+import { AttendanceController } from "./attendance.controller.js";
+import { PublicAttendanceController } from "./public-attendance.controller.js";
 
 @Module({
   imports: [DatabaseModule, ConfigModule, AuthModule, GroupsModule],
-  controllers: [EventsController],
-  providers: [EventsService],
+  controllers: [
+    EventsController,
+    AttendanceController,
+    PublicAttendanceController,
+  ],
+  providers: [EventsService, AttendanceService, EventRosterService],
   exports: [EventsService],
 })
 export class EventsModule {}

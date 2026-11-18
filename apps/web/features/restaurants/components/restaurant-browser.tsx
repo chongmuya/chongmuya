@@ -1,17 +1,24 @@
 "use client";
 import Image from "next/image";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Dialog } from "@/shared/ui/dialog";
+import { IconButton } from "@/shared/ui/icon-button";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { FormField } from "@/shared/ui/form-field";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { restaurantsQuery, restaurantQuery } from "../api/restaurants.api";
-import type { RestaurantConditions } from "../types/restaurant.types";
+import type {
+  Restaurant,
+  RestaurantConditions,
+} from "../types/restaurant.types";
 import { conditionsMatch } from "../lib/conditions-match";
+import { RestaurantPhoto } from "./restaurant-photo";
+import { spaceCost } from "../lib/space-cost";
 import { RestaurantDetail } from "./restaurant-detail";
 import { RestaurantMap } from "./restaurant-map";
 
@@ -37,6 +44,7 @@ export function RestaurantBrowser({
   onInquiry: (ids: string[]) => void;
   onEditConditions?: () => void;
 }) {
+  const [mapFocus, setMapFocus] = useState<Restaurant | null>(null);
   const [region, setRegion] = useState(initialRegion);
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"list" | "map">("list");
@@ -45,6 +53,13 @@ export function RestaurantBrowser({
     defaultValues: { region: initialRegion },
   });
   const list = useQuery(restaurantsQuery(region, page));
+  const mapRestaurants = useMemo(() => {
+    const items = list.data?.items ?? [];
+    return mapFocus &&
+      !items.some((restaurant) => restaurant.id === mapFocus.id)
+      ? [...items, mapFocus]
+      : items;
+  }, [list.data, mapFocus]);
   const chosen = useQueries({ queries: selected.map(restaurantQuery) });
   const unavailable = chosen.some(
     (r) => r.isError || !r.data?.inquiryAvailable,
@@ -77,7 +92,7 @@ export function RestaurantBrowser({
               {...attributes}
               {...form.register("region")}
               placeholder="건대입구 · 세종대"
-              className="rounded-pill border-border"
+              variant="form"
             />
           )}
         </FormField>
@@ -97,7 +112,10 @@ export function RestaurantBrowser({
           <Button
             variant="outline"
             aria-pressed={view === "map"}
-            onClick={() => setView("map")}
+            onClick={() => {
+              setMapFocus(null);
+              setView("map");
+            }}
           >
             지도
           </Button>
@@ -116,19 +134,18 @@ export function RestaurantBrowser({
         <LoadingState>매장 불러오는 중…</LoadingState>
       ) : (
         <>
-          {view === "map" && (
-            <RestaurantMap restaurants={list.data.items} onOpen={onOpen} />
-          )}
           {!list.data.items.length ? (
             <section className="rounded-control bg-surface px-5 py-10 text-center shadow-card">
-              <p className="mb-5 text-4xl text-brand" aria-hidden="true">
-                ⌕
-              </p>
-              <h2 className="text-xl font-bold">조건에 맞는 매장이 없어요</h2>
+              <Image
+                src="/images/restaurants/search-empty.svg"
+                alt=""
+                width={40.7333}
+                height={40.733}
+                className="mx-auto mb-4"
+              />
+              <h2 className="text-lg font-bold">조건에 맞는 매장이 없어요</h2>
               <p className="mt-2 mb-6 text-sm text-muted">
                 지역을 넓혀 더 많은 매장을 찾아보세요.
-                <br />
-                문의 조건은 임의로 변경하지 않아요.
               </p>
               <Button
                 className="w-full"
@@ -156,21 +173,9 @@ export function RestaurantBrowser({
                       aria-label={`${r.name} 상세 보기`}
                       onClick={() => onOpen(r.id)}
                     >
-                      {r.photoPath ? (
-                        <Image
-                          src={r.photoPath}
-                          alt=""
-                          width={362}
-                          height={120}
-                          className="h-[120px] w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-[120px] items-center justify-center bg-border/30 text-sm text-muted">
-                          등록된 사진이 없어요
-                        </div>
-                      )}
-                      <span className="absolute top-3 right-3 rounded-pill bg-surface/95 px-3 py-1 text-xs shadow-control">
-                        {match === "조건 일치" ? "✓ " : "· "}
+                      <RestaurantPhoto src={r.photoPath} alt="" height={120} />
+                      <span className="absolute top-3 right-3 rounded-pill bg-surface/95 px-2 py-1 text-xs text-secondary shadow-control">
+                        {match === "인원·공간 일치" ? "✓ " : "· "}
                         {match}
                       </span>
                     </button>
@@ -178,13 +183,13 @@ export function RestaurantBrowser({
                       <div className="flex items-center justify-between gap-2">
                         <button
                           onClick={() => onOpen(r.id)}
-                          className="min-w-0 text-left font-semibold wrap-break-word"
+                          className="min-w-0 text-left text-sm font-semibold wrap-break-word"
                         >
                           {r.name}
                         </button>
                         <Button
                           variant="outline"
-                          className="shrink-0 rounded-control px-3 text-xs"
+                          className="min-h-[44px] shrink-0 rounded-control border-placeholder px-3 text-xs font-normal text-secondary"
                           disabled={
                             !r.inquiryAvailable ||
                             (!added && selected.length === 3)
@@ -192,20 +197,50 @@ export function RestaurantBrowser({
                           aria-pressed={added}
                           onClick={() => toggle(r.id)}
                         >
+                          {!added && r.inquiryAvailable && (
+                            <Image
+                              src="/images/restaurants/add.svg"
+                              alt=""
+                              width={13}
+                              height={13}
+                            />
+                          )}
                           {added
                             ? "담기 취소"
                             : r.inquiryAvailable
-                              ? "+ 문의 담기"
+                              ? "문의 담기"
                               : "문의 준비 중"}
                         </Button>
                       </div>
-                      <p className="mt-1 text-xs text-muted">
+                      <p className="mt-1 text-[10px] text-secondary">
                         {r.maxCapacity === null
                           ? "수용 인원 확인 필요"
                           : `전체 최대 ${r.maxCapacity}명`}{" "}
                         · {r.category ?? "음식 종류 확인 필요"}
                       </p>
-                      <p className="mt-1 text-xs text-muted">{r.address}</p>
+                      <p className="mt-1 text-[10px] text-secondary">
+                        {r.address}
+                      </p>
+                      <p className="mt-2 text-[10px] text-muted">
+                        매장 정보 기준이며, 해당 날짜의 예약 가능 여부는 문의 후
+                        확인합니다.
+                      </p>
+                      {r.spaces.length ? (
+                        r.spaces.map((space) => (
+                          <p
+                            key={space.id}
+                            className="mt-1 text-[10px] text-secondary"
+                          >
+                            {space.label} ·{" "}
+                            {spaceCost("최소 이용금액", space.minSpend)} ·{" "}
+                            {spaceCost("별도 대관료", space.separateFee)}
+                          </p>
+                        ))
+                      ) : (
+                        <p className="mt-1 text-[10px] text-secondary">
+                          최소 이용금액 확인 필요 · 별도 대관료 확인 필요
+                        </p>
+                      )}
                       {r.isDemo && (
                         <p className="mt-1 text-xs text-brand">
                           가상 매장 · 개발 테스트용
@@ -243,7 +278,10 @@ export function RestaurantBrowser({
       )}
       <section className="mt-7 rounded-control bg-surface p-5 shadow-card">
         <h2 className="mb-3 flex justify-between text-sm font-semibold">
-          문의할 매장 <span className="text-brand">{selected.length}/3</span>
+          문의할 매장{" "}
+          <span className="rounded border border-brand px-2 py-0.5 text-[10px] font-normal text-brand">
+            {selected.length}/3
+          </span>
         </h2>
         {!selected.length && (
           <p className="mb-5 text-sm text-muted">
@@ -257,14 +295,18 @@ export function RestaurantBrowser({
               className="flex items-center justify-between gap-2 text-sm"
             >
               <span>{chosen[i]?.data?.name ?? "매장 확인 필요"}</span>
-              <Button
-                variant="outline"
-                className="shrink-0 px-3 text-xs"
+              <IconButton
+                className="shrink-0"
                 aria-label={`${chosen[i]?.data?.name ?? "매장"} 선택 해제`}
                 onClick={() => toggle(id)}
               >
-                삭제
-              </Button>
+                <Image
+                  src="/images/restaurants/remove.svg"
+                  alt=""
+                  width={13}
+                  height={13}
+                />
+              </IconButton>
             </li>
           ))}
         </ul>
@@ -285,15 +327,63 @@ export function RestaurantBrowser({
           문의 접수 후 운영자가 전달을 준비해요. 아직 문자를 발송하지 않아요.
         </p>
       </section>
+      {view === "map" && list.data && (
+        <Dialog
+          labelledBy="restaurant-map-title"
+          onClose={() => setView("list")}
+          className="m-auto h-svh max-h-svh w-full max-w-[402px] rounded-none bg-background p-0 text-copy"
+        >
+          <header className="relative flex h-[103px] items-end justify-center bg-surface px-5 pb-4">
+            <IconButton
+              aria-label="목록으로 돌아가기"
+              onClick={() => setView("list")}
+              className="absolute bottom-1.5 left-3"
+            >
+              <Image
+                src="/images/ui/back.svg"
+                alt=""
+                width={10.4142}
+                height={18}
+              />
+            </IconButton>
+            <h2 id="restaurant-map-title" className="text-label">
+              매장 지도
+            </h2>
+          </header>
+          <RestaurantMap
+            focusId={mapFocus?.id}
+            restaurants={mapRestaurants}
+            onOpen={(id) => {
+              setView("list");
+              onOpen(id);
+            }}
+          />
+          <div className="absolute right-[17px] bottom-10 left-[17px]">
+            <Button
+              variant="brand-outline"
+              className="w-full bg-surface"
+              onClick={() => setView("list")}
+            >
+              목록으로 보기
+            </Button>
+          </div>
+        </Dialog>
+      )}
       {restaurantId && (
         <RestaurantDetail
           key={restaurantId}
           id={restaurantId}
           selected={selected.includes(restaurantId)}
           full={selected.length === 3}
+          targetCount={
+            selected.includes(restaurantId)
+              ? selected.length
+              : selected.length + 1
+          }
           onClose={() => onOpen(null)}
           onSelect={() => toggle(restaurantId)}
-          onMap={() => {
+          onMap={(restaurant) => {
+            setMapFocus(restaurant);
             setView("map");
             onOpen(null);
           }}
