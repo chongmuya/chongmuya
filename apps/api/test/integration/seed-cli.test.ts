@@ -18,6 +18,9 @@ import { fileURLToPath } from "node:url";
 import { DataSource, In } from "typeorm";
 import { databaseOptions } from "../../src/database/database-options.js";
 import { restaurantSeedId } from "../../src/database/seeds/restaurants.seed.js";
+import { demoAccounts } from "../../src/database/seeds/demo.seed.js";
+import { Account } from "../../src/modules/auth/entities/account.entity.js";
+import { verifyPassword } from "../../src/modules/auth/utils/password.js";
 import fixture from "../../src/database/seeds/data/restaurants.json" with { type: "json" };
 import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
@@ -174,7 +177,6 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
     WEB_ORIGIN: "http://localhost:3000",
     AUTH_SECRET: "test-secret-with-at-least-32-characters",
     MESSAGE_PROVIDER: "fake",
-    DEMO_SEED_PASSWORD: "demo-test-123",
     SOLAPI_SENDER_NUMBER: "bad-ignored-external-setting",
   };
   const demo = (
@@ -201,12 +203,13 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
     { NODE_ENV: "production" },
     { MESSAGE_PROVIDER: "solapi" },
     { DATABASE_URL: "postgresql://secret-sentinel@remote.example.test/demo" },
+    { DEMO_SEED_PASSWORD: "short" },
   ]) {
     const denied = demo("seed", demoOutput, extra);
     assert.equal(denied.status, 1);
     assert.doesNotMatch(
       denied.stdout + denied.stderr,
-      /secret-sentinel|demo-test-123/,
+      /secret-sentinel|Demo1234!|short/,
     );
   }
   const seeded = demo("seed", demoOutput);
@@ -216,8 +219,26 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
   assert(manifest.merchantReplies.length > 0);
   assert.doesNotMatch(
     seeded.stdout + seeded.stderr,
-    /#token=|demo-test-123|scrypt-v1/,
+    /#token=|Demo1234!|scrypt-v1/,
   );
+  const accounts = await db.getRepository(Account).findBy({
+    id: In(demoAccounts.map((account) => account.id)),
+  });
+  assert.equal(accounts.length, demoAccounts.length);
+  for (const account of accounts)
+    assert(await verifyPassword("Demo1234!", account.passwordHash!));
+  assert.equal(
+    demo("seed", path.join(directory, "reseed.links.json"), {
+      DEMO_SEED_PASSWORD: "different-123",
+    }).status,
+    0,
+  );
+  for (const account of accounts)
+    assert.equal(
+      (await db.getRepository(Account).findOneByOrFail({ id: account.id }))
+        .passwordHash,
+      account.passwordHash,
+    );
   const original = await readFile(demoOutput, "utf8");
   assert.equal(demo("links", demoOutput).status, 1);
   assert.equal(await readFile(demoOutput, "utf8"), original);

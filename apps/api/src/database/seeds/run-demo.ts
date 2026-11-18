@@ -56,8 +56,9 @@ async function run() {
   }
   if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(set))
     throw new DemoSeedConflict("INVALID_SET_KEY");
-  const password = process.env.DEMO_SEED_PASSWORD;
-  if (command === "seed" && (!password || !passwordPattern.test(password)))
+  // This CLI already rejects production, remote databases and real messaging.
+  const password = process.env.DEMO_SEED_PASSWORD ?? "Demo1234!";
+  if (command === "seed" && !passwordPattern.test(password))
     throw new DemoSeedConflict("INVALID_ENVIRONMENT:DEMO_SEED_PASSWORD");
   const path = resolve(
     output ?? `../../.local/demo-${command}-${set}-${Date.now()}.links.json`,
@@ -79,7 +80,7 @@ async function run() {
     });
     const result =
       command === "seed"
-        ? await seedDemo(db, { password: password!, set, encryptionKey: key })
+        ? await seedDemo(db, { password, set, encryptionKey: key })
         : null;
     const links = await demoLinks(db, env.WEB_ORIGIN, key);
     await file.writeFile(JSON.stringify(links, null, 2) + "\n");

@@ -184,15 +184,11 @@ API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery`, `DeliveryLi
 # 저장소 루트, .nvmrc의 Node와 packageManager의 pnpm 사용
 pnpm --filter @chongmuya/api build
 pnpm --filter @chongmuya/api db:migration:run
-# zsh: 화면/셸 이력에 비밀번호를 남기지 않고 입력 (ASCII 8~16자, 공백 제외)
-read -s 'DEMO_SEED_PASSWORD?데모 로그인 비밀번호: '
-export DEMO_SEED_PASSWORD
 MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo
-unset DEMO_SEED_PASSWORD
 pnpm dev
 ```
 
-계정은 `organizer.a@example.test`(모임 2개·참석/답변 대기/응답 비교), `organizer.b@example.test`(별도 모임·행사), `organizer.empty@example.test`(빈 총무), `owner.a@example.test`(가상 온기홀), `owner.empty@example.test`(등록 시작)이다. 입력한 비밀번호로 일반 이메일 로그인한다. 인증 시각과 동의는 로컬 합성 fixture이며 Resend/Octomo 인증이나 실제 수신 동의가 아니다. 전화번호 `01000000001`~`05`는 테스트 값일 뿐 실제 미사용 번호라는 보장은 없으며 데모 실발송은 차단한다.
+계정은 `organizer.a@example.test`(모임 2개·참석/답변 대기/응답 비교), `organizer.b@example.test`(별도 모임·행사), `organizer.empty@example.test`(빈 총무), `owner.a@example.test`(가상 온기홀), `owner.empty@example.test`(등록 시작)이다. 신규 계정 다섯 개의 기본 비밀번호는 **`Demo1234!`**이며 일반 이메일 로그인으로 사용한다. 원하는 경우에만 `DEMO_SEED_PASSWORD`로 변경한다(공백 없는 ASCII 8~16자). 이미 생성한 계정의 비밀번호는 재실행해도 바뀌지 않는다. 인증 시각과 동의는 로컬 합성 fixture이며 Resend/Octomo 인증이나 실제 수신 동의가 아니다. 전화번호 `01000000001`~`05`는 테스트 값일 뿐 실제 미사용 번호라는 보장은 없으며 데모 실발송은 차단한다.
 
 확인 순서: 총무 A 로그인 → `/events`의 참석 관리(1차 열림·2차 마감) → 답변 대기/응답 비교 → 새 행사에서 가상 매장 문의 → 링크 파일의 해당 매장 답변 URL을 별도 브라우저에서 열어 저장 → 총무 문의 재조회 → 사장님 A `/owner/menus?restaurant=<출력 ID>`에서 수정·판매 중단 → 빈 총무/빈 사장님 화면. 참석은 김민수/0012, 최초 번호 연결은 이서연, 중복 조합은 정수빈/7788로 확인한다. QR 방문만으로 응답을 기록하지 않는다.
 
@@ -200,7 +196,7 @@ pnpm dev
 
 ```bash
 MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:demo:links
-# 만료된 사례를 새로 만들 때만 새 세트 이름 지정; 비밀번호는 위와 같이 입력
+# 만료된 사례를 새로 만들 때만 새 세트 이름 지정
 MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo --set second
 # 선택: --output ../../.local/my-demo.links.json (기존 파일 덮어쓰기 금지)
 ```
