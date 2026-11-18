@@ -1,0 +1,34 @@
+import "reflect-metadata";
+import { config } from "dotenv";
+import { writeFile } from "node:fs/promises";
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "../dist/app.module.js";
+import { ReservationsService } from "../dist/modules/reservations/reservations.service.js";
+
+config({ quiet: true });
+let app;
+try {
+  const output = process.argv[2];
+  if (!output || process.argv.length !== 3) throw new Error();
+  app = await NestFactory.createApplicationContext(AppModule, {
+    logger: false,
+    abortOnError: false,
+  });
+  const targets = await app.get(ReservationsService).pendingForOperations();
+  // Personal data belongs in an explicit operator-owned file, never application logs.
+  await writeFile(
+    output,
+    JSON.stringify({ generatedAt: new Date().toISOString(), targets }, null, 2),
+    { flag: "wx", mode: 0o600 },
+  );
+  console.log(
+    `전달 대기 대상 ${targets.length}건을 권한 0600의 새 파일에 기록했습니다. 발송하거나 상태를 바꾸지 않았습니다.`,
+  );
+} catch {
+  console.error(
+    "조회하지 못했습니다. 새 출력 파일 경로와 서버·DB 설정을 확인하세요.",
+  );
+  process.exitCode = 1;
+} finally {
+  await app?.close();
+}

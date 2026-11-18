@@ -2,6 +2,26 @@ import { HttpException } from "@nestjs/common";
 import type { ValidationError } from "class-validator";
 
 const domainErrors = {
+  EVENT_REQUEST_EXISTS: {
+    status: 409,
+    message:
+      "이 행사에는 이미 문의가 접수됐어요. 기존 진행 상태를 확인해 주세요.",
+  },
+  RESERVATION_RETRY_CONFLICT: {
+    status: 409,
+    message:
+      "이미 접수된 요청과 내용이 달라요. 행사에서 접수 결과를 확인해 주세요.",
+  },
+  RESTAURANT_INQUIRY_UNAVAILABLE: {
+    status: 409,
+    message:
+      "문의할 수 없는 매장이 포함됐어요. 매장 정보를 다시 확인해 주세요.",
+  },
+  RESERVATION_DATE_INVALID: {
+    status: 400,
+    message: "예약 문의는 미래 날짜와 시작 시간으로 접수해 주세요.",
+  },
+
   GROUP_REGISTRATION_CONFLICT: {
     status: 409,
     message:

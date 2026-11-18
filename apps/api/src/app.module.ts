@@ -1,3 +1,5 @@
+import { RestaurantsModule } from "./modules/restaurants/restaurants.module.js";
+import { ReservationsModule } from "./modules/reservations/reservations.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
 import { GroupsModule } from "./modules/groups/groups.module.js";
 import { Module } from "@nestjs/common";
@@ -7,6 +9,14 @@ import { HealthModule } from "./modules/health/health.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 
 @Module({
-  imports: [ConfigModule, HealthModule, AuthModule, GroupsModule, EventsModule],
+  imports: [
+    ConfigModule,
+    HealthModule,
+    AuthModule,
+    GroupsModule,
+    EventsModule,
+    RestaurantsModule,
+    ReservationsModule,
+  ],
 })
 export class AppModule {}

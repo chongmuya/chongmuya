@@ -93,6 +93,8 @@ function isPublicEntry(file) {
 // Providers must also be exported by the owning Nest module. Types/decorators
 // are source imports and do not require a DI registration.
 const apiPublicImports = {
+  "events/events.service": ["EventsService"],
+  "restaurants/restaurants.service": ["RestaurantsService"],
   "auth/guards/jwt-access.guard": ["AccessGuard"],
   "auth/auth.service": ["AuthService"],
   "auth/decorators/current-user.decorator": ["CurrentUser"],

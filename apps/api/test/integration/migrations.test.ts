@@ -203,6 +203,42 @@ test("migrations preserve existing account, group, event and session records and
       await runner.query("SELECT * FROM groups"),
       preservedGroups,
     );
+    const { ReservationInquiries1795219200000 } =
+      await import("../../src/database/migrations/1795219200000-ReservationInquiries.js");
+    const inquiries = new ReservationInquiries1795219200000();
+    const beforeInquiries = await runner.query(
+      "SELECT row_to_json(e) AS event FROM events e ORDER BY id",
+    );
+    const accountsBeforeInquiries = await runner.query(
+      "SELECT * FROM accounts",
+    );
+    await inquiries.up(runner);
+    assert.deepEqual(
+      await runner.query(
+        "SELECT row_to_json(e) AS event FROM events e ORDER BY id",
+      ),
+      beforeInquiries,
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM accounts"),
+      accountsBeforeInquiries,
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM groups"),
+      preservedGroups,
+    );
+    await inquiries.down(runner);
+    await runner.query("SAVEPOINT inquiry_rollback");
+    await inquiries.up(runner);
+    await runner.query(
+      "INSERT INTO restaurants(id,name,address,region) VALUES($1,'보존 매장','주소','지역')",
+      [randomUUID()],
+    );
+    await assert.rejects(
+      inquiries.down(runner),
+      /preserving restaurant and inquiry records/,
+    );
+    await runner.query("ROLLBACK TO SAVEPOINT inquiry_rollback");
     await additions.down(runner);
     await additions.up(runner);
     await runner.query(

@@ -22,6 +22,7 @@ export function safeReturnPath(
       "/onboarding",
       "/getting-started",
       "/groups/new",
+      "/restaurants",
     ].includes(url.pathname)
   )
     return "/events";
@@ -34,6 +35,21 @@ export function safeReturnPath(
   }
   const uuid =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (url.pathname === "/restaurants") {
+    for (const key of ["event", "restaurant"]) {
+      const item = url.searchParams.get(key);
+      if (item && uuid.test(item)) params.set(key, item);
+    }
+    const selected = [
+      ...new Set(
+        (url.searchParams.get("selected") ?? "")
+          .split(",")
+          .filter((id) => uuid.test(id)),
+      ),
+    ].slice(0, 3);
+    if (selected.length) params.set("selected", selected.join(","));
+    if (url.searchParams.get("inquiry") === "1") params.set("inquiry", "1");
+  }
   for (const key of url.pathname === "/events"
     ? ["event", "group"]
     : url.pathname === "/mypage" ||

@@ -80,9 +80,18 @@ export function HomeScreen() {
             모임 없이도 개인 행사를 만들 수 있어요.
           </p>
           <EventBanner href="/auth?next=%2Fevents" />
+          <Link
+            href="/restaurants"
+            className={buttonStyles({
+              variant: "brand-outline",
+              className: "mt-5",
+            })}
+          >
+            매장 둘러보기
+          </Link>
           <p className="mt-8 text-caption text-muted">
-            내 행사와 명단은 로그인한 본인만 볼 수 있어요. 매장 탐색·예약·정산
-            기능은 준비 중이에요.
+            내 행사와 명단은 로그인한 본인만 볼 수 있어요. 공개 매장은 로그인
+            없이 둘러볼 수 있어요.
           </p>
           <Link className={buttonStyles({ className: "mt-6" })} href="/start">
             로그인 · 회원가입
@@ -211,7 +220,18 @@ function AccountHome({
         )}
       </div>
       {!owner && (
-        <HomeNavigation groupId={selected?.id ?? requested ?? undefined} />
+        <>
+          <Link
+            href="/restaurants"
+            className={buttonStyles({
+              variant: "brand-outline",
+              className: "mx-5 my-6",
+            })}
+          >
+            매장 둘러보기
+          </Link>
+          <HomeNavigation groupId={selected?.id ?? requested ?? undefined} />
+        </>
       )}
       {dialog === "guide" && (
         <Dialog

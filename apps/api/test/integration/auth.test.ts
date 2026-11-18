@@ -59,6 +59,12 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "password_resets",
       "phone_verifications",
       "refresh_tokens",
+      "reservation_request_targets",
+      "reservation_requests",
+      "restaurant_contacts",
+      "restaurant_menus",
+      "restaurant_spaces",
+      "restaurants",
     ],
     "nested entity discovery must register every table exactly once",
   );

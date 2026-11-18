@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import type { EntityManager } from "typeorm";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
@@ -24,6 +25,20 @@ export class EventsService {
     private readonly database: DatabaseService,
     private readonly groups: GroupsService,
   ) {}
+
+  async assertOwned(
+    ownerId: string,
+    id: string,
+    manager: EntityManager,
+    lock = false,
+  ): Promise<EventDto> {
+    const event = await manager.getRepository(Event).findOne({
+      where: { id, ownerId },
+      ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
+    });
+    if (!event) throw new NotFoundException();
+    return eventDto(event);
+  }
 
   async list(ownerId: string, groupId?: string): Promise<EventDto[]> {
     const db = await this.database.connect();
@@ -57,9 +72,7 @@ export class EventsService {
 
   async get(ownerId: string, id: string): Promise<EventDto> {
     const db = await this.database.connect();
-    const event = await db.getRepository(Event).findOneBy({ id, ownerId });
-    if (!event) throw new NotFoundException();
-    return eventDto(event);
+    return this.assertOwned(ownerId, id, db.manager);
   }
 
   async linkGroup(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useController, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -25,13 +25,16 @@ export function EventForm({
   accountId,
   groupId = "",
   request,
+  onCreated,
 }: {
   accountId: string;
   groupId?: string;
   request: SessionRequest;
+  onCreated?: (event: { id: string }) => void;
 }) {
   const id = useId();
   const router = useRouter();
+  const [findVenue, setFindVenue] = useState(false);
   const {
     register,
     control,
@@ -95,7 +98,13 @@ export function EventForm({
             }),
           onSuccess: (event) => {
             reset();
-            router.push(`/events?event=${encodeURIComponent(event.id)}`);
+            if (onCreated) onCreated(event);
+            else
+              router.push(
+                findVenue
+                  ? `/restaurants?event=${event.id}&inquiry=1`
+                  : `/events?event=${encodeURIComponent(event.id)}`,
+              );
           },
         });
       })}
@@ -161,6 +170,17 @@ export function EventForm({
           <p>모임이 없어도 개인 행사를 만들 수 있습니다.</p>
         ) : null}
       </div>
+      {!onCreated && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={findVenue}
+            onChange={(e) => setFindVenue(e.target.checked)}
+            disabled={create.isPending}
+          />
+          장소도 함께 알아볼까요? (선택)
+        </label>
+      )}
       <Button
         type="submit"
         disabled={create.isPending}
