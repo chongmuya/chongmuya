@@ -1,10 +1,13 @@
 "use client";
 import Script from "next/script";
-import { useEffect, useRef, useState } from "react";
-import type { Restaurant } from "../types/restaurant.types";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import type { RestaurantMap as MapRestaurant } from "../types/restaurant.types";
 
 type NaverMap = {
   destroy: () => void;
+  getCenter: () => { lat: () => number; lng: () => number };
+  getZoom: () => number;
+  setCenter: (point: unknown) => void;
   fitBounds: (
     coordinates: unknown[],
     options: {
@@ -37,13 +40,16 @@ declare global {
   }
 }
 
+export type MapViewport = { latitude: number; longitude: number; zoom: number };
 export function RestaurantMap({
   restaurants,
   onOpen,
   focusId,
+  viewport,
 }: {
   focusId?: string | null;
-  restaurants: Restaurant[];
+  restaurants: MapRestaurant[];
+  viewport?: RefObject<MapViewport | null>;
   onOpen: (id: string) => void;
 }) {
   const key = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID?.trim();
@@ -74,6 +80,9 @@ export function RestaurantMap({
       window.navermap_authFailure = previous;
     };
   }, [key]);
+  const instance = useRef<NaverMap | null>(null);
+  const lastFocus = useRef<string | null>(null);
+  // Updating markers never recreates the map or resets the user's viewport.
   useEffect(() => {
     if (
       !ready ||
@@ -83,76 +92,93 @@ export function RestaurantMap({
       !window.naver?.maps
     )
       return;
+    const maps = window.naver.maps;
     const points = restaurants.filter(
       (r) => r.latitude !== null && r.longitude !== null,
     );
-
-    const element = container.current;
-    const maps = window.naver.maps;
-
     const markers: Marker[] = [];
-    let map: NaverMap | undefined;
-    const frame = requestAnimationFrame(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled || !container.current) return;
       try {
-        const first =
-          points.find((restaurant) => restaurant.id === focusId) ?? points[0];
-        map = new maps.Map(element, {
-          center: new maps.LatLng(
-            first?.latitude ?? 37.5404,
-            first?.longitude ?? 127.0692,
-          ),
-          zoom: points.length ? 17 : 14,
-        });
-        if (!focusId && points.length > 1) {
-          map.fitBounds(
-            points.map(
-              (restaurant) =>
-                new maps.LatLng(restaurant.latitude!, restaurant.longitude!),
+        if (!instance.current) {
+          const first = points.find((r) => r.id === focusId) ?? points[0]!;
+          const saved = viewport?.current;
+          instance.current = new maps.Map(container.current, {
+            center: new maps.LatLng(
+              saved?.latitude ?? first.latitude!,
+              saved?.longitude ?? first.longitude!,
             ),
-            { top: 100, right: 90, bottom: 140, left: 90, maxZoom: 18 },
-          );
+            zoom: saved?.zoom ?? 17,
+          });
+          if (!saved && !focusId && points.length > 1)
+            instance.current.fitBounds(
+              points.map((r) => new maps.LatLng(r.latitude!, r.longitude!)),
+              { top: 80, right: 60, bottom: 120, left: 60, maxZoom: 18 },
+            );
+          lastFocus.current = focusId ?? null;
+        } else if (focusId && lastFocus.current !== focusId) {
+          const focused = points.find((r) => r.id === focusId);
+          if (focused)
+            instance.current.setCenter(
+              new maps.LatLng(focused.latitude!, focused.longitude!),
+            );
+          lastFocus.current = focusId;
         }
         for (const restaurant of points) {
           const label = document.createElement("button");
           label.type = "button";
           label.className =
-            "relative -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-sm bg-brand px-3 py-3 text-sm font-semibold text-white shadow-control";
+            "-translate-x-1/2 -translate-y-full whitespace-nowrap rounded-control bg-brand px-3 py-3 text-sm font-semibold text-white shadow-control";
           label.textContent = restaurant.name;
-          const tail = document.createElement("img");
-          tail.src = "/images/restaurants/marker-tail.svg";
-          tail.alt = "";
-          tail.setAttribute("width", "14.5932");
-          tail.setAttribute("height", "17.1448");
-          tail.className =
-            "absolute top-full left-1/2 -translate-x-1/2 -mt-1 rotate-180";
-          label.append(tail);
           label.addEventListener("click", () => open.current(restaurant.id));
-          const marker = new maps.Marker({
-            map,
-            position: new maps.LatLng(
-              restaurant.latitude!,
-              restaurant.longitude!,
-            ),
-            title: restaurant.name,
-            icon: { content: label, anchor: { x: 0, y: 0 } },
-          });
-          markers.push(marker);
+          markers.push(
+            new maps.Marker({
+              map: instance.current,
+              position: new maps.LatLng(
+                restaurant.latitude!,
+                restaurant.longitude!,
+              ),
+              title: restaurant.name,
+              icon: { content: label, anchor: { x: 0, y: 0 } },
+            }),
+          );
         }
       } catch {
         setFailed(true);
       }
     });
     return () => {
-      cancelAnimationFrame(frame);
-      // An authorization failure can invalidate the SDK while this map is mounted.
-      try {
-        markers.forEach((marker) => marker.setMap(null));
-        map?.destroy();
-      } catch {
-        // The SDK has already disposed of its internal objects.
-      }
+      cancelled = true;
+      markers.forEach((marker) => marker.setMap(null));
     };
-  }, [ready, failed, restaurants, focusId, noCoordinates]);
+  }, [ready, failed, restaurants, focusId, noCoordinates, viewport]);
+  useEffect(() => {
+    if ((failed || noCoordinates) && instance.current) {
+      instance.current.destroy();
+      instance.current = null;
+    }
+  }, [failed, noCoordinates]);
+  useEffect(
+    () => () => {
+      const map = instance.current;
+      if (!map) return;
+      try {
+        if (viewport) {
+          const center = map.getCenter();
+          viewport.current = {
+            latitude: center.lat(),
+            longitude: center.lng(),
+            zoom: map.getZoom(),
+          };
+        }
+        map.destroy();
+      } finally {
+        instance.current = null;
+      }
+    },
+    [viewport],
+  );
   return (
     <section aria-label="매장 지도" className="relative">
       {key && !noCoordinates && (
@@ -196,7 +222,7 @@ export function RestaurantMap({
         <>
           <div
             ref={container}
-            className="h-[calc(100svh-103px)] min-h-[360px] w-full bg-soft"
+            className="h-[calc(100svh-240px)] min-h-[360px] w-full bg-soft"
           />
           {!ready && (
             <p

@@ -1,11 +1,11 @@
 import type {
-  Restaurant,
+  RestaurantSummary,
   RestaurantConditions,
 } from "../types/restaurant.types";
 
 // Catalog compatibility is never a promise of availability on the requested date.
 export function conditionsMatch(
-  r: Restaurant,
+  r: RestaurantSummary,
   conditions?: RestaurantConditions,
 ): "인원·공간 일치" | "인원·공간 조건 불일치" | "인원·공간 확인 필요" {
   if (!conditions || !r.spaces.length) return "인원·공간 확인 필요";

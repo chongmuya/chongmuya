@@ -1,9 +1,11 @@
 "use client";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { eventsQueryOptions } from "../api/events.queries";
+import { StepHeading } from "@/shared/ui/step-layout";
 import { EventForm } from "./event-form";
 
 export function EventPicker({
@@ -16,16 +18,22 @@ export function EventPicker({
   onSelect: (id: string) => void;
 }) {
   const result = useQuery(eventsQueryOptions(accountId, request));
+  const [creating, setCreating] = useState(false);
+  if (creating || result.data?.length === 0)
+    return (
+      <EventForm
+        accountId={accountId}
+        request={request}
+        onCreated={(event) => onSelect(event.id)}
+      />
+    );
   return (
     <>
+      <StepHeading title="어떤 행사로 문의할까요?" />
       {result.isError ? (
         <ErrorState retry={() => void result.refetch()} />
       ) : !result.data ? (
         <LoadingState>내 행사 확인 중…</LoadingState>
-      ) : !result.data.length ? (
-        <p className="text-sm text-muted">
-          아직 행사가 없어요. 모임 없이 개인 행사를 만들어 문의할 수 있어요.
-        </p>
       ) : (
         <ul className="space-y-3">
           {result.data.map((e) => (
@@ -42,11 +50,13 @@ export function EventPicker({
           ))}
         </ul>
       )}
-      <EventForm
-        accountId={accountId}
-        request={request}
-        onCreated={(e) => onSelect(e.id)}
-      />
+      <Button
+        variant="outline"
+        className="mt-5 w-full"
+        onClick={() => setCreating(true)}
+      >
+        새 행사 만들기
+      </Button>
     </>
   );
 }

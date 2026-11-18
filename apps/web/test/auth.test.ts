@@ -354,7 +354,7 @@ for (const transition of ["account switch", "logout"] as const) {
     );
     await client.restore();
     const rejected = assert.rejects(
-      client.request("/api/v1/events/e1/group", { method: "PUT" }),
+      client.request("/api/v1/events/e1", { method: "PATCH" }),
       (error: unknown) =>
         error instanceof ApiError && error.code === "SESSION_INVALID",
     );

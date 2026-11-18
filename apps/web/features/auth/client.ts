@@ -5,7 +5,6 @@ export { AuthScreen } from "./components/auth-screen";
 export { AuthEntryScreen } from "./components/auth-entry-screen";
 export { ServiceIntroduction } from "./components/service-introduction";
 export { SplashScreen } from "./components/splash-screen";
-export { AuthPreviewScreen } from "./components/preview/auth-preview-screen";
 export { SignupScreen } from "./components/signup/signup-screen";
 export { safeReturnPath } from "./lib/return-path";
 

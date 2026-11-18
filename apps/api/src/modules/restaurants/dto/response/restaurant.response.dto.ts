@@ -45,3 +45,34 @@ export type RestaurantDto = {
     unit: string;
   }[];
 };
+
+export type RestaurantSummaryDto = Pick<
+  RestaurantDto,
+  | "id"
+  | "name"
+  | "address"
+  | "region"
+  | "category"
+  | "latitude"
+  | "longitude"
+  | "maxCapacity"
+  | "minimumGuests"
+  | "photoPath"
+  | "isDemo"
+  | "inquiryAvailable"
+> & {
+  spaces: Pick<
+    RestaurantSpaceDto,
+    | "id"
+    | "label"
+    | "kind"
+    | "availability"
+    | "capacity"
+    | "minGuests"
+    | "togetherSeating"
+  >[];
+};
+export type RestaurantMapDto = Pick<
+  RestaurantDto,
+  "id" | "name" | "address" | "region" | "latitude" | "longitude"
+>;

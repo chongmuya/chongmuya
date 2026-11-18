@@ -175,83 +175,48 @@ test("personal events work without groups and event ownership is enforced for ev
   );
 });
 
-test("linking locks one event, checks version and preserves all existing event data", async (t) => {
+test("the event group is fixed at creation and the retired linking endpoint cannot change saved data", async (t) => {
   const { call, signup, createGroup, db } = await startResourceApplication(t);
   const jar = await signup();
-  const g1 = await createGroup("첫 모임", jar),
-    g2 = await createGroup("다른 모임", jar);
-  const event = await (
-    await call("events", jar, "POST", {
-      name: "연결 전 기록",
-      scheduledAt: "2026-11-15T12:00:00Z",
-    })
-  ).json();
-  const before = await db
-    .getRepository(Event)
-    .findOneByOrFail({ id: event.id });
-  const stale = await call(`events/${event.id}/group`, jar, "PUT", {
-    groupId: g1.id,
-    expectedVersion: 2,
-  });
-  assert.equal(stale.status, 409);
-  assert.equal((await stale.json()).code, "VERSION_CONFLICT");
-  const responses = await Promise.all(
-    [g1, g2].map((group) =>
-      call(`events/${event.id}/group`, jar, "PUT", {
-        groupId: group.id,
-        expectedVersion: 1,
-      }),
-    ),
-  );
-  assert.deepEqual(
-    responses.map((response) => response.status).sort(),
-    [200, 409],
-  );
-  const winner = await responses
-    .find((response) => response.status === 200)!
-    .json();
-  const loser = await responses
-    .find((response) => response.status === 409)!
-    .json();
-  assert.equal(loser.code, "VERSION_CONFLICT");
-  const after = await db.getRepository(Event).findOneByOrFail({ id: event.id });
-  assert.deepEqual(
-    { ...after },
-    { ...before, groupId: winner.groupId, version: 2 },
-  );
-  assert.deepEqual(
-    await (await call(`events/${event.id}`, jar)).json(),
-    winner,
-  );
-  const other = winner.groupId === g1.id ? g2.id : g1.id;
-  for (const groupId of [other, winner.groupId]) {
-    const blocked = await call(`events/${event.id}/group`, jar, "PUT", {
+  const group = await createGroup("고정 모임", jar);
+  for (const groupId of [undefined, group.id]) {
+    const response = await call("events", jar, "POST", {
+      name: "행사",
       groupId,
-      expectedVersion: 2,
     });
-    assert.equal(blocked.status, 409);
-    assert.equal((await blocked.json()).code, "EVENT_ALREADY_LINKED");
+    assert.equal(response.status, 201);
+    const event = await response.json();
+    const before = await db
+      .getRepository(Event)
+      .findOneByOrFail({ id: event.id });
+    assert.equal(
+      (
+        await call(`events/${event.id}/group`, jar, "PUT", {
+          groupId: group.id,
+          expectedVersion: 1,
+        })
+      ).status,
+      404,
+    );
+    for (const value of [null, group.id]) {
+      assert.equal(
+        (
+          await call(`events/${event.id}`, jar, "PATCH", {
+            groupId: value,
+            expectedVersion: 1,
+          })
+        ).status,
+        400,
+      );
+    }
+    assert.deepEqual(
+      await db.getRepository(Event).findOneByOrFail({ id: event.id }),
+      before,
+    );
   }
-  assert.equal(
-    (
-      await call(`events/${event.id}/group`, jar, "PUT", {
-        groupId: null,
-        expectedVersion: 2,
-      })
-    ).status,
-    400,
-  );
-  assert.equal(
-    (await (await call(`events?groupId=${winner.groupId}`, jar)).json()).length,
-    1,
-  );
-  assert.deepEqual(
-    await (await call(`events?groupId=${other}`, jar)).json(),
-    [],
-  );
 });
 
-test("event creation and linking use the exported GroupsService with the same transactional manager", async (t) => {
+test("event creation uses the exported GroupsService with the same transactional manager", async (t) => {
   const { app, db, call, signup, createGroup } =
     await startResourceApplication(t);
   const { GroupsService } =
@@ -274,17 +239,9 @@ test("event creation and linking use the exported GroupsService with the same tr
       .status,
     201,
   );
-  const event = await (
-    await call("events", jar, "POST", { name: "개인 행사" })
-  ).json();
   assert.equal(
-    (
-      await call(`events/${event.id}/group`, jar, "PUT", {
-        groupId: group.id,
-        expectedVersion: 1,
-      })
-    ).status,
-    200,
+    (await call("events", jar, "POST", { name: "개인 행사" })).status,
+    201,
   );
-  assert.equal(authorize.mock.callCount(), 2);
+  assert.equal(authorize.mock.callCount(), 1);
 });

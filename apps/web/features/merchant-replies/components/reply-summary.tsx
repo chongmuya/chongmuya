@@ -11,7 +11,7 @@ export const seatingLabel = {
   CLOSE: "함께 착석",
   SEPARATED: "분리 착석",
 };
-const money = (n: number | null) =>
+export const money = (n: number | null) =>
   n === null
     ? "확인 필요"
     : n === 0
@@ -153,10 +153,6 @@ export function ReplySummary({ response: r }: { response: Reply }) {
               {r.state === "EXPIRED"
                 ? "제안 선택 기한이 지났어요"
                 : `선택 기한: ${new Date(r.expiresAt!).toLocaleString("ko-KR")}`}
-            </p>
-            <p className="text-xs text-muted">
-              예약이 확정된 상태는 아니에요. 제안 선택과 예약 확정은 다음
-              단계에서 제공됩니다.
             </p>
           </>
         )

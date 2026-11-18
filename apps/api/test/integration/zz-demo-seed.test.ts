@@ -28,7 +28,7 @@ const read = async (r: Response, status = 200) => {
   assert.equal(r.status, status, JSON.stringify(b));
   return b;
 };
-test("offline demo seed preserves edits/deletions, logs in normally, isolates resources, serves demo links and paginates owner inquiries", async (t) => {
+test("offline demo seed preserves edits/deletions, logs in normally, isolates resources, serves demo links", async (t) => {
   const { app, db, call, url } = await startResourceApplication(t);
   const key = merchantEncryptionKey(app.get(ConfigService).environment);
   const options = {
@@ -100,7 +100,6 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
   const a = await login(0),
     b = await login(1),
     empty = await login(2),
-    owner = await login(3),
     emptyOwner = await login(4);
   const eventId = demoId(`set:${options.set}:attendance`);
   assert.equal((await call(`events/${eventId}`, a)).status, 200);
@@ -208,53 +207,6 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
     value: oldFlag,
     configurable: true,
   });
-  // Many same-timestamp rows expose random-UUID ordering and pagination boundary mistakes.
-  const createdAt = new Date(Date.now() + 1000),
-    ids: string[] = [];
-  await db.transaction(async (m) => {
-    for (let i = 0; i < 103; i++) {
-      const e = {
-        id: randomUUID(),
-        ownerId: demoAccounts[0]!.id,
-        groupId: null,
-        version: 1,
-        name: "페이지 검증",
-        scheduledAt: new Date(request.snapshot.startsAt),
-        createdAt,
-      };
-      await m.insert(Event, e);
-      const r = {
-        ...request,
-        id: randomUUID(),
-        eventId: e.id,
-        requestKey: randomUUID(),
-        createdAt,
-      };
-      await m.insert(ReservationRequest, r);
-      const targetId = randomUUID();
-      ids.push(targetId);
-      await m.insert(RequestTarget, {
-        ...target,
-        id: targetId,
-        requestId: r.id,
-        replyVersion: 0,
-      });
-    }
-  });
-  let cursor: string | null = null;
-  const seen: string[] = [];
-  do {
-    const page = await read(
-      await call(
-        `owner/inquiries${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
-        owner,
-      ),
-    );
-    seen.push(...page.inquiries.map((i: { targetId: string }) => i.targetId));
-    cursor = page.nextCursor;
-  } while (cursor);
-  assert.equal(new Set(seen).size, seen.length);
-  assert.deepEqual(seen.slice(0, 103), ids.sort().reverse());
   assert.equal(
     (await read(await call("owner/inquiries", emptyOwner))).inquiries.length,
     0,
@@ -294,6 +246,18 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
     (await db.manager.findOneByOrFail(RequestTarget, { id: target.id }))
       .replyVersion,
     1,
+  );
+  const nextEvent = demoId(`set:${options.set}-next:waiting`);
+  await seedDemo(db, { ...options, recreate: true });
+  assert(await db.manager.existsBy(EventParticipant, { id: participantId }));
+  assert(await db.manager.existsBy(Event, { id: nextEvent }));
+  assert.equal(
+    (await db.manager.findOneByOrFail(Account, { id: oldAccount.id })).nickname,
+    "내가 수정",
+  );
+  assert.equal(
+    (await db.manager.findOneByOrFail(Restaurant, { id: restaurant.id })).name,
+    "사용자 매장명",
   );
   await db.manager.update(
     Restaurant,

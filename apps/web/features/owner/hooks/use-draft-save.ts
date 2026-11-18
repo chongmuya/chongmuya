@@ -15,6 +15,7 @@ export function useDraftSave(
   request: SessionRequest,
   draft: RestaurantDraft,
 ) {
+  const savedDraft = useRef(draft);
   const version = useRef(draft.version),
     active = useActiveScreen(),
     chain = useRef(Promise.resolve());
@@ -46,6 +47,7 @@ export function useDraftSave(
       step: number;
       addressId?: string;
       resume?: boolean;
+      advance?: boolean;
     }) => {
       const reviewed = conflictRef.current;
       if (reviewed && !input.resume)
@@ -54,6 +56,7 @@ export function useDraftSave(
         input.resume && reviewed ? reviewed.version : version.current;
       try {
         const result = await saveDraft(request, draft.id, {
+          advance: input.advance,
           data: input.data,
           step: input.step,
           addressId: input.addressId,
@@ -96,6 +99,7 @@ export function useDraftSave(
       step: number,
       addressId?: string,
       resume = false,
+      advance = false,
     ) => {
       let result: RestaurantDraft;
       const run = chain.current
@@ -103,7 +107,25 @@ export function useDraftSave(
         .then(async () => {
           if (!active.current) throw new Error("Screen left");
           try {
-            result = await mutateAsync({ data, step, addressId, resume });
+            const stored = savedDraft.current;
+            if (
+              !resume &&
+              !advance &&
+              !conflictRef.current &&
+              stored.step === step &&
+              JSON.stringify(registrationSchema.parse(stored.data)) ===
+                JSON.stringify(registrationSchema.parse(data)) &&
+              (!addressId || stored.selectedAddress?.id === addressId)
+            )
+              return void (result = stored);
+            result = await mutateAsync({
+              data,
+              step,
+              addressId,
+              resume,
+              advance,
+            });
+            savedDraft.current = result;
             if (active.current) {
               version.current = result.version;
               setError(null);

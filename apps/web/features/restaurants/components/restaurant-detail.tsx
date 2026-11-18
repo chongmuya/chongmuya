@@ -2,21 +2,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import Image from "next/image";
-import { Dialog } from "@/shared/ui/dialog";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { restaurantQuery } from "../api/restaurants.api";
 import type { Restaurant } from "../types/restaurant.types";
 import { RestaurantPhoto } from "./restaurant-photo";
 import { spaceCost } from "../lib/space-cost";
-import { cn } from "@/shared/lib/cn";
 
 export function RestaurantDetail({
   id,
   selected,
   full,
   targetCount,
-  onClose,
   onSelect,
   onInquiry,
   onMap,
@@ -25,32 +22,23 @@ export function RestaurantDetail({
   selected: boolean;
   full: boolean;
   targetCount: number;
-  onClose: () => void;
   onSelect: () => void;
   onInquiry: () => void;
   onMap: (restaurant: Restaurant) => void;
 }) {
   const result = useQuery(restaurantQuery(id));
-  const [section, setSection] = useState<"booking" | "spaces" | "menus" | null>(
-    null,
+  const [section, setSection] = useState<"booking" | "spaces" | "menus">(
+    "booking",
   );
   const r = result.data;
   return (
-    <Dialog
-      labelledBy="restaurant-detail-title"
-      onClose={onClose}
-      showCloseButton={!r || result.isError}
-      className={cn(
-        "w-full max-w-[408px] rounded-none p-0 text-copy",
-        (!r || result.isError) && "p-5",
-      )}
-    >
+    <article className="pb-28">
       {(!r || result.isError) && (
         <h2 id="restaurant-detail-title" className="sr-only">
           매장 상세
         </h2>
       )}
-      {result.isError ? (
+      {result.isError && !r ? (
         <ErrorState retry={() => void result.refetch()} />
       ) : !r ? (
         <LoadingState>매장 확인 중…</LoadingState>
@@ -61,27 +49,10 @@ export function RestaurantDetail({
             alt={`${r.name} 대표 사진`}
             eager
           />
-          {!!r.spacePhotos.length && (
-            <section aria-label="공간 사진" className="space-y-4 p-5">
-              {r.spacePhotos.map((photo, index) => (
-                <figure key={`${photo.path}:${index}`}>
-                  <RestaurantPhoto src={photo.path} alt={photo.description} />
-                  <figcaption className="mt-2 text-xs text-muted">
-                    {photo.description}
-                  </figcaption>
-                </figure>
-              ))}
-            </section>
-          )}
-          <div className="space-y-7 px-5 pt-6 pb-5">
-            <h2 id="restaurant-detail-title" className="text-sm font-semibold">
+          <div className="space-y-7 pt-6 pb-5">
+            <h1 id="restaurant-detail-title" className="text-2xl font-bold">
               {r.name}
-            </h2>
-            {r.isDemo && (
-              <p className="text-xs text-brand">
-                개발용 가상 매장 · 실제 예약·연락 대상 아님
-              </p>
-            )}
+            </h1>
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-4 text-xs">
               <dt className="text-secondary">주소</dt>
               <dd>{r.address}</dd>
@@ -122,11 +93,7 @@ export function RestaurantDetail({
               ))}
             </div>
             {section && (
-              <Dialog
-                labelledBy="restaurant-info-title"
-                onClose={() => setSection(null)}
-                className="max-w-[322px] text-copy"
-              >
+              <section className="mt-6" aria-label="매장 상세 정보">
                 <h3
                   id="restaurant-info-title"
                   className="mb-5 text-lg font-semibold"
@@ -140,6 +107,22 @@ export function RestaurantDetail({
                   }
                 </h3>
                 <section className="space-y-4 text-xs">
+                  {section === "spaces" && !!r.spacePhotos.length && (
+                    <section aria-label="공간 사진" className="space-y-4">
+                      {r.spacePhotos.map((photo, index) => (
+                        <figure key={`${photo.path}:${index}`}>
+                          <RestaurantPhoto
+                            src={photo.path}
+                            alt={photo.description}
+                          />
+                          <figcaption className="mt-2 text-xs text-muted">
+                            {photo.description}
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </section>
+                  )}
+
                   {section === "booking" ? (
                     <dl className="space-y-3">
                       {[
@@ -227,19 +210,8 @@ export function RestaurantDetail({
                     ))
                   )}
                 </section>
-                <Button
-                  variant="brand-outline"
-                  className="mt-6 w-full"
-                  onClick={() => setSection(null)}
-                >
-                  확인
-                </Button>
-              </Dialog>
+              </section>
             )}
-            <p className="text-xs text-muted">
-              매장 정보 기준이며, 해당 날짜의 예약 가능 여부는 문의 후
-              확인합니다.
-            </p>
             <section>
               <h3 className="mb-2 text-sm font-semibold">위치 정보</h3>
               <p className="mb-4 text-xs">{r.address}</p>
@@ -276,7 +248,7 @@ export function RestaurantDetail({
                   disabled={!selected && full}
                   onClick={onInquiry}
                 >
-                  선택한 {targetCount}곳에 문의하기
+                  선택한 {targetCount}곳으로 계속
                 </Button>
               </div>
             ) : (
@@ -284,16 +256,9 @@ export function RestaurantDetail({
                 문의 수신 확인 전인 매장이에요. 현재는 문의를 접수할 수 없어요.
               </p>
             )}
-            <Button
-              variant="outline"
-              className="w-full border-0 bg-soft"
-              onClick={onClose}
-            >
-              닫기
-            </Button>
           </div>
         </>
       )}
-    </Dialog>
+    </article>
   );
 }

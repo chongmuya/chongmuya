@@ -123,19 +123,41 @@ export class AttendanceService {
         where: { eventId },
         order: { position: "ASC" },
       });
-      const results: RoundDto[] = [];
-      for (const round of rounds) {
-        const d = await this.detail(round, manager);
-        results.push({
-          id: d.id,
-          eventId: d.eventId,
-          title: d.title,
-          position: d.position,
-          shareId: d.shareId,
-          closedAt: d.closedAt,
-          counts: d.counts,
-        });
-      }
+      const totals: {
+        id: string;
+        attending: number;
+        absent: number;
+        unanswered: number;
+        pending: number;
+      }[] = await manager.query(
+        `SELECT r.id, COALESCE(s.attending,0)::int AS attending,
+          COALESCE(s.absent,0)::int AS absent,
+          ((SELECT count(*) FROM event_participants WHERE event_id=$1)
+            - COALESCE(s.attending,0) - COALESCE(s.absent,0))::int AS unanswered,
+          COALESCE(p.pending,0)::int AS pending
+        FROM attendance_rounds r
+        LEFT JOIN (
+          SELECT round_id,
+            count(*) FILTER (WHERE COALESCE(manager_override,self_answer)='ATTENDING') AS attending,
+            count(*) FILTER (WHERE COALESCE(manager_override,self_answer)='ABSENT') AS absent
+          FROM attendance_responses WHERE event_id=$1 GROUP BY round_id
+        ) s ON s.round_id=r.id
+        LEFT JOIN (
+          SELECT round_id,count(*) AS pending FROM attendance_reviews
+          WHERE event_id=$1 AND status='PENDING' GROUP BY round_id
+        ) p ON p.round_id=r.id WHERE r.event_id=$1`,
+        [eventId],
+      );
+      const counts = new Map(totals.map(({ id, ...value }) => [id, value]));
+      const results: RoundDto[] = rounds.map((r) => ({
+        id: r.id,
+        eventId: r.eventId,
+        title: r.title,
+        position: r.position,
+        shareId: r.shareId,
+        closedAt: r.closedAt?.toISOString() ?? null,
+        counts: counts.get(r.id)!,
+      }));
       return {
         rounds: results,
         nextTitle: `${Math.max(0, ...rounds.map((r) => r.position)) + 1}차`,

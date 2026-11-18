@@ -87,7 +87,13 @@ const phoneLast4 = (i: number) =>
 
 export async function seedDemo(
   db: DataSource,
-  options: { password: string; set: string; encryptionKey: Buffer; now?: Date },
+  options: {
+    password: string;
+    set: string;
+    encryptionKey: Buffer;
+    now?: Date;
+    recreate?: boolean;
+  },
 ) {
   if (
     !passwordPattern.test(options.password) ||
@@ -172,7 +178,7 @@ export async function seedDemo(
           {
             id: demoId("menu:set"),
             restaurantId: owned.id,
-            name: "데모 단체 세트",
+            name: "단체 모둠 세트",
             kind: "SET",
             price: 48000,
             unit: "4인 세트",
@@ -182,7 +188,7 @@ export async function seedDemo(
           {
             id: demoId("menu:unknown"),
             restaurantId: owned.id,
-            name: "데모 계절 메뉴",
+            name: "계절 메뉴",
             kind: "REGULAR",
             price: null,
             unit: "1접시",
@@ -192,7 +198,7 @@ export async function seedDemo(
           {
             id: demoId("menu:stopped"),
             restaurantId: owned.id,
-            name: "데모 판매 중단 메뉴",
+            name: "봄 한정 메뉴",
             kind: "REGULAR",
             price: 15000,
             unit: "1인분",
@@ -220,7 +226,7 @@ export async function seedDemo(
       await m.insert(Group, {
         id,
         ownerId,
-        name: ["데모 동아리", "데모 운영팀", "데모 B 모임"][i]!,
+        name: ["늘봄 동아리", "늘봄 운영팀", "다온 모임"][i]!,
         groupType: "친목",
         creationKey: demoId(`group-key:${i}`),
         creationDigest: digest({ fixture: i }),
@@ -240,6 +246,7 @@ export async function seedDemo(
       );
       counts.created++;
     }
+    if (options.recreate) await recreateDemoSet(m, options.set);
     const rootId = demoId(`set:${options.set}:attendance`);
     const root = await m.findOneBy(Event, { id: rootId });
     if (root) {
@@ -265,7 +272,12 @@ export async function seedDemo(
           ownerId,
           groupId: index === 2 ? null : groupIds[index === 3 ? 2 : 0]!,
           version: 1,
-          name: `[데모 ${options.set}] ${["참석 관리", "답변 대기", "응답 비교 · 개인 행사", "B의 비공개 행사"][index]}`,
+          name: [
+            "동아리 정기 모임",
+            "운영팀 회식",
+            "친구들과 송년 모임",
+            "다온 정기 모임",
+          ][index]!,
           scheduledAt,
           createdAt: new Date(now.getTime() + index),
         });
@@ -417,7 +429,7 @@ async function inquiry(
     budgetBasis: "PER_PERSON" as const,
     budgetAmount: 30000,
     alcohol: "UNKNOWN" as const,
-    additionalRequests: "개발용 데모 문의 · 실제 예약/발송 아님",
+    additionalRequests: "일행이 가까운 자리에 앉을 수 있으면 좋겠어요.",
   };
   const request = Object.assign(new ReservationRequest(), {
     id: demoId(`request:${event.id}`),
@@ -512,7 +524,10 @@ async function inquiry(
               separateFee: 0,
               deposit: { kind: "PER_RESERVATION" as const, amount: null },
               menuDeadlineAt: null,
-              note: "데모 제안: 선택 기한까지 좌석을 유지한다고 가정한 fixture",
+              note:
+                i === 1
+                  ? "한 공간에 함께 앉으시려면 18명까지 가능해요."
+                  : "요청하신 조건으로 이용하실 수 있어요.",
             };
       const input = {
         requestKey: demoId(`reply-key:${target.id}:${revision}`),
@@ -523,7 +538,7 @@ async function inquiry(
           kind === "DECLINE"
             ? null
             : new Date(now.getTime() + 12 * 3600_000).toISOString(),
-        reason: kind === "DECLINE" ? "데모 사례: 해당 일시 이용 불가" : "",
+        reason: kind === "DECLINE" ? "해당 일시에 다른 예약이 있어요." : "",
         holdConfirmed: kind !== "DECLINE",
       };
       await m.insert(MerchantReplyRevision, {
@@ -553,4 +568,56 @@ async function inquiry(
       });
     }
   }
+}
+
+// Explicitly scoped local fixture replacement. Shared accounts, catalog and groups never change.
+async function recreateDemoSet(m: EntityManager, set: string) {
+  const ids = ["attendance", "waiting", "comparison", "private-b"].map((key) =>
+    demoId(`set:${set}:${key}`),
+  );
+  const rows = await m.findBy(
+    Event,
+    ids.map((id) => ({ id })),
+  );
+  if (
+    rows.some(
+      (row) => row.ownerId !== demoAccounts[row.id === ids[3] ? 1 : 0]!.id,
+    )
+  )
+    throw new DemoSeedConflict("SET_OWNER_CONFLICT");
+  const [unsafe] = (await m.query(
+    `SELECT EXISTS(SELECT 1 FROM reservation_requests r JOIN reservation_request_targets t ON t.request_id=r.id JOIN restaurants s ON s.id=t.restaurant_id LEFT JOIN message_deliveries d ON d.target_id=t.id WHERE r.event_id=ANY($1::uuid[]) AND (s.is_demo=false OR t.is_demo=false OR d.provider IS DISTINCT FROM 'fake')) AS unsafe`,
+    [ids],
+  )) as { unsafe: boolean }[];
+  if (unsafe?.unsafe)
+    throw new DemoSeedConflict("SET_CONTAINS_NON_DEMO_DELIVERY");
+  const targets =
+    "SELECT t.id FROM reservation_request_targets t JOIN reservation_requests r ON r.id=t.request_id WHERE r.event_id=ANY($1::uuid[])";
+  await m.query(
+    `DELETE FROM message_delivery_reports WHERE delivery_id IN (SELECT id FROM message_deliveries WHERE target_id IN (${targets}))`,
+    [ids],
+  );
+  for (const table of [
+    "reservation_operations",
+    "merchant_reply_revisions",
+    "merchant_reply_links",
+    "message_deliveries",
+  ])
+    await m.query(`DELETE FROM ${table} WHERE target_id IN (${targets})`, [
+      ids,
+    ]);
+  await m.query(
+    `DELETE FROM reservation_request_targets WHERE id IN (${targets})`,
+    [ids],
+  );
+  for (const table of [
+    "reservation_requests",
+    "attendance_reviews",
+    "attendance_responses",
+    "attendance_rounds",
+    "event_roster_additions",
+    "event_participants",
+  ])
+    await m.query(`DELETE FROM ${table} WHERE event_id=ANY($1::uuid[])`, [ids]);
+  await m.query("DELETE FROM events WHERE id=ANY($1::uuid[])", [ids]);
 }

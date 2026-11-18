@@ -97,6 +97,8 @@ docs/      아키텍처·인증·협업 문서
 
 개인 행사 또는 변경된 행사 버전이 있는 DB는 이전 스키마로 안전하게 되돌릴 수 없으므로 down이 중단됩니다. rollback을 위해 데이터를 지우거나 임의 모임을 만들지 않습니다. 적용 순서·복구 제한은 [아키텍처의 DB 절](docs/architecture.md#postgresqltypeorm)을 참고하세요.
 
+`1795564800000-RestaurantCatalogModel`은 기존 정책 원문을 `policies.sourceDescriptions`에 보존하고 매장 이름·주소의 비교 키와 중복 제약을 추가합니다. 충돌하거나 구조화되지 않은 주소는 합치지 않고 검토 대상으로 남깁니다. 확인 목록은 `pnpm --filter @chongmuya/api exec node scripts/normalize-restaurant-address.mjs --list`로 조회합니다. 이 migration은 원문 보존을 위해 자동 down을 제공하지 않습니다.
+
 Entity 변경 시 로컬 개발 DB에서 `pnpm --filter @chongmuya/api db:migration:generate src/database/migrations/<이름>`으로 SQL을 생성할 수 있습니다. 검토 후 다시 build하고 명시적으로 적용합니다. CLI는 컴파일한 `dist/database/data-source.js`를 읽으며 `migration:show`도 이력 테이블을 생성할 수 있습니다. 운영 DB에 검증 명령이나 reset/drop을 실행하지 않습니다.
 
 ### 매장 시드
@@ -191,7 +193,7 @@ pnpm --filter @chongmuya/api merchant:operations --action reconcile --delivery <
 
 ### 전체 로컬 데모
 
-기존 로컬 PostgreSQL과 `apps/api/.env`의 `DATABASE_URL`, `AUTH_SECRET`, `WEB_ORIGIN=http://localhost:3000`을 사용한다. API와 시드는 **같은 AUTH_SECRET/링크 암호화 키**를 사용해야 한다. `MESSAGE_PROVIDER=fake`, `GEOCODING_PROVIDER=fake`로 실행하며 실제 공급자 키는 필요 없다. 운영 환경의 fake는 시작 시 거절한다. migration CLI는 DB 설정만 검증하므로 문자·지도·메일 설정 오류에 막히지 않는다.
+기존 로컬 PostgreSQL과 `apps/api/.env`의 `DATABASE_URL`, `AUTH_SECRET`, `WEB_ORIGIN=http://localhost:3000`을 사용한다. API와 시드에는 같은 설정값을 전달한다. `AUTH_SECRET`과 `MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY`는 서로 다른 용도이며 같은 값일 필요가 없다. `MESSAGE_PROVIDER=fake`, `GEOCODING_PROVIDER=fake`로 실행하며 실제 공급자 키는 필요 없다. 운영 환경의 fake는 시작 시 거절한다. migration CLI는 DB 설정만 검증하므로 문자·지도·메일 설정 오류에 막히지 않는다.
 
 ```bash
 # 저장소 루트, .nvmrc의 Node와 packageManager의 pnpm 사용
@@ -203,15 +205,18 @@ pnpm dev
 
 계정은 `organizer.a@example.test`(모임 2개·참석/답변 대기/응답 비교), `organizer.b@example.test`(별도 모임·행사), `organizer.empty@example.test`(빈 총무), `owner.a@example.test`(가상 온기홀), `owner.empty@example.test`(등록 시작)이다. 신규 계정 다섯 개의 기본 비밀번호는 **`Demo1234!`**이며 일반 이메일 로그인으로 사용한다. 원하는 경우에만 `DEMO_SEED_PASSWORD`로 변경한다(공백 없는 ASCII 8~16자). 이미 생성한 계정의 비밀번호는 재실행해도 바뀌지 않는다. 인증 시각과 동의는 로컬 합성 fixture이며 Resend/Octomo 인증이나 실제 수신 동의가 아니다. 전화번호 `01000000001`~`05`는 테스트 값일 뿐 실제 미사용 번호라는 보장은 없으며 데모 실발송은 차단한다.
 
-확인 순서: 총무 A 로그인 → `/events`의 참석 관리(1차 열림·2차 마감) → 답변 대기/응답 비교 → 새 행사에서 가상 매장 문의 → 링크 파일의 해당 매장 답변 URL을 별도 브라우저에서 열어 저장 → 총무 문의 재조회 → 사장님 A `/owner/menus?restaurant=<출력 ID>`에서 수정·판매 중단 → 빈 총무/빈 사장님 화면. 참석은 김민수/0012, 최초 번호 연결은 이서연, 중복 조합은 정수빈/7788로 확인한다. QR 방문만으로 응답을 기록하지 않는다.
+확인 순서: 총무 A 로그인 → 출력된 행사 URL의 참석 관리(1차 열림·2차 마감) → 답변 대기/응답 비교 → 새 행사에서 가상 매장 문의 → 터미널에 표시된 해당 매장 답변 URL을 별도 브라우저에서 열어 저장 → 총무 문의 재조회 → 사장님 A `/owner/menus?restaurant=<출력 ID>`에서 수정·판매 중단 → 빈 총무/빈 사장님 화면. 참석은 김민수/0012, 최초 번호 연결은 이서연, 중복 조합은 정수빈/7788로 확인한다. QR 방문만으로 응답을 기록하지 않는다.
 
-기본 링크 파일은 저장소 `.local/demo-seed-<set>-<시각>.links.json`이다. 참석 링크와 유효한 데모 답변 링크만 새 `0600` 파일로 저장하고 원문 URL·비밀번호는 로그에 출력하지 않는다. 화면에서 새 문의를 만든 뒤에는 다음 명령으로 **현재 링크를 회전 없이** 내보낸다.
+로컬 대화형 터미널에서는 계정·행사 경로와 참석/데모 매장 답변 링크를 바로 표시한다. 파일은 만들지 않는다. 파일이 필요하면 `--output`을 지정한다(새 파일만 생성, 권한 0600). 비대화형 실행에서는 링크를 출력하지 않으며 실제 매장 토큰은 어느 방식으로도 내보내지 않는다. 화면에서 새 데모 문의를 만든 뒤에도 다음 명령으로 현재 링크를 확인할 수 있다.
 
 ```bash
 MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:demo:links
 # 만료된 사례를 새로 만들 때만 새 세트 이름 지정
 MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo --set second
-# 선택: --output ../../.local/my-demo.links.json (기존 파일 덮어쓰기 금지)
+# 선택: 링크 파일 저장
+MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:demo:links --output ../../.local/my-demo.links.json
+# 지정한 세트의 행사·참석·문의만 지우고 다시 만들 때(기존 수정 내용 삭제)
+MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo --set second --recreate
 ```
 
 재실행은 기존 계정 비밀번호·인증 상태·명단·답변·매장 수정/삭제·소유권 해제를 보존한다. 공용 계정/모임/매장 루트가 삭제된 경우 새로 복원하지 않고 충돌로 보고한다. 새 세트는 기존 계정·모임·매장을 재사용하며 행사 시나리오만 추가한다. 링크/제안 만료는 연장하지 않는다. 매장 소유자/ID/이메일 충돌은 롤백하며 기존 소유권을 가져오지 않는다. 기존 데모 연락처가 `000...`이면 보존되므로 사장님 A 매장 수정에서 계정의 기인증 테스트 번호 `01000000004`로 바꾸고 개발용 수신 동의를 선택한다. 다른 사용자 수정 번호·철회 동의는 시드로 덮어쓰지 않는다. 가상 확인중식당의 미동의 상태도 유지한다.

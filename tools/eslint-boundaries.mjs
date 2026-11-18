@@ -9,6 +9,8 @@ const ts = createRequire(path.join(root, "apps/web/package.json"))(
   "typescript",
 );
 const publicEntries = new Set(["client", "server", "types"]);
+// One ESLint process checks a single source snapshot; share the graph between files.
+let dependencyGraph;
 
 function resolveImport(filename, specifier) {
   const source = area(filename);
@@ -137,7 +139,6 @@ export default {
         const filename = context.filename;
         const source = area(filename);
         if (!source) return {};
-        let graph;
         function check(node, declaration) {
           if (typeof node?.value !== "string") return;
           const specifier = node.value;
@@ -161,8 +162,14 @@ export default {
                 messageId = "featureInternal";
               }
               if (source.layer === "features" && !invalid) {
-                graph ??= featureGraph();
-                if (hasDependencyPath(graph, target.feature, source.feature)) {
+                dependencyGraph ??= featureGraph();
+                if (
+                  hasDependencyPath(
+                    dependencyGraph,
+                    target.feature,
+                    source.feature,
+                  )
+                ) {
                   invalid = true;
                   messageId = "featureCycle";
                 }
@@ -204,6 +211,9 @@ export default {
                 targetPath,
               ) &&
               !/^modules\/auth\/utils\/password\.[cm]?[jt]s$/.test(
+                targetPath,
+              ) &&
+              !/^modules\/restaurants\/lib\/restaurant-policy\.[cm]?[jt]s$/.test(
                 targetPath,
               ) &&
               !/^modules\/reservations\/lib\/(merchant-link-codec|message-delivery)\.[cm]?[jt]s$/.test(

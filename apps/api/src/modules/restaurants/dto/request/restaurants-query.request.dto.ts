@@ -9,12 +9,15 @@ import {
 } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 
-export class RestaurantsQuery {
+export class RestaurantRegionQuery {
   @ApiPropertyOptional({ maxLength: 80 })
   @IsOptional()
   @IsString()
   @MaxLength(80)
   region?: string;
+}
+
+export class RestaurantsQuery extends RestaurantRegionQuery {
   @ApiPropertyOptional({ default: 1 })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value,

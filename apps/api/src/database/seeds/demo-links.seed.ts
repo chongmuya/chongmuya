@@ -12,7 +12,7 @@ import { demoAccounts } from "./demo.seed.js";
 // Called only by the local/fake CLI. Never return capabilities through an HTTP API.
 export async function demoLinks(db: DataSource, origin: string, key: Buffer) {
   return db.transaction("REPEATABLE READ", async (m) => {
-    const links = await m
+    const replyRows = await m
       .createQueryBuilder(MerchantReplyLink, "l")
       .innerJoin(RequestTarget, "t", "t.id=l.target_id")
       .innerJoin(
@@ -33,9 +33,17 @@ export async function demoLinks(db: DataSource, origin: string, key: Buffer) {
       .where(
         "l.revoked_at IS NULL AND l.expires_at > now() AND (r.snapshot->>'startsAt')::timestamptz > now()",
       )
+      .addSelect("l.target_id", "link_target")
+      .addSelect("s.name", "restaurant_name")
+      .addSelect("r.snapshot->>'eventName'", "event_name")
       .orderBy("l.target_id")
-      .getMany();
-    const rounds = await m
+      .getRawAndEntities<{
+        link_target: string;
+        restaurant_name: string;
+        event_name: string;
+      }>();
+    const replyNames = new Map(replyRows.raw.map((r) => [r.link_target, r]));
+    const roundRows = await m
       .createQueryBuilder(AttendanceRound, "a")
       .innerJoin(Event, "e", "e.id=a.event_id")
       .where("e.owner_id IN (:...ids)", {
@@ -44,17 +52,25 @@ export async function demoLinks(db: DataSource, origin: string, key: Buffer) {
           .map((a) => a.id),
       })
       .andWhere("a.revoked_at IS NULL")
+      .addSelect("a.id", "round_id")
+      .addSelect("e.name", "event_name")
       .orderBy("a.created_at")
-      .getMany();
+      .getRawAndEntities<{ round_id: string; event_name: string }>();
+    const eventNames = new Map(
+      roundRows.raw.map((r) => [r.round_id, r.event_name]),
+    );
     return {
       generatedAt: new Date().toISOString(),
       warning: "로컬 개발 전용 비밀 링크입니다. 공유·커밋하지 마세요.",
-      merchantReplies: links.map((l) => ({
+      merchantReplies: replyRows.entities.map((l) => ({
+        restaurantName: replyNames.get(l.targetId)!.restaurant_name,
+        eventName: replyNames.get(l.targetId)!.event_name,
         targetId: l.targetId,
         linkExpiresAt: l.expiresAt.toISOString(),
         url: merchantLinkUrl(origin, l, key),
       })),
-      attendance: rounds.map((a) => ({
+      attendance: roundRows.entities.map((a) => ({
+        eventName: eventNames.get(a.id)!,
         eventId: a.eventId,
         roundId: a.id,
         title: a.title,

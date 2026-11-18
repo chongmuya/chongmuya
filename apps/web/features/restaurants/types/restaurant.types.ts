@@ -51,3 +51,44 @@ export type RestaurantConditions = {
   seating: "CLOSE" | "SEPARATED" | "ANY";
   space: "HALL" | "ROOM" | "FLOOR" | "WHOLE" | "ANY";
 };
+
+export type RestaurantSummary = Pick<
+  Restaurant,
+  | "id"
+  | "name"
+  | "address"
+  | "region"
+  | "category"
+  | "latitude"
+  | "longitude"
+  | "maxCapacity"
+  | "minimumGuests"
+  | "photoPath"
+  | "isDemo"
+  | "inquiryAvailable"
+> & {
+  spaces: Pick<
+    RestaurantSpace,
+    | "id"
+    | "label"
+    | "kind"
+    | "availability"
+    | "capacity"
+    | "minGuests"
+    | "togetherSeating"
+  >[];
+};
+export type RestaurantMap = Pick<
+  Restaurant,
+  "id" | "name" | "address" | "region" | "latitude" | "longitude"
+>;
+
+export type BrowseNavigation = {
+  selected: string[];
+  restaurantId: string | null;
+  view: "list" | "map" | "detail";
+  region: string;
+  page: number;
+  onSelect: (ids: string[]) => void;
+  onNavigate: (changes: Record<string, string | null>) => void;
+};

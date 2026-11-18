@@ -238,6 +238,21 @@ test("Kakao configuration is optional together and callback is an explicit trust
 });
 
 test("DB CLI configuration ignores external providers; runtime validates activated adapters", () => {
+  const fake = parseEnvironment({
+    DATABASE_URL: databaseUrl,
+    AUTH_SECRET: "s".repeat(32),
+    MESSAGE_PROVIDER: "fake",
+    GEOCODING_PROVIDER: "fake",
+    SOLAPI_API_KEY: "",
+    SOLAPI_API_SECRET: "",
+    SOLAPI_SENDER_NUMBER: "invalid",
+    SOLAPI_WEBHOOK_SECRET: "",
+    NAVER_MAP_CLIENT_ID: "",
+    NAVER_MAP_CLIENT_SECRET: "",
+  });
+  assert.equal(fake.messageProvider, "fake");
+  assert.equal(fake.geocodingProvider, "fake");
+
   assert.deepEqual(
     parseDatabaseEnvironment({
       DATABASE_URL: databaseUrl,

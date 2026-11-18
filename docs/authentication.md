@@ -1,13 +1,13 @@
 # 인증과 개발 기준
 
-계정 인증과 모임·행사 소유권은 별개다. 공개 홈은 로그인 없이 볼 수 있으며 개인 행사 화면은 인증을 요구한다. 로그인한 사용자는 모임 없이 행사를 만들고 조회할 수 있다. 모임 생성은 `/groups/new`, 이름 수정·명단 조회·전환은 마이페이지에서 제공한다. 행사에 본인 모임을 연결해도 행사 소유자와 접근 범위는 바뀌지 않는다. accounts에 모임 ID나 온보딩 boolean을 두지 않는다.
+계정 인증과 모임·행사 소유권은 별개다. 공개 홈은 로그인 없이 볼 수 있으며 개인 행사 화면은 인증을 요구한다. 로그인한 사용자는 모임 없이 행사를 만들고 조회할 수 있다. 모임 생성은 `/groups/new`, 이름 수정·명단 조회·전환은 마이페이지에서 제공한다. 행사 모임은 생성 시 확정하며 이후 변경하지 않는다. 행사 소유권은 계정에 있다. accounts에 모임 ID나 온보딩 boolean을 두지 않는다.
 
 ## 책임
 
 - 웹 `app`: 라우팅·Provider 조립. `features/auth`: 인증 API 조정, 세션 상태, 사용자 Query, 화면. `features/onboarding`: 가입 후 이용 방식 선택·시작 안내. `shared/ui`: 단계 화면 틀·선택 카드·입력·버튼. `shared/http`: 업무를 모르는 HTTP 전송과 안전한 오류. shared → features 역참조 금지.
 - Nest `AuthController`: HTTP DTO·쿠키·응답. `JwtAccessStrategy`: 쿠키 JWT 추출, 서명·알고리즘·issuer·audience·만료 검증, 필수 claim 검사, 현재 세션과 계정으로 인증 사용자 구성. `AccessGuard`: 인증 필수 요청, `OptionalAccessGuard`: 최초 복원에서 비회원 허용. `AuthService`: 이메일 가입·로그인·세션 rotation/폐기와 트랜잭션 범위 관리. `SessionIssuerService`는 같은 EntityManager로 최초 세션·Refresh를 저장하고 JWT를 발급한다. `PasswordResetService`는 복구 링크, `KakaoFlowService`는 카카오 로그인·가입·연결, `KakaoOidcService`는 카카오 외부 통신과 OIDC 검증을 담당한다. `AuthAttemptsRepository`: 전달받은 EntityManager를 사용하는 원자적 시도 제한 조회. DB 오류 분류는 공통 HTTP 필터가 맡고 예상하지 못한 오류는 500으로 유지한다.
 - Controller는 Entity를 반환하지 않는다. `AccountDto`는 id/email/accountType, 이름·닉네임·전화번호와 휴대폰/이메일 인증 시각을 노출한다. 기존 계정의 추가 필드는 null이다. 비밀번호·Refresh·JWT를 JSON이나 로그에 넣지 않는다.
-- 인증과 자원 권한은 별개다. `/auth/me`는 `@CurrentUser()`로 읽은 검증된 사용자만 반환하고 사용자 ID 입력을 받지 않는다. JWT sub와 세션 accountId 일치를 확인한다. 모임·행사 Service는 인증 계정의 소유권을 각 자원 조회 조건으로 검증한다. 모임 연결만으로 행사 권한을 얻지 않는다.
+- 인증과 자원 권한은 별개다. `/auth/me`는 `@CurrentUser()`로 읽은 검증된 사용자만 반환하고 사용자 ID 입력을 받지 않는다. JWT sub와 세션 accountId 일치를 확인한다. 모임·행사 Service는 인증 계정의 소유권을 각 자원 조회 조건으로 검증한다. 모임 소속만으로 행사 권한을 얻지 않는다.
 - 브라우저는 NEXT_PUBLIC_API_ORIGIN의 Nest `/api/v1`을 직접 호출한다. 운영 확인용 `/health`, `/ready`, `/docs`는 업무 API 밖에 유지한다. Next API·health rewrite와 콜백 중계 Route Handler는 없다.
 
 ## 패키지 선택
@@ -32,7 +32,7 @@ Access와 Refresh는 API 호스트의 host-only HttpOnly 쿠키다. 웹과 API�
 
 첫 설정 완료 여부는 accountType과 nickname으로 판단한다. 중단한 사용자는 다시 로그인할 때 누락된 단계로 이어지고, 설정한 사용자는 원래 next로 돌아간다. 공개 홈은 그대로 접근할 수 있고 개인 업무 진입점에서 필요한 설정을 안내한다. 로그인 실패로 처리하거나 모든 공개 페이지를 막지 않는다. `/getting-started`의 next는 안전한 내부 경로만 보존하고 중첩 설정 경로는 제거한다.
 
-총무의 정기 모임/일회성 행사 선택은 시작 안내용 UI 상태다. 서버 권한·영구 유형·완료 상태로 저장하지 않는다. 각 환영 화면에서 `/groups/new` 모임 등록 또는 `/events` 행사로 연결하며 나중에 시작하기는 원래 next로 돌아간다. next가 없는 새 시작은 홈(`/`)으로 돌아온다. 모임 생성과 명단 등록은 모두 선택이다. 마이페이지의 `/getting-started?guide=1` 링크로 안내만 다시 볼 수 있다. `/onboarding`은 기존 모임 관리 용도를 유지한다. 사장님은 `/owner/register`에서 등록하고 총무용 명단을 요구하지 않는다. 매장 관리는 세션 계정과 `ownerAccountId`를 확인하며, 문자 답변 링크는 계정과 별개로 해당 문의 대상만 허용한다. 카카오 가입도 동일한 첫 설정으로 이어진다.
+총무의 정기 모임/일회성 행사 선택은 시작 안내용 UI 상태다. 서버 권한·영구 유형·완료 상태로 저장하지 않는다. 각 환영 화면에서 `/groups/new` 모임 등록 또는 `/events` 행사로 연결하며 나중에 시작하기는 원래 next로 돌아간다. next가 없는 새 시작은 홈(`/`)으로 돌아온다. 모임 생성과 명단 등록은 모두 선택이다. `/onboarding`은 `/getting-started`로 이동하는 이전 링크다. 사장님은 `/owner/register`에서 등록하고 총무용 명단을 요구하지 않는다. 매장 관리는 세션 계정과 `ownerAccountId`를 확인하며, 문자 답변 링크는 계정과 별개로 해당 문의 대상만 허용한다. 카카오 가입도 동일한 첫 설정으로 이어진다.
 
 `/start`는 가입·로그인과 비로그인 둘러보기 확인창을 제공하고 `/intro`는 현재 제공 기능을 소개한다. 공개 홈의 둘러보기에는 개인 데이터 접근 권한이 없다. `이미 계정이 있어요`에서 카카오를 선택해도 서버 결과가 signup이면 추가 정보·약관·필수 인증을 완료해야 계정이 생성된다. 카카오 아이콘은 기존 이미지의 흰 모서리를 원형으로 잘라 표시한다. 중복 이메일·카카오 인증 오류·비밀번호 변경 완료는 공용 Dialog의 포커스·Escape 처리를 사용하는 알림창으로 안내한다.
 
@@ -200,10 +200,9 @@ API 전용 openid-client 6.9.0을 사용한다. 고정 issuer `https://kauth.kak
 
 - `/api/v1/groups`는 모임 소유권, `/api/v1/events`는 행사 자체의 소유권으로 조회·수정 범위를 제한한다. 상세에 groupId를 요구하지 않는다. 타인 자원과 존재하지 않는 자원은 같은 404다.
 - 생성의 ownerId는 인증 계정에서 정한다. groupId를 지정하면 모임 소유권도 확인한다. 일반 행사 PATCH로 ownerId·groupId를 바꾸지 못한다.
-- `PUT /events/:eventId/group`은 expectedVersion·groupId를 받는다. 행사 잠금, 행사·모임 소유권, 요청 버전과 미연결 상태를 같은 트랜잭션·EntityManager에서 확인한다. 모임 연결은 다른 사람에게 권한을 주지 않는다.
-- `/events`는 전체 내 행사, `/events?event=<id>`는 개인 상세, `/events?group=<id>`는 모임별 내 행사다. 모임 없음과 행사 없음은 정상 상태이며 조회 실패와 구분한다. `/onboarding`도 모임 생성을 강제하지 않는다.
+- `/events`는 전체 내 행사, `/events?event=<id>`는 개인 상세, `/events?group=<id>`는 모임별 내 행사다. 모임 없음과 행사 없음은 정상 상태이며 조회 실패와 구분한다. 모임 관리는 `/mypage?view=groups`에서 선택한다.
 - 비로그인 개인 화면의 로그인 링크는 `/auth?next=<내부 경로>`를 사용한다. safeReturnPath는 지원하는 페이지와 유효한 UUID query만 허용한다. 외부 URL·인증/API 경로는 `/events`로 대체하며 로그인 후 원래 요청한 화면으로 돌아간다. 클라이언트의 화면 보호는 API 권한 검사를 대체하지 않는다.
-- 사용자 Query key는 `user / accountId` 범위를 유지하고 상세는 `events / detail / eventId`로 식별한다. 행사 생성·모임 연결은 내 행사·해당 모임 목록과 상세를 갱신한다. 계정 전환·로그아웃·화면 이탈 후 늦은 응답을 반영하지 않는다.
+- 사용자 Query key는 `user / accountId` 범위를 유지하고 상세는 `events / detail / eventId`로 식별한다. 행사 생성은 내 행사·해당 모임 목록과 상세를 갱신한다. 계정 전환·로그아웃·화면 이탈 후 늦은 응답을 반영하지 않는다.
 
 API 입력·응답·캐시·fieldErrors의 정확한 형식과 migration 적용·복구 제한은 [아키텍처](architecture.md)를 따른다. 입력 오류는 허용된 필드에, 업무 오류는 폼 전체에 표시하며 작성한 입력을 유지한다. 서버의 임의 message는 출력하지 않는다.
 

@@ -6,23 +6,27 @@ import {
   useFieldArray,
   useForm,
   useWatch,
+  type FieldPath,
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Account, SessionRequest } from "@/features/auth/types";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
+import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import { Dialog } from "@/shared/ui/dialog";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { useSubmitDraft } from "../hooks/use-owner-commands";
 import { useDraftIdentity } from "../hooks/use-draft-identity";
-import { checkDuplicate } from "../api/owner.api";
+import { checkDuplicate, contextQuery } from "../api/owner.api";
+import { useQuery } from "@tanstack/react-query";
 import { useDraftSave } from "../hooks/use-draft-save";
 import {
   registrationSchema,
-  validRegistration,
+  registrationIssues,
+  registrationStep,
   type RegistrationData,
 } from "../schemas/registration.schema";
 import type { RestaurantDraft, DuplicateResult } from "../types/owner.types";
@@ -52,6 +56,7 @@ export function OwnerRegistration({
     resolver: zodResolver(registrationSchema),
     defaultValues: draft.data,
   });
+  const context = useQuery(contextQuery(account.id, request));
   const data = useWatch({ control: form.control }) as RegistrationData;
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -85,7 +90,7 @@ export function OwnerRegistration({
   const serialized = JSON.stringify(data);
   const saveDraft = save.save;
   useEffect(() => {
-    if (complete || save.conflict) return;
+    if (complete || save.conflict || advancing) return;
     const timer = setTimeout(() => {
       const parsed = registrationSchema.safeParse(JSON.parse(serialized));
       if (parsed.success)
@@ -93,19 +98,28 @@ export function OwnerRegistration({
     }, 900);
     debounce.current = timer;
     return () => clearTimeout(timer);
-  }, [serialized, step, addressId, complete, saveDraft, save.conflict]);
+  }, [
+    serialized,
+    step,
+    addressId,
+    complete,
+    saveDraft,
+    save.conflict,
+    advancing,
+  ]);
   const searchAddress = () =>
     void identity.search(form.getValues("addressQuery")).catch(() => undefined);
-  const persist = async (nextStep: number, resume = false) => {
+  const persist = async (nextStep: number, resume = false, advance = false) => {
     clearTimeout(debounce.current);
     const saved = await saveDraft(
       form.getValues(),
       nextStep,
       addressId,
       resume,
+      advance,
     );
     if (active.current) {
-      setStep(nextStep);
+      setStep(saved.step);
       if (saved.submitted && saved.restaurantId) {
         form.reset(saved.data);
         setComplete(saved.restaurantId);
@@ -118,36 +132,53 @@ export function OwnerRegistration({
     setAdvancing(true);
     setError(null);
     try {
-      const saved = await persist(step);
+      const issues = registrationIssues(form.getValues()).filter(
+        (issue) => step === 4 || issue.step === step,
+      );
+      if (issues.length) {
+        form.clearErrors();
+        for (const issue of issues)
+          form.setError(issue.path as FieldPath<RegistrationData>, {
+            type: "validate",
+            message: issue.message,
+          });
+        setStep(issues[0]!.step);
+        requestAnimationFrame(() => {
+          if (active.current)
+            form.setFocus(issues[0]!.path as FieldPath<RegistrationData>);
+        });
+        setError(issues[0]!.message);
+        return;
+      }
+      const saved = await persist(Math.min(step + 1, 4), false, step < 4);
       if (saved.submitted) return;
-      if (step === 0) {
-        if (!saved.selectedAddress) {
-          setSearchNotice("주소 검색 결과를 선택해 주세요.");
-          return;
-        }
-        const result = await checkDuplicate(request, draft.id);
-        if (!active.current) return;
-        if (result.duplicate) {
-          setDuplicate(result);
-          return;
-        }
-      }
-      if (step < 4) {
-        await persist(step + 1);
+      if (saved.duplicate) {
+        setDuplicate(saved.duplicate);
         return;
       }
-      if (!validRegistration(form.getValues())) {
-        setError(
-          new Error(
-            "필수 항목과 조건별 숫자를 확인해 주세요. 공간은 한 곳 이상 필요해요.",
-          ),
-        );
-        return;
-      }
+      if (step < 4) return;
       const result = await submit.mutateAsync(saved.version);
-      if (active.current) setComplete(result.restaurantId);
+      if (active.current) {
+        await context.refetch();
+        setComplete(result.restaurantId);
+      }
     } catch (e) {
-      if (active.current) setError(e);
+      if (active.current) {
+        setError(e);
+        if (
+          e instanceof ApiError &&
+          [
+            "ADDRESS_SELECTION_REQUIRED",
+            "PHONE_VERIFICATION_REQUIRED",
+          ].includes(e.code ?? "")
+        ) {
+          setStep(0);
+          form.setError(
+            e.code === "ADDRESS_SELECTION_REQUIRED" ? "addressQuery" : "phone",
+            { type: "server", message: safeErrorMessage(e) },
+          );
+        }
+      }
       if (e instanceof ApiError && e.code === "RESTAURANT_VERSION_CONFLICT")
         await save.recover();
       if (e instanceof ApiError && e.code === "RESTAURANT_DUPLICATE") {
@@ -169,9 +200,9 @@ export function OwnerRegistration({
           </div>
           <h1 className="text-2xl font-bold">매장 정보가 저장되었어요</h1>
           <p className="mt-3 text-muted">
-            신규 등록 매장은 공개 대기 상태예요.
-            <br />
-            정보를 확인한 뒤 공개됩니다.
+            {context.data?.restaurants.find((r) => r.id === complete)?.published
+              ? "공개 중"
+              : "공개 대기"}
           </p>
         </div>
         <OwnerSummary data={form.getValues()} />
@@ -210,15 +241,7 @@ export function OwnerRegistration({
         }}
         busy={busy}
       >
-        <StepHeading
-          title={titles[step]}
-          description={
-            step === 0
-              ? "정확한 매장 정보를 입력하면 단체 예약 문의를 더 편리하게 받을 수 있어요."
-              : undefined
-          }
-          className="mb-8 px-4"
-        />
+        <StepHeading title={titles[step]} className="mb-8 px-4" />
         {save.conflict && (
           <section
             role="alert"
@@ -261,7 +284,20 @@ export function OwnerRegistration({
         )}
         <form
           className="flex flex-1 flex-col"
-          onSubmit={(event) => void form.handleSubmit(() => void next())(event)}
+          onSubmit={(event) =>
+            void form.handleSubmit(
+              () => void next(),
+              () => {
+                const result = registrationSchema.safeParse(form.getValues());
+                if (!result.success && result.error.issues[0]) {
+                  setStep(
+                    registrationStep(result.error.issues[0].path.join(".")),
+                  );
+                  setError("표시된 입력 항목을 확인해 주세요.");
+                }
+              },
+            )(event)
+          }
           noValidate
         >
           <fieldset disabled={busy} className="space-y-8 px-4">
@@ -296,31 +332,38 @@ export function OwnerRegistration({
                       {searchNotice}
                     </p>
                   )}
-                  <ul className="space-y-2">
-                    {addresses.map((a) => (
-                      <li key={a.id}>
-                        <Button
-                          className="h-auto w-full py-3 text-left"
-                          variant="outline"
-                          onClick={() => {
-                            form.setValue("addressQuery", a.baseAddress);
-                            setAddressId(a.id);
-                            setSearchNotice(
-                              `${a.source === "fake" ? "개발용 결과 · " : ""}선택한 주소: ${a.baseAddress}`,
-                            );
-                            setAddresses([]);
-                          }}
-                        >
-                          {a.baseAddress}
-                          {a.jibunAddress && (
-                            <span className="block text-xs">
-                              {a.jibunAddress}
-                            </span>
-                          )}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
+                  {!!addresses.length && (
+                    <BottomSheet
+                      title="주소 선택"
+                      onClose={() => setAddresses([])}
+                    >
+                      <ul className="space-y-2">
+                        {addresses.map((a) => (
+                          <li key={a.id}>
+                            <Button
+                              className="h-auto w-full py-3 text-left"
+                              variant="outline"
+                              onClick={() => {
+                                form.setValue("addressQuery", a.baseAddress);
+                                setAddressId(a.id);
+                                setSearchNotice(
+                                  `선택한 주소: ${a.baseAddress}`,
+                                );
+                                setAddresses([]);
+                              }}
+                            >
+                              {a.baseAddress}
+                              {a.jibunAddress && (
+                                <span className="block text-xs">
+                                  {a.jibunAddress}
+                                </span>
+                              )}
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </BottomSheet>
+                  )}
                 </div>
                 <OwnerField path="detailAddress" label="상세주소 (층·호수)" />
                 <OwnerChoice
@@ -538,15 +581,15 @@ export function OwnerRegistration({
             </p>
             <FormError
               message={
-                error instanceof Error && !(error instanceof ApiError)
-                  ? error.message
-                  : error
-                    ? safeErrorMessage(error)
-                    : (save.error ?? identity.error ?? submit.error)
-                      ? safeErrorMessage(
-                          save.error ?? identity.error ?? submit.error,
-                        )
-                      : undefined
+                error
+                  ? typeof error === "string"
+                    ? error
+                    : safeErrorMessage(error)
+                  : (save.error ?? identity.error ?? submit.error)
+                    ? safeErrorMessage(
+                        save.error ?? identity.error ?? submit.error,
+                      )
+                    : undefined
               }
             />
             {Object.keys(form.formState.errors).length > 0 && (

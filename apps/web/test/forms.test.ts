@@ -1,3 +1,4 @@
+import { AttendanceWorkspace } from "../features/attendance/components/attendance-workspace";
 import "./support/dom";
 import { OwnerMenus } from "../features/owner/components/owner-menus";
 import { OwnerRegistration } from "../features/owner/components/owner-registration";
@@ -20,14 +21,13 @@ import {
 } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { HomeScreen } from "../features/home/components/home-screen";
 import { WorkspaceContent } from "../app/workspace-screen";
-import { LinkEventGroupForm } from "../features/events/components/link-event-group-form";
 import { EventForm } from "../features/events/components/event-form";
 import { GroupForm } from "../features/groups/components/group-form";
 import { AuthProvider } from "../features/auth/components/auth-provider";
 import { AuthEntryScreen } from "../features/auth/components/auth-entry-screen";
 import { GettingStartedScreen } from "../features/onboarding/components/getting-started-screen";
 import { SignupScreen } from "../features/auth/components/signup/signup-screen";
-import { previewTerms } from "../features/auth/components/preview/preview-fixtures";
+import { previewTerms } from "./support/signup-terms";
 import { AuthScreen } from "../features/auth/components/auth-screen";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
@@ -258,9 +258,8 @@ test("event form submits Korean time and refreshes the account list plus only it
     cache,
   );
   try {
-    const select = view.container.querySelector("select")!;
-    assert.match(select.selectedOptions[0].textContent!, /모임 확인/);
-    assert.notEqual(select.value, event.groupId);
+    assert.equal(view.container.querySelector("select"), null);
+    assert.match(view.container.textContent!, /모임 확인/);
     await fill(view.container, "name", " 새 행사 ");
     await fill(view.container, "date", "2026-11-14T18:30");
     await submit(view.container);
@@ -268,8 +267,7 @@ test("event form submits Korean time and refreshes the account list plus only it
     await act(async () => {
       groups.resolve([{ id: event.groupId, name: "내 모임" }]);
     });
-    await until(() => assert.equal(select.value, event.groupId));
-    assert.equal(select.selectedOptions[0].textContent, "내 모임");
+    await until(() => assert.match(view.container.textContent!, /내 모임/));
     await submit(view.container);
     await until(() => assert.deepEqual(view.navigations, ["/events?event=e1"]));
     assert.deepEqual(body, {
@@ -379,7 +377,11 @@ test("account panel preserves failed-logout recovery and provides login navigati
   );
   try {
     await until(() =>
-      assert.match(view.container.textContent!, /계정으로 로그인했습니다/),
+      assert(
+        view.container
+          .querySelector("button")
+          ?.textContent?.includes("로그아웃"),
+      ),
     );
     await click(view.container, "로그아웃");
     await until(() =>
@@ -403,64 +405,9 @@ test("account panel preserves failed-logout recovery and provides login navigati
   }
 });
 
-async function selectGroup(container: HTMLElement, value: string) {
-  const select = container.querySelector<HTMLSelectElement>(
-    'select[name="groupId"]',
-  );
-  assert(select);
-  await act(async () => {
-    select.value = value;
-    select.dispatchEvent(new window.Event("change", { bubbles: true }));
-  });
-}
-
-test("an unavailable URL group blocks submission and refetch preserves an explicit personal choice", async () => {
+test("the home group stays fixed through failed or missing reads and recovery preserves event input", async () => {
   const groupId = "00000000-0000-4000-8000-000000000001";
-  let failed = true;
-  const writes: unknown[] = [];
-  const request: SessionRequest = async <T>(
-    _path: string,
-    options?: RequestInit,
-  ) => {
-    if (!options?.method) {
-      if (failed) throw new ApiError("offline", 503, "SERVICE_UNAVAILABLE");
-      return [{ id: groupId, name: "내 모임" }] as T;
-    }
-    writes.push(JSON.parse(String(options.body)));
-    return { id: "e1", groupId: null } as T;
-  };
-  const view = await render(
-    createElement(EventForm, { accountId: "a", groupId, request }),
-  );
-  try {
-    await until(() =>
-      assert.match(view.container.textContent!, /모임을 불러오지 못했습니다/),
-    );
-    const select = view.container.querySelector("select")!;
-    assert.match(select.selectedOptions[0].textContent!, /다시 선택/);
-    await fill(view.container, "name", "개인 행사");
-    await submit(view.container);
-    assert.deepEqual(writes, []);
-    await selectGroup(view.container, "");
-    failed = false;
-    await act(async () => {
-      await view.cache.refetchQueries({ queryKey: ["user", "a", "groups"] });
-    });
-    await until(() => assert.equal(select.options.length, 2));
-    assert.equal(select.value, "");
-    assert.equal(select.selectedOptions[0].textContent, "모임 없이 개인 행사");
-    await submit(view.container);
-    await until(() => assert.deepEqual(writes, [{ name: "개인 행사" }]));
-  } finally {
-    await view.unmount();
-  }
-});
-
-test("refetch failure or missing options blocks a chosen group without replacing it", async () => {
-  const groups = [
-    { id: "00000000-0000-4000-8000-000000000001", name: "모임 A" },
-    { id: "00000000-0000-4000-8000-000000000002", name: "모임 B" },
-  ];
+  const groups = [{ id: groupId, name: "홈에서 고른 모임" }];
   let result = groups;
   let failed = false;
   const writes: unknown[] = [];
@@ -473,30 +420,34 @@ test("refetch failure or missing options blocks a chosen group without replacing
       return result as T;
     }
     writes.push(JSON.parse(String(options.body)));
-    return { id: "e1", groupId: groups[1].id } as T;
+    return { id: "e1", groupId } as T;
   };
   const view = await render(
-    createElement(EventForm, {
-      accountId: "a",
-      groupId: groups[0].id,
-      request,
-    }),
+    createElement(EventForm, { accountId: "a", groupId, request }),
   );
   try {
-    const select = view.container.querySelector("select")!;
-    await until(() => assert.equal(select.value, groups[0].id));
-    await fill(view.container, "name", "모임 행사");
-    await selectGroup(view.container, groups[1].id);
+    await until(() =>
+      assert.match(view.container.textContent!, /홈에서 고른 모임/),
+    );
+    assert.equal(view.container.querySelector("select"), null);
+    await fill(view.container, "name", "작성하던 행사");
     for (const failure of [true, false]) {
       failed = failure;
       result = [];
       await act(async () => {
         await view.cache.refetchQueries({ queryKey: ["user", "a", "groups"] });
       });
-      await until(() =>
-        assert.match(select.selectedOptions[0].textContent!, /다시 선택/),
+      await until(() => assert(view.container.querySelector('[role="alert"]')));
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>('input[name="name"]')!
+          .value,
+        "작성하던 행사",
       );
-      assert.equal(select.value, groups[1].id);
+      assert(
+        view.container.querySelector<HTMLButtonElement>(
+          'button[type="submit"]',
+        )!.disabled,
+      );
       await submit(view.container);
       assert.deepEqual(writes, []);
     }
@@ -505,12 +456,15 @@ test("refetch failure or missing options blocks a chosen group without replacing
       await view.cache.refetchQueries({ queryKey: ["user", "a", "groups"] });
     });
     await until(() =>
-      assert.equal(select.selectedOptions[0].textContent, "모임 B"),
+      assert(
+        !view.container.querySelector<HTMLButtonElement>(
+          'button[type="submit"]',
+        )!.disabled,
+      ),
     );
-    assert.equal(select.value, groups[1].id);
     await submit(view.container);
     await until(() =>
-      assert.deepEqual(writes, [{ name: "모임 행사", groupId: groups[1].id }]),
+      assert.deepEqual(writes, [{ name: "작성하던 행사", groupId }]),
     );
   } finally {
     await view.unmount();
@@ -545,9 +499,7 @@ test("personal event creation works while groups fail and server field errors re
     createElement(EventForm, { accountId: "a", request }),
   );
   try {
-    await until(() =>
-      assert.match(view.container.textContent!, /모임을 불러오지 못했습니다/),
-    );
+    assert.equal(view.container.querySelector("select"), null);
     await fill(view.container, "name", "개인 일정");
     await submit(view.container);
     await until(() =>
@@ -572,139 +524,6 @@ test("personal event creation works while groups fail and server field errors re
   } finally {
     await view.unmount();
   }
-});
-
-test("linking shows safe field/business errors, preserves selection and refreshes only affected caches", async () => {
-  const groupId = "00000000-0000-4000-8000-000000000001";
-  const event = {
-    id: "e1",
-    ownerId: "a",
-    groupId: null,
-    version: 1,
-    name: "개인 일정",
-    scheduledAt: null,
-  };
-  const linked = { ...event, groupId, version: 2 };
-  let saves = 0,
-    refreshes = 0;
-  const request: SessionRequest = async <T>(
-    path: string,
-    options?: RequestInit,
-  ) => {
-    if (!options?.method) return [{ id: groupId, name: "내 모임" }] as T;
-    assert.equal(path, "/api/v1/events/e1/group");
-    assert.equal(options.method, "PUT");
-    assert.deepEqual(JSON.parse(String(options.body)), {
-      groupId,
-      expectedVersion: 1,
-    });
-    saves++;
-    if (saves === 1)
-      throw new ApiError("private", 400, "VALIDATION_FAILED", undefined, [
-        { field: "groupId", code: "INVALID_UUID" },
-      ]);
-    if (saves === 2) throw new ApiError("private", 409, "VERSION_CONFLICT");
-    return linked as T;
-  };
-  const cache = client();
-  cache.setQueryData(["user", "a", "events", "list"], [event]);
-  cache.setQueryData(["user", "a", "groups", groupId, "events"], []);
-  cache.setQueryData(["user", "a", "groups", "other", "events"], []);
-  cache.setQueryData(["user", "b", "events", "list"], []);
-  const view = await render(
-    createElement(LinkEventGroupForm, {
-      accountId: "a",
-      event,
-      request,
-      refresh: () => refreshes++,
-    }),
-    cache,
-  );
-  try {
-    await until(() => assert(view.container.querySelector("select")));
-    await selectGroup(view.container, groupId);
-    await submit(view.container);
-    await until(() =>
-      assert.match(view.container.textContent!, /선택한 항목을 확인/),
-    );
-    assert.equal(view.container.querySelector("select")!.value, groupId);
-    await submit(view.container);
-    await until(() =>
-      assert.match(view.container.textContent!, /행사가 변경되었습니다/),
-    );
-    await click(view.container, "최신 행사 확인");
-    assert.equal(refreshes, 1);
-    assert.doesNotMatch(view.container.textContent!, /private/);
-    await submit(view.container);
-    await until(() =>
-      assert.deepEqual(
-        cache.getQueryData(["user", "a", "events", "detail", "e1"]),
-        linked,
-      ),
-    );
-    assert.deepEqual(cache.getQueryData(["user", "a", "events", "list"]), [
-      linked,
-    ]);
-    for (const key of [
-      ["user", "a", "events", "list"],
-      ["user", "a", "groups", groupId, "events"],
-    ])
-      assert.equal(cache.getQueryState(key)?.isInvalidated, true);
-    assert.equal(
-      cache.getQueryState(["user", "a", "groups", "other", "events"])
-        ?.isInvalidated,
-      false,
-    );
-    assert.equal(
-      cache.getQueryState(["user", "b", "events", "list"])?.isInvalidated,
-      false,
-    );
-  } finally {
-    await view.unmount();
-  }
-});
-
-test("a pending link cannot recreate a cleared user cache after leaving the screen", async () => {
-  const groupId = "00000000-0000-4000-8000-000000000001";
-  const event = {
-    id: "e1",
-    ownerId: "a",
-    groupId: null,
-    version: 1,
-    name: "행사",
-    scheduledAt: null,
-  };
-  const pending = deferred<
-    Omit<typeof event, "groupId"> & { groupId: string }
-  >();
-  let saving = false;
-  const request: SessionRequest = async <T>(
-    _path: string,
-    options?: RequestInit,
-  ) => {
-    if (!options?.method) return [{ id: groupId, name: "내 모임" }] as T;
-    saving = true;
-    return (await pending.promise) as T;
-  };
-  const view = await render(
-    createElement(LinkEventGroupForm, {
-      accountId: "a",
-      event,
-      request,
-      refresh() {},
-    }),
-  );
-  await until(() => assert(view.container.querySelector("select")));
-  await selectGroup(view.container, groupId);
-  await submit(view.container);
-  await until(() => assert(saving));
-  await view.unmount();
-  await act(async () => {
-    pending.resolve({ ...event, groupId, version: 2 });
-    await pending.promise;
-  });
-  assert.equal(view.cache.getQueryCache().getAll().length, 0);
-  assert.deepEqual(view.navigations, []);
 });
 
 test("start links and legacy signup redirect preserve safe destinations without the simple signup form", async () => {
@@ -1982,7 +1801,9 @@ test("home preserves the selected group and never falls back to personal creatio
             ),
           );
           assert(
-            view.container.querySelector('nav a[href="/mypage?group=second"]'),
+            view.container.querySelector(
+              'nav a[href="/mypage?view=groups&group=second"]',
+            ),
           );
           assert.equal(
             [...view.container.querySelectorAll("a")]
@@ -2450,6 +2271,124 @@ test("merchant access expiration keeps current-tab input and stops writes and fo
     assert.equal(requests, count);
     assert.equal(field.value, "만료되어도 보존할 입력");
     assert(view.container.querySelector("fieldset")!.disabled);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("attendance background errors preserve the open editor and revoke writes after access loss", async () => {
+  let failure = 0;
+  const request: SessionRequest = async <T>() => {
+    if (failure)
+      throw new ApiError(
+        "",
+        failure,
+        failure === 403 ? "FORBIDDEN" : "NETWORK_ERROR",
+      );
+    return { rounds: [], nextTitle: "1차" } as T;
+  };
+  const view = await render(
+    createElement(AttendanceWorkspace, {
+      accountId: "attendance-owner",
+      eventId: crypto.randomUUID(),
+      roundId: null,
+      request,
+    }),
+  );
+  try {
+    await until(() => assert.match(view.container.textContent!, /차수 만들기/));
+    await click(view.container, "차수 만들기");
+    await fill(view.container, "title", "작성 중인 차수");
+    const input = view.container.querySelector<HTMLInputElement>(
+      'input[name="title"]',
+    )!;
+    failure = 503;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    assert.equal(view.container.querySelector('input[name="title"]'), input);
+    assert.equal(input.value, "작성 중인 차수");
+    failure = 0;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    assert.equal(input.value, "작성 중인 차수");
+    failure = 403;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    await until(() => assert(input.closest("fieldset[disabled]")));
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("owner next saves one draft version and unchanged mount/step does not autosave", async () => {
+  let stored: RestaurantDraft = {
+    id: crypto.randomUUID(),
+    restaurantId: null,
+    version: 1,
+    data: {
+      ...emptyRegistration(),
+      name: "한 번 저장",
+      addressQuery: "서울 테스트길 1",
+      phone: merchantAccount.phone!,
+    },
+    step: 0,
+    selectedAddress: {
+      id: crypto.randomUUID(),
+      query: "서울 테스트길 1",
+      baseAddress: "서울 테스트길 1",
+      roadAddress: "서울 테스트길 1",
+      jibunAddress: "",
+      latitude: 37.5,
+      longitude: 127,
+      region: "서울",
+      source: "fake",
+    },
+    verifiedPhone: merchantAccount.phone!,
+    submitted: false,
+  };
+  const writes: { version: number; step: number; advance: boolean }[] = [];
+  const request: SessionRequest = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    if (path.endsWith("/context"))
+      return { restaurants: [], drafts: [], supportEmail: null } as T;
+    if (options?.method === "PUT") {
+      const body = JSON.parse(String(options.body));
+      writes.push(body);
+      stored = {
+        ...stored,
+        data: body.data,
+        step: body.step,
+        version: stored.version + 1,
+      };
+    }
+    return structuredClone(stored) as T;
+  };
+  const view = await render(
+    createElement(OwnerRegistration, {
+      account: merchantAccount,
+      request,
+      draft: structuredClone(stored),
+      onNavigate() {},
+    }),
+  );
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+    assert.equal(writes.length, 0);
+    await click(view.container, "다음");
+    await until(() => assert.equal(stored.step, 1));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].advance, true);
+    assert.equal(writes[0].version, 1);
   } finally {
     await view.unmount();
   }

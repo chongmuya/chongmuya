@@ -6,7 +6,6 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Put,
   Patch,
   Query,
   UseGuards,
@@ -22,7 +21,6 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
 import { EventInput } from "./dto/request/create-event.request.dto.js";
 import { EventsQuery } from "./dto/request/list-events.request.dto.js";
-import { LinkEventGroupInput } from "./dto/request/link-event-group.request.dto.js";
 import { UpdateEventInput } from "./dto/request/update-event.request.dto.js";
 import { EventDto } from "./dto/response/event.response.dto.js";
 import { EventsService } from "./events.service.js";
@@ -53,16 +51,6 @@ export class EventsController {
     @Param("eventId", ParseUUIDPipe) eventId: string,
   ) {
     return this.eventsService.get(user.id, eventId);
-  }
-  @Put(":eventId/group")
-  @Header("Cache-Control", "no-store")
-  @ApiOkResponse({ type: EventDto })
-  linkGroup(
-    @CurrentUser() user: AuthUser,
-    @Param("eventId", ParseUUIDPipe) eventId: string,
-    @Body() body: LinkEventGroupInput,
-  ) {
-    return this.eventsService.linkGroup(user.id, eventId, body);
   }
   @Patch(":eventId")
   @Header("Cache-Control", "no-store")

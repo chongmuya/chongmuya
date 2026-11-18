@@ -1,5 +1,5 @@
 import type { SessionRequest } from "@/features/auth/types";
-import type { Event, EventInput, LinkGroupInput } from "../types/event.types";
+import type { Event, EventInput } from "../types/event.types";
 
 const path = "/api/v1/events";
 export const getEvents = (
@@ -18,12 +18,3 @@ export const getEvent = (
 ) => request<Event>(`${path}/${encodeURIComponent(eventId)}`, { signal });
 export const createEvent = (request: SessionRequest, input: EventInput) =>
   request<Event>(path, { method: "POST", body: JSON.stringify(input) });
-export const linkEventGroup = (
-  request: SessionRequest,
-  eventId: string,
-  input: LinkGroupInput,
-) =>
-  request<Event>(`${path}/${encodeURIComponent(eventId)}/group`, {
-    method: "PUT",
-    body: JSON.stringify(input),
-  });

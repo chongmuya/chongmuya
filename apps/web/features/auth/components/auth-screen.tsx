@@ -49,14 +49,15 @@ export function AuthScreen() {
         />
       ) : status === "authenticated" ? (
         <div>
-          <p>{account?.email} 계정으로 로그인했습니다.</p>
           {profile.isError ? (
             <p role="alert">
               내 정보를 불러오지 못했습니다.{" "}
               <Button onClick={() => void profile.refetch()}>다시 확인</Button>
             </p>
           ) : (
-            profile.data && <p>내 정보: {profile.data.email}</p>
+            <p className="my-5 break-all">
+              {profile.data?.email ?? account?.email}
+            </p>
           )}
           <Button disabled={pending} onClick={() => logout.mutate()}>
             로그아웃

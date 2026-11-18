@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,13 +15,18 @@ export function ConditionsForm({
   initial,
   onContinue,
   suggestedRegion,
+  nextLabel = "매장 선택하기",
+  onChange,
 }: {
   initial: ConditionsValues;
   onContinue: (values: ConditionsValues) => void;
   suggestedRegion?: string;
+  nextLabel?: string;
+  onChange?: (values: ConditionsValues) => void;
 }) {
   const {
     register,
+    subscribe,
     control,
     handleSubmit,
     getValues,
@@ -32,6 +36,12 @@ export function ConditionsForm({
     resolver: zodResolver(conditionsSchema),
     defaultValues: initial,
   });
+  useEffect(() => {
+    return subscribe({
+      formState: { values: true },
+      callback: ({ values }) => onChange?.(values),
+    });
+  }, [subscribe, onChange]);
   useEffect(() => {
     if (suggestedRegion && !dirtyFields.region && !getValues("region"))
       setValue("region", suggestedRegion);
@@ -179,26 +189,9 @@ export function ConditionsForm({
           {input("contactPhone", "담당자 연락처", "tel")}
         </div>
       </fieldset>
-      <fieldset className="space-y-2">
-        <legend className="mb-4 text-sm font-semibold">매장을 찾는 방법</legend>
-        <div className="flex items-center justify-between gap-3 rounded-control border border-brand bg-choice px-3 py-7">
-          <div>
-            <h3 className="text-sm font-semibold">가게를 선택해 문의해요</h3>
-            <p className="mt-1 text-xs">
-              1~3곳에 같은 조건을 전달할 수 있어요.
-            </p>
-          </div>
-          <Image
-            src="/images/restaurants/radio-on.svg"
-            alt=""
-            width={26}
-            height={26}
-          />
-        </div>
-      </fieldset>
       <div className="flex justify-end">
         <Button type="submit" className="min-h-[50px] px-5 text-sm">
-          조건으로 매장 찾기 →
+          {nextLabel}
         </Button>
       </div>
     </form>

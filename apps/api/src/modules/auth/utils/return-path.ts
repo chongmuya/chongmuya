@@ -30,6 +30,7 @@ export function safeReturnPath(
     ].includes(url.pathname)
   )
     return "/events";
+  if (url.pathname === "/onboarding") return "/getting-started";
   const params = new URLSearchParams();
   if (url.pathname === "/getting-started") {
     if (!allowSetup) return "/events";
@@ -53,6 +54,16 @@ export function safeReturnPath(
     ].slice(0, 3);
     if (selected.length) params.set("selected", selected.join(","));
     if (url.searchParams.get("inquiry") === "1") params.set("inquiry", "1");
+    const view = url.searchParams.get("view");
+    if (
+      view &&
+      ["list", "map", "detail", "conditions", "review"].includes(view)
+    )
+      params.set("view", view);
+    const region = url.searchParams.get("region");
+    if (region && region.length <= 80) params.set("region", region);
+    const page = url.searchParams.get("page");
+    if (page && /^[1-9][0-9]{0,3}$/.test(page)) params.set("page", page);
   }
   if (url.pathname.startsWith("/owner")) {
     for (const key of ["restaurant", "target"]) {
@@ -61,7 +72,7 @@ export function safeReturnPath(
     }
   }
   for (const key of url.pathname === "/events"
-    ? ["event", "group", "round"]
+    ? ["event", "group", "round", "participant", "review"]
     : url.pathname === "/mypage" ||
         url.pathname === "/" ||
         url.pathname === "/groups/new"
@@ -70,7 +81,15 @@ export function safeReturnPath(
     const item = url.searchParams.get(key);
     if (item && uuid.test(item)) params.set(key, item);
   }
+  if (url.pathname === "/events" && url.searchParams.get("action") === "add")
+    params.set("action", "add");
   const view = url.searchParams.get("view");
+  if (
+    url.pathname === "/mypage" &&
+    view &&
+    ["account", "groups"].includes(view)
+  )
+    params.set("view", view);
   if (
     url.pathname === "/events" &&
     view &&

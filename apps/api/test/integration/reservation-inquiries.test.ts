@@ -118,7 +118,7 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
       ...fixtureBase,
       id,
       isDemo: false,
-      name: `지역 사진 fixture ${index}`,
+      name: `지역 사진 fixture ${id}`,
       region: index === 0 ? "건대입구" : "세종대",
       latitude: null,
       longitude: null,
@@ -166,16 +166,19 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
       2,
     );
   } finally {
-    for (const id of fixtureIds)
-      await db.getRepository(Restaurant).update(id, { published: false });
+    for (const id of fixtureIds) await db.getRepository(Restaurant).delete(id);
   }
   const hidden = randomUUID();
   const original = await db
     .getRepository(Restaurant)
     .findOneByOrFail({ id: demoRestaurantIds[0] });
-  await db
-    .getRepository(Restaurant)
-    .save({ ...original, id: hidden, published: false, isDemo: false });
+  await db.getRepository(Restaurant).save({
+    ...original,
+    id: hidden,
+    name: `비공개 매장 ${hidden}`,
+    published: false,
+    isDemo: false,
+  });
   assert.equal((await call(`restaurants/${hidden}`)).status, 404);
   assert.equal((await call(path)).status, 401);
   assert.equal((await call(path, b)).status, 404);
@@ -433,5 +436,39 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     assert.deepEqual((await (await call(path, a)).json()).request, one);
   } finally {
     await db.getRepository(RestaurantContact).save(contact);
+  }
+});
+
+test("map projection covers the region independently of paginated cards", async (t) => {
+  const { db, call } = await startResourceApplication(t);
+  const region = `지도-${randomUUID()}`;
+  const ids = Array.from({ length: 25 }, () => randomUUID());
+  await db.manager.insert(
+    Restaurant,
+    ids.map((id, i) => ({
+      id,
+      name: `지도 매장 ${i}`,
+      address: `${region} ${i}`,
+      region,
+      published: true,
+      isDemo: true,
+      latitude: 37.5 + i / 10000,
+      longitude: 127,
+    })),
+  );
+  try {
+    const list = await (
+      await call(`restaurants?region=${encodeURIComponent(region)}&page=2`)
+    ).json();
+    assert.equal(list.items.length, 1);
+    assert.equal("menus" in list.items[0], false);
+    assert.equal("bookingPolicy" in list.items[0], false);
+    const map = (await (
+      await call(`restaurants/map?region=${encodeURIComponent(region)}`)
+    ).json()) as { id: string }[];
+    assert.equal(map.length, 25);
+    assert.deepEqual(map.map((r) => r.id).sort(), ids.sort());
+  } finally {
+    for (const id of ids) await db.manager.delete(Restaurant, { id });
   }
 });

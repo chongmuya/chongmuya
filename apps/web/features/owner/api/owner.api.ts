@@ -62,6 +62,7 @@ export const beginDraft = (request: SessionRequest, restaurantId?: string) =>
 export const getDraft = (request: SessionRequest, id: string) =>
   request<RestaurantDraft>(`/api/v1/owner/drafts/${id}`);
 export type SaveDraftInput = {
+  advance?: boolean;
   version: number;
   data: RegistrationData;
   step: number;

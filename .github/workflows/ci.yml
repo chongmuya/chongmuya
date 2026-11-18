@@ -53,4 +53,6 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm test:integration
+      # pnpm test already compiles API unit and integration sources together.
+      - run: node --test --test-concurrency=1 dist-test/test/integration/*.test.js
+        working-directory: apps/api

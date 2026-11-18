@@ -69,7 +69,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
               : "총무에게 참석 응답 링크를 다시 받아 주세요."}
           </p>
         </section>
-      ) : info.isError ? (
+      ) : info.isError && !info.data ? (
         <div className="my-auto">
           <ErrorState retry={() => void info.refetch()}>
             {safeErrorMessage(info.error)}
@@ -175,9 +175,6 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
               >
                 내 응답 열기
               </Button>
-              <p className="text-xs text-muted">
-                이 단계에서는 번호 연결이나 참석을 저장하지 않아요.
-              </p>
             </form>
           ) : (
             <section className="space-y-5">
@@ -203,16 +200,14 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                   <p>
                     내 응답: {stateLabel(action.access.response.selfAnswer)}
                   </p>
-                  <p>
-                    총무 확인 상태:{" "}
-                    {action.access.response.managerOverride === null
-                      ? "지정 없음 · 본인 응답 사용"
-                      : stateLabel(action.access.response.managerOverride)}
-                  </p>
-                  <p>
-                    최종 집계 상태:{" "}
-                    {stateLabel(action.access.response.finalState)}
-                  </p>
+                  {action.access.response.managerOverride !== null && (
+                    <p>
+                      총무 확인 상태:{" "}
+                      {action.access.response.managerOverride === null
+                        ? "지정 없음 · 본인 응답 사용"
+                        : stateLabel(action.access.response.managerOverride)}
+                    </p>
+                  )}
                 </div>
               )}
               <fieldset disabled={action.isPending} className="flex gap-3">
@@ -254,7 +249,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                 >
                   {action.saved === "REVIEW"
                     ? "응답이 접수됐으며 총무 확인이 필요합니다."
-                    : "내 응답을 저장했어요. 총무 지정이 있으면 최종 집계에는 지정값이 적용돼요."}
+                    : "내 응답을 저장했어요."}
                 </p>
               )}
               <Button

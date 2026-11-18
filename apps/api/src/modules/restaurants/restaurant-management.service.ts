@@ -167,7 +167,7 @@ export class RestaurantManagementService {
             conditions,
           }),
         ),
-        policies: r.policies ? policyValues(r.policies) : data.policies,
+        policies: policyValues(r.policies),
       });
       address = {
         id: randomUUID(),
@@ -271,9 +271,23 @@ export class RestaurantManagementService {
         d.selectedAddress = address;
       }
       d.data = parsed.data;
-      d.step = input.step;
+      const duplicate =
+        input.advance && d.step === 0 ? await this.duplicate(d, m) : undefined;
+      if (!duplicate) d.step = input.step;
       d.version++;
-      return this.view(await m.save(d));
+      return {
+        ...this.view(await m.save(d)),
+        ...(duplicate
+          ? {
+              duplicate: {
+                duplicate: true,
+                ownRestaurantId:
+                  duplicate.ownerAccountId === user.id ? duplicate.id : null,
+                supportEmail: this.config.environment.ownerSupportEmail ?? null,
+              },
+            }
+          : {}),
+      };
     });
   }
   async search(user: AuthUser, id: string, query: string) {
@@ -341,7 +355,6 @@ export class RestaurantManagementService {
     await m.query(
       "SELECT pg_advisory_xact_lock(hashtextextended('restaurant-registration', 0))",
     );
-    const rows = await m.find(Restaurant);
     const bases = [
       d.selectedAddress.baseAddress,
       d.selectedAddress.roadAddress,
@@ -350,18 +363,22 @@ export class RestaurantManagementService {
       .filter(Boolean)
       .map(norm);
     const detail = norm(d.data.detailAddress);
-    return rows.find(
-      (r) =>
-        r.id !== d.restaurantId &&
-        norm(r.name) === norm(d.data.name) &&
-        (r.registrationKey === key ||
-          (r.baseAddress
-            ? bases.includes(norm(r.baseAddress)) &&
-              norm(r.detailAddress ?? "") === detail
-            : bases.some(
-                (base) => norm(r.address) === norm(`${base} ${detail}`),
-              ))),
-    );
+    return m
+      .createQueryBuilder(Restaurant, "r")
+      .where("r.id <> :id", {
+        id: d.restaurantId ?? "00000000-0000-0000-0000-000000000000",
+      })
+      .andWhere("r.normalized_name = :name", { name: norm(d.data.name) })
+      .andWhere(
+        "(r.registration_key=:key OR r.normalized_address IN (:...addresses) OR (r.normalized_base_address IN (:...bases) AND r.normalized_detail_address=:detail))",
+        {
+          key,
+          addresses: bases.map((base) => norm(`${base} ${detail}`)),
+          bases,
+          detail,
+        },
+      )
+      .getOne();
   }
   async checkDuplicate(user: AuthUser, id: string) {
     const db = await this.database.connect();
@@ -453,12 +470,7 @@ export class RestaurantManagementService {
           verifiedAt: null,
           photoPath: null,
           spacePhotos: [],
-          operatingHours: null,
           facilities: null,
-          bookingPolicy: null,
-          depositPolicy: null,
-          menuPolicy: null,
-          cancellationPolicy: null,
         });
       if (row.address.length > 240)
         throw new DomainHttpException("VALIDATION_FAILED");
@@ -572,6 +584,14 @@ export class RestaurantManagementService {
       await m.save(r);
       return { version: r.version };
     });
+  }
+  async addressReview() {
+    const db = await this.database.connect();
+    return db.query(
+      "SELECT id,name,address,identity_review AS reason FROM restaurants WHERE identity_review IS NOT NULL ORDER BY name,id",
+    ) as Promise<
+      { id: string; name: string; address: string; reason: string }[]
+    >;
   }
   async normalizeAddress(input: {
     restaurantId: string;

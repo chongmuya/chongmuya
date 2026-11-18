@@ -1,3 +1,8 @@
+import { In } from "typeorm";
+import { Event } from "../../src/modules/events/entities/event.entity.js";
+import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
+import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
+import { catalogPolicies } from "../../src/modules/restaurants/lib/restaurant-policy.js";
 import assert from "node:assert/strict";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -162,7 +167,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
       };
       await db
         .getRepository(Restaurant)
-        .update(r.id, { policies: null, ...legacy });
+        .update(r.id, { policies: catalogPolicies(legacy) });
       type Draft = Awaited<ReturnType<RestaurantManagementService["getDraft"]>>;
       const edit = await json<Draft>(
         await call("owner/drafts", winning.jar, "POST", { restaurantId: r.id }),
@@ -525,6 +530,84 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   assert.deepEqual(result.request.snapshot, inquiry.snapshot);
   assert.equal(result.request.responseCount, 1);
   assert.equal(result.request.declineCount, 1);
+  {
+    const seedTarget = await db.manager.findOneByOrFail(RequestTarget, {
+      id: target.id,
+    });
+    const seedRequest = await db.manager.findOneByOrFail(ReservationRequest, {
+      id: inquiry.id,
+    });
+    const seedEvent = await db.manager.findOneByOrFail(Event, {
+      id: seedRequest.eventId,
+    });
+    // Many same-timestamp rows expose random-UUID ordering and pagination boundary mistakes.
+    const createdAt = new Date(Date.now() + 1000),
+      ids: string[] = [],
+      requestIds: string[] = [],
+      eventIds: string[] = [];
+    await db.transaction(async (m) => {
+      for (let i = 0; i < 103; i++) {
+        const e = {
+          id: randomUUID(),
+          ownerId: seedEvent.ownerId,
+          groupId: null,
+          version: 1,
+          name: "페이지 검증",
+          scheduledAt: new Date(seedRequest.snapshot.startsAt),
+          createdAt,
+        };
+        await m.insert(Event, e);
+        eventIds.push(e.id);
+        const r = {
+          ...seedRequest,
+          id: randomUUID(),
+          eventId: e.id,
+          requestKey: randomUUID(),
+          createdAt,
+        };
+        await m.insert(ReservationRequest, r);
+        requestIds.push(r.id);
+        const targetId = randomUUID();
+        ids.push(targetId);
+        await m.insert(RequestTarget, {
+          ...seedTarget,
+          id: targetId,
+          requestId: r.id,
+          replyVersion: 0,
+        });
+      }
+    });
+    try {
+      let cursor: string | null = null;
+      const seen: string[] = [];
+      do {
+        const page: {
+          inquiries: { targetId: string }[];
+          nextCursor: string | null;
+        } = await json<{
+          inquiries: { targetId: string }[];
+          nextCursor: string | null;
+        }>(
+          await call(
+            `owner/inquiries${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+            winning.jar,
+          ),
+        );
+        seen.push(
+          ...page.inquiries.map((i: { targetId: string }) => i.targetId),
+        );
+        cursor = page.nextCursor;
+      } while (cursor);
+      assert.equal(new Set(seen).size, seen.length);
+      assert.deepEqual(seen.slice(0, 103), ids.sort().reverse());
+    } finally {
+      await db.transaction(async (m) => {
+        await m.delete(RequestTarget, { id: In(ids) });
+        await m.delete(ReservationRequest, { id: In(requestIds) });
+        await m.delete(Event, { id: In(eventIds) });
+      });
+    }
+  }
   const report = [
     {
       messageId: delivery.providerMessageId,
