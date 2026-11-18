@@ -66,6 +66,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "refresh_tokens",
       "reservation_request_targets",
       "reservation_requests",
+      "restaurant_contact_seed_receipts",
       "restaurant_contacts",
       "restaurant_menus",
       "restaurant_spaces",

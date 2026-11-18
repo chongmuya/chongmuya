@@ -5,7 +5,7 @@ import { Restaurant } from "../../modules/restaurants/entities/restaurant.entity
 import { RestaurantSpace } from "../../modules/restaurants/entities/restaurant-space.entity.js";
 import { RestaurantMenu } from "../../modules/restaurants/entities/restaurant-menu.entity.js";
 import { RestaurantContact } from "../../modules/restaurants/entities/restaurant-contact.entity.js";
-import { RequestTarget } from "../../modules/reservations/entities/request-target.entity.js";
+import { claimSeedContact } from "./claim-contact.seed.js";
 
 const key = z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/);
 const text = z.string().nullable().default(null);
@@ -167,9 +167,7 @@ export async function seedRestaurants(
     }
     for (const { restaurantKey, requestConsentAt, ...contact } of contacts) {
       const contactId = restaurantSeedId("contact", restaurantKey);
-      // Historical targets outlive live contacts. Never recreate a deleted
-      // recipient and make a held inquiry eligible for delivery again.
-      if (await manager.existsBy(RequestTarget, { contactId })) continue;
+      if (!(await claimSeedContact(manager, contactId))) continue;
       await manager
         .createQueryBuilder()
         .insert()

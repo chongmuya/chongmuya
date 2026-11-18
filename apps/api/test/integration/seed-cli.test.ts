@@ -12,6 +12,7 @@ import { restaurantSeedId } from "../../src/database/seeds/restaurants.seed.js";
 import fixture from "../../src/database/seeds/data/restaurants.json" with { type: "json" };
 import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
+import { RestaurantContactSeedReceipt } from "../../src/modules/restaurants/entities/restaurant-contact-seed-receipt.entity.js";
 import { RestaurantMenu } from "../../src/modules/restaurants/entities/restaurant-menu.entity.js";
 import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
 
@@ -142,6 +143,11 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
     assert.equal(await contacts.countBy({ restaurantId: In(ids) }), 4);
   } finally {
     await contacts.delete({ restaurantId: In(ids) });
+    await db.getRepository(RestaurantContactSeedReceipt).delete({
+      contactId: In(
+        fixture.restaurants.map(({ key }) => restaurantSeedId("contact", key)),
+      ),
+    });
     await menus.delete({ restaurantId: In(ids) });
     await spaces.delete({ restaurantId: In(ids) });
     await restaurants.delete({ id: In(ids) });

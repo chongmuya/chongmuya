@@ -72,7 +72,6 @@ apps/api/
     database/           TypeORM 옵션·CLI DataSource·연결 생명주기·오류 분류
       migrations/       명시적으로 적용하는 스키마 변경
       seeds/            독립 CLI·시드 함수·입력 데이터
-      migrations/       인증·행사·계정 확장·GroupRoster 데이터 보존 migration
   test/                 설정·HTTP 계약 테스트와 DB 통합 테스트
 tools/                  ESLint 의존 경계 규칙과 회귀 테스트
 compose.yaml            로컬 PostgreSQL만 실행
@@ -263,7 +262,7 @@ TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수
 
 ### 시드 실행 경계
 
-`src/database/seeds`의 독립 CLI에서 실행 옵션·로컬 DB 연결·종료를 처리하고, 매장/가상 시드는 각각 하나의 트랜잭션으로 저장한다. 시드는 Entity와 공통 DB 옵션만 참조하며 AppModule·업무 Service·발송 provider를 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않도록 ESLint로 검사한다. 공개 JSON만 빌드하며, 같은 data 폴더의 `*.private.json`은 Git·빌드에서 제외하고 명시적 파일 옵션으로 읽는다. 실행 방법과 재실행 정책은 [매장 시드](restaurant-seed.md)를 따른다.
+`src/database/seeds`의 독립 CLI는 Entity와 공통 DB 옵션만 참조하며 AppModule·업무 Service·발송 provider를 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않도록 ESLint로 검사한다. 공개 JSON만 빌드하고 `*.private.json`은 명시적 파일 옵션으로만 읽는다. 실행 방법은 [README](../README.md#매장-시드)를 따른다.
 
 ## 의존 경계 검사와 CI
 

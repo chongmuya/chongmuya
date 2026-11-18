@@ -48,7 +48,7 @@
         "사용자 결정 2026-11-18: 개미집투 최대 80명, 전체 대관 최소 70명. 설문의 대관 최소 50명보다 이 결정을 우선한다.",
         "예약금 유무·금액 조사 자료 미확인."
       ],
-      "photoPath": "/images/restaurant-placeholder.png",
+      "photoPath": null,
       "operatingHours": null,
       "depositPolicy": "매장과 협의가 필요해요.",
       "cancellationPolicy": "매장과 협의가 필요해요.",
@@ -276,7 +276,7 @@
         "인터뷰 기록에서 예약금 없음 확인. 공개 정책 문구는 사용자 요청에 따라 협의 필요로 통일한다.",
         "하루 이틀 전 취소를 이해한다는 답변은 경험 설명으로, 환불 규칙으로 변환하지 않는다."
       ],
-      "photoPath": "/images/restaurant-placeholder.png",
+      "photoPath": null,
       "operatingHours": null,
       "depositPolicy": "매장과 협의가 필요해요.",
       "cancellationPolicy": "매장과 협의가 필요해요.",
@@ -596,7 +596,7 @@
         "전체 190명과 룸20/입구홀30/뒤홀40은 각각 원문 값. 나머지100명 공간은 추정해 만들지 않는다.",
         "사진·목록 간 가격 충돌 9개 메뉴의 seed price는 null."
       ],
-      "photoPath": "/images/restaurant-placeholder.png",
+      "photoPath": null,
       "operatingHours": null,
       "depositPolicy": "매장과 협의가 필요해요.",
       "cancellationPolicy": "매장과 협의가 필요해요.",
@@ -1649,7 +1649,7 @@
         "설문에서 예약금 있음 확인. 금액·환불 규칙 미확인. 공개 정책 문구는 사용자 요청에 따라 협의 필요로 통일한다.",
         "좌표는 보조자료의 건물 위치이며 출입구 정밀 좌표는 아니다."
       ],
-      "photoPath": "/images/restaurant-placeholder.png",
+      "photoPath": null,
       "operatingHours": null,
       "depositPolicy": "매장과 협의가 필요해요.",
       "cancellationPolicy": "매장과 협의가 필요해요.",

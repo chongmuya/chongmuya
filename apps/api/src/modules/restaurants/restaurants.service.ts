@@ -19,10 +19,26 @@ export class RestaurantsService {
       .getRepository(Restaurant)
       .createQueryBuilder("r")
       .where("r.published = true");
-    if (input.region?.trim())
-      query.andWhere("(r.region ILIKE :region OR r.address ILIKE :region)", {
-        region: `%${input.region.trim().replace(/[\\%_]/g, "\\$&")}%`,
-      });
+    // A displayed area such as '세종대 · 어린이대공원' means either area.
+    // Preserve spaces within an area name and escape literal SQL wildcards.
+    const regions = [
+      ...new Set(
+        (input.region ?? "")
+          .split("·")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (regions.length)
+      query.andWhere(
+        `(${regions.map((_, index) => `(r.region ILIKE :region${index} OR r.address ILIKE :region${index})`).join(" OR ")})`,
+        Object.fromEntries(
+          regions.map((region, index) => [
+            `region${index}`,
+            `%${region.replace(/[\\%_]/g, "\\$&")}%`,
+          ]),
+        ),
+      );
     const [rows, total] = await query
       .orderBy("r.name", "ASC")
       .addOrderBy("r.id", "ASC")
