@@ -28,6 +28,7 @@ import {
   type ConditionsValues,
 } from "../schemas/conditions.schema";
 import { ConditionsForm } from "./conditions-form";
+import { ConditionSummary } from "./condition-summary";
 import { InquiryReceipt } from "./reservation-progress";
 
 const uuid =
@@ -79,7 +80,8 @@ export function ReservationExplorer() {
     if (status !== "authenticated" || !account)
       return (
         <StepLayout
-          title="예약 문의"
+          variant="flow"
+          title=""
           onBack={() => router.push(href({ inquiry: null }))}
         >
           {status === "anonymous" ? (
@@ -103,7 +105,8 @@ export function ReservationExplorer() {
     if (!isFirstSetupComplete(account))
       return (
         <StepLayout
-          title="예약 문의"
+          variant="flow"
+          title=""
           onBack={() => router.push("/restaurants")}
         >
           <StepHeading title="첫 설정을 이어서 진행해 주세요" />
@@ -115,6 +118,7 @@ export function ReservationExplorer() {
     if (!eventId || !uuid.test(eventId))
       return (
         <StepLayout
+          variant="flow"
           title="문의할 행사"
           onBack={() => router.push(href({ inquiry: null }))}
         >
@@ -143,10 +147,11 @@ export function ReservationExplorer() {
     );
   }
   return (
-    <StepLayout title="매장 찾기" onBack={() => router.push("/")}>
+    <StepLayout variant="flow" title="" onBack={() => router.push("/")}>
       <StepHeading
-        title="우리 행사에 맞는 매장을 찾아요"
-        description="공개 매장은 로그인 없이 둘러볼 수 있어요. 문의는 내 행사를 선택한 뒤 접수해요."
+        title="우리 모임에 맞는 매장을 찾아요"
+        className="mb-7"
+        description="행사에 맞는 매장을 최대 3곳 선택할 수 있어요."
       />
       <RestaurantBrowser {...browse} onInquiry={start} />
     </StepLayout>
@@ -173,7 +178,8 @@ function InquiryFlow({
   )
     return (
       <StepLayout
-        title="예약 문의"
+        variant="flow"
+        title=""
         onBack={() => router.push(`/events?event=${eventId}`)}
       >
         <ErrorState
@@ -192,13 +198,14 @@ function InquiryFlow({
     );
   if (!event.data || existing.data === undefined)
     return (
-      <StepLayout title="예약 문의" onBack={() => router.push("/events")}>
+      <StepLayout variant="flow" title="" onBack={() => router.push("/events")}>
         <LoadingState>행사와 기존 문의 확인 중…</LoadingState>
       </StepLayout>
     );
   if (existing.data)
     return (
       <StepLayout
+        variant="flow"
         title="문의 진행 상태"
         onBack={() => router.push(`/events?event=${eventId}`)}
       >
@@ -276,7 +283,8 @@ function InquiryDraft({
   };
   return (
     <StepLayout
-      title="예약 문의"
+      variant="flow"
+      title=""
       busy={create.isPending}
       onBack={() => {
         if (step === "browse") setStep("conditions");
@@ -284,17 +292,23 @@ function InquiryDraft({
       }}
     >
       <StepHeading
+        className="mb-7"
         title={
           step === "conditions"
             ? "매장에 어떤 조건을 전달할까요?"
-            : "우리 행사에 맞는 매장을 찾아요"
+            : "우리 모임에 맞는 매장을 찾아요"
         }
         description={
           step === "conditions"
             ? `${event.name} · 문의 접수 전까지 수정할 수 있어요.`
-            : `${values.expectedGuests}명 · ${values.date} ${values.time} · ${values.region}`
+            : "선택한 매장에 같은 조건을 전달해요. 최대 3곳까지 문의할 수 있어요."
         }
       />
+      {step === "browse" && (
+        <div className="mb-7">
+          <ConditionSummary conditions={inquiryConditions(values)} />
+        </div>
+      )}
       {unavailable && (
         <ErrorState retry={retry}>
           행사 상태 재조회에 실패했어요. 입력은 유지됩니다. 접수 전에 다시

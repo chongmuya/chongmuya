@@ -75,7 +75,9 @@ export function HomeScreen() {
         <AuthScreen />
       ) : (
         <>
-          <h1 className="text-2xl font-bold">첫 행사를 준비해 볼까요?</h1>
+          <h1 className="text-2xl font-bold text-copy">
+            첫 행사를 준비해 볼까요?
+          </h1>
           <p className="mt-2 mb-8 text-xs text-muted">
             모임 없이도 개인 행사를 만들 수 있어요.
           </p>
@@ -158,7 +160,7 @@ function AccountHome({
       </header>
       <div className="space-y-8 px-5 pt-8 pb-12">
         <div>
-          <h1 className="text-2xl leading-tight font-bold break-words">
+          <h1 className="text-2xl leading-tight font-bold break-words text-copy">
             {owner
               ? `${account.name ?? "사장"}님, 환영해요!`
               : selected

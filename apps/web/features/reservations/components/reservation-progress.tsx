@@ -1,4 +1,5 @@
 "use client";
+import { ConditionSummary } from "./condition-summary";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
@@ -10,8 +11,8 @@ import type { ReservationRequest } from "../types/inquiry.types";
 export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
   const c = inquiry.snapshot;
   return (
-    <section className="my-6 space-y-6 rounded-control bg-surface p-5 shadow-card">
-      <div>
+    <section className="my-6 space-y-7 text-copy">
+      <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
         <p className="text-sm font-semibold text-brand">문의 접수 완료</p>
         <h2 className="mt-2 text-xl font-bold">매장 전달을 준비하고 있어요</h2>
         <p className="mt-2 text-sm text-muted">
@@ -19,22 +20,14 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
           수 있어요.
         </p>
       </div>
-      <div className="rounded-control border border-border p-4">
-        <h3 className="font-semibold">{c.eventName}</h3>
-        <p className="text-sm">
-          {c.groupName ?? "개인 행사"} · {c.expectedGuests}명
-        </p>
-        <p className="text-sm">
-          {new Date(c.startsAt).toLocaleString("ko-KR", {
-            timeZone: "Asia/Seoul",
-          })}{" "}
-          (한국 시간)
-        </p>
-        <p className="text-sm">{c.region}</p>
+      <div className="space-y-3">
+        <h3 className="text-xl font-bold">{c.eventName}</h3>
+        <p className="text-xs text-secondary">{c.groupName ?? "개인 행사"}</p>
+        <ConditionSummary conditions={c} />
       </div>
       <ul className="space-y-3">
         {inquiry.targets.map((t) => (
-          <li key={t.id} className="rounded-control border border-border p-3">
+          <li key={t.id} className="rounded-control bg-surface p-5 shadow-card">
             <div className="flex items-center justify-between gap-2">
               <strong className="text-sm">{t.restaurantName}</strong>
               <span className="shrink-0 rounded-pill bg-brand/10 px-2 py-1 text-xs text-brand">
@@ -50,13 +43,13 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
           </li>
         ))}
       </ul>
-      <div className="rounded-control bg-background p-5 text-center">
+      <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
         <h3 className="font-semibold">도착한 응답 {inquiry.responseCount}건</h3>
         <p className="mt-1 text-sm text-muted">
           아직 매장 응답이 없어요. 매장 응답·수락 기능은 준비 중이에요.
         </p>
       </div>
-      <details className="text-sm">
+      <details className="rounded-control bg-surface p-5 text-sm shadow-card">
         <summary className="cursor-pointer font-semibold">
           접수한 조건 확인
         </summary>

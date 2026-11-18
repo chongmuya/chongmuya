@@ -5,7 +5,7 @@ export function Input({
   className,
   variant = "default",
   ...props
-}: ComponentProps<"input"> & { variant?: "default" | "pill" }) {
+}: ComponentProps<"input"> & { variant?: "default" | "pill" | "form" }) {
   return (
     <input
       className={cn(
@@ -13,6 +13,8 @@ export function Input({
         variant === "pill"
           ? "rounded-pill border-transparent px-4 placeholder:text-placeholder"
           : "rounded-control placeholder:text-muted",
+        variant === "form" &&
+          "rounded-pill border-field px-3 text-copy placeholder:text-placeholder",
         className,
       )}
       {...props}

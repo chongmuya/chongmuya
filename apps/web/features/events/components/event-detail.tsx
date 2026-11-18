@@ -21,11 +21,11 @@ export function EventDetail({
   if (!detail.data) return <LoadingState>행사 확인 중…</LoadingState>;
   const event = detail.data;
   return (
-    <article>
-      <h2>{event.name}</h2>
-      <p>{dateLabel(event.scheduledAt)}</p>
+    <article className="mb-7 space-y-3">
+      <h2 className="text-2xl font-bold">{event.name}</h2>
+      <p className="text-xs text-secondary">{dateLabel(event.scheduledAt)}</p>
       {event.groupId ? (
-        <p role="status">
+        <p role="status" className="text-xs text-secondary">
           모임에 연결된 행사입니다.{" "}
           <Link href={`/events?group=${encodeURIComponent(event.groupId)}`}>
             모임별 내 행사 보기
@@ -33,14 +33,19 @@ export function EventDetail({
         </p>
       ) : (
         <>
-          <p>모임 없이 이용하는 개인 행사입니다.</p>
-          <LinkEventGroupForm
-            key={event.version}
-            accountId={accountId}
-            event={event}
-            request={request}
-            refresh={() => void detail.refetch()}
-          />
+          <p className="text-xs text-secondary">개인 행사</p>
+          <details className="text-xs">
+            <summary className="cursor-pointer text-secondary">
+              모임 연결
+            </summary>
+            <LinkEventGroupForm
+              key={event.version}
+              accountId={accountId}
+              event={event}
+              request={request}
+              refresh={() => void detail.refetch()}
+            />
+          </details>
         </>
       )}
     </article>

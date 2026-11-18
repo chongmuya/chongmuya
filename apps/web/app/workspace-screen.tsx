@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
   useAuth,
   KakaoConnection,
@@ -13,14 +13,21 @@ import { GroupBoundary, GroupSettings } from "@/features/groups/client";
 import { ReservationProgress } from "@/features/reservations/client";
 import { EventList, EventDetail } from "@/features/events/client";
 
+import { StepLayout } from "@/shared/ui/step-layout";
+
 type Mode = "events" | "mypage" | "onboarding";
 export function WorkspaceScreen({ mode }: { mode: Mode }) {
   const { client, status, account } = useAuth();
   const params = useSearchParams();
   const pathname = usePathname();
+  const router = useRouter();
   if (status !== "authenticated" || !account)
     return (
-      <main className="app-page">
+      <StepLayout
+        variant="flow"
+        title={mode === "mypage" ? "마이페이지" : ""}
+        onBack={() => router.push("/")}
+      >
         <Link href="/">홈</Link>
         {status === "anonymous" ? (
           <section>
@@ -34,11 +41,15 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         ) : (
           <AuthScreen />
         )}
-      </main>
+      </StepLayout>
     );
   if (!isFirstSetupComplete(account))
     return (
-      <main className="app-page">
+      <StepLayout
+        variant="flow"
+        title={mode === "mypage" ? "마이페이지" : ""}
+        onBack={() => router.push("/")}
+      >
         <Link href="/">홈</Link>
         <h1>첫 설정을 이어서 진행해 주세요</h1>
         <p>
@@ -54,10 +65,14 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
           <KakaoConnection key={account.id} accountId={account.id} />
         )}
         <AuthScreen />
-      </main>
+      </StepLayout>
     );
   return (
-    <main className="app-page">
+    <StepLayout
+      variant="flow"
+      title={mode === "mypage" ? "마이페이지" : ""}
+      onBack={() => router.push("/")}
+    >
       <WorkspaceContent
         key={`${account.id}:${mode}:${params.toString()}`}
         accountId={account.id}
@@ -72,7 +87,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
           <AuthScreen />
         </>
       )}
-    </main>
+    </StepLayout>
   );
 }
 export function WorkspaceContent({
@@ -89,16 +104,12 @@ export function WorkspaceContent({
   mode: Mode;
 }) {
   return (
-    <section>
-      <nav>
-        <Link href="/">홈</Link>
-        <Link href="/events">내 행사</Link>
-        <Link href="/mypage">마이페이지</Link>
-        {mode === "mypage" && (
-          <Link href="/getting-started?guide=1">이용 방식 선택</Link>
-        )}
-      </nav>
-      <h1>{mode === "mypage" ? "내 모임 관리" : "내 행사"}</h1>
+    <section className="text-copy">
+      {(mode === "mypage" || eventId) && (
+        <h1 className="mb-7 text-2xl font-bold">
+          {mode === "mypage" ? "내 모임 관리" : "내 행사"}
+        </h1>
+      )}
       {mode === "mypage" ? (
         <GroupBoundary
           accountId={accountId}
@@ -135,6 +146,14 @@ export function WorkspaceContent({
           groupId={groupId ?? undefined}
         />
       )}
+      <nav className="mt-10 flex flex-wrap gap-3 text-xs text-secondary [&_a]:rounded-pill [&_a]:border [&_a]:border-field [&_a]:px-3 [&_a]:py-2">
+        <Link href="/">홈</Link>
+        <Link href="/events">내 행사</Link>
+        <Link href="/mypage">마이페이지</Link>
+        {mode === "mypage" && (
+          <Link href="/getting-started?guide=1">이용 방식 선택</Link>
+        )}
+      </nav>
     </section>
   );
 }
