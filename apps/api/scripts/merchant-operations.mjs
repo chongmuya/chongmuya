@@ -46,6 +46,7 @@ try {
     "regenerate-link",
     "change-recipient",
     "record-reply",
+    "record-contact",
   ];
   if (!actions.includes(v.action)) throw new Error();
   const uuid = (value) => {
@@ -69,6 +70,13 @@ try {
     logger: false,
     abortOnError: false,
   });
+  const privateInput = async () => {
+    if (!v.input) throw new Error();
+    const info = await stat(v.input);
+    if (!info.isFile() || info.size > 32768 || info.mode & 0o077)
+      throw new Error();
+    return JSON.parse(await readFile(v.input, "utf8"));
+  };
   let result;
   if (["owner-link", "publish"].includes(v.action))
     result = await app.get(RestaurantManagementService).operate({
@@ -91,6 +99,16 @@ try {
       version: Number(v.version),
       dryRun: !v.execute,
     });
+  else if (v.action === "record-contact")
+    result = await app
+      .get(RestaurantManagementService)
+      .recordContact(
+        uuid(v.restaurant),
+        await privateInput(),
+        v.actor,
+        v.reason,
+        !v.execute,
+      );
   else if (v.action === "deliveries")
     result = await app.get(MessageDeliveryService).listForOperations();
   else if (v.action === "retry") {
@@ -121,11 +139,7 @@ try {
       );
   else {
     const id = uuid(v.target);
-    if (!v.input) throw new Error();
-    const info = await stat(v.input);
-    if (!info.isFile() || info.size > 32768 || info.mode & 0o077)
-      throw new Error();
-    const input = JSON.parse(await readFile(v.input, "utf8"));
+    const input = await privateInput();
     if (!input.method || !input.confirmedAt || !input.reply) throw new Error();
     result = v.execute
       ? await app.get(MerchantRepliesService).save(

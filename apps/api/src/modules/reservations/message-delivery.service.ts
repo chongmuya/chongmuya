@@ -352,6 +352,11 @@ export class MessageDeliveryService {
         new Date(c.request.snapshot.startsAt).getTime() <= Date.now()
       )
         throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+      const unresolved = await m.findOneBy(MessageDelivery, {
+        targetId,
+        status: In(["UNKNOWN", "PROCESSING"]),
+      });
+      if (unresolved) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
       // A fresh contact record is required. Never rewrite the original inquiry or recipient history.
       const previous = await m.findOneBy(MessageDelivery, {
         targetId,

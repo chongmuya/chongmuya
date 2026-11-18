@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
@@ -606,6 +607,73 @@ export class RestaurantManagementService {
         selectedAddress: matches[0].baseAddress,
         detailAddress: input.detailAddress,
       };
+    });
+  }
+  async recordContact(
+    restaurantId: string,
+    input: unknown,
+    actor: string,
+    reason: string,
+    dryRun: boolean,
+  ) {
+    const parsed = z
+      .object({
+        id: z.uuid(),
+        name: z.string().trim().min(1).max(80),
+        phone: z.string().regex(/^01[016789]\d{7,8}$/),
+        requestConsentAt: z.iso.datetime({ offset: true }).nullable(),
+        consentNote: z.string().trim().min(1).max(500),
+      })
+      .strict()
+      .safeParse(input);
+    if (
+      !parsed.success ||
+      !actor.trim() ||
+      !reason.trim() ||
+      (parsed.data.requestConsentAt &&
+        Date.parse(parsed.data.requestConsentAt) > Date.now())
+    )
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const data = parsed.data;
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      const restaurant = await m.findOne(Restaurant, {
+        where: { id: restaurantId },
+        lock: { mode: "pessimistic_write" },
+      });
+      if (!restaurant) throw new NotFoundException();
+      const existing = await m.findOneBy(RestaurantContact, { id: data.id });
+      if (
+        existing &&
+        (existing.restaurantId !== restaurantId ||
+          existing.phone !== data.phone)
+      )
+        throw new DomainHttpException("VALIDATION_FAILED");
+      // The supplied stable ID makes retries harmless; consent and phone history are never rewritten.
+      if (existing)
+        return { restaurantId, contactId: existing.id, existing: true, dryRun };
+      if (!dryRun) {
+        await m.save(RestaurantContact, {
+          ...data,
+          restaurantId,
+          active: !!data.requestConsentAt,
+          requestConsentAt: data.requestConsentAt
+            ? new Date(data.requestConsentAt)
+            : null,
+        });
+        restaurant.version++;
+        await m.save(restaurant);
+        await m.save(RestaurantOperation, {
+          id: randomUUID(),
+          restaurantId,
+          actor,
+          reason,
+          action: "CONTACT_RECORDED",
+          details: { contactId: data.id },
+          createdAt: new Date(),
+        });
+      }
+      return { restaurantId, contactId: data.id, dryRun };
     });
   }
   // Only the explicit server-side CLI invokes these operations; never exposed as owner HTTP routes.

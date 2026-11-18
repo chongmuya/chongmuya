@@ -246,6 +246,17 @@ test("owner draft/address registration races and ownership; direct delivery, ano
       .get(MessageDeliveryService)
       .dispatch(uncertain.id, { actor: "ops", reason: "재시도 금지 확인" }),
   );
+  await assert.rejects(
+    app
+      .get(MessageDeliveryService)
+      .changeRecipient(
+        uncertain.targetId,
+        uncertain.contactId,
+        "ops",
+        "UNKNOWN 우회 금지",
+        false,
+      ),
+  );
   assert.equal(sent.length, 2);
   const links = app.get(MerchantLinksService),
     link = await db
@@ -505,9 +516,33 @@ test("owner draft/address registration races and ownership; direct delivery, ano
       false,
     ),
   );
-  await db
-    .getRepository(RestaurantContact)
-    .update(newContact, { requestConsentAt: new Date() });
+  await db.getRepository(RestaurantContact).delete(newContact);
+  const confirmedContact = {
+    id: newContact,
+    name: "운영 확인 담당자",
+    phone: "01033334444",
+    requestConsentAt: new Date().toISOString(),
+    consentNote: "test only, operator confirmation",
+  };
+  const management = app.get(RestaurantManagementService);
+  await management.recordContact(
+    r.id,
+    confirmedContact,
+    "ops",
+    "확인한 연락처 등록",
+    false,
+  );
+  await management.recordContact(
+    r.id,
+    confirmedContact,
+    "ops",
+    "동일 실행 재시도",
+    false,
+  );
+  assert.equal(
+    await db.getRepository(RestaurantContact).countBy({ id: newContact }),
+    1,
+  );
   const handover = await deliveries.changeRecipient(
     target.id,
     newContact,

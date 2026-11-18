@@ -160,16 +160,17 @@ API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery` migration을
 
 운영 명령은 서버 접근 권한이 있는 실행자가 `pnpm --filter @chongmuya/api merchant:operations --action ...`으로 실행한다. 변경은 기본 dry-run이며 `--execute --actor <실행자> --reason <확인 사유>`가 있어야 적용한다. `--output <새 파일>`은 0600·wx로 결과를 저장한다. 비밀 토큰이나 문자 본문은 출력하지 않는다.
 
-| action              | 추가 인자·효과                                                                                                                                                        |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `owner-link`        | `--restaurant <UUID> --account <owner Account UUID>`; 다른 소유자는 덮어쓰지 않음                                                                                     |
-| `publish`           | `--restaurant <UUID>`; `--unpublish`로 비공개                                                                                                                         |
-| `normalize-address` | `--restaurant <UUID> --version <현재 버전> --query <검색 주소> --base-address <정확한 선택 결과> --detail-address <층·호수>`; dry-run 확인 후 실행, 중복 충돌 시 중단 |
-| `deliveries`        | 발송 상태/ID 조회, 만료된 PROCESSING은 UNKNOWN으로 분류                                                                                                               |
-| `retry`             | `--delivery <UUID>`; PENDING 또는 명확한 SUBMISSION 실패만 현재 동의·번호·공개·링크를 재검사해 처리                                                                   |
-| `reconcile`         | `--delivery <UUID>`; 공급자 ID 또는 번호·시간 범위 조회 후 deliveryId 대조. UNKNOWN이 해소되지 않으면 재발송 금지                                                     |
-| `change-recipient`  | `--target ID --contact NEW_CONTACT_ID`; 원래 접수·발송 이력을 보존하고 확인된 새 수신자와 링크로 전환. 반환한 deliveryId를 별도 `retry`로 발송                        |
-| `regenerate-link`   | `--target <UUID>`; 이전 generation과 파생 접근 권한 폐기. 문의·답변 이력 보존                                                                                         |
-| `record-reply`      | `--target <UUID> --input <0600 JSON>`; `{method:"PHONE" 또는 "SMS",confirmedAt:ISO시각,reply:응답 API 본문}`. 확인 주체·사유와 version/revision 보존                  |
+| action              | 추가 인자·효과                                                                                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owner-link`        | `--restaurant <UUID> --account <owner Account UUID>`; 다른 소유자는 덮어쓰지 않음                                                                                                                 |
+| `publish`           | `--restaurant <UUID>`; `--unpublish`로 비공개                                                                                                                                                     |
+| `normalize-address` | `--restaurant <UUID> --version <현재 버전> --query <검색 주소> --base-address <정확한 선택 결과> --detail-address <층·호수>`; dry-run 확인 후 실행, 중복 충돌 시 중단                             |
+| `deliveries`        | 발송 상태/ID 조회, 만료된 PROCESSING은 UNKNOWN으로 분류                                                                                                                                           |
+| `retry`             | `--delivery <UUID>`; PENDING 또는 명확한 SUBMISSION 실패만 현재 동의·번호·공개·링크를 재검사해 처리                                                                                               |
+| `reconcile`         | `--delivery <UUID>`; 공급자 ID 또는 번호·시간 범위 조회 후 deliveryId 대조. UNKNOWN이 해소되지 않으면 재발송 금지                                                                                 |
+| `record-contact`    | `--restaurant <UUID> --input <0600 JSON>`; `{id:고정 UUID,name,phone,requestConsentAt:실제 동의 시각 또는 null,consentNote}`. 기존 번호를 덮어쓰지 않고 확인한 새 담당자 저장, null 동의는 비활성 |
+| `change-recipient`  | `--target ID --contact NEW_CONTACT_ID`; 원래 접수·발송 이력을 보존하고 확인된 새 수신자와 링크로 전환. 반환한 deliveryId를 별도 `retry`로 발송                                                    |
+| `regenerate-link`   | `--target <UUID>`; 이전 generation과 파생 접근 권한 폐기. 문의·답변 이력 보존                                                                                                                     |
+| `record-reply`      | `--target <UUID> --input <0600 JSON>`; `{method:"PHONE" 또는 "SMS",confirmedAt:ISO시각,reply:응답 API 본문}`. 확인 주체·사유와 version/revision 보존                                              |
 
 문의 트랜잭션 커밋 뒤 같은 Nest에서 직접 발송한다. 종료 시 남은 PENDING은 자동 복구하지 않는다. 타임아웃·접수 결과 저장 실패·만료 lease는 UNKNOWN이며 자동 재시도하지 않는다. `reservations:pending`은 PENDING의 수동 점검용 내보내기다. 이미 접수한 문자를 다시 보내는 목록으로 사용하지 말고 위 delivery ID 명령을 사용한다. 실제 시드 CLI는 여전히 development/test의 로컬 DB 전용이며 운영 이관 명령이 아니다.
