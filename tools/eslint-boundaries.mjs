@@ -109,6 +109,7 @@ function area(file) {
   const rest = parts.slice(app === "api" && parts[2] === "src" ? 3 : 2);
   return {
     app,
+    isSource: app === "api" && parts[2] === "src",
     layer: rest[0]?.replace(/\.[cm]?[jt]sx?$/, ""),
     feature: rest[1],
   };
@@ -181,9 +182,29 @@ export default {
             }
           }
           if (source.app === "api") {
+            const sourceSeed =
+              source.layer === "database" && source.feature === "seeds";
+            const targetSeed =
+              target.layer === "database" && target.feature === "seeds";
+            const targetPath = path.relative(
+              path.join(root, "apps/api/src"),
+              targetFile,
+            );
+            // Offline seeds compose persisted data through entities and shared
+            // connection options. They cannot start runtime services or DI.
+            invalid ||=
+              sourceSeed &&
+              !targetSeed &&
+              !/^modules\/[^/]+\/entities\/[^/]+\.entity\.[cm]?[jt]s$/.test(
+                targetPath,
+              ) &&
+              !/^database\/database-options\.[cm]?[jt]s$/.test(targetPath);
+            // Runtime code must never import a seed (including its JSON data).
+            invalid ||= source.isSource && !sourceSeed && targetSeed;
             invalid ||=
               ["common", "config", "database"].includes(source.layer) &&
-              target.layer === "modules";
+              target.layer === "modules" &&
+              !sourceSeed;
             invalid ||=
               source.layer === "modules" &&
               ["bootstrap", "app.module"].includes(target.layer);

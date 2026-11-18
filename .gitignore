@@ -12,4 +12,5 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+/apps/api/src/database/seeds/data/*.private.json
 node_modules

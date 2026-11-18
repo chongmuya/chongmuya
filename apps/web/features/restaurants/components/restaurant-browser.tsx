@@ -160,7 +160,7 @@ export function RestaurantBrowser({
             </section>
           ) : (
             <div className="space-y-6">
-              {list.data.items.map((r) => {
+              {list.data.items.map((r, index) => {
                 const match = conditionsMatch(r, conditions);
                 const added = selected.includes(r.id);
                 return (
@@ -173,7 +173,12 @@ export function RestaurantBrowser({
                       aria-label={`${r.name} 상세 보기`}
                       onClick={() => onOpen(r.id)}
                     >
-                      <RestaurantPhoto src={r.photoPath} alt="" height={120} />
+                      <RestaurantPhoto
+                        src={r.photoPath}
+                        alt=""
+                        height={120}
+                        eager={index === 0}
+                      />
                       <span className="absolute top-3 right-3 rounded-pill bg-surface/95 px-2 py-1 text-xs text-secondary shadow-control">
                         {match === "인원·공간 일치" ? "✓ " : "· "}
                         {match}

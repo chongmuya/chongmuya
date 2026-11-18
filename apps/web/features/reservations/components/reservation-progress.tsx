@@ -151,6 +151,7 @@ export function InquiryDetails({
           {
             {
               HALL: "일반 홀",
+              ROOM: "별도 룸",
               FLOOR: "한 층 단독 대관",
               WHOLE: "전체 단독 대관",
               ANY: "상관없음",

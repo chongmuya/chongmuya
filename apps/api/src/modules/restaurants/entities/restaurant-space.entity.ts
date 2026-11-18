@@ -8,7 +8,10 @@ import {
 } from "typeorm";
 
 @Entity("restaurant_spaces")
-@Check("restaurant_spaces_kind_check", "kind IN ('HALL','FLOOR','WHOLE')")
+@Check(
+  "restaurant_spaces_kind_check",
+  "kind IN ('HALL','ROOM','FLOOR','WHOLE')",
+)
 @Check(
   "restaurant_spaces_availability_check",
   "availability IN ('AVAILABLE','UNAVAILABLE','UNKNOWN')",
@@ -31,7 +34,8 @@ export class RestaurantSpace {
   @Column({ type: "uuid", name: "restaurant_id" })
   restaurantId!: string;
   @Column({ type: "varchar", length: 80 }) label!: string;
-  @Column({ type: "varchar", length: 10 }) kind!: "HALL" | "FLOOR" | "WHOLE";
+  @Column({ type: "varchar", length: 10 }) kind!:
+    "HALL" | "ROOM" | "FLOOR" | "WHOLE";
   @Column({ type: "varchar", length: 16 }) availability!:
     "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN";
   @Column({ type: "varchar", length: 8, name: "together_seating" })

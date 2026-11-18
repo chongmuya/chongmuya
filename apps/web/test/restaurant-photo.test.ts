@@ -12,13 +12,25 @@ test("missing and failed restaurant photos use the same placeholder and a new so
     await act(async () =>
       root.render(createElement(RestaurantPhoto, { src: null, alt: "공간" })),
     );
-    assert.match(container.textContent!, /등록된 사진이 없어요/);
+    assert.match(
+      container.querySelector("img")!.getAttribute("src")!,
+      /restaurant-placeholder\.png/,
+    );
+    assert.equal(container.querySelector("img")!.alt, "");
     await act(async () =>
       root.render(
         createElement(RestaurantPhoto, { src: "/missing.png", alt: "공간" }),
       ),
     );
     assert(container.querySelector("img"));
+    await act(async () =>
+      container.querySelector("img")!.dispatchEvent(new window.Event("error")),
+    );
+    assert.match(
+      container.querySelector("img")!.getAttribute("src")!,
+      /restaurant-placeholder\.png/,
+    );
+    assert.equal(container.querySelector("img")!.alt, "");
     await act(async () =>
       container.querySelector("img")!.dispatchEvent(new window.Event("error")),
     );
@@ -31,7 +43,11 @@ test("missing and failed restaurant photos use the same placeholder and a new so
         }),
       ),
     );
-    assert(container.querySelector("img"));
+    assert.match(
+      container.querySelector("img")!.getAttribute("src")!,
+      /demo-1\.png/,
+    );
+    assert.equal(container.querySelector("img")!.alt, "공간");
   } finally {
     await act(async () => root.unmount());
     container.remove();

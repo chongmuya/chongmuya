@@ -56,7 +56,11 @@ export function RestaurantDetail({
         <LoadingState>매장 확인 중…</LoadingState>
       ) : (
         <>
-          <RestaurantPhoto src={r.photoPath} alt={`${r.name} 대표 사진`} />
+          <RestaurantPhoto
+            src={r.photoPath}
+            alt={`${r.name} 대표 사진`}
+            eager
+          />
           {!!r.spacePhotos.length && (
             <section aria-label="공간 사진" className="space-y-4 p-5">
               {r.spacePhotos.map((photo, index) => (
@@ -81,6 +85,10 @@ export function RestaurantDetail({
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-4 text-xs">
               <dt className="text-secondary">주소</dt>
               <dd>{r.address}</dd>
+              <dt className="text-secondary">전체 최대 인원</dt>
+              <dd>
+                {r.maxCapacity === null ? "확인 필요" : `${r.maxCapacity}명`}
+              </dd>
               <dt className="text-secondary">음식 종류</dt>
               <dd>{r.category ?? "확인 필요"}</dd>
               <dt className="text-secondary">영업·휴무</dt>
@@ -182,7 +190,9 @@ export function RestaurantDetail({
                         <p>
                           {s.kind === "HALL"
                             ? "일반 홀 · 단독 사용 아님"
-                            : "다른 손님 없이 단독 사용"}
+                            : s.kind === "ROOM"
+                              ? "별도 룸 · 다른 손님 없이 단독 사용"
+                              : "다른 손님 없이 단독 사용"}
                         </p>
                         <p>
                           수용 인원 {s.capacity ?? "미확인"} · 함께 착석{" "}

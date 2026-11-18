@@ -130,6 +130,7 @@ export function ConditionsForm({
         {select("space", "공간 이용 방식", [
           ["ANY", "상관없음"],
           ["HALL", "일반 홀"],
+          ["ROOM", "별도 룸"],
           ["FLOOR", "한 층 단독 대관"],
           ["WHOLE", "전체 단독 대관"],
         ])}

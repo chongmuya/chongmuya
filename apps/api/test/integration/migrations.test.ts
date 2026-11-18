@@ -314,6 +314,68 @@ test("migrations preserve existing account, group, event and session records and
       /preserving photo and contact history/,
     );
     await runner.query("ROLLBACK TO SAVEPOINT attendance_upgrade");
+    await runner.query("SAVEPOINT room_migration");
+    await photos.up(runner);
+    await attendance.up(runner);
+    const roomRestaurant = randomUUID(),
+      hall = randomUUID(),
+      room = randomUUID();
+    await runner.query(
+      "INSERT INTO restaurants(id,name,address,region) VALUES($1,'기존 매장','주소','지역')",
+      [roomRestaurant],
+    );
+    await runner.query(
+      "INSERT INTO restaurant_spaces(id,restaurant_id,label,kind,availability,together_seating,capacity) VALUES($1,$2,'기존 홀','HALL','AVAILABLE','YES',40)",
+      [hall, roomRestaurant],
+    );
+    const oldSpaces = await runner.query("SELECT * FROM restaurant_spaces");
+    const { RestaurantRooms1795309200000 } =
+      await import("../../src/database/migrations/1795309200000-RestaurantRooms.js");
+    const rooms = new RestaurantRooms1795309200000();
+    await rooms.up(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM restaurant_spaces"),
+      oldSpaces,
+      "adding ROOM must preserve existing space records",
+    );
+    await runner.query(
+      "INSERT INTO restaurant_spaces(id,restaurant_id,label,kind,availability,together_seating,capacity) VALUES($1,$2,'룸','ROOM','AVAILABLE','UNKNOWN',20)",
+      [room, roomRestaurant],
+    );
+    await assert.rejects(rooms.down(runner), /preserving room and inquiry/);
+    assert.equal(
+      (
+        await runner.query("SELECT kind FROM restaurant_spaces WHERE id=$1", [
+          room,
+        ])
+      )[0].kind,
+      "ROOM",
+    );
+    await runner.query("DELETE FROM restaurant_spaces WHERE id=$1", [room]);
+    const roomInquiry = randomUUID();
+    await runner.query(
+      "INSERT INTO reservation_requests(id,event_id,request_key,digest,snapshot,contact_name,contact_phone,created_at) SELECT $1,id,$2,$3,$4::jsonb,'담당자','01000000000',now() FROM events LIMIT 1",
+      [
+        roomInquiry,
+        randomUUID(),
+        "a".repeat(64),
+        JSON.stringify({ space: "ROOM" }),
+      ],
+    );
+    await assert.rejects(
+      rooms.down(runner),
+      /preserving room and inquiry/,
+      "a retained ROOM inquiry also prevents incompatible rollback",
+    );
+    await runner.query("DELETE FROM reservation_requests WHERE id=$1", [
+      roomInquiry,
+    ]);
+    await rooms.down(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM restaurant_spaces"),
+      oldSpaces,
+    );
+    await runner.query("ROLLBACK TO SAVEPOINT room_migration");
     await inquiries.down(runner);
     await runner.query("SAVEPOINT inquiry_rollback");
     await inquiries.up(runner);

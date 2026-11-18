@@ -4,10 +4,11 @@ import { test } from "node:test";
 import { startResourceApplication } from "../support/resource-application.js";
 import {
   demoRestaurantIds,
-  seedDevelopmentRestaurants,
-} from "../../src/modules/restaurants/development-seed.js";
+  seedDemoRestaurants,
+} from "../../src/database/seeds/restaurants-demo.seed.js";
 import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
+import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
 import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
 import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
 import { ReservationsService } from "../../src/modules/reservations/reservations.service.js";
@@ -35,8 +36,22 @@ const body = () => ({
 
 test("public catalog excludes private contacts; one inquiry per owned event, concurrent retries, immutable snapshot and rollback", async (t) => {
   const { app, db, call, signup, logs } = await startResourceApplication(t);
-  await seedDevelopmentRestaurants(db);
-  await seedDevelopmentRestaurants(db);
+  await seedDemoRestaurants(db);
+  await seedDemoRestaurants(db);
+  const roomId = randomUUID();
+  await db.getRepository(RestaurantSpace).save({
+    id: roomId,
+    restaurantId: demoRestaurantIds[0]!,
+    label: "별도 룸",
+    kind: "ROOM",
+    availability: "AVAILABLE",
+    togetherSeating: "UNKNOWN",
+    capacity: 20,
+    minGuests: null,
+    minSpend: null,
+    separateFee: null,
+    conditions: "룸 이용 조건은 문의로 확인합니다.",
+  });
   assert.equal(await db.getRepository(Restaurant).countBy({ isDemo: true }), 4);
   const a = await signup(),
     b = await signup();
@@ -57,6 +72,24 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
   assert.doesNotMatch(
     JSON.stringify(catalog),
     /"00000000000"|consentNote|requestConsentAt|contactPhone|contactName/,
+  );
+  const roomDetail = await (
+    await call(`restaurants/${demoRestaurantIds[0]}`)
+  ).json();
+  assert.deepEqual(
+    roomDetail.spaces.find((s: { id: string }) => s.id === roomId),
+    {
+      id: roomId,
+      label: "별도 룸",
+      kind: "ROOM",
+      availability: "AVAILABLE",
+      togetherSeating: "UNKNOWN",
+      capacity: 20,
+      minGuests: null,
+      minSpend: null,
+      separateFee: null,
+      conditions: "룸 이용 조건은 문의로 확인합니다.",
+    },
   );
   const detail = await (
     await call(`restaurants/${demoRestaurantIds[1]}`)
@@ -118,7 +151,7 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     assert.equal(photoDetail.latitude, null);
     const empty = await (await call(`restaurants/${fixtureIds[1]}`)).json();
     assert.deepEqual(empty.spacePhotos, []);
-    await seedDevelopmentRestaurants(db);
+    await seedDemoRestaurants(db);
     assert.equal(
       (
         await db
@@ -167,6 +200,7 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
       conditions: { ...body().conditions, seatingImportance: null },
     },
     { ...body(), conditions: { ...body().conditions, expectedGuests: 0 } },
+    { ...body(), conditions: { ...body().conditions, space: "ROOFTOP" } },
   ])
     assert.equal((await call(path, a, "POST", invalid)).status, 400);
   for (const id of [hidden, demoRestaurantIds[2], randomUUID()])
@@ -179,6 +213,8 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     0,
   );
   const input = body();
+  input.conditions.space = "ROOM";
+  input.conditions.expectedGuests = 18;
   const responses = await Promise.all([
     call(path, a, "POST", input),
     call(path, a, "POST", input),
@@ -191,6 +227,7 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
   assert.equal(one.id, two.id);
   assert.equal(one.targets.length, 2);
   assert.equal(one.responseCount, 0);
+  assert.equal(one.snapshot.space, "ROOM");
   assert(
     one.targets.every(
       (target: { deliveryStatus: string }) =>
@@ -358,6 +395,11 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
   }
   await db.getRepository(RestaurantContact).delete(contact.id);
   try {
+    await seedDemoRestaurants(db);
+    assert.equal(
+      await db.getRepository(RestaurantContact).existsBy({ id: contact.id }),
+      false,
+    );
     const pending = await app.get(ReservationsService).pendingForOperations();
     assert(
       pending.held
