@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
+import { NoticeDialog } from "@/shared/ui/notice-dialog";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useAuth, notifySessionChange } from "./auth-provider";
@@ -20,6 +21,7 @@ export function KakaoCompleteScreen() {
     router = useRouter();
   const action = usePrivateAuthAction();
   const [signupContext, setSignupContext] = useState<KakaoStatus>();
+  const [dismissedError, setDismissedError] = useState<unknown>();
   const failure = params.get("failure");
   const result = useQuery({
     queryKey: ["user", account?.id ?? "anonymous", "kakao-result"],
@@ -40,6 +42,14 @@ export function KakaoCompleteScreen() {
       </main>
     );
   const kind = result.data?.kind;
+  const error = failure || result.error || action.error;
+  const errorMessage = failure
+    ? failure === "unavailable"
+      ? "인증 서버에 연결하지 못했어요. 잠시 후 카카오 인증을 다시 시작해 주세요."
+      : "카카오 인증이 취소되었거나 만료되었어요. 다시 시작해 주세요."
+    : error
+      ? safeErrorMessage(error)
+      : undefined;
   return (
     <StepLayout
       title="카카오 인증"
@@ -55,19 +65,18 @@ export function KakaoCompleteScreen() {
               : "카카오 인증"
         }
       />
-      <FormError
-        message={
-          failure
-            ? failure === "unavailable"
-              ? "인증 서버에 연결하지 못했어요. 잠시 후 카카오 인증을 다시 시작해 주세요."
-              : "유효하지 않거나 만료된 카카오 인증입니다. 다시 시작해 주세요."
-            : result.error
-              ? safeErrorMessage(result.error)
-              : action.error
-                ? safeErrorMessage(action.error)
-                : undefined
-        }
-      />
+      <FormError message={errorMessage} />
+      {error && dismissedError !== error && (
+        <NoticeDialog
+          title="카카오 인증을 완료하지 못했어요"
+          description={errorMessage!}
+          onClose={() => setDismissedError(error)}
+        >
+          <Button className="w-full" onClick={() => setDismissedError(error)}>
+            확인
+          </Button>
+        </NoticeDialog>
+      )}
       {kind === "existing" ? (
         <>
           <p>
@@ -126,7 +135,7 @@ export function KakaoCompleteScreen() {
       ) : (
         <>
           {status === "anonymous" ? (
-            <KakaoButton returnTo="/events" />
+            <KakaoButton returnTo={result.data?.next ?? "/"} />
           ) : (
             <Link href="/mypage">마이페이지에서 다시 연결</Link>
           )}

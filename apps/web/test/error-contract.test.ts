@@ -138,6 +138,11 @@ test("login resumes only known internal routes and valid resource parameters", (
     `/mypage?group=${requestId}`,
   );
   assert.equal(safeReturnPath("/"), "/");
+  assert.equal(
+    safeReturnPath(`/?group=${requestId}&next=https://evil.example`),
+    `/?group=${requestId}`,
+  );
+  assert.equal(safeReturnPath("/groups/new?accountId=other"), "/groups/new");
   for (const value of [
     "https://evil.example",
     "//evil.example",

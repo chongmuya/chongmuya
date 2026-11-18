@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { SessionRequest } from "@/features/auth/types";
 import type { Group } from "../types/group.types";
 import { GroupForm } from "./group-form";
+import { GroupRoster } from "./group-roster";
+import { buttonStyles } from "@/shared/ui/button";
 
 export function GroupSettings({
   accountId,
@@ -17,10 +18,10 @@ export function GroupSettings({
   selected: Group;
   groups: Group[];
 }) {
-  const router = useRouter();
   return (
     <>
       <h2>관리할 모임 전환</h2>
+      {selected.groupType && <p>모임 유형: {selected.groupType}</p>}
       <Link href={`/events?group=${encodeURIComponent(selected.id)}`}>
         이 모임의 내 행사 보기
       </Link>
@@ -44,14 +45,15 @@ export function GroupSettings({
         group={selected}
         title="모임 이름 수정"
       />
-      <GroupForm
+      <GroupRoster
+        key={selected.id}
         accountId={accountId}
+        groupId={selected.id}
         request={request}
-        title="모임 추가"
-        onCreated={(group) =>
-          router.replace(`/mypage?group=${encodeURIComponent(group.id)}`)
-        }
       />
+      <Link href="/groups/new" className={buttonStyles({ className: "mt-6" })}>
+        모임 추가
+      </Link>
     </>
   );
 }

@@ -31,12 +31,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = http.getResponse<Response>();
     const unavailable =
       !(exception instanceof HttpException) && isDatabaseUnavailable(exception);
+    const payloadTooLarge =
+      exception instanceof Error &&
+      exception.name === "PayloadTooLargeError" &&
+      "type" in exception &&
+      exception.type === "entity.too.large" &&
+      "status" in exception &&
+      exception.status === 413;
     const candidate =
       exception instanceof HttpException
         ? exception.getStatus()
-        : unavailable
-          ? 503
-          : 500;
+        : payloadTooLarge
+          ? 413
+          : unavailable
+            ? 503
+            : 500;
     const statusCode = candidate >= 400 && candidate <= 599 ? candidate : 500;
     const error = errors[statusCode] ?? {
       code: statusCode >= 500 ? "INTERNAL_SERVER_ERROR" : "HTTP_ERROR",
@@ -63,7 +72,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     request.failure = {
       category: unavailable
         ? "database_unavailable"
-        : exception instanceof HttpException
+        : exception instanceof HttpException || payloadTooLarge
           ? "http"
           : "unexpected",
       type:

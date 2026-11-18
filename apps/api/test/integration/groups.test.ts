@@ -33,11 +33,18 @@ test("group onboarding, validation and ownership for two accounts", async (t) =>
   const rename = await call(`groups/${g1.id}`, a, "PATCH", {
     name: "수정 모임",
   });
-  assert.deepEqual(await rename.json(), { id: g1.id, name: "수정 모임" });
+  assert.deepEqual(await rename.json(), {
+    id: g1.id,
+    name: "수정 모임",
+    groupType: null,
+    memberCount: 0,
+  });
   assert.equal((await call(`groups/not-a-uuid`, a)).status, 400);
   assert.deepEqual(await (await call(`groups/${g1.id}`, a)).json(), {
     id: g1.id,
     name: "수정 모임",
+    groupType: null,
+    memberCount: 0,
   });
   assert.equal((await call(`groups/${randomUUID()}`, a)).status, 404);
   assert.equal((await call("auth/logout", a, "POST")).status, 204);

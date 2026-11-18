@@ -6,6 +6,9 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
+import Link from "next/link";
+import { NoticeDialog } from "@/shared/ui/notice-dialog";
+import { buttonStyles } from "@/shared/ui/button";
 import type { SignupValues } from "../../schemas/signup.schema";
 import type { useContactVerification } from "../../hooks/use-contact-verification";
 const codeSchema = z.object({
@@ -14,9 +17,11 @@ const codeSchema = z.object({
 export function EmailVerification({
   email,
   trusted = false,
+  loginHref = "/auth",
 }: {
   email: ReturnType<typeof useContactVerification>;
   trusted?: boolean;
+  loginHref?: string;
 }) {
   const {
     register,
@@ -51,7 +56,7 @@ export function EmailVerification({
               required
             />
             <Button
-              className="min-h-input shrink-0 rounded-control px-3 text-caption"
+              className="min-h-input max-w-[92px] shrink-0 rounded-control px-3 text-caption leading-normal break-keep"
               disabled={
                 trusted || busy || waiting > 0 || state.status === "verified"
               }
@@ -88,6 +93,20 @@ export function EmailVerification({
                     : "가입할 이메일을 인증해 주세요."}
       </p>
       <FormError message={error} />
+      {email.errorCode === "EMAIL_ALREADY_REGISTERED" && (
+        <NoticeDialog
+          title="이미 가입된 이메일이에요."
+          description="다른 이메일을 사용하거나 가입할 때 사용한 방법으로 로그인해 주세요."
+          onClose={email.dismissError}
+        >
+          <Button variant="brand-outline" onClick={email.dismissError}>
+            닫기
+          </Button>
+          <Link href={loginHref} className={buttonStyles()}>
+            로그인 하기
+          </Link>
+        </NoticeDialog>
+      )}
       {!trusted &&
         state.id &&
         !state.deliveryFailed &&

@@ -18,7 +18,7 @@ import { GettingStartedFlow } from "./getting-started-flow";
 export function GettingStartedScreen() {
   const { status, account } = useAuth();
   const params = useSearchParams();
-  const requested = safeReturnPath(params.get("next"));
+  const requested = safeReturnPath(params.get("next") ?? "/");
   const returnTo = requested.startsWith("/getting-started")
     ? "/events"
     : requested;

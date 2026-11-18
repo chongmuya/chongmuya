@@ -26,10 +26,7 @@ export function FirstSetupForm({
   }, [step]);
   return (
     <div ref={container}>
-      <StepLayout
-        title={step === "nickname" ? "총무 등록" : ""}
-        onBack={onExit}
-      >
+      <StepLayout title="" onBack={onExit}>
         {step === "role" ? <RoleForm /> : <NicknameForm />}
       </StepLayout>
     </div>
@@ -115,10 +112,12 @@ function NicknameForm() {
         <StepHeading
           title="어떻게 불러드릴까요?"
           description="총무야에서 사용할 닉네임을 설정해 주세요."
+          className="mb-6"
         />
         <FormField
           id="setup-nickname"
           label="닉네임"
+          labelClassName="sr-only"
           required
           error={form.formState.errors.nickname?.message}
         >

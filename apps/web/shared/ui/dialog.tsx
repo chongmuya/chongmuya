@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { cn } from "../lib/cn";
+import Image from "next/image";
+import { IconButton } from "./icon-button";
 
 // showModal supplies the top layer, background inertness and native Tab containment.
 export function Dialog({
@@ -10,6 +12,7 @@ export function Dialog({
   describedBy,
   initialFocusRef,
   busy = false,
+  showCloseButton = false,
   onClose,
   className,
 }: {
@@ -18,6 +21,7 @@ export function Dialog({
   describedBy?: string;
   initialFocusRef?: RefObject<HTMLElement | null>;
   busy?: boolean;
+  showCloseButton?: boolean;
   onClose: () => void;
   className?: string;
 }) {
@@ -51,6 +55,23 @@ export function Dialog({
         if (!busy) onClose();
       }}
     >
+      {showCloseButton && (
+        <div className="relative h-3.5">
+          <IconButton
+            aria-label="닫기"
+            className="absolute -top-3 -left-3"
+            disabled={busy}
+            onClick={onClose}
+          >
+            <Image
+              src="/images/ui/close.svg"
+              alt=""
+              width={14.7749}
+              height={14.9156}
+            />
+          </IconButton>
+        </div>
+      )}
       {children}
     </dialog>
   );

@@ -1,13 +1,25 @@
 import type { SessionRequest } from "@/features/auth/types";
-import type { Group } from "../types/group.types";
+import type {
+  Group,
+  GroupMember,
+  CreateGroupInput,
+} from "../types/group.types";
 import type { GroupInput } from "../schemas/group.schema";
 
 export const getGroups = (request: SessionRequest, signal?: AbortSignal) =>
   request<Group[]>("/api/v1/groups", { signal });
-export const createGroup = (request: SessionRequest, input: GroupInput) =>
+export const createGroup = (request: SessionRequest, input: CreateGroupInput) =>
   request<Group>("/api/v1/groups", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+export const getGroupMembers = (
+  request: SessionRequest,
+  id: string,
+  signal?: AbortSignal,
+) =>
+  request<GroupMember[]>(`/api/v1/groups/${encodeURIComponent(id)}/members`, {
+    signal,
   });
 export const renameGroup = (
   request: SessionRequest,

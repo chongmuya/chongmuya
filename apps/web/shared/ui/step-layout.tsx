@@ -1,16 +1,19 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { IconButton } from "@/shared/ui/icon-button";
+import { cn } from "../lib/cn";
 
 export function StepLayout({
   title,
   onBack,
   busy,
+  progress,
   children,
 }: {
   title: string;
   onBack: () => void;
   busy?: boolean;
+  progress?: { value: number; max: number };
   children: ReactNode;
 }) {
   return (
@@ -30,7 +33,16 @@ export function StepLayout({
             style={{ width: "10.4142px", height: "auto" }}
           />
         </IconButton>
-        <p className="px-12 text-center text-label">{title}</p>
+        {progress ? (
+          <progress
+            aria-label={title || "등록 진행"}
+            className="ml-[35px] h-1.5 w-[calc(100%-52px)] overflow-hidden rounded-pill border-0 bg-placeholder/20 [&::-webkit-progress-bar]:bg-placeholder/20 [&::-webkit-progress-value]:rounded-pill [&::-webkit-progress-value]:bg-brand [&::-moz-progress-bar]:bg-brand"
+            value={progress.value}
+            max={progress.max}
+          />
+        ) : (
+          <p className="px-12 text-center text-label">{title}</p>
+        )}
       </header>
       {children}
     </main>
@@ -40,12 +52,14 @@ export function StepLayout({
 export function StepHeading({
   title,
   description,
+  className,
 }: {
   title: string;
   description?: string;
+  className?: string;
 }) {
   return (
-    <div className="mb-12">
+    <div className={cn("mb-12", className)}>
       <h1
         tabIndex={-1}
         className="focus:outline-none text-2xl leading-[1.2] font-bold wrap-break-word"

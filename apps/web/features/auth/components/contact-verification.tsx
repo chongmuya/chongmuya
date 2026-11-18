@@ -14,7 +14,6 @@ export function ContactVerification({
   onCheck,
   disabled,
 }: {
-  label: "휴대폰";
   state: VerificationState;
   now: number;
   error?: string;

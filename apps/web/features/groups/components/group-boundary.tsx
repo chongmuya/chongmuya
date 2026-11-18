@@ -1,12 +1,11 @@
 "use client";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { SessionRequest } from "@/features/auth/types";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { useGroups } from "../hooks/use-groups";
 import type { Group } from "../types/group.types";
-import { GroupForm } from "./group-form";
+import { buttonStyles } from "@/shared/ui/button";
 
 // Only the group management page needs a selected group. Events are independent.
 export function GroupBoundary({
@@ -20,7 +19,6 @@ export function GroupBoundary({
   groupId: string | null;
   children: (group: Group, groups: Group[]) => ReactNode;
 }) {
-  const router = useRouter();
   const groups = useGroups(accountId, request);
   const selected =
     groups.data?.find((group) => group.id === groupId) ??
@@ -42,14 +40,9 @@ export function GroupBoundary({
           모임은 필요할 때 만들 수 있습니다.{" "}
           <Link href="/events">개인 행사 이용하기</Link>
         </p>
-        <GroupForm
-          accountId={accountId}
-          request={request}
-          title="모임 만들기"
-          onCreated={(group) =>
-            router.replace(`/mypage?group=${encodeURIComponent(group.id)}`)
-          }
-        />
+        <Link href="/groups/new" className={buttonStyles()}>
+          모임 만들기
+        </Link>
       </section>
     );
   return selected ? children(selected, groups.data) : null;

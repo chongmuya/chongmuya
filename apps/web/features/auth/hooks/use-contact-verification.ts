@@ -19,12 +19,14 @@ export function useContactVerification(
     status: "idle",
   });
   const [error, setError] = useState<string>();
+  const [errorCode, setErrorCode] = useState<string>();
   const [now, setNow] = useState(() => Date.now());
   const [identity, setIdentity] = useState(value);
   if (identity !== value) {
     setIdentity(value);
     setStored({ value, status: "idle" });
     setError(undefined);
+    setErrorCode(undefined);
   }
   const clock = useRef({ server: 0, received: 0 });
   const generation = useRef(0);
@@ -56,6 +58,7 @@ export function useContactVerification(
   const reset = () => {
     invalidate();
     setError(undefined);
+    setErrorCode(undefined);
     setStored({ value: "", status: "idle" });
   };
   useEffect(() => {
@@ -117,6 +120,7 @@ export function useContactVerification(
     running.current = controller;
     const ticket = ++generation.current;
     setError(undefined);
+    setErrorCode(undefined);
     setStored({ ...state, value: target, status: "requesting" });
     operation.current = async () => {
       try {
@@ -144,6 +148,7 @@ export function useContactVerification(
         )
           return;
         setError(safeErrorMessage(cause));
+        setErrorCode(cause instanceof ApiError ? cause.code : undefined);
         setStored({
           ...state,
           value: target,
@@ -173,6 +178,11 @@ export function useContactVerification(
     state,
     now,
     error,
+    errorCode,
+    dismissError: () => {
+      setError(undefined);
+      setErrorCode(undefined);
+    },
     isVerified,
     reset,
     request: () => run("request"),

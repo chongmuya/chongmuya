@@ -88,6 +88,19 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   });
   assert.equal(csrf.status, 403);
   assertCors(csrf);
+  const oversized = await fetch(`${url}/api/v1/groups`, {
+    method: "POST",
+    headers: {
+      Origin: "http://localhost:3000",
+      "Content-Type": "application/json",
+      "X-CSRF-Protection": "1",
+    },
+    body: JSON.stringify({ name: "private-large-body".repeat(16000) }),
+  });
+  assert.equal(oversized.status, 413);
+  assert.equal((await oversized.json()).code, "PAYLOAD_TOO_LARGE");
+  assertCors(oversized);
+  assert.doesNotMatch(JSON.stringify(logs), /private-large-body/);
 
   for (const [endpoint, status, code] of [
     ["/ready", 503, "SERVICE_UNAVAILABLE"],

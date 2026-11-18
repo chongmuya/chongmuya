@@ -24,6 +24,7 @@ export function FormField({
   children: (attributes: {
     id: string;
     "aria-invalid": boolean;
+    "aria-required": boolean | undefined;
     "aria-describedby": string | undefined;
   }) => ReactNode;
 }) {
@@ -43,6 +44,7 @@ export function FormField({
       {children({
         id,
         "aria-invalid": !!error,
+        "aria-required": required || undefined,
         "aria-describedby": describedBy || undefined,
       })}
       {hint && (
