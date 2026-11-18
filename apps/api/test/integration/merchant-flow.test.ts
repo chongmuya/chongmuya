@@ -8,7 +8,7 @@ import { RestaurantContact } from "../../src/modules/restaurants/entities/restau
 import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
 import { RestaurantMenu } from "../../src/modules/restaurants/entities/restaurant-menu.entity.js";
 import { RestaurantManagementService } from "../../src/modules/restaurants/restaurant-management.service.js";
-import { MessageProvider } from "../../src/modules/reservations/providers/message.provider.js";
+import { MessageGateway } from "../../src/modules/reservations/providers/message.gateway.js";
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
 import { MerchantLinksService } from "../../src/modules/reservations/merchant-links.service.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
@@ -308,6 +308,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     published: true,
     dryRun: false,
   });
+  assert.equal(r.isDemo, true, "fake geocoding keeps source provenance");
   const unownedId = randomUUID();
   await db.getRepository(Restaurant).save({
     ...r,
@@ -327,7 +328,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     requestConsentAt: new Date(),
     consentNote: "가짜 fixture",
   });
-  const provider = app.get(MessageProvider),
+  const provider = app.get(MessageGateway),
     sent: string[] = [];
   t.mock.method(provider, "send", async (id: string, to: string) => {
     sent.push(id);
@@ -602,6 +603,23 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     leaseUntil: new Date(Date.now() - 1),
   });
   await app.get(MessageDeliveryService).dispatch(uncertain.id);
+  await app.get(MessageDeliveryService).listForOperations();
+  await app
+    .get(MessageDeliveryService)
+    .expireLease(uncertain.id, "ops", "dry-run", true);
+  assert.equal(
+    (await db.manager.findOneByOrFail(MessageDelivery, { id: uncertain.id }))
+      .status,
+    "PROCESSING",
+  );
+  await app
+    .get(MessageDeliveryService)
+    .expireLease(
+      uncertain.id,
+      "ops",
+      "expired processing reconciliation",
+      false,
+    );
   assert.equal(
     (
       await db
@@ -786,12 +804,24 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     await db.getRepository(RestaurantContact).countBy({ id: newContact }),
     1,
   );
+  // Reproduce a server stop before dispatch: the old recipient still has a queued message.
+  await db
+    .getRepository(MessageDelivery)
+    .update(rotation2.deliveryId!, { status: "PENDING" });
   const handover = await deliveries.changeRecipient(
     target.id,
     newContact,
     "ops",
     "담당자 확인",
     false,
+  );
+  assert.equal(
+    (
+      await db
+        .getRepository(MessageDelivery)
+        .findOneByOrFail({ id: rotation2.deliveryId! })
+    ).status,
+    "CANCELLED",
   );
   const repeatedHandover = await deliveries.changeRecipient(
     target.id,
@@ -844,6 +874,8 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     ).status,
     "DELIVERED",
   );
+  await deliveries.regenerateLink(target.id, "ops", "handover completed", true);
+
   const original = await db.query(
     "SELECT contact_id, contact_phone FROM reservation_request_targets WHERE id = $1",
     [target.id],

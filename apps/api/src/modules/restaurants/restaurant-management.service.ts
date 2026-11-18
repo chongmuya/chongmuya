@@ -20,7 +20,7 @@ import { RestaurantContact } from "./entities/restaurant-contact.entity.js";
 import { RestaurantMenu } from "./entities/restaurant-menu.entity.js";
 import { RestaurantOperation } from "./entities/restaurant-operation.entity.js";
 import { RestaurantsService } from "./restaurants.service.js";
-import { GeocodingProvider } from "./providers/geocoding.provider.js";
+import { Geocoder } from "./providers/geocoder.js";
 import {
   normalizeRestaurantText as norm,
   policyValues,
@@ -40,7 +40,7 @@ export class RestaurantManagementService {
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
     private readonly restaurants: RestaurantsService,
-    private readonly geocoding: GeocodingProvider,
+    private readonly geocoding: Geocoder,
     private readonly phones: PhoneVerificationService,
     private readonly auth: AuthService,
   ) {}
@@ -407,6 +407,8 @@ export class RestaurantManagementService {
         : null;
       if (previous && previous.version !== d.restaurantVersion)
         throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
+      if (previous && !previous.isDemo && address.source === "fake")
+        throw new DomainHttpException("ADDRESS_SELECTION_REQUIRED");
       const restaurantId = previous?.id ?? randomUUID();
       const oldSpaces = previous
         ? await m.findBy(RestaurantSpace, { restaurantId })
@@ -447,7 +449,7 @@ export class RestaurantManagementService {
       if (!previous)
         Object.assign(row, {
           published: false,
-          isDemo: false,
+          isDemo: address.source === "fake",
           verifiedAt: null,
           photoPath: null,
           spacePhotos: [],
@@ -605,6 +607,8 @@ export class RestaurantManagementService {
       if (!r) throw new NotFoundException();
       if (r.version !== input.version)
         throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
+      if (!r.isDemo && matches[0].source === "fake")
+        throw new DomainHttpException("ADDRESS_SELECTION_REQUIRED");
       const draft = Object.assign(new RestaurantDraft(), {
         restaurantId: r.id,
         selectedAddress: matches[0],

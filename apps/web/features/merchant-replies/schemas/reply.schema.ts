@@ -1,15 +1,5 @@
 import { z } from "zod";
-export const deliveryStates = [
-  "PENDING",
-  "PROCESSING",
-  "ACCEPTED",
-  "DELIVERED",
-  "FAILED",
-  "UNKNOWN",
-  "HELD",
-  "CANCELLED",
-] as const;
-export type DeliveryState = (typeof deliveryStates)[number];
+
 export const proposalSchema = z
   .object({
     startsAt: z.iso.datetime({ offset: true }),

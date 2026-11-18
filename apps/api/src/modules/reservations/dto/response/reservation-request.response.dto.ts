@@ -26,8 +26,6 @@ export type ReservationRequestDto = {
       errorCode: string | null;
       updatedAt: string;
     } | null;
-    response: ReturnType<
-      typeof import("../../merchant-replies.service.js").replyView
-    >;
+    response: ReturnType<typeof import("../../lib/reply-view.js").replyView>;
   }[];
 };

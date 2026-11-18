@@ -10,7 +10,7 @@ import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { StepLayout } from "@/shared/ui/step-layout";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { contextQuery } from "../api/owner.api";
-import { useOwnerAction } from "../hooks/use-owner-action";
+import { useBeginDraft } from "../hooks/use-owner-commands";
 import type { RestaurantDraft } from "../types/owner.types";
 import { OwnerRegistration } from "./owner-registration";
 import { OwnerMenus } from "./owner-menus";
@@ -195,12 +195,12 @@ function RegistrationLoader({
   restaurantId?: string;
   onNavigate: (path: string) => void;
 }) {
-  const begin = useOwnerAction<RestaurantDraft>(account.id, request),
+  const begin = useBeginDraft(account.id, request),
     active = useActiveScreen();
   const [draft, setDraft] = useState<RestaurantDraft | null>(null);
   const mutate = begin.mutateAsync;
   useEffect(() => {
-    void mutate({ path: "drafts", body: { restaurantId } })
+    void mutate(restaurantId)
       .then((r) => {
         if (active.current) setDraft(r);
       })
@@ -220,7 +220,7 @@ function RegistrationLoader({
       {begin.isError ? (
         <ErrorState
           retry={() =>
-            void mutate({ path: "drafts", body: { restaurantId } })
+            void mutate(restaurantId)
               .then((r) => {
                 if (active.current) setDraft(r);
               })

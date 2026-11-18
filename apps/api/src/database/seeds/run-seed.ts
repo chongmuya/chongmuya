@@ -2,27 +2,13 @@ import "reflect-metadata";
 import { readFile } from "node:fs/promises";
 import { config } from "dotenv";
 import { DataSource } from "typeorm";
-import { z } from "zod";
+import { localDatabaseEnvironmentSchema } from "../../config/database-environment.js";
 import { databaseOptions } from "../database-options.js";
 import fixture from "./data/restaurants.json" with { type: "json" };
 import { seedRestaurants } from "./restaurants.seed.js";
 import { seedDemoRestaurants } from "./restaurants-demo.seed.js";
 
 // Offline entry point. Never bootstrap the HTTP app, auth or message providers.
-const environmentSchema = z.object({
-  NODE_ENV: z.enum(["development", "test"]).default("development"),
-  DATABASE_URL: z.url().refine((value) => {
-    const url = new URL(value);
-    return (
-      ["postgres:", "postgresql:"].includes(url.protocol) &&
-      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
-      url.pathname.length > 1 &&
-      // Connection query parameters can override the hostname checked above.
-      !url.search &&
-      !url.hash
-    );
-  }),
-});
 
 let failureMessage = "시드 실행 옵션을 확인하세요.";
 
@@ -43,7 +29,7 @@ async function runSeed(): Promise<void> {
 
   failureMessage =
     "로컬 PostgreSQL DATABASE_URL(쿼리 옵션 제외)과 NODE_ENV를 확인하세요. 운영 환경은 지원하지 않습니다.";
-  const env = environmentSchema.parse(process.env);
+  const env = localDatabaseEnvironmentSchema.parse(process.env);
   failureMessage =
     "연락처 파일을 읽지 못했습니다. 파일 경로와 JSON 형식을 확인하세요.";
   const contacts: unknown = args[1]

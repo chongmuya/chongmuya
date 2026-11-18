@@ -3,7 +3,7 @@ import { config } from "dotenv";
 import { writeFile } from "node:fs/promises";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../dist/app.module.js";
-import { ReservationsService } from "../dist/modules/reservations/reservations.service.js";
+import { MessageDeliveryService } from "../dist/modules/reservations/message-delivery.service.js";
 
 config({ quiet: true });
 let app;
@@ -14,7 +14,7 @@ try {
     logger: false,
     abortOnError: false,
   });
-  const targets = await app.get(ReservationsService).pendingForOperations();
+  const targets = await app.get(MessageDeliveryService).pendingForOperations();
   // Personal data belongs in an explicit operator-owned file, never application logs.
   await writeFile(
     output,

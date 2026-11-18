@@ -16,27 +16,20 @@ import { Dialog } from "@/shared/ui/dialog";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
-import { useOwnerAction } from "../hooks/use-owner-action";
+import { useSubmitDraft } from "../hooks/use-owner-commands";
+import { useDraftIdentity } from "../hooks/use-draft-identity";
+import { checkDuplicate } from "../api/owner.api";
 import { useDraftSave } from "../hooks/use-draft-save";
 import {
   registrationSchema,
   validRegistration,
   type RegistrationData,
-  type VerifiedAddress,
 } from "../schemas/registration.schema";
 import type { RestaurantDraft, DuplicateResult } from "../types/owner.types";
 import { OwnerChoice, OwnerField, OwnerCheck } from "./owner-fields";
 import { OwnerPolicyFields } from "./owner-policy-fields";
 import { OwnerSummary } from "./owner-summary";
 
-type PhoneChallenge = {
-  id: string;
-  phone: string;
-  message: string;
-  receiver: string;
-  status: string;
-  nextCheckAt: string;
-};
 const titles = [
   "사장님, 매장을 등록해 주세요!",
   "손님을 얼마나 받을 수 있나요?",
@@ -69,18 +62,25 @@ export function OwnerRegistration({
     [complete, setComplete] = useState(
       draft.submitted ? draft.restaurantId : null,
     );
-  const [addresses, setAddresses] = useState<VerifiedAddress[]>([]),
-    [addressId, setAddressId] = useState<string>();
-  const [searchNotice, setSearchNotice] = useState(""),
-    [error, setError] = useState<unknown>(null);
+  const identity = useDraftIdentity(request, draft);
+  const {
+    addresses,
+    setAddresses,
+    addressId,
+    setAddressId,
+    searchNotice,
+    setSearchNotice,
+    challenge,
+    verifiedPhone,
+  } = identity;
+  const [error, setError] = useState<unknown>(null);
   const [duplicate, setDuplicate] = useState<DuplicateResult | null>(null),
     [copied, setCopied] = useState(false);
-  const [challenge, setChallenge] = useState<PhoneChallenge | null>(null),
-    [verifiedPhone, setVerifiedPhone] = useState(draft.verifiedPhone);
   const save = useDraftSave(account.id, request, draft),
-    action = useOwnerAction<unknown>(account.id, request),
+    submit = useSubmitDraft(account.id, request, draft.id),
     active = useActiveScreen();
-  const busy = action.isPending;
+  const [advancing, setAdvancing] = useState(false);
+  const busy = advancing || identity.busy || submit.isPending;
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const serialized = JSON.stringify(data);
   const saveDraft = save.save;
@@ -94,33 +94,8 @@ export function OwnerRegistration({
     debounce.current = timer;
     return () => clearTimeout(timer);
   }, [serialized, step, addressId, complete, saveDraft, save.conflict]);
-  const execute = async <T,>(path: string, body?: unknown) => {
-    setError(null);
-    try {
-      return (await action.mutateAsync({
-        path: `drafts/${draft.id}/${path}`,
-        body,
-      })) as T;
-    } catch (e) {
-      if (active.current) setError(e);
-      throw e;
-    }
-  };
   const searchAddress = () =>
-    void execute<{ results: VerifiedAddress[] }>("addresses", {
-      query: form.getValues("addressQuery"),
-    })
-      .then((r) => {
-        if (active.current) {
-          setAddresses(r.results);
-          setSearchNotice(
-            r.results.length
-              ? "검색한 주소를 선택해 주세요."
-              : "검색 결과가 없어요. 주소를 수정해 다시 검색해 주세요.",
-          );
-        }
-      })
-      .catch(() => undefined);
+    void identity.search(form.getValues("addressQuery")).catch(() => undefined);
   const persist = async (nextStep: number, resume = false) => {
     clearTimeout(debounce.current);
     const saved = await saveDraft(
@@ -139,6 +114,9 @@ export function OwnerRegistration({
     return saved;
   };
   const next = async () => {
+    if (advancing) return;
+    setAdvancing(true);
+    setError(null);
     try {
       const saved = await persist(step);
       if (saved.submitted) return;
@@ -147,7 +125,7 @@ export function OwnerRegistration({
           setSearchNotice("주소 검색 결과를 선택해 주세요.");
           return;
         }
-        const result = await execute<DuplicateResult>("duplicate");
+        const result = await checkDuplicate(request, draft.id);
         if (!active.current) return;
         if (result.duplicate) {
           setDuplicate(result);
@@ -166,19 +144,20 @@ export function OwnerRegistration({
         );
         return;
       }
-      const result = await execute<{ restaurantId: string }>("submit", {
-        version: saved.version,
-      });
+      const result = await submit.mutateAsync(saved.version);
       if (active.current) setComplete(result.restaurantId);
     } catch (e) {
+      if (active.current) setError(e);
       if (e instanceof ApiError && e.code === "RESTAURANT_VERSION_CONFLICT")
         await save.recover();
       if (e instanceof ApiError && e.code === "RESTAURANT_DUPLICATE") {
-        const result = await execute<DuplicateResult>("duplicate").catch(
+        const result = await checkDuplicate(request, draft.id).catch(
           () => null,
         );
         if (active.current && result) setDuplicate(result);
       }
+    } finally {
+      if (active.current) setAdvancing(false);
     }
   };
   if (complete)
@@ -367,12 +346,8 @@ export function OwnerRegistration({
                     <Button
                       variant="brand-outline"
                       onClick={() =>
-                        void execute<PhoneChallenge>("contact-verification", {
-                          phone: form.getValues("phone"),
-                        })
-                          .then((r) => {
-                            if (active.current) setChallenge(r);
-                          })
+                        void identity
+                          .start(form.getValues("phone"))
                           .catch(() => undefined)
                       }
                     >
@@ -395,20 +370,7 @@ export function OwnerRegistration({
                         </a>
                         <Button
                           onClick={() =>
-                            void execute<{ status: string }>(
-                              "contact-verification/check",
-                              {
-                                phone: challenge.phone,
-                                verificationId: challenge.id,
-                              },
-                            )
-                              .then((r) => {
-                                if (active.current && r.status === "verified") {
-                                  setVerifiedPhone(challenge.phone);
-                                  setChallenge(null);
-                                }
-                              })
-                              .catch(() => undefined)
+                            void identity.check().catch(() => undefined)
                           }
                         >
                           인증 확인
@@ -580,8 +542,10 @@ export function OwnerRegistration({
                   ? error.message
                   : error
                     ? safeErrorMessage(error)
-                    : save.error
-                      ? safeErrorMessage(save.error)
+                    : (save.error ?? identity.error ?? submit.error)
+                      ? safeErrorMessage(
+                          save.error ?? identity.error ?? submit.error,
+                        )
                       : undefined
               }
             />

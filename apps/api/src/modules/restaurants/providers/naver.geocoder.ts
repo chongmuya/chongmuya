@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ConfigService } from "../../../config/config.service.js";
 import { DomainHttpException } from "../../../common/http/domain-http.exception.js";
 import type { VerifiedAddress } from "../types/registration.js";
+import { Geocoder } from "./geocoder.js";
 const resultSchema = z.object({
   status: z.literal("OK"),
   addresses: z
@@ -27,30 +28,12 @@ const resultSchema = z.object({
     .max(100),
 });
 @Injectable()
-export class GeocodingProvider {
-  constructor(private readonly config: ConfigService) {}
+export class NaverGeocoder extends Geocoder {
+  constructor(private readonly config: ConfigService) {
+    super();
+  }
   async search(query: string): Promise<VerifiedAddress[]> {
     const env = this.config.environment;
-    if (env.geocodingProvider === "fake") {
-      if (env.nodeEnv === "production")
-        throw new DomainHttpException("GEOCODING_CONFIGURATION");
-      if (query.includes("검색실패"))
-        throw new DomainHttpException("GEOCODING_UNAVAILABLE");
-      if (query.includes("결과없음")) return [];
-      return [
-        {
-          id: randomUUID(),
-          query,
-          roadAddress: query.trim(),
-          jibunAddress: "",
-          baseAddress: query.trim(),
-          latitude: 37.5401,
-          longitude: 127.0695,
-          region: "테스트 지역",
-          source: "fake",
-        },
-      ];
-    }
     if (!env.naverMapClientId || !env.naverMapClientSecret)
       throw new DomainHttpException("GEOCODING_CONFIGURATION");
     let response: Response;

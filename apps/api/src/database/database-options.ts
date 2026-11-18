@@ -1,10 +1,9 @@
 import path from "node:path";
 import type { DataSourceOptions } from "typeorm";
-import type { Environment } from "../config/environment.js";
 
-export function databaseOptions(
-  environment: Pick<Environment, "databaseUrl">,
-): DataSourceOptions {
+export function databaseOptions(environment: {
+  databaseUrl: string;
+}): DataSourceOptions {
   return {
     type: "postgres",
     url: environment.databaseUrl,

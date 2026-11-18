@@ -1,3 +1,4 @@
+import { passwordPattern } from "../../utils/password.js";
 import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
@@ -17,7 +18,7 @@ export class StartKakaoDto {
   @IsOptional() @IsString() @MaxLength(1000) next?: string;
 }
 export class StartKakaoLinkDto {
-  @IsString() @Matches(/^[\x21-\x7e]{8,16}$/) password!: string;
+  @IsString() @Matches(passwordPattern) password!: string;
   @IsBoolean() consent!: boolean;
 }
 export class KakaoSignupDto {

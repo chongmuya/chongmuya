@@ -1,7 +1,16 @@
 import "reflect-metadata";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdtemp,
+  readdir,
+  readFile,
+  stat,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -96,7 +105,13 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
   const menus = db.getRepository(RestaurantMenu);
   const spaces = db.getRepository(RestaurantSpace);
   try {
-    assert.equal(run(["restaurants"]).status, 0);
+    assert.equal(
+      run(["restaurants"], {
+        SOLAPI_SENDER_NUMBER: "invalid-but-not-a-db-setting",
+        GEOCODING_PROVIDER: "naver",
+      }).status,
+      0,
+    );
     assert.equal(await contacts.countBy({ restaurantId: In(ids) }), 0);
     const privateFile = path.join(directory, "contacts.private.json");
     await writeFile(
@@ -152,4 +167,65 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
     await spaces.delete({ restaurantId: In(ids) });
     await restaurants.delete({ id: In(ids) });
   }
+  const demoOutput = path.join(directory, "demo.links.json");
+  const demoEnv = {
+    NODE_ENV: "test",
+    DATABASE_URL: process.env.TEST_DATABASE_URL,
+    WEB_ORIGIN: "http://localhost:3000",
+    AUTH_SECRET: "test-secret-with-at-least-32-characters",
+    MESSAGE_PROVIDER: "fake",
+    DEMO_SEED_PASSWORD: "demo-test-123",
+    SOLAPI_SENDER_NUMBER: "bad-ignored-external-setting",
+  };
+  const demo = (
+    command: string,
+    output: string,
+    extra: NodeJS.ProcessEnv = {},
+  ) =>
+    spawnSync(
+      process.execPath,
+      [
+        path.join(directory, "dist/database/seeds/run-demo.js"),
+        command,
+        "--output",
+        output,
+      ],
+      {
+        cwd: directory,
+        env: { ...demoEnv, ...extra },
+        encoding: "utf8",
+        timeout: 15000,
+      },
+    );
+  for (const extra of [
+    { NODE_ENV: "production" },
+    { MESSAGE_PROVIDER: "solapi" },
+    { DATABASE_URL: "postgresql://secret-sentinel@remote.example.test/demo" },
+  ]) {
+    const denied = demo("seed", demoOutput, extra);
+    assert.equal(denied.status, 1);
+    assert.doesNotMatch(
+      denied.stdout + denied.stderr,
+      /secret-sentinel|demo-test-123/,
+    );
+  }
+  const seeded = demo("seed", demoOutput);
+  assert.equal(seeded.status, 0, seeded.stderr);
+  assert.equal((await stat(demoOutput)).mode & 0o777, 0o600);
+  const manifest = JSON.parse(await readFile(demoOutput, "utf8"));
+  assert(manifest.merchantReplies.length > 0);
+  assert.doesNotMatch(
+    seeded.stdout + seeded.stderr,
+    /#token=|demo-test-123|scrypt-v1/,
+  );
+  const original = await readFile(demoOutput, "utf8");
+  assert.equal(demo("links", demoOutput).status, 1);
+  assert.equal(await readFile(demoOutput, "utf8"), original);
+  const exported = demo("links", path.join(directory, "fresh.links.json"));
+  assert.equal(exported.status, 0, exported.stderr);
+  assert.deepEqual(
+    JSON.parse(await readFile(path.join(directory, "fresh.links.json"), "utf8"))
+      .merchantReplies,
+    manifest.merchantReplies,
+  );
 });

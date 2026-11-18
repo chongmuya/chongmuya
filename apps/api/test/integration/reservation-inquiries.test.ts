@@ -12,7 +12,6 @@ import { RestaurantContact } from "../../src/modules/restaurants/entities/restau
 import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
 import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
 import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
-import { ReservationsService } from "../../src/modules/reservations/reservations.service.js";
 
 const body = () => ({
   requestKey: randomUUID(),
@@ -285,7 +284,9 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     one.id,
     "lost-response retry survives later event edits",
   );
-  const operations = await app.get(ReservationsService).pendingForOperations();
+  const operations = await app
+    .get(MessageDeliveryService)
+    .pendingForOperations();
   assert(
     operations.eligible.some(
       (r) => r.request_id === one.id && r.recipient_phone === "00000000000",
@@ -381,7 +382,9 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
     [{ phone: "00000000001" }, "PHONE_CHANGED"],
   ] as const) {
     await db.getRepository(RestaurantContact).update(contact.id, change);
-    const pending = await app.get(ReservationsService).pendingForOperations();
+    const pending = await app
+      .get(MessageDeliveryService)
+      .pendingForOperations();
     assert(
       !pending.eligible.some(
         (r) => r.request_id === one.id && r.contact_id === contact.id,
@@ -406,7 +409,9 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
       await db.getRepository(RestaurantContact).existsBy({ id: contact.id }),
       false,
     );
-    const pending = await app.get(ReservationsService).pendingForOperations();
+    const pending = await app
+      .get(MessageDeliveryService)
+      .pendingForOperations();
     assert(
       pending.held
         .find((r) => r.request_id === one.id && r.contact_id === contact.id)

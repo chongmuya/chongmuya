@@ -1,5 +1,7 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
+export const passwordPattern = /^[\x21-\x7e]{8,16}$/;
+
 function derive(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     scrypt(

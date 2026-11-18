@@ -199,7 +199,16 @@ export default {
               !/^modules\/[^/]+\/entities\/[^/]+\.entity\.[cm]?[jt]s$/.test(
                 targetPath,
               ) &&
-              !/^database\/database-options\.[cm]?[jt]s$/.test(targetPath);
+              !/^database\/database-options\.[cm]?[jt]s$/.test(targetPath) &&
+              !/^config\/(database-environment|link-environment)\.[cm]?[jt]s$/.test(
+                targetPath,
+              ) &&
+              !/^modules\/auth\/utils\/password\.[cm]?[jt]s$/.test(
+                targetPath,
+              ) &&
+              !/^modules\/reservations\/lib\/(merchant-link-codec|message-delivery)\.[cm]?[jt]s$/.test(
+                targetPath,
+              );
             // Runtime code must never import a seed (including its JSON data).
             invalid ||= source.isSource && !sourceSeed && targetSeed;
             invalid ||=

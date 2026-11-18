@@ -1,5 +1,7 @@
 import { isIP } from "node:net";
 import { z } from "zod";
+import { linkEnvironmentFields } from "./link-environment.js";
+import { databaseEnvironmentSchema } from "./database-environment.js";
 
 const environmentSchema = z
   .object({
@@ -12,18 +14,7 @@ const environmentSchema = z
       .default("3001")
       .transform(Number)
       .pipe(z.int().min(1).max(65535)),
-    DATABASE_URL: z.url().refine((value) => {
-      try {
-        const url = new URL(value);
-        return (
-          ["postgres:", "postgresql:"].includes(url.protocol) &&
-          Boolean(url.hostname) &&
-          url.pathname.length > 1
-        );
-      } catch {
-        return false;
-      }
-    }),
+    ...databaseEnvironmentSchema.shape,
     KAKAO_CLIENT_ID: z.string().min(1).regex(/^\S+$/).optional(),
     KAKAO_CLIENT_SECRET: z.string().min(1).regex(/^\S+$/).optional(),
     KAKAO_REDIRECT_URI: z
@@ -75,10 +66,7 @@ const environmentSchema = z
     NAVER_MAP_CLIENT_ID: z.string().min(1).optional(),
     NAVER_MAP_CLIENT_SECRET: z.string().min(1).optional(),
     OWNER_SUPPORT_EMAIL: z.email().optional(),
-    MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY: z
-      .string()
-      .regex(/^[a-fA-F0-9]{64}$/)
-      .optional(),
+    ...linkEnvironmentFields,
     PROVIDER_TIMEOUT_MS: z.coerce
       .number()
       .int()
@@ -91,7 +79,7 @@ const environmentSchema = z
       .min(1)
       .max(720)
       .default(168),
-    AUTH_SECRET: z.string().min(32),
+    AUTH_SECRET: linkEnvironmentFields.AUTH_SECRET.unwrap(),
     RESEND_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
     RESEND_FROM: z
       .string()
@@ -140,20 +128,38 @@ const environmentSchema = z
           .refine((items) => new Set(items.map((item) => item.id)).size === 4),
       )
       .optional(),
-    WEB_ORIGIN: z.url().refine((value) => {
-      try {
-        const url = new URL(value);
-        return (
-          ["http:", "https:"].includes(url.protocol) && url.origin === value
-        );
-      } catch {
-        return false;
-      }
-    }),
     // Boolean("false") is true; accept only these two explicit strings.
     API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
   })
   .superRefine((env, ctx) => {
+    const required = (fields: (keyof typeof env)[]) => {
+      for (const field of fields)
+        if (!env[field])
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: "Required for active provider",
+          });
+    };
+    if (env.MESSAGE_PROVIDER === "solapi")
+      required([
+        "SOLAPI_API_KEY",
+        "SOLAPI_API_SECRET",
+        "SOLAPI_SENDER_NUMBER",
+        "SOLAPI_WEBHOOK_SECRET",
+      ]);
+    if (env.GEOCODING_PROVIDER === "naver")
+      required(["NAVER_MAP_CLIENT_ID", "NAVER_MAP_CLIENT_SECRET"]);
+    if (env.NODE_ENV === "production") {
+      for (const field of ["MESSAGE_PROVIDER", "GEOCODING_PROVIDER"] as const)
+        if (env[field] === "fake")
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: "Development provider forbidden",
+          });
+      required(["MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY", "OWNER_SUPPORT_EMAIL"]);
+    }
     const kakaoFields = [
       "KAKAO_CLIENT_ID",
       "KAKAO_CLIENT_SECRET",

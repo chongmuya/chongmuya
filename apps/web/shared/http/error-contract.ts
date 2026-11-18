@@ -60,6 +60,11 @@ const messages: Record<string, { status: number; message: string }> = {
     status: 503,
     message: "문자 발송 설정 확인이 필요해요. 저장된 문의는 유지됩니다.",
   },
+  MERCHANT_ACCESS_EXPIRED: {
+    status: 403,
+    message:
+      "접근 권한이 만료됐습니다. 문자에 있는 원래 링크를 다시 열어 주세요.",
+  },
   MERCHANT_LINK_INVALID: {
     status: 403,
     message: "사용할 수 없거나 만료된 문의 링크입니다. 총무에게 문의해 주세요.",
@@ -146,10 +151,6 @@ const messages: Record<string, { status: number; message: string }> = {
     status: 409,
     message:
       "이 등록 요청은 이미 저장되었습니다. 내 모임에서 결과를 확인해 주세요.",
-  },
-  OWNER_REGISTRATION_UNAVAILABLE: {
-    status: 400,
-    message: "사장님 가입은 준비 중이에요. 현재는 총무로 시작할 수 있어요.",
   },
   ROSTER_MEMBER_CONFLICT: {
     status: 409,

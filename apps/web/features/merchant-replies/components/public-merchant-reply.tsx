@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
-import { exchangeLink } from "../api/replies.api";
+import { exchangeLink, isMerchantAccessError } from "../api/replies.api";
 import { ReplyWorkspace } from "./reply-workspace";
 export function PublicMerchantReply() {
   const target = useSearchParams().get("target") ?? "";
@@ -12,9 +12,11 @@ export function PublicMerchantReply() {
 function PublicReply({ targetId }: { targetId: string }) {
   const raw = useRef<string | null>(null),
     [scope] = useState(() => crypto.randomUUID());
-  const [access, setAccess] = useState<string>(),
+  const [access, setAccess] =
+      useState<Awaited<ReturnType<typeof exchangeLink>>>(),
     [error, setError] = useState<unknown>(null),
-    [attempt, setAttempt] = useState(0);
+    [attempt, setAttempt] = useState(0),
+    [missingLink, setMissingLink] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     raw.current ??= new URLSearchParams(window.location.hash.slice(1)).get(
@@ -26,14 +28,14 @@ function PublicReply({ targetId }: { targetId: string }) {
       `${window.location.pathname}${window.location.search}`,
     );
     if (!raw.current || !/^[\da-f-]{36}$/i.test(targetId)) {
-      setError(new Error("문자에 있는 원래 링크를 다시 열어 주세요."));
+      setMissingLink(true);
       return;
     }
     void exchangeLink(targetId, raw.current, controller.signal)
       .then((r) => {
         if (!controller.signal.aborted) {
           raw.current = null;
-          setAccess(r.accessToken);
+          setAccess(r);
           setError(null);
         }
       })
@@ -44,7 +46,13 @@ function PublicReply({ targetId }: { targetId: string }) {
   }, [targetId, attempt]);
   return (
     <main className="mx-auto min-h-svh max-w-[402px] bg-background px-5 py-10">
-      {error ? (
+      {missingLink || isMerchantAccessError(error) ? (
+        <p role="alert">
+          {isMerchantAccessError(error)
+            ? safeErrorMessage(error)
+            : "문자에 있는 원래 링크를 다시 열어 주세요."}
+        </p>
+      ) : error ? (
         <ErrorState retry={() => setAttempt((n) => n + 1)}>
           {error instanceof Error &&
           error.message === "문자에 있는 원래 링크를 다시 열어 주세요."
@@ -56,7 +64,13 @@ function PublicReply({ targetId }: { targetId: string }) {
       ) : (
         <ReplyWorkspace
           targetId={targetId}
-          access={{ kind: "link", access, scope }}
+          access={{
+            kind: "link",
+            access: access.accessToken,
+            accessExpiresAt: access.accessExpiresAt,
+            linkExpiresAt: access.linkExpiresAt,
+            scope,
+          }}
         />
       )}
     </main>

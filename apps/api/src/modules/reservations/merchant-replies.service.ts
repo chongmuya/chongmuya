@@ -1,6 +1,7 @@
+import { replyView } from "./lib/reply-view.js";
 import { Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import { In, type EntityManager } from "typeorm";
+import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { consumeRequestLimit } from "../../common/http/request-limit.js";
@@ -8,7 +9,6 @@ import type { AuthUser } from "../auth/types/auth-user.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
 import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
-import { RequestTarget } from "./entities/request-target.entity.js";
 import { replySchema } from "./types/merchant-reply.js";
 import type {
   MerchantReplyInput,
@@ -26,24 +26,6 @@ type Principal =
       confirmedAt: string;
       reason: string;
     };
-export function replyView(row: MerchantReplyRevision | null) {
-  return row
-    ? {
-        kind: row.kind,
-        revision: row.revision,
-        snapshot: row.snapshot,
-        reason: row.reason,
-        createdAt: row.createdAt.toISOString(),
-        expiresAt: row.expiresAt?.toISOString() ?? null,
-        state:
-          row.kind === "DECLINE"
-            ? "DECLINED"
-            : row.expiresAt && row.expiresAt.getTime() <= Date.now()
-              ? "EXPIRED"
-              : "PROPOSED",
-      }
-    : null;
-}
 @Injectable()
 export class MerchantRepliesService {
   constructor(
@@ -149,38 +131,6 @@ export class MerchantRepliesService {
         linkExpiresAt: c.link?.expiresAt.toISOString() ?? null,
       };
     });
-  }
-  async list(user: AuthUser) {
-    if (user.accountType !== "owner")
-      throw new DomainHttpException("OWNER_REQUIRED");
-    const db = await this.database.connect();
-    const ids = await this.restaurants.ownedIds(user.id, db.manager);
-    if (!ids.length) return { inquiries: [] };
-    const targets = await db.getRepository(RequestTarget).find({
-      where: { restaurantId: In(ids) },
-      order: { id: "DESC" },
-      take: 100,
-    });
-    const inquiries = [];
-    for (const t of targets) {
-      const c = await this.links.context(t.id, db.manager);
-      const response = await db
-        .getRepository(MerchantReplyRevision)
-        .findOneBy({ targetId: t.id, revision: t.replyVersion });
-      inquiries.push({
-        targetId: t.id,
-        restaurantId: t.restaurantId,
-        restaurantName: t.restaurantName,
-        eventName: c.request.snapshot.eventName,
-        startsAt: c.request.snapshot.startsAt,
-        expectedGuests: c.request.snapshot.expectedGuests,
-        response: replyView(response),
-        closed:
-          !!c.request.closedAt ||
-          Date.parse(c.request.snapshot.startsAt) <= Date.now(),
-      });
-    }
-    return { inquiries };
   }
   async save(targetId: string, principal: Principal, raw: unknown, ip: string) {
     const parsed = replySchema.safeParse(raw);

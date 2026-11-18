@@ -1,20 +1,14 @@
 import { Injectable } from "@nestjs/common";
-import {
-  createHash,
-  createHmac,
-  randomUUID,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { In, type EntityManager } from "typeorm";
-import { z } from "zod";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import {
-  MessageProvider,
-  solapiOutcome,
-} from "./providers/message.provider.js";
-import type { ProviderReport } from "./providers/message.provider.js";
+  MessageGateway,
+  type MessageReport,
+} from "./providers/message.gateway.js";
+import { newMessageDelivery } from "./lib/message-delivery.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
 import { MessageDelivery } from "./entities/message-delivery.entity.js";
@@ -25,45 +19,12 @@ import {
 import { RequestTarget } from "./entities/request-target.entity.js";
 import type { ReservationRequest } from "./entities/reservation-request.entity.js";
 
-const reportSchema = z
-  .array(
-    z.object({
-      messageId: z.string().min(1).max(100),
-      groupId: z.string().max(100).optional(),
-      statusCode: z.string().regex(/^\d{4}$/),
-      customFields: z
-        .object({
-          deliveryId: z.uuid().optional(),
-          deliveryAttempt: z.string().regex(/^\d+$/).optional(),
-        })
-        .optional(),
-    }),
-  )
-  .max(1000);
-export function validSolapiSignature(
-  header: string | undefined,
-  raw: Buffer | undefined,
-  secret: string | undefined,
-  now = Date.now(),
-) {
-  if (!header || !raw || !secret) return false;
-  const match = /^t=(\d{10}),v1=([a-f0-9]{64})$/.exec(
-    header.replace(/,\s+/g, ","),
-  );
-  if (!match || Math.abs(now / 1000 - Number(match[1])) > 300) return false;
-  const key = createHash("sha1").update(secret).digest("hex");
-  const expected = createHmac("sha256", key)
-    .update(`${match[1]}.`)
-    .update(raw)
-    .digest();
-  return timingSafeEqual(expected, Buffer.from(match[2], "hex"));
-}
 @Injectable()
 export class MessageDeliveryService {
   constructor(
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
-    private readonly provider: MessageProvider,
+    private readonly provider: MessageGateway,
     private readonly links: MerchantLinksService,
     private readonly restaurants: RestaurantsService,
   ) {}
@@ -73,35 +34,11 @@ export class MessageDeliveryService {
     m: EntityManager,
   ) {
     for (const target of targets) {
-      await this.links.create(target, request, m);
-      await m.save(MessageDelivery, {
-        id: randomUUID(),
-        targetId: target.id,
-        purpose: "NEW_INQUIRY",
-        channel: "LMS",
-        contactId: target.contactId,
-        phoneSnapshot: target.contactPhone,
-        linkGeneration: 1,
-        templateVersion: 1,
-        variables: {
-          restaurantName: target.restaurantName,
-          eventName: request.snapshot.eventName,
-          startsAt: request.snapshot.startsAt,
-          expectedGuests: request.snapshot.expectedGuests,
-          space: request.snapshot.space,
-        },
-        status: "PENDING",
-        attempts: 0,
-        startedAt: null,
-        leaseUntil: null,
-        providerMessageId: null,
-        providerGroupId: null,
-        provider: null,
-        failureStage: null,
-        errorCode: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const link = await this.links.create(target, request, m);
+      await m.save(
+        MessageDelivery,
+        newMessageDelivery(request, target, link, "NEW_INQUIRY"),
+      );
     }
   }
   private async persist(row: MessageDelivery, m: EntityManager) {
@@ -139,21 +76,12 @@ export class MessageDeliveryService {
       const target = await m.findOneBy(MessageDelivery, { id });
       if (!target) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
       await this.lockDeliveryTarget(target.targetId, m);
+      await this.links.context(target.targetId, m, true);
       const row = await m.findOne(MessageDelivery, {
         where: { id },
         lock: { mode: "pessimistic_write" },
       });
       if (!row) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
-      if (
-        row.status === "PROCESSING" &&
-        row.leaseUntil &&
-        row.leaseUntil.getTime() <= Date.now()
-      ) {
-        row.status = "UNKNOWN";
-        row.errorCode = "LEASE_EXPIRED";
-        await this.persist(row, m);
-        return null;
-      }
       const retryable =
         row.status === "PENDING" ||
         (!!retry &&
@@ -165,6 +93,14 @@ export class MessageDeliveryService {
       }
       const c = await this.links.context(row.targetId, m);
       const reasons = await this.links.reasons(c.target, c.request, c.link, m);
+      if (this.provider.requiresRealRecipient) {
+        const [liveReasons] = await this.restaurants.deliveryEligibility(
+          [this.links.recipient(c.target, c.link)],
+          m,
+          true,
+        );
+        reasons.push(...liveReasons);
+      }
       if (
         row.contactId !== c.link?.contactId ||
         row.phoneSnapshot !== c.link?.phoneSnapshot ||
@@ -227,6 +163,8 @@ export class MessageDeliveryService {
     );
     // If this commit fails, PROCESSING later becomes UNKNOWN; never resend blindly.
     await db.transaction(async (m) => {
+      await this.lockDeliveryTarget(claimed.row.targetId, m);
+      await this.links.context(claimed.row.targetId, m, true);
       const row = await m.findOneOrFail(MessageDelivery, {
         where: { id },
         lock: { mode: "pessimistic_write" },
@@ -246,8 +184,14 @@ export class MessageDeliveryService {
       await this.persist(row, m);
     });
   }
-  private async applyReport(report: ProviderReport, m: EntityManager) {
-    const id = report.customFields?.deliveryId;
+  private async applyReport(report: MessageReport, m: EntityManager) {
+    const id = report.deliveryId;
+    const existing = await m.findOne(MessageDelivery, {
+      where: id ? { id } : { providerMessageId: report.messageId },
+    });
+    if (!existing) return;
+    await this.lockDeliveryTarget(existing.targetId, m);
+    await this.links.context(existing.targetId, m, true);
     const row = await m.findOne(MessageDelivery, {
       where: id ? { id } : { providerMessageId: report.messageId },
       lock: { mode: "pessimistic_write" },
@@ -261,16 +205,9 @@ export class MessageDeliveryService {
         row.providerGroupId !== report.groupId)
     )
       return;
-    if (
-      report.customFields?.deliveryAttempt &&
-      Number(report.customFields.deliveryAttempt) !== row.attempts
-    )
+    if (report.deliveryAttempt && report.deliveryAttempt !== row.attempts)
       return;
-    if (
-      !report.customFields?.deliveryAttempt &&
-      !row.providerMessageId &&
-      row.attempts > 1
-    )
+    if (!report.deliveryAttempt && !row.providerMessageId && row.attempts > 1)
       return;
     const digest = createHash("sha256")
       .update(JSON.stringify([row.id, report.messageId, report.statusCode]))
@@ -290,16 +227,16 @@ export class MessageDeliveryService {
       .execute();
     row.providerMessageId = report.messageId;
     row.providerGroupId ??= report.groupId ?? null;
-    row.provider = "solapi";
-    const outcome = solapiOutcome(report.statusCode);
+    row.provider = report.provider;
+    const outcome = report;
     if (outcome.status === "DELIVERED") {
       row.status = "DELIVERED";
       row.failureStage = null;
       row.errorCode = null;
     } else if (row.status !== "DELIVERED" && outcome.status === "FAILED") {
       row.status = "FAILED";
-      row.failureStage = outcome.failureStage;
-      row.errorCode = outcome.errorCode;
+      row.failureStage = outcome.failureStage ?? "DELIVERY";
+      row.errorCode = outcome.errorCode ?? null;
     } else if (
       row.status !== "DELIVERED" &&
       row.status !== "FAILED" &&
@@ -311,30 +248,26 @@ export class MessageDeliveryService {
     }
     await this.persist(row, m);
   }
-  async webhook(
-    header: string | undefined,
-    raw: Buffer | undefined,
-    body: unknown,
-  ) {
-    if (
-      !validSolapiSignature(
-        header,
-        raw,
-        this.config.environment.solapiWebhookSecret,
-      )
-    )
-      throw new DomainHttpException("MERCHANT_LINK_INVALID");
-    const parsed = reportSchema.safeParse(body);
-    if (!parsed.success) throw new DomainHttpException("VALIDATION_FAILED");
+  async applyReports(reports: MessageReport[]) {
     const db = await this.database.connect();
-    // Stable order prevents two overlapping report arrays from deadlocking.
     await db.transaction(async (m) => {
-      for (const event of parsed.data.sort((a, b) =>
-        (a.customFields?.deliveryId ?? a.messageId).localeCompare(
-          b.customFields?.deliveryId ?? b.messageId,
-        ),
-      ))
-        await this.applyReport(event, m);
+      // Lock all targets in stable order before report rows, including mixed generations.
+      const records = reports.length
+        ? await m.find(MessageDelivery, {
+            where: reports.map((r) =>
+              r.deliveryId
+                ? { id: r.deliveryId }
+                : { providerMessageId: r.messageId },
+            ),
+          })
+        : [];
+      for (const targetId of [
+        ...new Set(records.map((r) => r.targetId)),
+      ].sort()) {
+        await this.lockDeliveryTarget(targetId, m);
+        await this.links.context(targetId, m, true);
+      }
+      for (const event of reports) await this.applyReport(event, m);
     });
     return { received: true };
   }
@@ -377,9 +310,25 @@ export class MessageDeliveryService {
           c.link.phoneSnapshot !== recipient.contactPhone
         )
           throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
-        return { targetId, deliveryId: previous.id, dryRun, existing: true };
+        return {
+          targetId,
+          deliveryId: previous.id,
+          status: previous.status,
+          dispatchAttempted: false,
+          dryRun,
+          existing: true,
+        };
       }
       if (dryRun) return { targetId, contactId, dryRun };
+      await m.update(
+        MessageDelivery,
+        { targetId, status: "PENDING" },
+        {
+          status: "CANCELLED",
+          errorCode: "RECIPIENT_CHANGED",
+          updatedAt: new Date(),
+        },
+      );
       const link = await this.links.create(
         c.target,
         c.request,
@@ -387,35 +336,10 @@ export class MessageDeliveryService {
         (c.link?.generation ?? 0) + 1,
         recipient,
       );
-      const snapshot = c.request.snapshot;
-      const row = await m.save(MessageDelivery, {
-        id: randomUUID(),
-        targetId,
-        purpose: "RECIPIENT_CHANGED",
-        channel: "LMS",
-        contactId,
-        phoneSnapshot: recipient.contactPhone,
-        linkGeneration: link.generation,
-        templateVersion: 1,
-        variables: {
-          restaurantName: c.target.restaurantName,
-          eventName: snapshot.eventName,
-          startsAt: snapshot.startsAt,
-          expectedGuests: snapshot.expectedGuests,
-          space: snapshot.space,
-        },
-        status: "PENDING",
-        attempts: 0,
-        startedAt: null,
-        leaseUntil: null,
-        providerMessageId: null,
-        providerGroupId: null,
-        provider: null,
-        failureStage: null,
-        errorCode: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const row = await m.save(
+        MessageDelivery,
+        newMessageDelivery(c.request, c.target, link, "RECIPIENT_CHANGED"),
+      );
       await m.update(
         RequestTarget,
         { id: targetId },
@@ -429,7 +353,13 @@ export class MessageDeliveryService {
         reason,
         createdAt: new Date(),
       });
-      return { targetId, deliveryId: row.id, dryRun: false };
+      return {
+        targetId,
+        deliveryId: row.id,
+        status: row.status,
+        dispatchAttempted: false,
+        dryRun: false,
+      };
     });
   }
   private async lockDeliveryTarget(targetId: string, m: EntityManager) {
@@ -452,7 +382,6 @@ export class MessageDeliveryService {
       const [reasons] = await this.restaurants.deliveryEligibility(
         [this.links.recipient(c.target, c.link)],
         m,
-        true,
       );
       if (
         reasons.length ||
@@ -480,35 +409,10 @@ export class MessageDeliveryService {
       );
       // Detect missing encryption configuration before committing invalidation of the old link.
       this.links.url(link);
-      const snapshot = c.request.snapshot;
-      const row = await m.save(MessageDelivery, {
-        id: randomUUID(),
-        targetId,
-        purpose: "LINK_REGENERATED",
-        channel: "LMS",
-        contactId: link.contactId,
-        phoneSnapshot: link.phoneSnapshot,
-        linkGeneration: generation,
-        templateVersion: 1,
-        variables: {
-          restaurantName: c.target.restaurantName,
-          eventName: snapshot.eventName,
-          startsAt: snapshot.startsAt,
-          expectedGuests: snapshot.expectedGuests,
-          space: snapshot.space,
-        },
-        status: "PENDING",
-        attempts: 0,
-        startedAt: null,
-        leaseUntil: null,
-        providerMessageId: null,
-        providerGroupId: null,
-        provider: null,
-        failureStage: null,
-        errorCode: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const row = await m.save(
+        MessageDelivery,
+        newMessageDelivery(c.request, c.target, link, "LINK_REGENERATED"),
+      );
       await m.update(
         RequestTarget,
         { id: targetId },
@@ -539,46 +443,120 @@ export class MessageDeliveryService {
   }
   async listForOperations() {
     const db = await this.database.connect();
-    await db.transaction(async (m) => {
+    return db.transaction("REPEATABLE READ", async (m) => {
       const rows = await m
-        .createQueryBuilder(MessageDelivery, "d")
-        .where("d.status = 'PROCESSING' AND d.lease_until <= now()")
-        .setLock("pessimistic_write")
-        .getMany();
+        .getRepository(MessageDelivery)
+        .find({ order: { createdAt: "ASC", id: "ASC" } });
+      const result = [];
       for (const row of rows) {
+        const c = await this.links.context(row.targetId, m);
+        const current =
+          row.linkGeneration === c.link?.generation &&
+          row.contactId === c.link?.contactId;
+        const reasons = await this.links.reasons(
+          c.target,
+          c.request,
+          c.link,
+          m,
+        );
+        if (this.provider.requiresRealRecipient) {
+          const [live] = await this.restaurants.deliveryEligibility(
+            [this.links.recipient(c.target, c.link)],
+            m,
+            true,
+          );
+          reasons.push(...live);
+        }
+        if (!current) reasons.push("SUPERSEDED");
+        result.push({
+          id: row.id,
+          targetId: row.targetId,
+          status: row.status,
+          attempts: row.attempts,
+          failureStage: row.failureStage,
+          errorCode: row.errorCode,
+          provider: row.provider,
+          providerMessageId: row.providerMessageId,
+          providerGroupId: row.providerGroupId,
+          createdAt: row.createdAt,
+          current,
+          generation: row.linkGeneration,
+          leaseExpired:
+            row.status === "PROCESSING" &&
+            !!row.leaseUntil &&
+            row.leaseUntil.getTime() <= Date.now(),
+          holdReasons: [...new Set(reasons)],
+          // Explicit private exports retain both the original inquiry recipient and this delivery.
+          request_id: c.request.id,
+          event_id: c.request.eventId,
+          target_id: c.target.id,
+          received_at: c.request.createdAt,
+          conditions: c.request.snapshot,
+          organizer_name: c.request.contactName,
+          organizer_phone: c.request.contactPhone,
+          restaurant_id: c.target.restaurantId,
+          restaurant_name: c.target.restaurantName,
+          contact_id: row.contactId,
+          recipient_phone: row.phoneSnapshot,
+          original_contact_id: c.target.contactId,
+          original_recipient_phone: c.target.contactPhone,
+          original_consent_at: c.target.consentAt,
+        });
+      }
+      return result;
+    });
+  }
+  async pendingForOperations() {
+    const rows = (await this.listForOperations()).filter(
+      (row) => row.status === "PENDING",
+    );
+    return {
+      eligible: rows.filter((row) => !row.holdReasons.length),
+      held: rows.filter((row) => row.holdReasons.length),
+    };
+  }
+  async expireLease(
+    id: string,
+    actor: string,
+    reason: string,
+    dryRun: boolean,
+  ) {
+    if (!actor.trim() || !reason.trim())
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      const existing = await m.findOneByOrFail(MessageDelivery, { id });
+      await this.lockDeliveryTarget(existing.targetId, m);
+      await this.links.context(existing.targetId, m, true);
+      const row = await m.findOneOrFail(MessageDelivery, {
+        where: { id },
+        lock: { mode: "pessimistic_write" },
+      });
+      const expired =
+        row.status === "PROCESSING" &&
+        !!row.leaseUntil &&
+        row.leaseUntil.getTime() <= Date.now();
+      if (expired && !dryRun) {
         row.status = "UNKNOWN";
         row.errorCode = "LEASE_EXPIRED";
         await this.persist(row, m);
+        await m.save(ReservationOperation, {
+          id: randomUUID(),
+          targetId: row.targetId,
+          action: "DELIVERY_LEASE_EXPIRED",
+          actor,
+          reason,
+          createdAt: new Date(),
+        });
       }
+      return {
+        deliveryId: id,
+        status: row.status,
+        leaseExpired: expired,
+        changed: expired && !dryRun,
+        dryRun,
+      };
     });
-    const rows = await db
-      .getRepository(MessageDelivery)
-      .find({ order: { createdAt: "ASC" } });
-    return rows.map(
-      ({
-        id,
-        targetId,
-        status,
-        attempts,
-        failureStage,
-        errorCode,
-        provider,
-        providerMessageId,
-        providerGroupId,
-        createdAt,
-      }) => ({
-        id,
-        targetId,
-        status,
-        attempts,
-        failureStage,
-        errorCode,
-        provider,
-        providerMessageId,
-        providerGroupId,
-        createdAt,
-      }),
-    );
   }
   async reconcile(id: string, actor: string, reason: string) {
     const db = await this.database.connect();

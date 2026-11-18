@@ -1,5 +1,4 @@
 import {
-  IsBoolean,
   IsInt,
   IsObject,
   IsOptional,
@@ -35,7 +34,4 @@ export class ContactCheckInput extends ContactVerifyInput {
 export class MenuSaveInput {
   @IsInt() @Min(1) version!: number;
   @IsObject() menu!: Record<string, unknown>;
-}
-export class ContactConsentInput {
-  @IsBoolean() consent!: boolean;
 }

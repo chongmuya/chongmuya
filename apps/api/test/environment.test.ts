@@ -1,3 +1,4 @@
+import { parseDatabaseEnvironment } from "../src/config/database-environment.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -9,6 +10,19 @@ const webOrigin = "http://localhost:3000";
 const parseEnvironment = (env: NodeJS.ProcessEnv) =>
   parse({ AUTH_SECRET: authSecret, WEB_ORIGIN: webOrigin, ...env });
 
+const productionProviders = {
+  MESSAGE_PROVIDER: "solapi",
+  SOLAPI_API_KEY: "test-key",
+  SOLAPI_API_SECRET: "test-secret",
+  SOLAPI_SENDER_NUMBER: "0299999999",
+  SOLAPI_WEBHOOK_SECRET: "test-webhook-secret-1234",
+  GEOCODING_PROVIDER: "naver",
+  NAVER_MAP_CLIENT_ID: "test-client",
+  NAVER_MAP_CLIENT_SECRET: "test-secret",
+  OWNER_SUPPORT_EMAIL: "owner@example.test",
+  MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY: "a".repeat(64),
+};
+
 const databaseUrl = "postgresql://local:local@127.0.0.1:15432/chongmuya";
 
 test("configuration rejects missing/invalid required values without exposing values", () => {
@@ -19,6 +33,7 @@ test("configuration rejects missing/invalid required values without exposing val
     { DATABASE_URL: databaseUrl, WEB_ORIGIN: "not-a-url" },
     {
       DATABASE_URL: databaseUrl,
+      ...productionProviders,
       NODE_ENV: "production",
       WEB_ORIGIN: "http://example.com",
     },
@@ -50,6 +65,7 @@ test("configuration rejects missing/invalid required values without exposing val
   assert.equal(
     parseEnvironment({
       DATABASE_URL: databaseUrl,
+      ...productionProviders,
       NODE_ENV: "production",
       WEB_ORIGIN: "https://example.com",
     }).docsEnabled,
@@ -99,6 +115,7 @@ test("configuration rejects missing/invalid required values without exposing val
   assert.equal(
     parseEnvironment({
       DATABASE_URL: databaseUrl,
+      ...productionProviders,
       NODE_ENV: "production",
       WEB_ORIGIN: "https://example.com",
       API_DOCS_ENABLED: "true",
@@ -191,6 +208,7 @@ test("Kakao configuration is optional together and callback is an explicit trust
     parseEnvironment({
       ...base,
       ...kakao,
+      ...productionProviders,
       NODE_ENV: "production",
       WEB_ORIGIN: "https://chongmuya.com",
       KAKAO_REDIRECT_URI:
@@ -217,4 +235,55 @@ test("Kakao configuration is optional together and callback is an explicit trust
         !error.message.includes("private-test-secret") &&
         !error.message.includes("evil"),
     );
+});
+
+test("DB CLI configuration ignores external providers; runtime validates activated adapters", () => {
+  assert.deepEqual(
+    parseDatabaseEnvironment({
+      DATABASE_URL: databaseUrl,
+      SOLAPI_SENDER_NUMBER: "invalid",
+      GEOCODING_PROVIDER: "naver",
+      AUTH_SECRET: "short",
+    }),
+    { databaseUrl },
+  );
+  for (const extra of [
+    { MESSAGE_PROVIDER: "solapi" },
+    { GEOCODING_PROVIDER: "naver" },
+    {
+      ...productionProviders,
+      NODE_ENV: "production",
+      WEB_ORIGIN: "https://example.test",
+      MESSAGE_PROVIDER: "fake",
+    },
+    {
+      ...productionProviders,
+      NODE_ENV: "production",
+      WEB_ORIGIN: "https://example.test",
+      GEOCODING_PROVIDER: "fake",
+    },
+  ])
+    assert.throws(
+      () => parseEnvironment({ DATABASE_URL: databaseUrl, ...extra }),
+      /Invalid environment variables/,
+    );
+});
+
+test("compiled migration DataSource loads with only DATABASE_URL despite invalid unrelated configuration", () => {
+  const file = new URL("../src/database/data-source.js", import.meta.url).href;
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", `await import(${JSON.stringify(file)})`],
+    {
+      env: {
+        DATABASE_URL: databaseUrl,
+        SOLAPI_SENDER_NUMBER: "bad",
+        GEOCODING_PROVIDER: "naver",
+      },
+      encoding: "utf8",
+      timeout: 10000,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "");
 });

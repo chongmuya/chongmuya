@@ -1,12 +1,17 @@
+import { MerchantInquiriesQuery } from "./merchant-inquiries.query.js";
+import { SolapiWebhookDecoder } from "./providers/solapi-webhook.js";
+import { FakeMessageGateway } from "./providers/fake-message.gateway.js";
+import { SolapiMessageGateway } from "./providers/solapi-message.gateway.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
 import { MerchantRepliesService } from "./merchant-replies.service.js";
 import { MessageDeliveryService } from "./message-delivery.service.js";
-import { MessageProvider } from "./providers/message.provider.js";
+import { MessageGateway } from "./providers/message.gateway.js";
 import {
   MerchantRepliesController,
   OwnerInquiriesController,
   SolapiWebhookController,
 } from "./merchant-replies.controller.js";
+import { ConfigService } from "../../config/config.service.js";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "../../config/config.module.js";
 import { DatabaseModule } from "../../database/database.module.js";
@@ -33,10 +38,19 @@ import { ReservationsService } from "./reservations.service.js";
   ],
   providers: [
     ReservationsService,
+    SolapiWebhookDecoder,
+    MerchantInquiriesQuery,
     MerchantLinksService,
     MerchantRepliesService,
     MessageDeliveryService,
-    MessageProvider,
+    {
+      provide: MessageGateway,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        config.environment.messageProvider === "solapi"
+          ? new SolapiMessageGateway(config)
+          : new FakeMessageGateway(),
+    },
   ],
 })
 export class ReservationsModule {}

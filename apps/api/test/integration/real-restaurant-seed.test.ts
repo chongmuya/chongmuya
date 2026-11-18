@@ -67,6 +67,26 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
   try {
     await seedRestaurants(db, fixture);
     assert.equal(await restaurants.countBy({ id: In(ids) }), 4);
+    const realAddress = await restaurants.findOneByOrFail({ id: ids[0]! });
+    await assert.rejects(
+      app.get(RestaurantManagementService).normalizeAddress({
+        restaurantId: realAddress.id,
+        actor: "test",
+        reason: "fake must not overwrite real address",
+        query: "가상 검색 결과",
+        baseAddress: "가상 검색 결과",
+        detailAddress: "",
+        version: realAddress.version,
+        dryRun: false,
+      }),
+      (error) =>
+        (error as { code?: string }).code === "ADDRESS_SELECTION_REQUIRED",
+    );
+    assert.equal(
+      (await restaurants.findOneByOrFail({ id: realAddress.id })).address,
+      realAddress.address,
+    );
+
     assert.equal(await spaces.countBy({ restaurantId: In(ids) }), 11);
     assert.equal(await menus.countBy({ restaurantId: In(ids) }), 146);
     assert.equal(
@@ -295,7 +315,9 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     await contacts.delete({ id: contactId });
     await seedRestaurants(db, fixture, privateFixture);
     assert.equal(await contacts.existsBy({ id: contactId }), false);
-    const pending = await app.get(ReservationsService).pendingForOperations();
+    const pending = await app
+      .get(MessageDeliveryService)
+      .pendingForOperations();
     assert(!pending.eligible.some((target) => target.request_id === requestId));
     assert(
       pending.held

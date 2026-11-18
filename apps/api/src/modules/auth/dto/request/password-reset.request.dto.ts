@@ -1,3 +1,4 @@
+import { passwordPattern } from "../../utils/password.js";
 import { Transform } from "class-transformer";
 import {
   IsEmail,
@@ -20,5 +21,5 @@ export class CheckPasswordResetDto {
 }
 export class SavePasswordResetDto {
   @IsString() @Matches(/^[A-Za-z0-9_-]{43}$/) token!: string;
-  @IsString() @Matches(/^[\x21-\x7e]{8,16}$/) password!: string;
+  @IsString() @Matches(passwordPattern) password!: string;
 }

@@ -42,6 +42,7 @@ try {
     "deliveries",
     "retry",
     "reconcile",
+    "expire-lease",
     "regenerate-link",
     "change-recipient",
     "record-reply",
@@ -116,7 +117,20 @@ try {
       await app
         .get(MessageDeliveryService)
         .dispatch(id, { actor: v.actor, reason: v.reason });
-    result = { deliveryId: id, dryRun: !v.execute };
+    result = {
+      deliveryId: id,
+      dryRun: !v.execute,
+      dispatchAttempted: !!v.execute,
+      ...(v.execute
+        ? (await app.get(MessageDeliveryService).listForOperations()).find(
+            (row) => row.id === id,
+          )
+        : {}),
+    };
+  } else if (v.action === "expire-lease") {
+    result = await app
+      .get(MessageDeliveryService)
+      .expireLease(uuid(v.delivery), v.actor, v.reason, !v.execute);
   } else if (v.action === "reconcile") {
     const id = uuid(v.delivery);
     result = v.execute
@@ -161,6 +175,10 @@ try {
       flag: "wx",
       mode: 0o600,
     });
+  if (result && !Array.isArray(result) && "status" in result)
+    console.log(
+      `발송 상태: ${result.status}; 시도 여부: ${(result.dispatchAttempted ?? (v.action === "regenerate-link" && v.execute)) ? "시도" : "미시도"}`,
+    );
   console.log(
     `${v.action}: ${v.execute ? "명시적으로 실행했습니다" : "조회·dry-run 완료"}${v.output ? ". 새 0600 파일에 결과를 저장했습니다" : ""}.`,
   );

@@ -24,6 +24,7 @@
 - DB는 PostgreSQL, ORM은 TypeORM이다. Entity는 API modules/<업무>/entities/*.entity.ts, 연결 설정과 마이그레이션은 src/database에 둔다. API DTO와 Entity를 구분하고 Next.js에서 업무 DB를 직접 수정하지 않는다.
 - 시드는 src/database/seeds에 실행 진입점·매장 시드·가상 시드·data를 분리한다. 시드만 Entity와 공통 DB 옵션을 참조하며 업무 Service·AppModule을 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않는다. 공개 JSON만 빌드에 포함하고 실제 연락처 *.private.json은 Git·빌드에서 제외하여 명시적 파일 옵션으로만 읽는다. 마이그레이션·시드는 별도 명령으로 실행하며 재실행 시 운영 변경·문의 참조를 보존한다.
 - API는 네이티브 ESM이다. NodeNext를 유지하고 상대 import에 .js 확장자를 쓴다. Entity와 마이그레이션은 컴파일한 JS만 로드한다. synchronize·migrationsRun·dropSchema는 false로 유지한다. 컴파일·마이그레이션 생성·적용을 구분한다. install/build/서버 시작에 마이그레이션을 자동 적용하지 않는다. 운영 DB reset/drop을 수행하지 않는다.
+- DB CLI는 공통 최소 DB schema만 검증하며 런타임 환경은 이를 조합한다. 로컬 시드는 Entity와 ESLint에 명시한 무부작용 codec만 사용하고 AppModule·업무 Service·외부 공급자를 부팅하지 않는다. 공급자는 Nest 조립 지점에서 선택하고 업무 서비스에는 정규화한 결과를 전달한다.
 - API 환경변수는 Zod로 시작 시 검증한다. false 문자열을 참으로 강제 변환하지 않고 오류에는 변수 이름만 노출한다. HTTP DTO 검증은 class-validator를 사용한다.
 - DB 접근 전 DatabaseService.connect()를 기다린다. 초기 DB 장애에도 liveness를 제공하며 readiness는 실제 쿼리로 확인한다.
 - 실제 서버와 E2E는 configureHttp를 공유한다. 요청/오류 로그에 body·인증 헤더·query·DB URL을 포함하지 않는다.

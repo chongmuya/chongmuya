@@ -2084,6 +2084,71 @@ test("existing owner menu response fields cannot leak into edit input; edit and 
   }
 });
 
+test("menu editing keeps its base version across background refetch", async () => {
+  const menu = {
+    id: crypto.randomUUID(),
+    name: "원본",
+    kind: "REGULAR",
+    price: 1000,
+    unit: "개",
+    available: true,
+    position: 0,
+  };
+  let version = 1;
+  let submittedVersion: number | undefined;
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "PUT") {
+      submittedVersion = JSON.parse(String(options.body)).version;
+      throw new ApiError("", 409, "RESTAURANT_VERSION_CONFLICT");
+    }
+    return structuredClone({ version, menus: [menu] }) as T;
+  };
+  const view = await render(
+    createElement(OwnerMenus, {
+      account: merchantAccount,
+      request,
+      restaurantId: crypto.randomUUID(),
+      onNavigate: () => {},
+    }),
+  );
+  try {
+    await until(() => assert.match(view.container.textContent!, /원본/));
+    await click(view.container, "수정");
+    await fill(view.container, "name", "내 입력");
+    version = 2;
+    menu.name = "다른 탭 수정";
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    await until(() =>
+      assert.match(view.container.textContent!, /다른 탭 수정/),
+    );
+    await submit(view.container);
+    assert.equal(
+      submittedVersion,
+      undefined,
+      "background refetch must not grant a stale form the newest version",
+    );
+    assert.match(view.container.textContent!, /내 입력으로 다시 적용/);
+    await click(view.container, "내 입력으로 다시 적용");
+    await submit(view.container);
+    await until(() => assert.equal(submittedVersion, 2));
+    await until(() =>
+      assert.match(view.container.textContent!, /내 입력으로 다시 적용/),
+    );
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('input[name="name"]')!
+        .value,
+      "내 입력",
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("draft autosave recovers a lost success response and uses the saved version on the next edit", async () => {
   let stored: RestaurantDraft = {
     id: crypto.randomUUID(),
@@ -2214,47 +2279,7 @@ test("draft conflicts preserve local input and require review before adopting cu
 });
 
 test("merchant reply keeps unsaved input through failed refetch and recovery", async () => {
-  const startsAt = new Date(Date.now() + 86400000).toISOString();
-  const inquiry: MerchantInquiry = {
-    targetId: crypto.randomUUID(),
-    restaurantName: "테스트 매장",
-    organizerName: "테스트 총무",
-    version: 0,
-    response: null,
-    linkExpiresAt: startsAt,
-    snapshot: {
-      eventName: "테스트 행사",
-      groupName: null,
-      startsAt,
-      expectedGuests: 20,
-      region: "건대입구",
-      space: "ANY",
-      seating: "ANY",
-      seatingImportance: null,
-      spaceImportance: null,
-      budgetBasis: null,
-      budgetAmount: null,
-      alcohol: null,
-      additionalRequests: null,
-    },
-    defaults: {
-      proposal: {
-        startsAt,
-        expectedGuests: 20,
-        space: "ANY",
-        seating: "ANY",
-        minimumSpend: null,
-        separateFee: null,
-        deposit: { kind: "UNKNOWN", amount: null },
-        menuDeadlineAt: null,
-        note: "",
-      },
-      expiresAt: startsAt,
-      depositDescription: null,
-      bookingDescription: null,
-      menuDescription: null,
-    },
-  };
+  const inquiry = merchantInquiryFixture();
   let offline = false,
     submitted = "";
   const request: SessionRequest = async <T>(
@@ -2313,6 +2338,118 @@ test("merchant reply keeps unsaved input through failed refetch and recovery", a
     );
     await submit(view.container);
     await until(() => assert.equal(submitted, "작성 중인 거절 사유"));
+  } finally {
+    await view.unmount();
+  }
+});
+
+function merchantInquiryFixture(): MerchantInquiry {
+  const startsAt = new Date(Date.now() + 86400000).toISOString();
+  const inquiry: MerchantInquiry = {
+    targetId: crypto.randomUUID(),
+    restaurantName: "테스트 매장",
+    organizerName: "테스트 총무",
+    version: 0,
+    response: null,
+    linkExpiresAt: startsAt,
+    snapshot: {
+      eventName: "테스트 행사",
+      groupName: null,
+      startsAt,
+      expectedGuests: 20,
+      region: "건대입구",
+      space: "ANY",
+      seating: "ANY",
+      seatingImportance: null,
+      spaceImportance: null,
+      budgetBasis: null,
+      budgetAmount: null,
+      alcohol: null,
+      additionalRequests: null,
+    },
+    defaults: {
+      proposal: {
+        startsAt,
+        expectedGuests: 20,
+        space: "ANY",
+        seating: "ANY",
+        minimumSpend: null,
+        separateFee: null,
+        deposit: { kind: "UNKNOWN", amount: null },
+        menuDeadlineAt: null,
+        note: "",
+      },
+      expiresAt: startsAt,
+      depositDescription: null,
+      bookingDescription: null,
+      menuDescription: null,
+    },
+  };
+  return inquiry;
+}
+
+test("merchant access expiration keeps current-tab input and stops writes and focus retries", async (t) => {
+  const inquiry = merchantInquiryFixture();
+  let denied = false,
+    requests = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    requests++;
+    return denied
+      ? Response.json(
+          {
+            statusCode: 403,
+            code: "MERCHANT_ACCESS_EXPIRED",
+            message: "ignored",
+            requestId: crypto.randomUUID(),
+          },
+          { status: 403 },
+        )
+      : Response.json(inquiry);
+  });
+  const view = await render(
+    createElement(ReplyWorkspace, {
+      targetId: inquiry.targetId,
+      access: {
+        kind: "link",
+        access: "test-capability",
+        scope: "test-scope",
+        accessExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+        linkExpiresAt: inquiry.linkExpiresAt!,
+      },
+    }),
+  );
+  try {
+    await until(() => assert(view.container.querySelector("form")));
+    await act(async () => {
+      const select = view.container.querySelector("select")!;
+      select.value = "DECLINE";
+      select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    const field = view.container.querySelector<HTMLTextAreaElement>(
+      'textarea[name="reason"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(field, "만료되어도 보존할 입력");
+      field.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    denied = true;
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    await until(() =>
+      assert.match(view.container.textContent!, /문자에 있는 원래 링크/),
+    );
+    const count = requests;
+    await submit(view.container);
+    await act(async () => {
+      await view.cache.refetchQueries();
+    });
+    assert.equal(requests, count);
+    assert.equal(field.value, "만료되어도 보존할 입력");
+    assert(view.container.querySelector("fieldset")!.disabled);
   } finally {
     await view.unmount();
   }
