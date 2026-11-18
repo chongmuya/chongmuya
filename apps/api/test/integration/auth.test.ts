@@ -53,6 +53,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "events",
       "external_identities",
       "group_members",
+      "group_roster_additions",
       "groups",
       "kakao_attempts",
       "password_resets",

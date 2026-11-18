@@ -187,6 +187,28 @@ test("migrations preserve existing account, group, event and session records and
       "INSERT INTO group_members VALUES ($1,$2,'동명이인','0012',0,now()),($3,$2,'동명이인',null,1,now())",
       [randomUUID(), group, randomUUID()],
     );
+    const { RosterAdditions1795132800000 } =
+      await import("../../src/database/migrations/1795132800000-RosterAdditions.js");
+    const additions = new RosterAdditions1795132800000();
+    const preservedMembers = await runner.query(
+      "SELECT * FROM group_members ORDER BY id",
+    );
+    const preservedGroups = await runner.query("SELECT * FROM groups");
+    await additions.up(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM group_members ORDER BY id"),
+      preservedMembers.map((row: object) => ({ ...row, label: null })),
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM groups"),
+      preservedGroups,
+    );
+    await additions.down(runner);
+    await additions.up(runner);
+    await runner.query(
+      "UPDATE group_members SET label = '운영팀' WHERE position = 0",
+    );
+    await assert.rejects(additions.down(runner), /preserving labels/);
     await assert.rejects(roster.down(runner), /preserving roster/);
     await runner.query("ROLLBACK TO SAVEPOINT social_rollback");
     await roster.up(runner);

@@ -12,6 +12,7 @@ import {
   SearchParamsContext,
   PathnameContext,
 } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
+import { HomeScreen } from "../features/home/components/home-screen";
 import { WorkspaceContent } from "../app/workspace-screen";
 import { LinkEventGroupForm } from "../features/events/components/link-event-group-form";
 import { EventForm } from "../features/events/components/event-form";
@@ -38,6 +39,7 @@ async function render(
   cache = client(),
   next = "",
   mode = "",
+  group = "",
 ) {
   const container = document.createElement("div");
   document.body.append(container);
@@ -67,7 +69,13 @@ async function render(
           { value: "/auth" },
           createElement(
             SearchParamsContext.Provider,
-            { value: new URLSearchParams({ next, mode }) },
+            {
+              value: new URLSearchParams({
+                next,
+                mode,
+                ...(group ? { group } : {}),
+              }),
+            },
             createElement(QueryClientProvider, { client: cache }, element),
           ),
         ),
@@ -1190,9 +1198,11 @@ test("first setup resumes the missing step, updates session and preserves next w
         email: "setup@example.test",
         name: "가입 이름",
         accountType:
-          scenario === "resume" || scenario === "configured"
-            ? "organizer"
-            : (null as string | null),
+          scenario === "owner"
+            ? "owner"
+            : scenario === "resume" || scenario === "configured"
+              ? "organizer"
+              : (null as string | null),
         nickname:
           scenario === "configured" ? "이미 설정" : (null as string | null),
       };
@@ -1213,7 +1223,7 @@ test("first setup resumes the missing step, updates session and preserves next w
         "/mypage",
       );
       try {
-        if (scenario === "configured") {
+        if (scenario === "configured" || scenario === "owner") {
           await until(() => assert.deepEqual(view.navigations, ["/mypage"]));
           assert.equal(writes.length, 0);
           continue;
@@ -1222,7 +1232,14 @@ test("first setup resumes the missing step, updates session and preserves next w
           await until(() =>
             assert(view.container.querySelector('input[name="accountType"]')),
           );
-          const value = scenario === "owner" ? "owner" : "organizer";
+          const value = "organizer";
+          assert.equal(
+            view.container.querySelector<HTMLInputElement>(
+              'input[value="owner"]',
+            )!.disabled,
+            true,
+          );
+          assert.match(view.container.textContent!, /준비 중/);
           await act(async () =>
             view.container
               .querySelector<HTMLInputElement>(`input[value="${value}"]`)!
@@ -1233,23 +1250,10 @@ test("first setup resumes the missing step, updates session and preserves next w
             assert(view.container.querySelector("dialog[open]")),
           );
           assert.equal(writes.length, 0);
-          await click(
-            view.container,
-            value === "owner" ? "사장님으로 계속하기" : "총무로 계속하기",
-          );
+          await click(view.container, "총무로 계속하기");
           await until(() => assert.equal(writes.length, 1));
         }
-        if (scenario === "owner") {
-          await until(() =>
-            assert.match(view.container.textContent!, /가입 이름/),
-          );
-          assert.equal(
-            view.container.querySelector('input[name="nickname"]'),
-            null,
-          );
-          assert.deepEqual(writes, [{ accountType: "owner" }]);
-          await click(view.container, "나중에 시작하기");
-        } else {
+        {
           await until(() =>
             assert(view.container.querySelector('input[name="nickname"]')),
           );
@@ -1291,12 +1295,12 @@ test("role confirmation cancels without saving, restores focus and prevents dupl
       return Response.json({ authenticated: true, account });
     assert(String(path).endsWith("first-setup"));
     assert.deepEqual(JSON.parse(String(options?.body)), {
-      accountType: "owner",
+      accountType: "organizer",
     });
     writes++;
     return writes === 1
       ? pending.promise
-      : Response.json({ ...account, accountType: "owner" });
+      : Response.json({ ...account, accountType: "organizer" });
   };
   const view = await render(
     createElement(AuthProvider, null, createElement(GettingStartedScreen)),
@@ -1346,15 +1350,15 @@ test("role confirmation cancels without saving, restores focus and prevents dupl
     }
     await act(async () =>
       view.container
-        .querySelector<HTMLInputElement>('input[value="owner"]')!
+        .querySelector<HTMLInputElement>('input[value="organizer"]')!
         .click(),
     );
     trigger.focus();
     await submit(view.container);
     const dialog = view.container.querySelector("dialog")!;
-    assert.match(dialog.textContent!, /사장님으로 계속하시겠어요/);
+    assert.match(dialog.textContent!, /총무로 계속하시겠어요/);
     const confirm = [...dialog.querySelectorAll("button")].find(
-      (button) => button.textContent === "사장님으로 계속하기",
+      (button) => button.textContent === "총무로 계속하기",
     )!;
     await act(async () => {
       confirm.click();
@@ -1389,9 +1393,9 @@ test("role confirmation cancels without saving, restores focus and prevents dupl
     assert(view.container.querySelector("dialog[open]"));
     assert(dialog.querySelector('[role="alert"]'));
     assert.doesNotMatch(dialog.textContent!, /PRIVATE/);
-    await click(view.container, "사장님으로 계속하기");
+    await click(view.container, "총무로 계속하기");
     await until(() =>
-      assert.match(view.container.textContent!, /사장님 설정을 마쳤어요/),
+      assert.match(view.container.textContent!, /어떻게 불러드릴까요/),
     );
     assert.equal(writes, 2);
     assert.equal(view.container.querySelector("dialog"), null);
@@ -1880,6 +1884,128 @@ test("recovery never carries an external or authentication-loop destination", as
       }
     }
     assert.deepEqual(destinations, ["/events", "/events"]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("home preserves the selected group and never falls back to personal creation during failed or unresolved reads", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const scenario of [
+      "selected",
+      "empty",
+      "inaccessible",
+      "failed",
+    ] as const) {
+      const pending = deferred<Response>();
+      let eventReads = 0;
+      globalThis.fetch = async (path) => {
+        const url = String(path);
+        if (url.endsWith("restore"))
+          return Response.json({
+            authenticated: true,
+            account: {
+              id: "home-user",
+              email: "home@example.test",
+              name: "이름",
+              nickname: "총무",
+              accountType: "organizer",
+            },
+          });
+        if (url.endsWith("/groups")) return pending.promise;
+        if (url.includes("/events")) {
+          eventReads++;
+          return Response.json([]);
+        }
+        throw new Error("unexpected path");
+      };
+      const view = await render(
+        createElement(AuthProvider, null, createElement(HomeScreen)),
+        client(),
+        "",
+        "",
+        scenario === "empty"
+          ? ""
+          : scenario === "inaccessible"
+            ? "missing"
+            : "second",
+      );
+      try {
+        await until(() =>
+          assert.match(view.container.textContent!, /모임 불러오는 중/),
+        );
+        assert(!view.container.querySelector('a[href^="/events"]'));
+        assert.equal(eventReads, 0);
+        await act(async () =>
+          pending.resolve(
+            scenario === "failed"
+              ? Response.json(
+                  { code: "SERVICE_UNAVAILABLE", statusCode: 503 },
+                  { status: 503 },
+                )
+              : Response.json(
+                  scenario === "empty"
+                    ? []
+                    : [
+                        {
+                          id: "first",
+                          name: "첫 모임",
+                          groupType: null,
+                          memberCount: 0,
+                        },
+                        {
+                          id: "second",
+                          name: "두 번째 모임",
+                          groupType: null,
+                          memberCount: 2,
+                        },
+                      ],
+                ),
+          ),
+        );
+        if (scenario === "selected") {
+          await until(() =>
+            assert(
+              view.container.querySelector('a[href="/events?group=second"]'),
+            ),
+          );
+          assert(
+            view.container.querySelector(
+              'nav a[aria-current="page"][href="/?group=second"]',
+            ),
+          );
+          assert(
+            view.container.querySelector('nav a[href="/mypage?group=second"]'),
+          );
+          assert.equal(
+            [...view.container.querySelectorAll("a")]
+              .find((a) => a.textContent?.includes("새 행사"))
+              ?.getAttribute("href"),
+            "/events?group=second",
+          );
+        } else if (scenario === "empty") {
+          await until(() =>
+            assert(view.container.querySelector('a[href="/events"]')),
+          );
+        } else {
+          await until(() =>
+            assert(view.container.querySelector('[role="alert"]')),
+          );
+          assert(!view.container.querySelector('a[href^="/events"]'));
+          assert.equal(eventReads, 0);
+          if (scenario === "failed")
+            assert(
+              view.container.querySelector(
+                'nav a[aria-current="page"][href="/?group=second"]',
+              ),
+            );
+        }
+      } finally {
+        pending.resolve(Response.json([]));
+        await view.unmount();
+      }
+    }
   } finally {
     globalThis.fetch = original;
   }

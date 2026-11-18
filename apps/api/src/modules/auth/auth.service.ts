@@ -122,6 +122,8 @@ export class AuthService {
         account.accountType !== input.accountType
       )
         throw new DomainHttpException("FIRST_SETUP_CONFLICT");
+      if (!account.accountType && input.accountType === "owner")
+        throw new DomainHttpException("OWNER_REGISTRATION_UNAVAILABLE");
       const type = account.accountType ?? input.accountType;
       if (!type || (input.nickname !== undefined && type !== "organizer"))
         throw new DomainHttpException("VALIDATION_FAILED");

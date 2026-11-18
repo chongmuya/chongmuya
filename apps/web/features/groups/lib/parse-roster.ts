@@ -4,6 +4,8 @@ export type RosterRow = {
   name: string;
   phoneLast4: string;
   parseError: string;
+  label: string;
+  match: string;
 };
 
 // Only explicit separators are interpreted. Spaces inside a person's name are preserved.
@@ -14,7 +16,7 @@ export function parseRoster(text: string): RosterRow[] {
     throw new Error(
       "읽을 수 없는 문자가 있어요. UTF-8 TXT 파일인지 확인해 주세요.",
     );
-  const rows: RosterRow[] = [];
+  const rows: Omit<RosterRow, "label" | "match">[] = [];
   for (const source of text.replace(/^\ufeff/, "").split(/\r?\n/)) {
     // A leading tab is an empty name column, never a name made from the phone digits.
     const line = source
@@ -44,7 +46,7 @@ export function parseRoster(text: string): RosterRow[] {
   }
   if (rows.length > MAX_ROSTER_MEMBERS)
     throw new Error("명단은 한 번에 500명까지 등록할 수 있어요.");
-  return rows;
+  return rows.map((row) => ({ ...row, label: "", match: "" }));
 }
 
 export function duplicateNames(

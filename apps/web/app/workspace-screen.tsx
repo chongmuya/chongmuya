@@ -106,6 +106,7 @@ export function WorkspaceContent({
         >
           {(selected, groups) => (
             <GroupSettings
+              key={`${accountId}:${selected.id}`}
               accountId={accountId}
               request={request}
               selected={selected}

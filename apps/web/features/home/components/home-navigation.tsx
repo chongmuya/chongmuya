@@ -8,7 +8,7 @@ export function HomeNavigation({ groupId }: { groupId?: string }) {
       className="sticky bottom-0 z-10 mt-auto grid grid-cols-4 bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] text-center shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
     >
       <Link
-        href="/"
+        href={groupId ? `/?group=${encodeURIComponent(groupId)}` : "/"}
         aria-current="page"
         className="flex flex-col items-center gap-1 text-[10px] text-brand"
       >
@@ -37,7 +37,9 @@ export function HomeNavigation({ groupId }: { groupId?: string }) {
         캘린더 · 준비 중
       </span>
       <Link
-        href={groupId ? `/mypage?group=${groupId}` : "/mypage"}
+        href={
+          groupId ? `/mypage?group=${encodeURIComponent(groupId)}` : "/mypage"
+        }
         className="flex flex-col items-center gap-1 text-[10px] text-muted"
       >
         <Image

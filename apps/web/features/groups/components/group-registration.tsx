@@ -6,6 +6,7 @@ import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
+import { ApiError } from "@/shared/http/api-error";
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
@@ -13,17 +14,18 @@ import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { Input } from "@/shared/ui/input";
 import { StepHeading, StepLayout } from "@/shared/ui/step-layout";
-import {
-  duplicateNames,
-  MAX_ROSTER_BYTES,
-  parseRoster,
-} from "../lib/parse-roster";
+import { MAX_ROSTER_BYTES, parseRoster } from "../lib/parse-roster";
 import {
   groupRegistrationSchema,
   type GroupRegistrationValues,
 } from "../schemas/group-registration.schema";
-import { useSaveGroup } from "../hooks/use-save-group";
-import type { Group } from "../types/group.types";
+import { useRegisterGroup } from "../hooks/use-register-group";
+import { reviewRoster } from "../lib/roster-review";
+import type {
+  Group,
+  GroupMember,
+  AddedGroupMembers,
+} from "../types/group.types";
 import { RosterPreview } from "./roster-preview";
 
 type Step = "group" | "input" | "preview";
@@ -31,15 +33,17 @@ export function GroupRegistration({
   accountId,
   request,
   onNavigate,
+  target,
 }: {
+  target?: { group: Group; members: GroupMember[] };
   accountId: string;
   request: SessionRequest;
   onNavigate: (path: string) => void;
 }) {
   const id = useId();
   const active = useActiveScreen();
-  const [step, setStep] = useState<Step>("group");
-  const [completed, setCompleted] = useState<Group | null>(null);
+  const [step, setStep] = useState<Step>(target ? "input" : "group");
+  const [completed, setCompleted] = useState<AddedGroupMembers | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [confirmedRows, setConfirmedRows] = useState<string | null>(null);
   const [fileBusy, setFileBusy] = useState(false);
@@ -52,7 +56,12 @@ export function GroupRegistration({
   const fileInput = useRef<HTMLInputElement>(null);
   const form = useForm<GroupRegistrationValues>({
     resolver: zodResolver(groupRegistrationSchema),
-    defaultValues: { name: "", groupType: "", source: "", members: [] },
+    defaultValues: {
+      name: target?.group.name ?? "",
+      groupType: target?.group.groupType ?? "",
+      source: "",
+      members: [],
+    },
     shouldUnregister: false,
   });
   const { fields, replace, remove, append } = useFieldArray({
@@ -60,10 +69,11 @@ export function GroupRegistration({
     name: "members",
   });
   const rows = useWatch({ control: form.control, name: "members" });
-  const fingerprint = JSON.stringify(rows);
-  const duplicates = duplicateNames(rows);
+  const fingerprint = JSON.stringify([rows, target?.members]);
+  const review = reviewRoster(rows, target?.members ?? []);
+  const { duplicates } = review;
   const confirmed = confirmedRows === fingerprint;
-  const save = useSaveGroup(accountId, request, undefined, (group) =>
+  const save = useRegisterGroup(accountId, request, (group) =>
     setCompleted(group),
   );
   const busy = save.isPending || fileBusy;
@@ -96,24 +106,54 @@ export function GroupRegistration({
       });
       return;
     }
+    if (!skip && review.issues.length) {
+      for (const issue of review.issues)
+        setError(`members.${issue.index}.${issue.field}`, {
+          message: issue.message,
+        });
+      return;
+    }
     submitting.current = true;
     requestKey.current ??= crypto.randomUUID();
     previousSkip.current = skip;
     clearErrors("root.server");
     try {
-      await save.mutateAsync({
-        name: values.name,
-        groupType: values.groupType || null,
-        creationKey: requestKey.current,
-        members: skip
-          ? []
-          : values.members.map(({ name, phoneLast4 }) => ({
-              name,
-              phoneLast4: phoneLast4 || null,
-            })),
-        duplicatesConfirmed: !skip && confirmed,
-      });
+      const members = skip
+        ? []
+        : values.members.map(({ name, phoneLast4, label, match }) => ({
+            name,
+            phoneLast4: phoneLast4 || null,
+            label: label || null,
+            ...(match && match !== "new" ? { existingMemberId: match } : {}),
+          }));
+      await save.mutateAsync(
+        target
+          ? {
+              kind: "append",
+              groupId: target.group.id,
+              input: {
+                requestKey: requestKey.current,
+                members,
+                duplicatesConfirmed: confirmed,
+              },
+            }
+          : {
+              kind: "create",
+              input: {
+                name: values.name,
+                groupType: values.groupType || null,
+                creationKey: requestKey.current,
+                members,
+                duplicatesConfirmed: !skip && confirmed,
+              },
+            },
+      );
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        (error.status === 400 || error.code === "ROSTER_MEMBER_CONFLICT")
+      )
+        requestKey.current = null;
       if (active.current)
         applyFormError(error, setError, {
           name: "name",
@@ -123,25 +163,27 @@ export function GroupRegistration({
       submitting.current = false;
     }
   };
-  const preview = () => {
+  const openPreview = (addEmpty = false, source = form.getValues("source")) => {
     clearErrors();
     try {
-      const source = form.getValues("source");
-      if (parsedSource.current === source) {
-        setStep("preview");
-        return;
-      }
-      const parsed = parseRoster(source);
-      if (!parsed.length) {
-        setError("source", {
-          message: "명단을 입력하거나, 명단 없이 모임을 만들어 주세요.",
-        });
-        return;
-      }
+      // Only a changed source replaces the draft. Back/forward keeps edited/excluded rows.
+      const changed = parsedSource.current !== source;
+      const next = changed ? parseRoster(source) : form.getValues("members");
+      if (addEmpty && next.length >= 500)
+        throw new Error("명단은 한 번에 500명까지 등록할 수 있어요.");
+      const result = addEmpty
+        ? [
+            ...next,
+            { name: "", phoneLast4: "", label: "", match: "", parseError: "" },
+          ]
+        : next;
+      if (!result.length)
+        throw new Error("명단을 입력하거나 한 명씩 직접 추가해 주세요.");
+      if (changed || addEmpty) replace(result);
       parsedSource.current = source;
-      replace(parsed);
+      setValue("source", source, { shouldDirty: true });
       setStep("preview");
-      void form.trigger("members");
+      if (!addEmpty) void form.trigger("members");
     } catch (error) {
       setError("source", {
         message:
@@ -166,17 +208,8 @@ export function GroupRegistration({
       const text = new TextDecoder("utf-8", { fatal: true }).decode(
         await file.arrayBuffer(),
       );
-      const parsed = parseRoster(text);
       if (!active.current || version !== fileVersion.current) return;
-      if (!parsed.length) {
-        setError("source", { message: "파일에 등록할 명단이 없어요." });
-        return;
-      }
-      parsedSource.current = text;
-      setValue("source", text, { shouldDirty: true });
-      replace(parsed);
-      setStep("preview");
-      void form.trigger("members");
+      openPreview(false, text);
     } catch {
       if (active.current && version === fileVersion.current)
         setError("source", {
@@ -188,9 +221,9 @@ export function GroupRegistration({
     }
   };
   const previous = () => {
-    if (step === "group") {
+    if (step === "group" || (target && step === "input")) {
       if (isDirty) setLeaving(true);
-      else onNavigate("/");
+      else onNavigate(target ? `/mypage?group=${target.group.id}` : "/");
     } else {
       clearErrors("root.server");
       setStep(step === "preview" ? "input" : "group");
@@ -200,7 +233,7 @@ export function GroupRegistration({
   return (
     <div ref={container}>
       <StepLayout
-        title="모임 등록"
+        title={target ? "명단 추가" : "모임 등록"}
         onBack={previous}
         busy={busy}
         progress={{ value: step === "group" ? 1 : 2, max: 2 }}
@@ -215,7 +248,7 @@ export function GroupRegistration({
               void form.trigger(["name", "groupType"]).then((valid) => {
                 if (valid && active.current) setStep("input");
               });
-            else if (step === "input") preview();
+            else if (step === "input") openPreview();
             else void form.handleSubmit((values) => persist(values))(event);
           }}
         >
@@ -325,30 +358,18 @@ export function GroupRegistration({
                       </span>
                       {fileBusy ? "파일 읽는 중…" : "TXT 파일로 등록하기"}
                     </Button>
-                    {rows.length > 0 && (
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => setStep("preview")}
-                      >
-                        수정하던 명단 {rows.length}명으로 돌아가기
-                      </Button>
-                    )}
                     <Button
                       variant="outline"
                       className="w-full"
                       disabled={rows.length >= 500}
-                      onClick={() => {
-                        parsedSource.current ??= form.getValues("source");
-                        append({ name: "", phoneLast4: "", parseError: "" });
-                        setStep("preview");
-                      }}
+                      onClick={() => openPreview(true)}
                     >
                       한 명씩 직접 추가하기
                     </Button>
                   </div>
                 ) : (
                   <RosterPreview
+                    existing={target?.members ?? []}
                     form={form}
                     fields={fields}
                     duplicates={duplicates}
@@ -358,7 +379,13 @@ export function GroupRegistration({
                     }
                     onRemove={remove}
                     onAppend={() =>
-                      append({ name: "", phoneLast4: "", parseError: "" })
+                      append({
+                        name: "",
+                        phoneLast4: "",
+                        label: "",
+                        match: "",
+                        parseError: "",
+                      })
                     }
                   />
                 )}
@@ -369,7 +396,8 @@ export function GroupRegistration({
             <FormError message={errors.root?.server?.message} />
             {save.isError && (
               <p className="text-xs text-muted">
-                입력은 유지돼요. 다시 눌러도 같은 모임이 중복 생성되지 않아요.
+                입력은 유지돼요. 같은 입력으로 다시 저장해도 중복 등록되지
+                않아요.
               </p>
             )}
             <Button
@@ -391,7 +419,7 @@ export function GroupRegistration({
                     ? "저장 중…"
                     : "등록 완료"}
             </Button>
-            {step !== "group" && (
+            {!target && step !== "group" && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -426,7 +454,7 @@ export function GroupRegistration({
         <Dialog
           showCloseButton
           labelledBy={`${id}-complete`}
-          onClose={() => onNavigate(`/?group=${completed.id}`)}
+          onClose={() => onNavigate(`/?group=${completed.group.id}`)}
           className="max-w-[322px] space-y-7 text-center"
         >
           <Image
@@ -438,29 +466,39 @@ export function GroupRegistration({
           />
           <div>
             <h2 id={`${id}-complete`} className="text-2xl font-bold">
-              모임이 만들어졌어요!
+              {target ? "명단을 확인했어요!" : "모임이 만들어졌어요!"}
             </h2>
             <p className="mt-2 break-words text-caption text-muted">
-              {completed.name}
-              {completed.memberCount > 0
-                ? ` · 명단 ${completed.memberCount}명 등록 완료`
-                : " · 명단 없이 등록 완료"}
+              {completed.group.name}
+              {target
+                ? ` · ${completed.addedCount}명 추가 완료 (총 ${completed.group.memberCount}명)`
+                : completed.group.memberCount > 0
+                  ? ` · 명단 ${completed.group.memberCount}명 등록 완료`
+                  : " · 명단 없이 등록 완료"}
             </p>
             <p className="mt-2 text-control text-muted">
               이제 첫 행사를 준비해 볼까요?
             </p>
           </div>
           <div className="space-y-2">
+            {target && (
+              <Button
+                className="w-full"
+                onClick={() => onNavigate(`/mypage?group=${target.group.id}`)}
+              >
+                명단으로 돌아가기
+              </Button>
+            )}
             <Button
               className="w-full"
-              onClick={() => onNavigate(`/events?group=${completed.id}`)}
+              onClick={() => onNavigate(`/events?group=${completed.group.id}`)}
             >
               행사 등록하기
             </Button>
             <Button
               className="w-full"
               variant="brand-outline"
-              onClick={() => onNavigate(`/?group=${completed.id}`)}
+              onClick={() => onNavigate(`/?group=${completed.group.id}`)}
             >
               홈으로 가기
             </Button>
@@ -470,7 +508,7 @@ export function GroupRegistration({
       {leaving && (
         <Dialog labelledBy={`${id}-leave`} onClose={() => setLeaving(false)}>
           <h2 id={`${id}-leave`} className="text-label">
-            모임 등록을 나가시겠어요?
+            {target ? "명단 추가를 나가시겠어요?" : "모임 등록을 나가시겠어요?"}
           </h2>
           <p className="my-4 text-caption text-muted">
             아직 저장하지 않은 입력은 사라져요. 모임은 나중에 만들어도 괜찮아요.
@@ -482,9 +520,11 @@ export function GroupRegistration({
             <Button
               className="w-full"
               variant="outline"
-              onClick={() => onNavigate("/")}
+              onClick={() =>
+                onNavigate(target ? `/mypage?group=${target.group.id}` : "/")
+              }
             >
-              홈으로 나가기
+              {target ? "명단으로 나가기" : "홈으로 나가기"}
             </Button>
           </div>
         </Dialog>

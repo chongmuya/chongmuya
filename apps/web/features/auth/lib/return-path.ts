@@ -35,7 +35,9 @@ export function safeReturnPath(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   for (const key of url.pathname === "/events"
     ? ["event", "group"]
-    : url.pathname === "/mypage" || url.pathname === "/"
+    : url.pathname === "/mypage" ||
+        url.pathname === "/" ||
+        url.pathname === "/groups/new"
       ? ["group"]
       : []) {
     const item = url.searchParams.get(key);

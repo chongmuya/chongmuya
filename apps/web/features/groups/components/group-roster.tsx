@@ -1,6 +1,8 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
+import Link from "next/link";
+import { buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { groupMembersQueryOptions } from "../api/groups.queries";
 
@@ -41,6 +43,11 @@ export function GroupRoster({
                 <span className="text-xs text-muted">{index + 1}</span>
                 <span className="min-w-0 flex-1 break-words">
                   {member.name}
+                  {member.label && (
+                    <span className="ml-2 text-caption text-muted">
+                      ({member.label})
+                    </span>
+                  )}
                 </span>
                 <span className="text-caption text-muted">
                   {member.phoneLast4
@@ -51,6 +58,17 @@ export function GroupRoster({
             ))}
           </ol>
         </>
+      )}
+      {members.data && !members.isError && (
+        <Link
+          href={`/groups/new?group=${groupId}`}
+          className={buttonStyles({
+            variant: "brand-outline",
+            className: "mt-4 w-full",
+          })}
+        >
+          구성원 추가하기
+        </Link>
       )}
     </section>
   );
