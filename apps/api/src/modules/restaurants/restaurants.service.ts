@@ -78,6 +78,7 @@ export class RestaurantsService {
       longitude: r.longitude,
       maxCapacity: r.maxCapacity,
       photoPath: r.photoPath,
+      spacePhotos: [...r.spacePhotos].sort((a, b) => a.position - b.position),
       operatingHours: r.operatingHours,
       facilities: r.facilities,
       bookingPolicy: r.bookingPolicy,
@@ -112,6 +113,36 @@ export class RestaurantsService {
     }));
   }
   // Called inside the inquiry transaction: event -> restaurants (UUID order) -> contacts.
+  async deliveryEligibility(
+    targets: {
+      contactId: string;
+      restaurantId: string;
+      contactPhone: string;
+    }[],
+    manager: EntityManager,
+  ) {
+    const contacts = targets.length
+      ? await manager.findBy(RestaurantContact, {
+          id: In(targets.map((t) => t.contactId)),
+        })
+      : [];
+    return targets.map((target) => {
+      const current = contacts.find(
+        (c) =>
+          c.id === target.contactId && c.restaurantId === target.restaurantId,
+      );
+      const reasons: string[] = [];
+      if (!current) reasons.push("CONTACT_DELETED");
+      else {
+        if (!current.active) reasons.push("CONTACT_INACTIVE");
+        if (!current.requestConsentAt) reasons.push("CONSENT_WITHDRAWN");
+        if (current.phone !== target.contactPhone)
+          reasons.push("PHONE_CHANGED");
+      }
+      return reasons;
+    });
+  }
+
   async inquiryTargets(ids: string[], manager: EntityManager) {
     const targets = [];
     for (const id of [...ids].sort()) {

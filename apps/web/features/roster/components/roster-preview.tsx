@@ -1,16 +1,19 @@
 import Image from "next/image";
+import type { RefObject } from "react";
 import type { FieldArrayWithId, UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import { Button } from "@/shared/ui/button";
 import { IconButton } from "@/shared/ui/icon-button";
 import { Input } from "@/shared/ui/input";
 import { FormError } from "@/shared/ui/form-error";
-import type { GroupMember } from "../types/group.types";
+import type { ExistingPerson, RosterRow } from "../lib/parse-roster";
+import { normalizeName, phoneSuffix } from "../lib/parse-roster";
 import { reviewRoster } from "../lib/roster-review";
-import type { GroupRegistrationValues } from "../schemas/group-registration.schema";
+import type { RosterDraft } from "../schemas/roster.schema";
 
 export function RosterPreview({
   form,
+  directValues,
   existing,
   fields,
   duplicates,
@@ -19,9 +22,12 @@ export function RosterPreview({
   onRemove,
   onAppend,
 }: {
-  existing: GroupMember[];
-  form: UseFormReturn<GroupRegistrationValues>;
-  fields: FieldArrayWithId<GroupRegistrationValues, "members">[];
+  existing: ExistingPerson[];
+  directValues: RefObject<
+    Map<string, Pick<RosterRow, "name" | "phoneLast4" | "label">>
+  >;
+  form: UseFormReturn<RosterDraft>;
+  fields: FieldArrayWithId<RosterDraft, "members">[];
   duplicates: string[];
   confirmed: boolean;
   onConfirm: (value: boolean) => void;
@@ -60,8 +66,8 @@ export function RosterPreview({
             />
             <p className="text-xs">
               같은 이름이 {duplicates.length}종류 있어요. 같은 사람을 중복
-              입력했다면 해당 행을 제외해 주세요. 동명이인은 서로 다른 구분
-              표시를 적어 주세요. 뒤 4자리는 선택이에요.
+              입력했다면 해당 행을 제외해 주세요. 동명이인은 별도로 등록돼요. 뒤
+              4자리와 구분 메모는 선택이에요.
             </p>
           </div>
           <label className="mt-3 flex items-start gap-2 text-caption">
@@ -71,7 +77,7 @@ export function RosterPreview({
               checked={confirmed}
               onChange={(e) => onConfirm(e.target.checked)}
             />
-            동명이인의 구분 표시를 확인했고, 새 구성원으로 등록할게요.
+            동명이인을 확인했고, 각각 새 구성원으로 등록할게요.
           </label>
         </div>
       )}
@@ -80,13 +86,19 @@ export function RosterPreview({
           const error = errors.members?.[index];
           const row = rows[index];
           const matches = existing.filter(
-            (member) => member.name === row?.name.trim(),
+            (member) =>
+              normalizeName(member.name) === normalizeName(row?.name ?? ""),
           );
           const selectedExisting = matches.find(
             (member) => member.id === row?.match,
           );
-          const needsLabel =
-            !selectedExisting && duplicates.includes(row?.name.trim());
+          const restoreDirect = () => {
+            const direct = directValues.current.get(field.id);
+            if (direct) {
+              setValue(`members.${index}.phoneLast4`, direct.phoneLast4);
+              setValue(`members.${index}.label`, direct.label);
+            }
+          };
           return (
             <li key={field.id} className="py-2">
               <span className="sr-only">구성원 {index + 1}</span>
@@ -102,6 +114,7 @@ export function RosterPreview({
                     placeholder="이름"
                     {...register(`members.${index}.name`, {
                       onChange: () => {
+                        if (selectedExisting) restoreDirect();
                         setValue(`members.${index}.match`, "");
                         setValue(`members.${index}.parseError`, "", {
                           shouldValidate: true,
@@ -125,10 +138,15 @@ export function RosterPreview({
                     inputMode="numeric"
                     autoComplete="off"
                     {...register(`members.${index}.phoneLast4`, {
-                      onChange: () =>
+                      onChange: (event) => {
+                        setValue(
+                          `members.${index}.phoneLast4`,
+                          phoneSuffix(event.target.value),
+                        );
                         setValue(`members.${index}.parseError`, "", {
                           shouldValidate: true,
-                        }),
+                        });
+                      },
                     })}
                     aria-invalid={!!error?.phoneLast4}
                     aria-describedby={`${field.id}-error`}
@@ -165,6 +183,12 @@ export function RosterPreview({
                     aria-invalid={!!error?.match}
                     aria-describedby={`${field.id}-error`}
                     onChange={(event) => {
+                      if (!selectedExisting)
+                        directValues.current.set(field.id, {
+                          name: row.name,
+                          phoneLast4: row.phoneLast4,
+                          label: row.label,
+                        });
                       const match = matches.find(
                         (member) => member.id === event.target.value,
                       );
@@ -178,6 +202,11 @@ export function RosterPreview({
                           match.phoneLast4 ?? "",
                         );
                         setValue(`members.${index}.label`, match.label ?? "");
+                      } else {
+                        const direct = directValues.current.get(field.id);
+                        if (direct)
+                          setValue(`members.${index}.name`, direct.name);
+                        restoreDirect();
                       }
                     }}
                   >
@@ -204,8 +233,7 @@ export function RosterPreview({
                   htmlFor={`${field.id}-label`}
                   className="text-xs text-muted"
                 >
-                  {index + 1}번 구분 표시{" "}
-                  {needsLabel ? "(동명이인 필수)" : "(선택)"}
+                  {index + 1}번 구분 표시 (선택)
                 </label>
                 <Input
                   id={`${field.id}-label`}

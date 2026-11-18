@@ -15,6 +15,7 @@ import { KakaoSignupScreen } from "./signup/signup-screen";
 import { usePrivateAuthAction } from "../hooks/use-private-auth-action";
 import { kakaoStatus, confirmKakaoLink, cancelKakao } from "../api/kakao.api";
 import { postLoginPath } from "../lib/first-setup";
+import { safeReturnPath } from "../lib/return-path";
 export function KakaoCompleteScreen() {
   const { client, status, account } = useAuth();
   const params = useSearchParams(),
@@ -83,7 +84,11 @@ export function KakaoCompleteScreen() {
             같은 이메일의 계정이 있어요. 가입할 때 사용한 이메일 또는 카카오로
             로그인해 주세요. 다른 카카오로 교체하거나 계정을 합칠 수는 없습니다.
           </p>
-          <Link href="/auth?next=%2Fmypage">기존 계정으로 로그인</Link>
+          <Link
+            href={`/auth?next=${encodeURIComponent(safeReturnPath(result.data?.next))}`}
+          >
+            기존 계정으로 로그인
+          </Link>
         </>
       ) : !failure && !result.error && (kind === "login" || kind === "link") ? (
         <>

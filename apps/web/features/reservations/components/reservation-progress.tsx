@@ -6,7 +6,10 @@ import type { SessionRequest } from "@/features/auth/types";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { inquiryQuery } from "../api/reservations.api";
-import type { ReservationRequest } from "../types/inquiry.types";
+import type {
+  InquiryConditions,
+  ReservationRequest,
+} from "../types/inquiry.types";
 
 export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
   const c = inquiry.snapshot;
@@ -53,57 +56,13 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
         <summary className="cursor-pointer font-semibold">
           접수한 조건 확인
         </summary>
-        <dl className="mt-3 space-y-3">
-          <div>
-            <dt>함께 착석</dt>
-            <dd>
-              {
-                {
-                  CLOSE: "같은 공간에서 가까이",
-                  SEPARATED: "떨어져도 가능",
-                  ANY: "상관없음",
-                }[c.seating]
-              }
-              {c.seatingImportance &&
-                ` · ${c.seatingImportance === "REQUIRED" ? "꼭 필요" : "가능하면 희망"}`}
-            </dd>
-          </div>
-          <div>
-            <dt>공간 이용</dt>
-            <dd>
-              {
-                {
-                  HALL: "일반 홀",
-                  FLOOR: "한 층 단독 대관",
-                  WHOLE: "전체 단독 대관",
-                  ANY: "상관없음",
-                }[c.space]
-              }
-              {c.spaceImportance &&
-                ` · ${c.spaceImportance === "REQUIRED" ? "꼭 필요" : "가능하면 희망"}`}
-            </dd>
-          </div>
-          <div>
-            <dt>예산</dt>
-            <dd>
-              {c.budgetAmount
-                ? `${c.budgetBasis === "PER_PERSON" ? "1인당" : "전체"} ${c.budgetAmount.toLocaleString()}원 · 주류 ${c.alcohol === "INCLUDED" ? "포함" : c.alcohol === "EXCLUDED" ? "미포함" : "미정"}`
-                : "입력하지 않음"}
-            </dd>
-          </div>
-          <div>
-            <dt>요청사항</dt>
-            <dd className="whitespace-pre-wrap wrap-break-word">
-              {c.additionalRequests || "없음"}
-            </dd>
-          </div>
-          <div>
-            <dt>담당자</dt>
-            <dd>
-              {inquiry.contact.name} · {inquiry.contact.maskedPhone}
-            </dd>
-          </div>
-        </dl>
+        <InquiryDetails
+          conditions={c}
+          contact={{
+            name: inquiry.contact.name,
+            phone: inquiry.contact.maskedPhone,
+          }}
+        />
       </details>
       <p className="text-xs text-muted">
         접수 후 조건 수정·매장 추가·같은 행사 재문의는 할 수 없어요. 이후 행사
@@ -160,5 +119,67 @@ export function ReservationProgress({
         예약 조건 입력 · 매장 찾기
       </Link>
     </section>
+  );
+}
+
+export function InquiryDetails({
+  conditions: c,
+  contact,
+}: {
+  conditions: InquiryConditions;
+  contact: { name: string; phone: string };
+}) {
+  return (
+    <dl className="mt-3 space-y-3">
+      <div>
+        <dt>함께 착석</dt>
+        <dd>
+          {
+            {
+              CLOSE: "같은 공간에서 가까이",
+              SEPARATED: "떨어져도 가능",
+              ANY: "상관없음",
+            }[c.seating]
+          }
+          {c.seatingImportance &&
+            ` · ${c.seatingImportance === "REQUIRED" ? "꼭 필요" : "가능하면 희망"}`}
+        </dd>
+      </div>
+      <div>
+        <dt>공간 이용</dt>
+        <dd>
+          {
+            {
+              HALL: "일반 홀",
+              FLOOR: "한 층 단독 대관",
+              WHOLE: "전체 단독 대관",
+              ANY: "상관없음",
+            }[c.space]
+          }
+          {c.spaceImportance &&
+            ` · ${c.spaceImportance === "REQUIRED" ? "꼭 필요" : "가능하면 희망"}`}
+        </dd>
+      </div>
+      <div>
+        <dt>예산</dt>
+        <dd>
+          {c.budgetAmount
+            ? `${c.budgetBasis === "PER_PERSON" ? "1인당" : "전체"} ${c.budgetAmount.toLocaleString()}원 · 주류 ${c.alcohol === "INCLUDED" ? "포함" : c.alcohol === "EXCLUDED" ? "미포함" : "미정"}`
+            : "미입력"}
+        </dd>
+      </div>
+      <div>
+        <dt>요청사항</dt>
+        <dd className="whitespace-pre-wrap wrap-break-word">
+          {c.additionalRequests || "미입력"}
+        </dd>
+      </div>
+      <div>
+        <dt>담당자</dt>
+        <dd>
+          {contact.name} · {contact.phone}
+        </dd>
+      </div>
+    </dl>
   );
 }

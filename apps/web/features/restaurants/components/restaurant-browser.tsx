@@ -17,6 +17,8 @@ import type {
   RestaurantConditions,
 } from "../types/restaurant.types";
 import { conditionsMatch } from "../lib/conditions-match";
+import { RestaurantPhoto } from "./restaurant-photo";
+import { spaceCost } from "../lib/space-cost";
 import { RestaurantDetail } from "./restaurant-detail";
 import { RestaurantMap } from "./restaurant-map";
 
@@ -171,21 +173,9 @@ export function RestaurantBrowser({
                       aria-label={`${r.name} 상세 보기`}
                       onClick={() => onOpen(r.id)}
                     >
-                      {r.photoPath ? (
-                        <Image
-                          src={r.photoPath}
-                          alt=""
-                          width={362}
-                          height={120}
-                          className="h-[120px] w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-[120px] items-center justify-center bg-border/30 text-sm text-muted">
-                          등록된 사진이 없어요
-                        </div>
-                      )}
+                      <RestaurantPhoto src={r.photoPath} alt="" height={120} />
                       <span className="absolute top-3 right-3 rounded-pill bg-surface/95 px-2 py-1 text-xs text-secondary shadow-control">
-                        {match === "조건 일치" ? "✓ " : "· "}
+                        {match === "인원·공간 일치" ? "✓ " : "· "}
                         {match}
                       </span>
                     </button>
@@ -231,6 +221,26 @@ export function RestaurantBrowser({
                       <p className="mt-1 text-[10px] text-secondary">
                         {r.address}
                       </p>
+                      <p className="mt-2 text-[10px] text-muted">
+                        매장 정보 기준이며, 해당 날짜의 예약 가능 여부는 문의 후
+                        확인합니다.
+                      </p>
+                      {r.spaces.length ? (
+                        r.spaces.map((space) => (
+                          <p
+                            key={space.id}
+                            className="mt-1 text-[10px] text-secondary"
+                          >
+                            {space.label} ·{" "}
+                            {spaceCost("최소 이용금액", space.minSpend)} ·{" "}
+                            {spaceCost("별도 대관료", space.separateFee)}
+                          </p>
+                        ))
+                      ) : (
+                        <p className="mt-1 text-[10px] text-secondary">
+                          최소 이용금액 확인 필요 · 별도 대관료 확인 필요
+                        </p>
+                      )}
                       {r.isDemo && (
                         <p className="mt-1 text-xs text-brand">
                           가상 매장 · 개발 테스트용
@@ -365,6 +375,11 @@ export function RestaurantBrowser({
           id={restaurantId}
           selected={selected.includes(restaurantId)}
           full={selected.length === 3}
+          targetCount={
+            selected.includes(restaurantId)
+              ? selected.length
+              : selected.length + 1
+          }
           onClose={() => onOpen(null)}
           onSelect={() => toggle(restaurantId)}
           onMap={(restaurant) => {

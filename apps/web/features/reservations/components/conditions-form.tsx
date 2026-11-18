@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/shared/ui/input";
@@ -14,19 +15,27 @@ import {
 export function ConditionsForm({
   initial,
   onContinue,
+  suggestedRegion,
 }: {
   initial: ConditionsValues;
   onContinue: (values: ConditionsValues) => void;
+  suggestedRegion?: string;
 }) {
   const {
     register,
     control,
     handleSubmit,
-    formState: { errors },
+    getValues,
+    setValue,
+    formState: { errors, dirtyFields },
   } = useForm({
     resolver: zodResolver(conditionsSchema),
     defaultValues: initial,
   });
+  useEffect(() => {
+    if (suggestedRegion && !dirtyFields.region && !getValues("region"))
+      setValue("region", suggestedRegion);
+  }, [suggestedRegion, dirtyFields.region, getValues, setValue]);
   const [seating, space] = useWatch({ control, name: ["seating", "space"] });
   const input = (
     name: keyof ConditionsValues,

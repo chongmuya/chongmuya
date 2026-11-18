@@ -227,6 +227,93 @@ test("migrations preserve existing account, group, event and session records and
       await runner.query("SELECT * FROM groups"),
       preservedGroups,
     );
+
+    const { RestaurantPhotosAndContactHistory1795302000000 } =
+      await import("../../src/database/migrations/1795302000000-RestaurantPhotosAndContactHistory.js");
+    const { EventAttendance1795305600000 } =
+      await import("../../src/database/migrations/1795305600000-EventAttendance.js");
+    const photos = new RestaurantPhotosAndContactHistory1795302000000(),
+      attendance = new EventAttendance1795305600000();
+    await runner.query("SAVEPOINT attendance_upgrade");
+    const restaurant = randomUUID();
+    await runner.query(
+      "INSERT INTO restaurants(id,name,address,region,photo_path) VALUES($1,'기존 매장','보존 주소','세종대','/images/restaurants/original.png')",
+      [restaurant],
+    );
+    const historicalContact = randomUUID(),
+      historicalRequest = randomUUID(),
+      historicalTarget = randomUUID();
+    await runner.query(
+      "INSERT INTO restaurant_contacts(id,restaurant_id,name,phone,request_consent_at) VALUES($1,$2,'당시 담당자','00000000000',now())",
+      [historicalContact, restaurant],
+    );
+    await runner.query(
+      "INSERT INTO reservation_requests(id,event_id,request_key,digest,snapshot,contact_name,contact_phone,created_at) SELECT $1,id,$2,$3,'{\"expectedGuests\":20}','총무','01000001234',now() FROM events LIMIT 1",
+      [historicalRequest, randomUUID(), "a".repeat(64)],
+    );
+    await runner.query(
+      "INSERT INTO reservation_request_targets(id,request_id,restaurant_id,restaurant_name,address,is_demo,contact_id,contact_name,contact_phone,consent_at) VALUES($1,$2,$3,'기존 매장','보존 주소',false,$4,'당시 담당자','00000000000',now())",
+      [historicalTarget, historicalRequest, restaurant, historicalContact],
+    );
+    const requestsBeforeAttendance = await runner.query(
+        "SELECT * FROM reservation_requests",
+      ),
+      targetsBeforeAttendance = await runner.query(
+        "SELECT * FROM reservation_request_targets",
+      );
+    const restaurantBefore = await runner.query("SELECT * FROM restaurants");
+    const membersBeforeAttendance = await runner.query(
+      "SELECT * FROM group_members ORDER BY id",
+    );
+    await photos.up(runner);
+    await attendance.up(runner);
+    await runner.query("DELETE FROM restaurant_contacts WHERE id=$1", [
+      historicalContact,
+    ]);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM reservation_requests"),
+      requestsBeforeAttendance,
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM reservation_request_targets"),
+      targetsBeforeAttendance,
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM restaurants"),
+      restaurantBefore.map((r: object) => ({ ...r, space_photos: [] })),
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM group_members ORDER BY id"),
+      membersBeforeAttendance,
+    );
+    assert.deepEqual(
+      await runner.query(
+        "SELECT row_to_json(e) AS event FROM events e ORDER BY id",
+      ),
+      beforeInquiries,
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM accounts"),
+      accountsBeforeInquiries,
+    );
+    await attendance.down(runner);
+    await attendance.up(runner);
+    await runner.query(
+      "INSERT INTO event_participants(id,event_id,name,position,created_at) SELECT $1,id,'추가 참여자',0,now() FROM events LIMIT 1",
+      [randomUUID()],
+    );
+    await assert.rejects(
+      attendance.down(runner),
+      /preserving attendance records/,
+    );
+    await runner.query(
+      'UPDATE restaurants SET space_photos=\'[{"path":"/images/restaurants/demo-1.png","description":"사진","position":1}]\'',
+    );
+    await assert.rejects(
+      photos.down(runner),
+      /preserving photo and contact history/,
+    );
+    await runner.query("ROLLBACK TO SAVEPOINT attendance_upgrade");
     await inquiries.down(runner);
     await runner.query("SAVEPOINT inquiry_rollback");
     await inquiries.up(runner);

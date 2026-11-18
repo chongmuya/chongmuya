@@ -4,6 +4,8 @@ import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { createInquiry, inquiryKey } from "../api/reservations.api";
 import type { CreateInquiry } from "../types/inquiry.types";
+import { ApiError } from "@/shared/http/api-error";
+import { eventKeys } from "@/features/events/client";
 
 export function useCreateInquiry(
   accountId: string,
@@ -26,12 +28,21 @@ export function useCreateInquiry(
       if (active.current)
         cache.setQueryData(inquiryKey(accountId, eventId), data);
     },
-    onError: () => {
-      if (active.current)
-        void cache.invalidateQueries({
-          queryKey: inquiryKey(accountId, eventId),
-          exact: true,
-        });
+    onError: async (error) => {
+      if (active.current) {
+        await Promise.all([
+          error instanceof ApiError && error.code === "VERSION_CONFLICT"
+            ? cache.invalidateQueries({
+                queryKey: eventKeys.detail(accountId, eventId),
+                exact: true,
+              })
+            : Promise.resolve(),
+          cache.invalidateQueries({
+            queryKey: inquiryKey(accountId, eventId),
+            exact: true,
+          }),
+        ]);
+      }
     },
   });
 }

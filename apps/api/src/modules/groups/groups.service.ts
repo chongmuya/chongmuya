@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import type { EntityManager } from "typeorm";
+import {
+  normalizePersonName,
+  personNamePattern,
+} from "../../common/validation/person-name.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { Group } from "./entities/group.entity.js";
 import { GroupRosterAddition } from "./entities/group-roster-addition.entity.js";
@@ -69,7 +73,7 @@ export class GroupsService {
 
   async create(ownerId: string, input: CreateGroupInput): Promise<GroupDto> {
     const members = (input.members ?? []).map((member) => ({
-      name: member.name,
+      name: normalizePersonName(member.name),
       phoneLast4: member.phoneLast4 ?? null,
       ...(member.label ? { label: member.label } : {}),
     }));
@@ -132,28 +136,23 @@ export class GroupsService {
     existing: { name: string; label: string | null }[],
     confirmed?: boolean,
   ) {
-    const byName = new Map<string, (string | null)[]>();
+    const byName = new Map<string, number>();
     for (const member of [...existing, ...members]) {
-      const labels = byName.get(member.name) ?? [];
-      labels.push(member.label ?? null);
-      byName.set(member.name, labels);
+      const name = normalizePersonName(member.name);
+      byName.set(name, (byName.get(name) ?? 0) + 1);
     }
     for (const member of members) {
-      const labels = byName.get(member.name)!;
-      if (labels.length <= 1) continue;
+      if (!personNamePattern.test(member.name))
+        throw new DomainHttpException("VALIDATION_FAILED");
+      if (byName.get(normalizePersonName(member.name))! <= 1) continue;
       if (!confirmed)
         throw new DomainHttpException("ROSTER_DUPLICATES_UNCONFIRMED");
-      if (
-        !member.label ||
-        labels.filter((label) => label === member.label).length > 1
-      )
-        throw new DomainHttpException("ROSTER_LABEL_REQUIRED");
     }
   }
 
   async addMembers(ownerId: string, id: string, input: AddGroupMembersInput) {
     const rows = input.members.map((row) => ({
-      name: row.name,
+      name: normalizePersonName(row.name),
       phoneLast4: row.phoneLast4 ?? null,
       label: row.label ?? null,
       existingMemberId: row.existingMemberId ?? null,
@@ -244,9 +243,22 @@ export class GroupsService {
 
   async members(ownerId: string, id: string): Promise<GroupMemberDto[]> {
     const db = await this.database.connect();
-    await this.assertOwned(ownerId, id, db.manager);
+    return this.membersInTransaction(ownerId, id, db.manager);
+  }
+
+  async membersInTransaction(
+    ownerId: string,
+    id: string,
+    manager: EntityManager,
+    lock = false,
+  ): Promise<GroupMemberDto[]> {
+    const group = await manager.findOne(Group, {
+      where: { id, ownerId },
+      ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
+    });
+    if (!group) throw new NotFoundException();
     return (
-      await db
+      await manager
         .getRepository(GroupMember)
         .find({ where: { groupId: id }, order: { position: "ASC", id: "ASC" } })
     ).map(({ id: memberId, name, phoneLast4, label }) => ({

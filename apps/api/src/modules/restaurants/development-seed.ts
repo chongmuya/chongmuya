@@ -13,7 +13,7 @@ export async function seedDevelopmentRestaurants(db: DataSource) {
   await db.transaction(async (manager) => {
     for (const [i, id] of demoRestaurantIds.entries()) {
       const unknown = i === 2;
-      await manager
+      const inserted = await manager
         .createQueryBuilder()
         .insert()
         .into(Restaurant)
@@ -26,11 +26,11 @@ export async function seedDevelopmentRestaurants(db: DataSource) {
             "가상 사진없는집",
           ][i]!,
           address: `서울 광진구 가상 테스트길 ${i + 1} (실제 매장 아님)`,
-          region: "건대입구 · 세종대",
+          region: i % 2 === 0 ? "건대입구" : "세종대",
           category: "한식",
-          latitude: 37.543 + i * 0.001,
-          longitude: 127.07 + i * 0.001,
-          maxCapacity: unknown ? null : [40, 80, 0, 20][i]!,
+          latitude: i === 3 ? null : 37.543 + i * 0.001,
+          longitude: i === 3 ? null : 127.07 + i * 0.001,
+          maxCapacity: unknown ? null : [40, 60, 0, 20][i]!,
           photoPath: i < 2 ? `/images/restaurants/demo-${i + 1}.png` : null,
           operatingHours: unknown ? null : "17:00~23:00 · 테스트용 예시",
           facilities: unknown ? null : "화장실 · 이용 조건은 문의 후 확인",
@@ -49,7 +49,30 @@ export async function seedDevelopmentRestaurants(db: DataSource) {
           verifiedAt: unknown ? null : new Date("2026-11-18T00:00:00Z"),
         })
         .orIgnore()
+        .returning("id")
         .execute();
+      const current = await manager.findOneByOrFail(Restaurant, { id });
+      if (!current.isDemo) continue;
+      if ((inserted.raw as unknown[]).length && i === 0) {
+        await manager.update(
+          Restaurant,
+          { id },
+          {
+            spacePhotos: [
+              {
+                path: "/images/restaurants/demo-2.png",
+                description: "가상 공간 사진 예시 2 · 실제 매장 아님",
+                position: 2,
+              },
+              {
+                path: "/images/restaurants/demo-1.png",
+                description: "가상 공간 사진 예시 1 · 실제 매장 아님",
+                position: 1,
+              },
+            ],
+          },
+        );
+      }
       for (const [j, kind] of (["HALL", "FLOOR", "WHOLE"] as const).entries()) {
         await manager
           .createQueryBuilder()
@@ -71,7 +94,13 @@ export async function seedDevelopmentRestaurants(db: DataSource) {
                 ? "AVAILABLE"
                 : "UNAVAILABLE",
             togetherSeating: unknown ? "UNKNOWN" : "YES",
-            capacity: unknown ? null : i === 1 ? 40 : i === 3 ? 20 : 40,
+            capacity: unknown
+              ? null
+              : i === 1 && j === 1
+                ? 25
+                : i === 3
+                  ? 20
+                  : 40,
             minGuests: unknown ? null : j === 1 ? 20 : 0,
             minSpend: j === 1 && i === 1 ? 600000 : null,
             separateFee: unknown ? null : 0,

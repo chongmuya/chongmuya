@@ -207,8 +207,8 @@ test("roster additions preserve existing identities, resolve namesakes, enforce 
     ],
   ]) {
     const response = await add(members);
-    assert.equal(response.status, 400);
-    assert.equal((await response.json()).code, "ROSTER_LABEL_REQUIRED");
+    assert.equal(response.status, 201);
+    assert.equal((await response.json()).addedCount, members.length);
   }
   assert.equal(
     (await add([{ name: "A", label: "운영팀" }], randomUUID(), owner, false))
@@ -231,11 +231,11 @@ test("roster additions preserve existing identities, resolve namesakes, enforce 
   assert.equal(added.status, 201);
   const saved = await (await call(path, owner)).json();
   assert.deepEqual(saved.slice(0, 3), after);
-  assert.equal(saved[3].label, "운영팀");
-  assert.equal(saved[3].phoneLast4, null);
-  // Two different requests for a formerly unique name re-check under the group lock.
+  assert.equal(saved[6].label, "운영팀");
+  assert.equal(saved[6].phoneLast4, null);
+  // Explicitly confirmed namesakes remain separate even with identical optional labels.
   const races = await Promise.all([add([{ name: "E" }]), add([{ name: "E" }])]);
-  assert.deepEqual(races.map((r) => r.status).sort(), [201, 400]);
+  assert.deepEqual(races.map((r) => r.status).sort(), [201, 201]);
   const { GroupRosterAddition } =
     await import("../../src/modules/groups/entities/group-roster-addition.entity.js");
   const failKey = randomUUID();

@@ -8,8 +8,8 @@ import { GroupRegistration } from "../features/groups/components/group-registrat
 import {
   duplicateNames,
   parseRoster,
-} from "../features/groups/lib/parse-roster";
-import { rosterRowSchema } from "../features/groups/schemas/group-registration.schema";
+} from "../features/roster/lib/parse-roster";
+import { rosterRowSchema } from "../features/roster/schemas/roster.schema";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
 
@@ -157,6 +157,18 @@ test("registration retains edits across back, excludes invalid rows, confirms du
       "김민수\t0012\n김민수\n잘못된 번호\t123",
     );
     await submit(view.container);
+    // An invalid second column is no longer silently assumed to be a phone column.
+    const columns = view.container.querySelectorAll<HTMLSelectElement>(
+      '[aria-label="명단 열 선택"] select',
+    );
+    assert.equal(columns.length, 2);
+    for (const [index, select] of [...columns].entries()) {
+      await act(async () => {
+        select.value = String(index);
+        select.dispatchEvent(new window.Event("change", { bubbles: true }));
+      });
+    }
+    await click(view.container, "선택한 열로 미리보기");
     await until(() =>
       assert.match(view.container.textContent!, /뒤 4자리를 입력하거나/),
     );
@@ -415,5 +427,94 @@ test("existing roster addition requires resolving namesakes and labels without u
     assert.match(view.container.textContent!, /2명 추가 완료/);
   } finally {
     await view.close();
+  }
+});
+
+test("existing-person selection restores each stable row's direct phone and optional memo on new-person switch or name edits", async () => {
+  for (const directRename of [false, true]) {
+    const writes: { members: unknown[] }[] = [];
+    const existing = {
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "김민수",
+      phoneLast4: "0012",
+      label: "운영팀",
+    };
+    const view = await setup(
+      async <T>(_path: string, options?: RequestInit) => {
+        writes.push(JSON.parse(String(options?.body)));
+        return {
+          group: { id: "g", name: "모임", groupType: null, memberCount: 4 },
+          addedCount: 3,
+        } as T;
+      },
+      {
+        group: { id: "g", name: "모임", groupType: null, memberCount: 1 },
+        members: [existing],
+      },
+    );
+    try {
+      await fill(
+        view.container,
+        "source",
+        "버릴사람\n김민수,3456\n다른사람,9876",
+      );
+      await submit(view.container);
+      const select = view.container.querySelector<HTMLSelectElement>("select")!;
+      await act(async () => {
+        select.value = existing.id;
+        select.dispatchEvent(new window.Event("change", { bubbles: true }));
+      });
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          '[name="members.1.phoneLast4"]',
+        )!.value,
+        "0012",
+      );
+      await act(async () =>
+        view.container
+          .querySelector<HTMLButtonElement>('[aria-label="1번 구성원 제외"]')!
+          .click(),
+      );
+      await click(view.container, "구성원 한 명 추가");
+      await fill(view.container, "members.2.name", "새로추가");
+      if (!directRename) {
+        const moved =
+          view.container.querySelector<HTMLSelectElement>("select")!;
+        await act(async () => {
+          moved.value = "new";
+          moved.dispatchEvent(new window.Event("change", { bubbles: true }));
+        });
+      }
+      await fill(view.container, "members.0.name", "이서연");
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          '[name="members.0.phoneLast4"]',
+        )!.value,
+        "3456",
+      );
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          '[name="members.0.label"]',
+        )!.value,
+        "",
+      );
+      await act(async () =>
+        view.container
+          .querySelector<HTMLButtonElement>(
+            '[aria-label="이전 단계로 돌아가기"]',
+          )!
+          .click(),
+      );
+      await submit(view.container);
+      await submit(view.container);
+      await until(() => assert.equal(writes.length, 1));
+      assert.deepEqual(writes[0].members, [
+        { name: "이서연", phoneLast4: "3456", label: null },
+        { name: "다른사람", phoneLast4: "9876", label: null },
+        { name: "새로추가", phoneLast4: null, label: null },
+      ]);
+    } finally {
+      await view.close();
+    }
   }
 });

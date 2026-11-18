@@ -47,6 +47,14 @@ export function RestaurantMap({
   onOpen: (id: string) => void;
 }) {
   const key = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID?.trim();
+  const focused = restaurants.find((restaurant) => restaurant.id === focusId);
+  const noCoordinates = focused
+    ? focused.latitude === null || focused.longitude === null
+    : !restaurants.some(
+        (restaurant) =>
+          restaurant.latitude !== null && restaurant.longitude !== null,
+      );
+  const addressItems = focused ? [focused] : restaurants;
   const container = useRef<HTMLDivElement>(null);
   const open = useRef(onOpen);
   const [ready, setReady] = useState(false);
@@ -67,7 +75,14 @@ export function RestaurantMap({
     };
   }, [key]);
   useEffect(() => {
-    if (!ready || failed || !container.current || !window.naver?.maps) return;
+    if (
+      !ready ||
+      failed ||
+      noCoordinates ||
+      !container.current ||
+      !window.naver?.maps
+    )
+      return;
     const points = restaurants.filter(
       (r) => r.latitude !== null && r.longitude !== null,
     );
@@ -137,24 +152,46 @@ export function RestaurantMap({
         // The SDK has already disposed of its internal objects.
       }
     };
-  }, [ready, failed, restaurants, focusId]);
+  }, [ready, failed, restaurants, focusId, noCoordinates]);
   return (
     <section aria-label="매장 지도" className="relative">
-      {key && (
+      {key && !noCoordinates && (
         <Script
           src={`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(key)}`}
           onReady={() => setReady(true)}
           onError={() => setFailed(true)}
         />
       )}
-      {!key || failed ? (
-        <p
-          role="status"
-          className="rounded-control border border-border bg-surface p-6 text-sm"
-        >
-          지도를 표시할 수 없어요. 목록으로 돌아가 매장과 주소를 확인할 수
-          있어요.
-        </p>
+      {noCoordinates || !key || failed ? (
+        <div className="space-y-4 p-5 pb-32">
+          <p role="status" className="text-sm">
+            {noCoordinates
+              ? "지도 위치 정보가 없습니다"
+              : "지도를 표시할 수 없어요. 매장 주소를 확인해 주세요."}
+          </p>
+          {addressItems.length ? (
+            <ul className="space-y-3">
+              {addressItems.map((restaurant) => (
+                <li
+                  key={restaurant.id}
+                  className="rounded-control bg-surface p-4"
+                >
+                  <button
+                    className="text-left text-sm"
+                    onClick={() => onOpen(restaurant.id)}
+                  >
+                    <strong>{restaurant.name}</strong>
+                    <p className="mt-2">{restaurant.address}</p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm">
+              표시할 매장이 없어요. 지역 조건을 바꿔 주세요.
+            </p>
+          )}
+        </div>
       ) : (
         <>
           <div

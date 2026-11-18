@@ -10,6 +10,7 @@ import {
 } from "@/features/auth/client";
 import type { SessionRequest } from "@/features/auth/types";
 import { GroupBoundary, GroupSettings } from "@/features/groups/client";
+import { AttendanceWorkspace, EventRoster } from "@/features/attendance/client";
 import { ReservationProgress } from "@/features/reservations/client";
 import { EventList, EventDetail } from "@/features/events/client";
 
@@ -80,6 +81,8 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         groupId={params.get("group")}
         eventId={params.get("event")}
         mode={mode}
+        view={params.get("view")}
+        roundId={params.get("round")}
       />
       {mode === "mypage" && (
         <>
@@ -96,12 +99,16 @@ export function WorkspaceContent({
   groupId,
   eventId,
   mode,
+  view,
+  roundId,
 }: {
   accountId: string;
   request: SessionRequest;
   groupId: string | null;
   eventId: string | null;
   mode: Mode;
+  view?: string | null;
+  roundId?: string | null;
 }) {
   return (
     <section className="text-copy">
@@ -133,11 +140,47 @@ export function WorkspaceContent({
             request={request}
             eventId={eventId}
           />
-          <ReservationProgress
-            accountId={accountId}
-            eventId={eventId}
-            request={request}
-          />
+          <nav
+            aria-label="행사 관리"
+            className="mb-7 flex gap-2 border-b border-border pb-3 text-sm"
+          >
+            {[
+              ["reservation", "예약"],
+              ["attendance", "참석 관리"],
+              ["roster", "명단 관리"],
+            ].map(([value, label]) => (
+              <Link
+                key={value}
+                href={`/events?event=${eventId}&view=${value}`}
+                className={`flex-1 rounded-pill px-2 py-3 text-center ${(view ?? "reservation") === value ? "bg-brand text-white" : "text-muted"}`}
+                aria-current={
+                  (view ?? "reservation") === value ? "page" : undefined
+                }
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+          {view === "attendance" ? (
+            <AttendanceWorkspace
+              accountId={accountId}
+              eventId={eventId}
+              request={request}
+              roundId={roundId ?? null}
+            />
+          ) : view === "roster" ? (
+            <EventRoster
+              accountId={accountId}
+              eventId={eventId}
+              request={request}
+            />
+          ) : (
+            <ReservationProgress
+              accountId={accountId}
+              eventId={eventId}
+              request={request}
+            />
+          )}
         </>
       ) : (
         <EventList

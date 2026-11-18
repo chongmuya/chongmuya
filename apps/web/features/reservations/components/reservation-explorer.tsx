@@ -12,7 +12,11 @@ import {
 } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
 import { EventPicker, useEvent } from "@/features/events/client";
-import { RestaurantBrowser } from "@/features/restaurants/client";
+import {
+  RestaurantBrowser,
+  useRestaurant,
+  useSelectedRestaurants,
+} from "@/features/restaurants/client";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
@@ -29,7 +33,8 @@ import {
 } from "../schemas/conditions.schema";
 import { ConditionsForm } from "./conditions-form";
 import { ConditionSummary } from "./condition-summary";
-import { InquiryReceipt } from "./reservation-progress";
+import { ApiError } from "@/shared/http/api-error";
+import { InquiryReceipt, InquiryDetails } from "./reservation-progress";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -271,7 +276,18 @@ function InquiryDraft({
   const [step, setStep] = useState<"conditions" | "browse">("conditions");
   const [confirmIds, setConfirmIds] = useState<string[] | null>(null);
   const [error, setError] = useState<string>();
-  const [requestKey] = useState(() => crypto.randomUUID());
+  const requestIdentity = useRef<{ fingerprint: string; key: string } | null>(
+    null,
+  );
+  const [initialRestaurantId] = useState(() =>
+    browse.selected.length === 1 ? browse.selected[0] : undefined,
+  );
+  const initialRestaurant = useRestaurant(initialRestaurantId);
+  const targets = useSelectedRestaurants(confirmIds ?? []);
+  const targetsUnavailable = targets.some(
+    (target) => target.isError || !target.data?.inquiryAvailable,
+  );
+  const [confirmationVersion, setConfirmationVersion] = useState(event.version);
   const submitting = useRef(false);
   const cancel = useRef<HTMLButtonElement>(null);
   const create = useCreateInquiry(account.id, event.id, request);
@@ -316,7 +332,11 @@ function InquiryDraft({
         </ErrorState>
       )}
       {step === "conditions" ? (
-        <ConditionsForm initial={values} onContinue={continueWith} />
+        <ConditionsForm
+          initial={values}
+          suggestedRegion={initialRestaurant.data?.region}
+          onContinue={continueWith}
+        />
       ) : (
         <RestaurantBrowser
           {...browse}
@@ -330,6 +350,9 @@ function InquiryDraft({
           onEditConditions={() => setStep("conditions")}
           onInquiry={(ids) => {
             browse.onSelect(ids);
+            setError(undefined);
+            create.reset();
+            setConfirmationVersion(event.version);
             setConfirmIds(ids);
           }}
         />
@@ -358,6 +381,23 @@ function InquiryDraft({
             {event.name} · {values.expectedGuests}명<br />
             {values.date} {values.time} (한국 시간)
           </p>
+          <ul className="space-y-3 text-sm">
+            {confirmIds.map((id, index) => (
+              <li key={id} className="rounded-control bg-background p-3">
+                <strong>{targets[index]?.data?.name ?? "매장 확인 중…"}</strong>
+                <p>{targets[index]?.data?.address}</p>
+              </li>
+            ))}
+          </ul>
+          <InquiryDetails
+            conditions={inquiryConditions(values)}
+            contact={{ name: values.contactName, phone: values.contactPhone }}
+          />
+          {targetsUnavailable && (
+            <p role="alert">
+              대상 매장을 확인하지 못했어요. 돌아가서 다시 확인해 주세요.
+            </p>
+          )}
           <FormError
             message={
               error ??
@@ -377,9 +417,10 @@ function InquiryDraft({
             <Button
               className="flex-1"
               loading={create.isPending}
-              disabled={unavailable}
+              disabled={unavailable || targetsUnavailable}
               onClick={() => {
-                if (submitting.current || unavailable) return;
+                if (submitting.current || unavailable || targetsUnavailable)
+                  return;
                 const parsed = conditionsSchema.safeParse(values);
                 if (!parsed.success) {
                   setError("날짜와 입력 조건을 다시 확인해 주세요.");
@@ -388,19 +429,36 @@ function InquiryDraft({
                   return;
                 }
                 submitting.current = true;
-                create.mutate(
-                  {
-                    requestKey,
-                    mode: "DIRECT",
-                    expectedEventVersion: event.version,
-                    restaurantIds: confirmIds,
-                    conditions: inquiryConditions(parsed.data),
-                    contact: {
-                      name: parsed.data.contactName,
-                      phone: parsed.data.contactPhone,
-                    },
+                const body = {
+                  mode: "DIRECT" as const,
+                  expectedEventVersion: confirmationVersion,
+                  restaurantIds: confirmIds,
+                  conditions: inquiryConditions(parsed.data),
+                  contact: {
+                    name: parsed.data.contactName,
+                    phone: parsed.data.contactPhone,
                   },
+                };
+                const fingerprint = JSON.stringify(body);
+                if (requestIdentity.current?.fingerprint !== fingerprint)
+                  requestIdentity.current = {
+                    fingerprint,
+                    key: crypto.randomUUID(),
+                  };
+                create.mutate(
+                  { ...body, requestKey: requestIdentity.current.key },
                   {
+                    onError: (cause) => {
+                      if (
+                        cause instanceof ApiError &&
+                        cause.code === "VERSION_CONFLICT"
+                      ) {
+                        setConfirmIds(null);
+                        setError(
+                          "행사가 변경되어 최신 정보를 불러왔어요. 입력과 선택은 유지됩니다. 행사 정보를 확인하고 최종 확인을 다시 진행해 주세요.",
+                        );
+                      }
+                    },
                     onSettled: () => {
                       submitting.current = false;
                     },

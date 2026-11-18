@@ -50,7 +50,7 @@ export function safeReturnPath(
     if (url.searchParams.get("inquiry") === "1") params.set("inquiry", "1");
   }
   for (const key of url.pathname === "/events"
-    ? ["event", "group"]
+    ? ["event", "group", "round"]
     : url.pathname === "/mypage" ||
         url.pathname === "/" ||
         url.pathname === "/groups/new"
@@ -59,5 +59,12 @@ export function safeReturnPath(
     const item = url.searchParams.get(key);
     if (item && uuid.test(item)) params.set(key, item);
   }
+  const view = url.searchParams.get("view");
+  if (
+    url.pathname === "/events" &&
+    view &&
+    ["reservation", "attendance", "roster"].includes(view)
+  )
+    params.set("view", view);
   return `${url.pathname}${params.size ? `?${params}` : ""}`;
 }

@@ -20,6 +20,7 @@ export type Restaurant = {
   longitude: number | null;
   maxCapacity: number | null;
   photoPath: string | null;
+  spacePhotos: { path: string; description: string; position: number }[];
   operatingHours: string | null;
   facilities: string | null;
   bookingPolicy: string | null;

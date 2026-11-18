@@ -13,12 +13,6 @@ import {
   ["requestId", "restaurantId"],
   { unique: true },
 )
-@ForeignKey(
-  "restaurant_contacts",
-  ["contactId", "restaurantId"],
-  ["id", "restaurantId"],
-  { name: "reservation_targets_contact_fkey" },
-)
 @Check("reservation_targets_status_check", "delivery_status = 'PENDING'")
 export class RequestTarget {
   @PrimaryColumn("uuid", {

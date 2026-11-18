@@ -7,12 +7,15 @@ import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { restaurantQuery } from "../api/restaurants.api";
 import type { Restaurant } from "../types/restaurant.types";
+import { RestaurantPhoto } from "./restaurant-photo";
+import { spaceCost } from "../lib/space-cost";
 import { cn } from "@/shared/lib/cn";
 
 export function RestaurantDetail({
   id,
   selected,
   full,
+  targetCount,
   onClose,
   onSelect,
   onInquiry,
@@ -21,6 +24,7 @@ export function RestaurantDetail({
   id: string;
   selected: boolean;
   full: boolean;
+  targetCount: number;
   onClose: () => void;
   onSelect: () => void;
   onInquiry: () => void;
@@ -52,18 +56,18 @@ export function RestaurantDetail({
         <LoadingState>매장 확인 중…</LoadingState>
       ) : (
         <>
-          {r.photoPath ? (
-            <Image
-              src={r.photoPath}
-              alt={`${r.name} 음식 예시`}
-              width={362}
-              height={140}
-              className="h-[135px] w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-[135px] items-center justify-center rounded-control bg-background text-caption text-muted">
-              등록된 사진이 없어요
-            </div>
+          <RestaurantPhoto src={r.photoPath} alt={`${r.name} 대표 사진`} />
+          {!!r.spacePhotos.length && (
+            <section aria-label="공간 사진" className="space-y-4 p-5">
+              {r.spacePhotos.map((photo, index) => (
+                <figure key={`${photo.path}:${index}`}>
+                  <RestaurantPhoto src={photo.path} alt={photo.description} />
+                  <figcaption className="mt-2 text-xs text-muted">
+                    {photo.description}
+                  </figcaption>
+                </figure>
+              ))}
+            </section>
           )}
           <div className="space-y-7 px-5 pt-6 pb-5">
             <h2 id="restaurant-detail-title" className="text-sm font-semibold">
@@ -197,14 +201,8 @@ export function RestaurantDetail({
                               : `${s.minGuests}명`}
                         </p>
                         <p>
-                          최소 이용금액{" "}
-                          {s.minSpend === null
-                            ? "확인 필요"
-                            : `${s.minSpend.toLocaleString()}원`}{" "}
-                          · 별도 대관료{" "}
-                          {s.separateFee === null
-                            ? "확인 필요"
-                            : `${s.separateFee.toLocaleString()}원`}
+                          {spaceCost("최소 이용금액", s.minSpend)} ·{" "}
+                          {spaceCost("별도 대관료", s.separateFee)}
                         </p>
                         {s.conditions && <p>{s.conditions}</p>}
                       </article>
@@ -220,6 +218,10 @@ export function RestaurantDetail({
                 </Button>
               </Dialog>
             )}
+            <p className="text-xs text-muted">
+              매장 정보 기준이며, 해당 날짜의 예약 가능 여부는 문의 후
+              확인합니다.
+            </p>
             <section>
               <h3 className="mb-2 text-sm font-semibold">위치 정보</h3>
               <p className="mb-4 text-xs">{r.address}</p>
@@ -256,7 +258,7 @@ export function RestaurantDetail({
                   disabled={!selected && full}
                   onClick={onInquiry}
                 >
-                  이 매장에 문의하기
+                  선택한 {targetCount}곳에 문의하기
                 </Button>
               </div>
             ) : (

@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import type { Restaurant } from "../features/restaurants/types/restaurant.types";
 import { RestaurantMap } from "../features/restaurants/components/restaurant-map";
 
-test("the map initializes with no restaurant coordinates and cleans up after authorization failure", async () => {
+test("the map uses coordinates, cleans up after auth failure and shows addresses when the focus has no coordinates", async () => {
   const previousKey = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID;
   process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID = "map-regression-test";
   const frames = new Map<number, FrameRequestCallback>();
@@ -45,7 +46,15 @@ test("the map initializes with no restaurant coordinates and cleans up after aut
     await act(async () =>
       root.render(
         createElement(RestaurantMap, {
-          restaurants: [],
+          restaurants: [
+            {
+              id: "known",
+              name: "지도 매장",
+              address: "지도 주소",
+              latitude: 37.5,
+              longitude: 127.1,
+            } as Restaurant,
+          ],
           onOpen() {},
         }),
       ),
@@ -59,10 +68,65 @@ test("the map initializes with no restaurant coordinates and cleans up after aut
         callback(0);
       }
     });
-    assert.equal(created, 1, "an empty catalog must still show a map");
+    assert.equal(created, 1);
     await act(async () => window.navermap_authFailure?.());
     assert.match(container.textContent!, /지도를 표시할 수 없어요/);
     assert.equal(destroyed, 1);
+    await act(async () =>
+      root.render(
+        createElement(RestaurantMap, {
+          restaurants: [
+            {
+              id: "missing",
+              name: "좌표 없는 매장",
+              address: "주소만 확인",
+              latitude: null,
+              longitude: null,
+            } as Restaurant,
+            {
+              id: "other",
+              name: "다른 매장",
+              address: "다른 주소",
+              latitude: 37.5,
+              longitude: 127.1,
+            } as Restaurant,
+          ],
+          focusId: "missing",
+          onOpen() {},
+        }),
+      ),
+    );
+    assert.match(container.textContent!, /지도 위치 정보가 없습니다/);
+    assert.match(container.textContent!, /좌표 없는 매장/);
+    assert.doesNotMatch(container.textContent!, /다른 매장/);
+    assert.equal(created, 1);
+    await act(async () =>
+      root.render(
+        createElement(RestaurantMap, { restaurants: [], onOpen() {} }),
+      ),
+    );
+    assert.match(container.textContent!, /표시할 매장이 없어요/);
+    delete process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID;
+    await act(async () =>
+      root.render(
+        createElement(RestaurantMap, {
+          key: "without-key",
+          restaurants: [
+            {
+              id: "address-only",
+              name: "키 없이 확인할 매장",
+              address: "주소 대체 화면",
+              latitude: 37.5,
+              longitude: 127.1,
+            } as Restaurant,
+          ],
+          onOpen() {},
+        }),
+      ),
+    );
+    assert.match(container.textContent!, /지도를 표시할 수 없어요/);
+    assert.match(container.textContent!, /주소 대체 화면/);
+    assert.equal(created, 1);
   } finally {
     await act(async () => root.unmount());
     container.remove();

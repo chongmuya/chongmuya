@@ -18,11 +18,15 @@ try {
   // Personal data belongs in an explicit operator-owned file, never application logs.
   await writeFile(
     output,
-    JSON.stringify({ generatedAt: new Date().toISOString(), targets }, null, 2),
+    JSON.stringify(
+      { generatedAt: new Date().toISOString(), ...targets },
+      null,
+      2,
+    ),
     { flag: "wx", mode: 0o600 },
   );
   console.log(
-    `전달 대기 대상 ${targets.length}건을 권한 0600의 새 파일에 기록했습니다. 발송하거나 상태를 바꾸지 않았습니다.`,
+    `발송 가능 ${targets.eligible.length}건, 보류 ${targets.held.length}건을 권한 0600의 새 파일에 기록했습니다. 발송하거나 상태를 바꾸지 않았습니다.`,
   );
 } catch {
   console.error(
