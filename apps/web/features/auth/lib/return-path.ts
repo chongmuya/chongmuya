@@ -14,9 +14,14 @@ export function safeReturnPath(
   const url = new URL(value, "https://internal.invalid");
   if (
     url.origin !== "https://internal.invalid" ||
-    !["/", "/events", "/mypage", "/onboarding", "/getting-started"].includes(
-      url.pathname,
-    )
+    ![
+      "/",
+      "/events",
+      "/mypage",
+      "/onboarding",
+      "/getting-started",
+      "/groups/new",
+    ].includes(url.pathname)
   )
     return "/events";
   const params = new URLSearchParams();
@@ -30,7 +35,7 @@ export function safeReturnPath(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   for (const key of url.pathname === "/events"
     ? ["event", "group"]
-    : url.pathname === "/mypage"
+    : url.pathname === "/mypage" || url.pathname === "/"
       ? ["group"]
       : []) {
     const item = url.searchParams.get(key);

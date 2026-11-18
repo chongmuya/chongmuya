@@ -17,13 +17,11 @@ export function GroupForm({
   request,
   group,
   title,
-  onCreated,
 }: {
   accountId: string;
   request: SessionRequest;
-  group?: Group;
+  group: Group;
   title: string;
-  onCreated?: (group: Group) => void;
 }) {
   const id = useId();
   const {
@@ -35,11 +33,10 @@ export function GroupForm({
     formState: { errors },
   } = useForm<GroupInput>({
     resolver: zodResolver(groupSchema),
-    defaultValues: { name: group?.name ?? "" },
+    defaultValues: { name: group.name },
   });
-  const save = useSaveGroup(accountId, request, group?.id, (saved) => {
-    reset({ name: group ? saved.name : "" });
-    if (!group) onCreated?.(saved);
+  const save = useSaveGroup(accountId, request, group.id, (saved) => {
+    reset({ name: saved.name });
   });
   return (
     <form

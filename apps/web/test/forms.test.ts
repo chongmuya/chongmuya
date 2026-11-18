@@ -135,21 +135,9 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-test("optional group management validates and creates a group without forcing event onboarding", async () => {
+test("empty group management links to the reusable optional registration flow", async () => {
   const cache = client();
-  cache.setQueryData(["user", "a", "groups"], []);
-  const created = { id: "g-new", name: "첫 모임" };
-  const writes: unknown[] = [];
-  const request: SessionRequest = async <T>(
-    _path: string,
-    options?: RequestInit,
-  ) => {
-    if (options?.method === "POST") {
-      writes.push(JSON.parse(String(options.body)));
-      return created as T;
-    }
-    return (writes.length ? [created] : []) as T;
-  };
+  const request: SessionRequest = async <T>() => [] as T;
   const view = await render(
     createElement(WorkspaceContent, {
       accountId: "a",
@@ -161,17 +149,12 @@ test("optional group management validates and creates a group without forcing ev
     cache,
   );
   try {
-    await fill(view.container, "name", "   ");
-    await submit(view.container);
-    assert.match(view.container.textContent!, /이름을 입력/);
-    assert.equal(writes.length, 0);
-    await fill(view.container, "name", " 첫 모임 ");
-    await submit(view.container);
     await until(() =>
-      assert.deepEqual(view.navigations, ["/mypage?group=g-new"]),
+      assert.match(view.container.textContent!, /아직 모임이 없습니다/),
     );
-    assert.deepEqual(writes, [{ name: "첫 모임" }]);
-    assert.deepEqual(cache.getQueryData(["user", "a", "groups"]), [created]);
+    assert(view.container.querySelector('a[href="/groups/new"]'));
+    assert(view.container.querySelector('a[href="/events"]'));
+    assert.equal(view.container.querySelector("form"), null);
   } finally {
     await view.unmount();
   }
@@ -197,7 +180,7 @@ test("failed group save retains input and retries only on another submit", async
     createElement(GroupForm, {
       accountId: "a",
       request,
-      group: { id: "g1", name: "이전 이름" },
+      group: { id: "g1", name: "이전 이름", groupType: null, memberCount: 0 },
       title: "모임 이름 수정",
     }),
     cache,
@@ -321,15 +304,17 @@ test("late group and event mutations after leaving the screen never recreate cac
       called = true;
       return (await pending.promise) as T;
     };
-    let created = false;
     const element =
       kind === "group"
         ? createElement(GroupForm, {
             accountId: "a",
             request,
-            title: "모임 추가",
-            onCreated: () => {
-              created = true;
+            title: "모임 이름 수정",
+            group: {
+              id: "g1",
+              name: "이전 이름",
+              groupType: null,
+              memberCount: 0,
             },
           })
         : createElement(EventForm, { accountId: "a", request });
@@ -349,7 +334,6 @@ test("late group and event mutations after leaving the screen never recreate cac
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(view.cache.getQueryCache().getAll().length, 0);
-    assert.equal(created, false);
     assert.deepEqual(view.navigations, []);
   }
 });
@@ -726,7 +710,20 @@ test("start links and legacy signup redirect preserve safe destinations without 
         next,
       );
       try {
-        await until(() => assert(view.container.querySelector('a[href="/"]')));
+        await until(() =>
+          assert.match(
+            view.container.textContent!,
+            /회원가입 없이 사용해볼래요/,
+          ),
+        );
+        await click(view.container, "회원가입 없이 사용해볼래요");
+        assert(document.querySelector('dialog a[href="/"]'));
+        await act(async () =>
+          document
+            .querySelector<HTMLButtonElement>('dialog [aria-label="닫기"]')!
+            .click(),
+        );
+        assert.equal(document.querySelector("dialog"), null);
         const links = [...view.container.querySelectorAll("a")];
         const signup = new URL(
           links.find((a) => a.textContent === "처음 가입해요")!.href,

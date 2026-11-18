@@ -3,6 +3,7 @@ import { useFormContext, useWatch } from "react-hook-form";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { IconButton } from "@/shared/ui/icon-button";
 import { FormError } from "@/shared/ui/form-error";
+import { Button } from "@/shared/ui/button";
 import type { SignupValues } from "../../schemas/signup.schema";
 
 import type { SignupTerm, SignupTermId } from "../../types/signup.types";
@@ -103,9 +104,17 @@ export function SignupTerms({
   );
 }
 
-export function SignupTermsDetail({ term }: { term: SignupTerm }) {
+export function SignupTermsDetail({
+  term,
+  onAgree,
+  onClose,
+}: {
+  term: SignupTerm;
+  onAgree: () => void;
+  onClose: () => void;
+}) {
   return (
-    <article className="px-[17px]">
+    <article className="flex flex-1 flex-col px-[17px]">
       <h1 tabIndex={-1} className="focus:outline-none text-2xl font-bold">
         {term.title}
       </h1>
@@ -131,6 +140,14 @@ export function SignupTermsDetail({ term }: { term: SignupTerm }) {
       <p className="mt-8 text-caption text-muted">
         상세 보기와 동의는 별개예요. 돌아가도 입력과 선택 상태는 유지돼요.
       </p>
+      <div className="mt-auto space-y-2 pt-8">
+        <Button className="w-full" variant="brand-outline" onClick={onAgree}>
+          동의하고 닫기
+        </Button>
+        <Button className="w-full" variant="outline" onClick={onClose}>
+          동의하지 않고 돌아가기
+        </Button>
+      </div>
     </article>
   );
 }

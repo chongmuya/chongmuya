@@ -14,9 +14,11 @@ export function SignupInformation({
   email,
   kakao = false,
   providerEmailVerified = false,
+  loginHref,
 }: Pick<ReturnType<typeof useSignupFlow>, "phone" | "email"> & {
   kakao?: boolean;
   providerEmailVerified?: boolean;
+  loginHref?: string;
 }) {
   const {
     register,
@@ -30,7 +32,11 @@ export function SignupInformation({
         description="계정을 만들고 모임 준비를 시작해 보세요."
       />
       <div className="space-y-9">
-        <EmailVerification email={email} trusted={providerEmailVerified} />
+        <EmailVerification
+          email={email}
+          trusted={providerEmailVerified}
+          loginHref={loginHref}
+        />
         <FormField
           required
           id="signup-name"
@@ -116,7 +122,6 @@ export function SignupInformation({
             )}
           </FormField>
           <ContactVerification
-            label="휴대폰"
             {...phone}
             onRequest={() => {
               void trigger("phone", { shouldFocus: true }).then((valid) => {

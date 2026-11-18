@@ -2,6 +2,16 @@ import { HttpException } from "@nestjs/common";
 import type { ValidationError } from "class-validator";
 
 const domainErrors = {
+  GROUP_REGISTRATION_CONFLICT: {
+    status: 409,
+    message:
+      "이 등록 요청은 이미 저장되었습니다. 내 모임에서 결과를 확인해 주세요.",
+  },
+  ROSTER_DUPLICATES_UNCONFIRMED: {
+    status: 400,
+    message:
+      "같은 이름의 구성원을 확인해 주세요. 동명이인은 각각 등록할 수 있어요.",
+  },
   PASSWORD_RESET_INVALID: {
     status: 400,
     message:

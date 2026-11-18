@@ -166,6 +166,31 @@ test("migrations preserve existing account, group, event and session records and
       eventsBeforeSignup,
     );
     await runner.query("SAVEPOINT social_rollback");
+    const { GroupRoster1795046400000 } =
+      await import("../../src/database/migrations/1795046400000-GroupRoster.js");
+    const roster = new GroupRoster1795046400000();
+    await roster.up(runner);
+    assert.deepEqual(
+      await runner.query("SELECT * FROM groups"),
+      beforeGroups.map((row: object) => ({
+        ...row,
+        group_type: null,
+        creation_key: null,
+        creation_digest: null,
+      })),
+    );
+    assert.deepEqual(
+      await runner.query("SELECT * FROM events"),
+      eventsBeforeSignup,
+    );
+    await runner.query(
+      "INSERT INTO group_members VALUES ($1,$2,'동명이인','0012',0,now()),($3,$2,'동명이인',null,1,now())",
+      [randomUUID(), group, randomUUID()],
+    );
+    await assert.rejects(roster.down(runner), /preserving roster/);
+    await runner.query("ROLLBACK TO SAVEPOINT social_rollback");
+    await roster.up(runner);
+    await roster.down(runner);
     await runner.query(
       'UPDATE accounts SET "passwordHash" = NULL WHERE id = $1',
       [account],

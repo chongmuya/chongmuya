@@ -10,27 +10,25 @@ import { useAuth } from "./auth-provider";
 import { AuthScreen } from "./auth-screen";
 import { LoginScreen } from "./login-screen";
 import { StartScreen } from "./start-screen";
+import { SplashScreen } from "./splash-screen";
 
 // Entry routing is separate from the account and recovery panel used in workspace screens.
 export function AuthEntryScreen({ screen }: { screen: "start" | "login" }) {
   const { status, account } = useAuth();
   const params = useSearchParams();
   const router = useRouter();
-  const returnTo = safeReturnPath(params.get("next"));
+  const returnTo = safeReturnPath(params.get("next") ?? "/");
   const legacySignup = screen === "login" && params.get("mode") === "signup";
   useEffect(() => {
     if (legacySignup) router.replace(authEntryPath("/auth/signup", returnTo));
     else if (status === "authenticated" && account)
       router.replace(postLoginPath(account, returnTo));
   }, [status, account, returnTo, router, legacySignup]);
-  if (legacySignup || status === "loading" || status === "authenticated")
+  if (status === "loading") return <SplashScreen />;
+  if (legacySignup || status === "authenticated")
     return (
       <main className="app-page">
-        <LoadingState>
-          {status === "loading"
-            ? "로그인 상태 확인 중…"
-            : "내 화면으로 이동 중…"}
-        </LoadingState>
+        <LoadingState>내 화면으로 이동 중…</LoadingState>
       </main>
     );
   if (status !== "anonymous")

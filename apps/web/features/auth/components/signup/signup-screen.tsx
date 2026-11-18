@@ -7,7 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Button } from "@/shared/ui/button";
+import { Button, buttonStyles } from "@/shared/ui/button";
+import { NoticeDialog } from "@/shared/ui/notice-dialog";
 import { LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
@@ -26,7 +27,7 @@ import { SignupFlow } from "./signup-flow";
 
 export function SignupScreen() {
   const params = useSearchParams();
-  const returnTo = safeReturnPath(params.get("next"));
+  const returnTo = safeReturnPath(params.get("next") ?? "/");
   return <SignupScreenContent key={returnTo} returnTo={returnTo} />;
 }
 export function KakaoSignupScreen({ context }: { context: KakaoStatus }) {
@@ -180,6 +181,7 @@ function SignupScreenContent({
           </aside>
         )}
       <SignupFlow
+        loginHref={authEntryPath("/auth", returnTo)}
         terms={terms.data}
         kakao={kakao}
         verification={{
@@ -223,6 +225,24 @@ function SignupScreenContent({
           }
         }}
       />
+      {signup.error instanceof ApiError &&
+        signup.error.code === "EMAIL_ALREADY_REGISTERED" && (
+          <NoticeDialog
+            title="이미 가입된 이메일이에요."
+            description="다른 이메일을 사용하거나 가입할 때 사용한 방법으로 로그인해 주세요."
+            onClose={signup.reset}
+          >
+            <Button variant="brand-outline" onClick={signup.reset}>
+              닫기
+            </Button>
+            <Link
+              href={authEntryPath("/auth", returnTo)}
+              className={buttonStyles()}
+            >
+              로그인 하기
+            </Link>
+          </NoticeDialog>
+        )}
     </>
   );
 }

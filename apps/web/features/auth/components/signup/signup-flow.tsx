@@ -11,7 +11,10 @@ import { SignupTerms, SignupTermsDetail } from "./signup-terms";
 import { SignupInformation } from "./signup-information";
 
 export function SignupFlow(
-  props: Parameters<typeof useSignupFlow>[0] & { onComplete: () => void },
+  props: Parameters<typeof useSignupFlow>[0] & {
+    onComplete: () => void;
+    loginHref?: string;
+  },
 ) {
   const flow = useSignupFlow(props);
   const container = useRef<HTMLDivElement>(null);
@@ -41,6 +44,15 @@ export function SignupFlow(
             {flow.detail ? (
               <SignupTermsDetail
                 term={props.terms.find((term) => term.id === flow.detail)!}
+                onAgree={() => {
+                  if (flow.detail)
+                    flow.methods.setValue(flow.detail, true, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    });
+                  flow.setDetail(null);
+                }}
+                onClose={() => flow.setDetail(null)}
               />
             ) : (
               <form
@@ -68,6 +80,7 @@ export function SignupFlow(
                       email={flow.email}
                       kakao={!!props.kakao}
                       providerEmailVerified={flow.providerEmailVerified}
+                      loginHref={props.loginHref}
                     />
                   )}
                   <div className="mt-auto pt-12">
@@ -128,8 +141,8 @@ function SignupComplete({ onContinue }: { onContinue: () => void }) {
           >
             총무야 가입을 축하드려요!
           </h1>
-          <p className="mx-auto mt-2 max-w-[219px] text-control leading-5 text-muted">
-            이제부터 총무야와 함께 더 편하게 단체 예약 관리를 해봐요
+          <p className="mx-auto mt-2 max-w-[219px] text-control leading-5 break-keep text-muted">
+            이제부터 총무야와 함께 모임과 행사를 편하게 준비해 봐요
           </p>
         </div>
       </div>

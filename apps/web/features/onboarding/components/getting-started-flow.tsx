@@ -139,7 +139,7 @@ export function GettingStartedFlow({
                 <Button
                   className="w-full"
                   onClick={() =>
-                    onNavigate(usage === "group" ? "/mypage" : "/events")
+                    onNavigate(usage === "group" ? "/groups/new" : "/events")
                   }
                 >
                   {usage === "group" ? "모임 등록하기" : "행사 등록하기"}
@@ -150,7 +150,7 @@ export function GettingStartedFlow({
                 variant="brand-outline"
                 onClick={() => onNavigate(returnTo)}
               >
-                나중에 시작하기
+                {returnTo === "/" ? "홈으로 가기" : "나중에 시작하기"}
               </Button>
             </div>
           </>

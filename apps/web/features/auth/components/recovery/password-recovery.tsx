@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { Dialog } from "@/shared/ui/dialog";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -197,12 +199,48 @@ function RecoveryPasswordForm({
   });
   const { pending, run } = useRecoveryRequest();
   const [complete, setComplete] = useState(false);
+  const [dismissedComplete, setDismissedComplete] = useState(false);
   const heading = useRef<HTMLDivElement>(null);
   useEffect(() => {
     heading.current?.querySelector<HTMLElement>("h1")?.focus();
   }, [complete, linkState]);
   return (
     <StepLayout title="비밀번호 재설정" onBack={onBack} busy={pending}>
+      {complete && !dismissedComplete && (
+        <Dialog
+          showCloseButton
+          labelledBy="password-reset-complete"
+          onClose={() => setDismissedComplete(true)}
+          className="max-w-[322px] space-y-7 text-center"
+        >
+          <Image
+            src="/images/ui/success.svg"
+            alt=""
+            width={48}
+            height={48}
+            className="mx-auto"
+          />
+          <div>
+            <h2 id="password-reset-complete" className="text-2xl font-bold">
+              비밀번호가 변경되었어요
+            </h2>
+            <p className="mt-2 text-control leading-normal text-muted">
+              새 비밀번호가 정상적으로 변경되었어요.
+              <br />
+              변경한 비밀번호로 로그인해 주세요.
+            </p>
+          </div>
+          <Link
+            href={loginHref}
+            className={buttonStyles({
+              variant: "brand-outline",
+              className: "w-full",
+            })}
+          >
+            로그인하러 가기
+          </Link>
+        </Dialog>
+      )}
       <div ref={heading} className="px-[17px]">
         <StepHeading
           title={

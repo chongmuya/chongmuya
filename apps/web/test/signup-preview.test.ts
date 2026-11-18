@@ -519,7 +519,7 @@ test("post-signup choices preserve selection on back, allow skipping and route g
         view.container,
         usage === "group" ? "모임 등록하기" : "행사 등록하기",
       );
-      assert.deepEqual(paths, [usage === "group" ? "/mypage" : "/events"]);
+      assert.deepEqual(paths, [usage === "group" ? "/groups/new" : "/events"]);
       await click(view.container, "나중에 시작하기");
       assert.equal(paths.at(-1), "/mypage");
     } finally {

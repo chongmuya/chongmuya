@@ -24,11 +24,15 @@ apps/web/
       client.ts              GettingStartedScreen 공개
     groups/
       api/                   groups.api.ts, groups.queries.ts
-      components/            GroupBoundary(모임 관리), GroupSettings, GroupForm
+      components/            등록·명단 미리보기, GroupBoundary, GroupSettings
       hooks/                 use-save-group.ts, 공개 use-groups.ts
-      schemas/               group.schema.ts
+      lib/                   TXT·붙여넣기 해석, 동명이인 확인
+      schemas/               모임 이름·선택 유형·명단 검증
       types/                 group.types.ts
-      client.ts              외부 컴포넌트 공개
+      client.ts / types.ts   외부 컴포넌트·모임 타입 공개
+    home/
+      components/            실제 계정·모임·행사 첫 홈, 모임 안내와 선택창
+      client.ts              HomeScreen 공개
     events/
       api/                   events.api.ts, events.queries.ts
       components/            EventList, EventDetail, EventForm, 모임 연결 폼
@@ -54,7 +58,7 @@ apps/api/
     config/             환경변수 로딩·검증, 타입이 있는 설정
     common/http/        안전한 업무/필드 오류·requestId·요청 로그
     modules/auth/       인증·세션·시도 제한, 공개 Guard/사용자 타입/데코레이터
-    modules/groups/     모임 CRUD·소유권 검증, GroupsService 공개
+    modules/groups/     모임·기본 명단 저장과 소유권 검증, GroupsService 공개
     modules/events/     행사 소유권·조회·생성·수정·선택적 모임 연결
     modules/health/     DB와 독립된 liveness·실제 쿼리 readiness
     # 각 업무 모듈의 파일 배치
@@ -66,7 +70,7 @@ apps/api/
       guards/ / strategies/ / decorators/
       repositories/ / types/ / utils/ / exceptions/
     database/           TypeORM 옵션·CLI DataSource·연결 생명주기·오류 분류
-      migrations/       Authentication·GroupEvents·PersonalEvents·VerifiedSignup·AccountTypes·EmailVerification
+      migrations/       인증·행사·계정 확장·GroupRoster 데이터 보존 migration
   test/                 설정·HTTP 계약 테스트와 DB 통합 테스트
 tools/                  ESLint 의존 경계 규칙과 회귀 테스트
 compose.yaml            로컬 PostgreSQL만 실행
@@ -81,7 +85,9 @@ compose.yaml            로컬 PostgreSQL만 실행
 
 `app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 모임 생성이나 선택을 요구하지 않으며 전체 내 행사를 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 본인 행사 목록의 모임 필터이며 `/mypage?group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 이용 유형 확인창의 문구·아이콘·저장은 onboarding이 맡고, shared/ui의 Dialog는 native showModal·초기 포커스·취소·포커스 복귀·스크롤 잠금만 담당한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`에서도 내 행사로 시작할 수 있다.
 
-공개 홈은 비로그인 접근을 허용한다. 개인 화면은 인증 상태를 확인하고 로그인 링크에 원래 경로를 전달한다. auth의 safeReturnPath는 지원하는 내부 페이지와 UUID query만 재구성하며 외부 URL·프로토콜 상대 URL·역슬래시·제어 문자·인증/API 경로를 반환하지 않는다. 기본 목적지는 `/events`다. 실제 자료 권한은 Nest에서 검사한다.
+공개 홈은 비로그인 접근을 허용한다. home은 auth·groups·events의 공개 진입점으로 실제 계정·선택 모임·행사를 조합한다. `/groups/new`는 첫 설정과 홈에서 재사용하는 등록 화면이다. 선택적인 유형·명단을 모두 저장한 응답을 받은 후 완료창을 표시한다. 모임 없는 홈에서는 개인 행사로 바로 진입한다. `/intro`와 `/start`는 auth의 공개 소개·가입 진입 화면이고, 개발용 `/dev/auth`는 기존 인증 미리보기와 health 연결 상태를 제공한다.
+
+개인 화면은 인증 상태를 확인하고 로그인 링크에 원래 경로를 전달한다. auth의 safeReturnPath는 지원하는 내부 페이지와 UUID query만 재구성하며 외부 URL·프로토콜 상대 URL·역슬래시·제어 문자·인증/API 경로를 반환하지 않는다. next가 없는 새 가입·로그인은 홈으로 이동하고, 유효하지 않은 next의 안전한 기본값은 `/events`다. 실제 자료 권한은 Nest에서 검사한다.
 
 app과 다른 feature에서 접근하는 공개 경로는 다음과 같다.
 
@@ -97,14 +103,15 @@ app과 다른 feature에서 접근하는 공개 경로는 다음과 같다.
 
 컴포넌트 → query options / mutation → feature API → SessionClient.request → shared JSON 전송 → Nest API 순서다. 세션의 Access 만료 갱신, 한 번 재시도, 계정 변경 감지, 로그아웃 대기·실패 복구는 기존 SessionClient를 유지한다. 업무 API 함수를 단독 fetch로 우회하지 않는다. profile은 인증 feature가 소유한다.
 
-| 데이터         | Query key                                      | 정책                                      |
-| -------------- | ---------------------------------------------- | ----------------------------------------- |
-| profile        | `user / accountId / profile`                   | 인증 상태에서만 조회                      |
-| 내 모임        | `user / accountId / groups`                    | 계정마다 별도 목록                        |
-| 내 행사        | `user / accountId / events / list`             | 개인·모임 연결 행사 전체                  |
-| 모임별 내 행사 | `user / accountId / groups / groupId / events` | 모임 필터에도 행사 소유권 적용            |
-| 행사 상세      | `user / accountId / events / detail / eventId` | 모임과 독립된 식별                        |
-| health         | `health`                                       | 비활성 탭 제외 5초 polling, 3초 요청 제한 |
+| 데이터         | Query key                                       | 정책                                      |
+| -------------- | ----------------------------------------------- | ----------------------------------------- |
+| profile        | `user / accountId / profile`                    | 인증 상태에서만 조회                      |
+| 내 모임        | `user / accountId / groups`                     | 계정마다 별도 목록                        |
+| 모임 기본 명단 | `user / accountId / groups / groupId / members` | 소유자만 조회, 행사 명단과 별개           |
+| 내 행사        | `user / accountId / events / list`              | 개인·모임 연결 행사 전체                  |
+| 모임별 내 행사 | `user / accountId / groups / groupId / events`  | 모임 필터에도 행사 소유권 적용            |
+| 행사 상세      | `user / accountId / events / detail / eventId`  | 모임과 독립된 식별                        |
+| health         | `health`                                        | 비활성 탭 제외 5초 polling, 3초 요청 제한 |
 
 업무 query는 `staleTime: 0`, `retry: false`이며 Query 기본 마운트·포커스·재연결 재조회를 사용한다. 실패는 오류 UI와 사용자의 다시 시도로 복구한다. placeholder로 이전 계정·모임 데이터를 재사용하지 않는다. `isError`를 잔존 성공 데이터보다 우선한다. Query의 AbortSignal을 API까지 전달한다.
 
@@ -154,19 +161,22 @@ Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 �
 
 업무 경로는 `/api/v1`입니다. 성공 응답은 DTO, 목록은 배열이며 페이지네이션이나 공통 성공 wrapper를 사용하지 않습니다.
 
-| 메서드·경로                                  | 입력·동작                                                             |
-| -------------------------------------------- | --------------------------------------------------------------------- |
-| GET /groups, POST /groups                    | 내 모임 목록, `{ name }`으로 모임 생성                                |
-| GET /groups/:groupId, PATCH /groups/:groupId | 소유 모임 조회, `{ name }`으로 이름 수정                              |
-| GET /events                                  | 전체 내 행사. 선택적 `groupId` query로 필터                           |
-| POST /events                                 | `{ name, scheduledAt?, groupId? }`. ownerId는 인증 계정               |
-| GET /events/:eventId                         | 행사 소유자 상세 조회                                                 |
-| PATCH /events/:eventId                       | `{ expectedVersion, name?, scheduledAt? }`. ownerId·groupId 입력 금지 |
-| PUT /events/:eventId/group                   | `{ expectedVersion, groupId }`. 개인 행사에 본인 모임 연결            |
+| 메서드·경로                                  | 입력·동작                                                                                                  |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| GET /groups, POST /groups                    | 내 모임 목록, `{ name, groupType?, creationKey?, members?, duplicatesConfirmed? }`로 모임·명단 원자적 생성 |
+| GET /groups/:groupId, PATCH /groups/:groupId | 소유 모임 조회, `{ name }`으로 이름 수정                                                                   |
+| GET /groups/:groupId/members                 | 소유자에게만 기본 명단의 ID·이름·선택 뒤 4자리 반환                                                        |
+| GET /events                                  | 전체 내 행사. 선택적 `groupId` query로 필터                                                                |
+| POST /events                                 | `{ name, scheduledAt?, groupId? }`. ownerId는 인증 계정                                                    |
+| GET /events/:eventId                         | 행사 소유자 상세 조회                                                                                      |
+| PATCH /events/:eventId                       | `{ expectedVersion, name?, scheduledAt? }`. ownerId·groupId 입력 금지                                      |
+| PUT /events/:eventId/group                   | `{ expectedVersion, groupId }`. 개인 행사에 본인 모임 연결                                                 |
 
 EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`, `version`입니다. 이름은 trim 후 1~100자, 일정은 생략/null 또는 시간대가 있는 ISO 8601입니다. groupId는 생성에서 생략/null을 허용하고 연결 명령에서는 필수 UUID입니다. expectedVersion은 1 이상의 정수입니다. 서버 결정 필드와 알 수 없는 입력을 ValidationPipe가 거부합니다. 이전 `/groups/:groupId/events` 중첩 API는 제공하지 않습니다.
 
 ### DB 작업과 트랜잭션
+
+모임 등록은 groups 업무에서 Group·GroupMember를 같은 EntityManager로 저장한다. `(owner_id, creation_key)` 고유 인덱스와 입력 해시로 같은 등록의 동시 요청·통신 재시도를 처리한다. 명단은 계정이나 행사 명단과 관계없는 비공개 기본 자료다. 동명이인은 확인 후 별도 행으로 보존하며 전화번호 뒤 4자리는 nullable 문자열이다. 그룹 단위 조회에 소유권을 검사하고 응답에 인증·권한 필드를 포함하지 않는다. JSON body는 500명의 긴 UTF-8 이름을 수용하도록 256KB까지 허용하고, DTO의 행 수·필드 길이 제한도 적용한다.
 
 단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. AuthAttemptsRepository는 원자적인 시도 제한 upsert만 담당하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
 

@@ -24,6 +24,8 @@ export function configureHttp(
     exposedHeaders: ["x-request-id"],
     optionsSuccessStatus: 204,
   });
+  // Up to 500 roster names plus optional last-four digits, including UTF-8 text.
+  app.useBodyParser("json", { limit: "256kb" });
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
