@@ -32,7 +32,7 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
   const { app, db, call, url } = await startResourceApplication(t);
   const key = merchantEncryptionKey(app.get(ConfigService).environment);
   const options = {
-    password: "demo-test-123",
+    password: "Demo1234!",
     set: `integration-${randomUUID().slice(0, 8)}`,
     encryptionKey: key,
   };
