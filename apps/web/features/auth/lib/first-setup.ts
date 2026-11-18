@@ -14,6 +14,9 @@ export function firstSetupPath(returnTo: string) {
 }
 export function postLoginPath(account: Account, returnTo: string) {
   return isFirstSetupComplete(account)
-    ? safeReturnPath(returnTo)
+    ? account.accountType === "owner" &&
+      ["/", "/events"].includes(safeReturnPath(returnTo))
+      ? "/owner"
+      : safeReturnPath(returnTo)
     : firstSetupPath(returnTo);
 }

@@ -1,0 +1,635 @@
+import assert from "node:assert/strict";
+import { createHash, createHmac, randomUUID } from "node:crypto";
+import { test } from "node:test";
+import { startResourceApplication } from "../support/resource-application.js";
+import { emptyRegistration } from "../../src/modules/restaurants/types/registration.js";
+import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
+import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
+import { RestaurantSpace } from "../../src/modules/restaurants/entities/restaurant-space.entity.js";
+import { RestaurantManagementService } from "../../src/modules/restaurants/restaurant-management.service.js";
+import { MessageProvider } from "../../src/modules/reservations/providers/message.provider.js";
+import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
+import { MerchantLinksService } from "../../src/modules/reservations/merchant-links.service.js";
+import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
+import { MerchantReplyLink } from "../../src/modules/reservations/entities/merchant-reply-link.entity.js";
+import { MerchantReplyRevision } from "../../src/modules/reservations/entities/merchant-reply.entity.js";
+import type { RegistrationData } from "../../src/modules/restaurants/types/registration.js";
+const json = async <T = Record<string, unknown>>(r: Response, status = 200) => {
+  const b = await r.json();
+  assert.equal(r.status, status, JSON.stringify(b));
+  return b as T;
+};
+
+test("owner draft/address registration races and ownership; direct delivery, anonymous reply revisions, webhook and immutable inquiry", async (t) => {
+  const secret = "test-webhook-secret-only-123456789";
+  const { app, db, call, signup, url, logs } = await startResourceApplication(
+    t,
+    {
+      SOLAPI_WEBHOOK_SECRET: secret,
+      OWNER_SUPPORT_EMAIL: "owner@example.test",
+    },
+  );
+  const owner = await signup(),
+    other = await signup(),
+    organizer = await signup();
+  for (const jar of [owner, other])
+    await json(
+      await call("auth/first-setup", jar, "PATCH", { accountType: "owner" }),
+    );
+  const name = `등록 경쟁 ${randomUUID()}`,
+    address = "서울 광진구 테스트로 100";
+  async function draftFor(jar: string) {
+    const d = await json<{ id: string; version: number }>(
+      await call("owner/drafts", jar, "POST", {}),
+      201,
+    );
+    const result = await json<{
+      results: { id: string; baseAddress: string }[];
+    }>(
+      await call(`owner/drafts/${d.id}/addresses`, jar, "POST", {
+        query: address,
+      }),
+      201,
+    );
+    const data: RegistrationData = {
+      ...emptyRegistration(),
+      name,
+      addressQuery: result.results[0].baseAddress,
+      detailAddress: "2층",
+      phone: "01012345678",
+      receiveConsent: true,
+      maxCapacity: 40,
+      minimumGuests: { kind: "AT_LEAST", value: 10 },
+      spaces: [
+        {
+          label: "룸 A",
+          kind: "ROOM",
+          capacity: 20,
+          minGuests: 10,
+          minSpend: 0,
+          separateFee: null,
+          availability: "AVAILABLE",
+          togetherSeating: "YES",
+          conditions: "",
+        },
+      ],
+    };
+    const saved = await json<{ version: number }>(
+      await call(`owner/drafts/${d.id}`, jar, "PUT", {
+        version: d.version,
+        step: 4,
+        data,
+        addressId: result.results[0].id,
+      }),
+    );
+    return { ...d, version: saved.version, data };
+  }
+  const a = await draftFor(owner),
+    b = await draftFor(other);
+  assert.equal((await call(`owner/drafts/${a.id}`, other)).status, 404);
+  assert.equal(
+    (
+      await call(`owner/drafts/${a.id}`, owner, "PUT", {
+        version: a.version,
+        step: 0,
+        data: { ...a.data, ownerAccountId: randomUUID() },
+      })
+    ).status,
+    400,
+  );
+  const forged = await call(`owner/drafts/${a.id}`, owner, "PUT", {
+    version: a.version,
+    step: 0,
+    data: a.data,
+    addressId: randomUUID(),
+  });
+  assert.equal(forged.status, 400);
+  const submits = await Promise.all([
+    call(`owner/drafts/${a.id}/submit`, owner, "POST", { version: a.version }),
+    call(`owner/drafts/${b.id}/submit`, other, "POST", { version: b.version }),
+  ]);
+  assert.deepEqual(submits.map((r) => r.status).sort(), [201, 409]);
+  const winning =
+    submits[0].status === 201
+      ? { jar: owner, draft: a, alien: other }
+      : { jar: other, draft: b, alien: owner };
+  const created = await json<{ restaurantId: string }>(
+    submits.find((r) => r.status === 201)!,
+    201,
+  );
+  assert.equal(await db.getRepository(Restaurant).countBy({ name }), 1);
+  assert.equal(
+    (
+      await json<{ restaurantId: string }>(
+        await call(
+          `owner/drafts/${winning.draft.id}/submit`,
+          winning.jar,
+          "POST",
+          { version: winning.draft.version },
+        ),
+        201,
+      )
+    ).restaurantId,
+    created.restaurantId,
+  );
+  const r = await db
+    .getRepository(Restaurant)
+    .findOneByOrFail({ id: created.restaurantId });
+  assert.equal(r.published, false);
+  assert.equal(r.latitude, 37.5401);
+  assert.equal(r.minimumGuests, 10);
+  assert.equal(
+    (await db.getRepository(RestaurantSpace).findBy({ restaurantId: r.id }))[0]
+      .kind,
+    "ROOM",
+  );
+  assert.equal(
+    (await call(`owner/restaurants/${r.id}/menus`, winning.alien)).status,
+    404,
+  );
+  const duplicate = await json<{ duplicate: boolean; supportEmail: string }>(
+    await call(
+      `owner/drafts/${winning.draft === a ? b.id : a.id}/duplicate`,
+      winning.alien,
+      "POST",
+    ),
+    201,
+  );
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.supportEmail, "owner@example.test");
+  assert.doesNotMatch(JSON.stringify(duplicate), /ownerAccountId|phone/);
+  await app.get(RestaurantManagementService).operate({
+    restaurantId: r.id,
+    actor: "test-operator",
+    reason: "가짜 fixture 검증",
+    published: true,
+    dryRun: false,
+  });
+  const unownedId = randomUUID();
+  await db.getRepository(Restaurant).save({
+    ...r,
+    id: unownedId,
+    name: "계정 없는 테스트 매장",
+    ownerAccountId: null,
+    registrationKey: null,
+    published: true,
+    verifiedAt: null,
+  });
+  await db.getRepository(RestaurantContact).save({
+    id: randomUUID(),
+    restaurantId: unownedId,
+    name: "테스트 담당",
+    phone: "01022223333",
+    active: true,
+    requestConsentAt: new Date(),
+    consentNote: "가짜 fixture",
+  });
+  const provider = app.get(MessageProvider),
+    sent: string[] = [];
+  t.mock.method(provider, "send", async (id: string, to: string) => {
+    sent.push(id);
+    return to === "01022223333"
+      ? {
+          status: "UNKNOWN",
+          provider: "solapi",
+          errorCode: "TRANSPORT_UNCERTAIN",
+        }
+      : {
+          status: "ACCEPTED",
+          provider: "solapi",
+          messageId: `test-${id}`,
+          groupId: `group-${id}`,
+        };
+  });
+  const event = await json<{ id: string }>(
+    await call("events", organizer, "POST", { name: "문의·응답 행사" }),
+    201,
+  );
+  const input = {
+    requestKey: randomUUID(),
+    mode: "DIRECT",
+    expectedEventVersion: 1,
+    restaurantIds: [r.id, unownedId],
+    conditions: {
+      startsAt: new Date(Date.now() + 3 * 86400_000).toISOString(),
+      expectedGuests: 20,
+      region: "테스트",
+      seating: "CLOSE",
+      seatingImportance: "REQUIRED",
+      space: "ROOM",
+      spaceImportance: "REQUIRED",
+    },
+    contact: { name: "총무", phone: "01012345678" },
+  };
+  const path = `events/${event.id}/reservation-requests`;
+  const inquiry = await json<{
+    id: string;
+    snapshot: unknown;
+    targets: { id: string; restaurantId: string; deliveryStatus: string }[];
+  }>(await call(path, organizer, "POST", input), 201);
+  assert.equal(sent.length, 2);
+  assert.deepEqual(inquiry.targets.map((x) => x.deliveryStatus).sort(), [
+    "ACCEPTED",
+    "UNKNOWN",
+  ]);
+  await json(await call(path, organizer, "POST", input), 201);
+  assert.equal(sent.length, 2);
+  const target = inquiry.targets.find((x) => x.restaurantId === r.id)!;
+  const delivery = await db
+    .getRepository(MessageDelivery)
+    .findOneByOrFail({ targetId: target.id });
+  const uncertain = await db.getRepository(MessageDelivery).findOneByOrFail({
+    targetId: inquiry.targets.find((x) => x.restaurantId === unownedId)!.id,
+  });
+  await assert.rejects(
+    app
+      .get(MessageDeliveryService)
+      .dispatch(uncertain.id, { actor: "ops", reason: "재시도 금지 확인" }),
+  );
+  assert.equal(sent.length, 2);
+  const links = app.get(MerchantLinksService),
+    link = await db
+      .getRepository(MerchantReplyLink)
+      .findOneByOrFail({ targetId: target.id });
+  const raw = new URLSearchParams(new URL(links.url(link)).hash.slice(1)).get(
+    "token",
+  )!;
+  assert(!link.encryptedToken!.includes(raw));
+  assert(!JSON.stringify(delivery).includes(raw));
+  const access = await json<{ accessToken: string }>(
+    await call(`merchant-replies/${target.id}/access`, "", "POST", {
+      token: raw,
+    }),
+  );
+  const publicCall = (
+    id: string,
+    method = "GET",
+    body?: unknown,
+    token = access.accessToken,
+  ) =>
+    fetch(`${url}/api/v1/merchant-replies/${id}`, {
+      method,
+      headers: {
+        Origin: "http://localhost:3000",
+        "X-CSRF-Protection": "1",
+        "X-Merchant-Access": token,
+        "Content-Type": "application/json",
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  const opened = await json<{
+    version: number;
+    defaults: { proposal: unknown; expiresAt: string };
+    snapshot: unknown;
+  }>(await publicCall(target.id));
+  assert.equal(opened.version, 0);
+  assert.equal(
+    await db
+      .getRepository(MerchantReplyRevision)
+      .countBy({ targetId: target.id }),
+    0,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(opened),
+    /01012345678|ownerAccountId|responseCount|계정 없는/,
+  );
+  assert.equal((await publicCall(uncertain.targetId)).status, 403);
+  const reply = {
+    requestKey: randomUUID(),
+    expectedVersion: 0,
+    kind: "AVAILABLE",
+    proposal: opened.defaults.proposal,
+    expiresAt: opened.defaults.expiresAt,
+    reason: "",
+    holdConfirmed: true,
+  };
+  const concurrent = await Promise.all([
+    publicCall(target.id, "POST", { reply }),
+    publicCall(target.id, "POST", { reply }),
+  ]);
+  const response = await json<{ version: number }>(concurrent[0]);
+  assert.equal(response.version, 1);
+  await json(concurrent[1]);
+  await json(await publicCall(target.id, "POST", { reply }));
+  assert.equal(
+    await db
+      .getRepository(MerchantReplyRevision)
+      .countBy({ targetId: target.id }),
+    1,
+  );
+  const conflict = await publicCall(target.id, "POST", {
+    reply: { ...reply, requestKey: randomUUID() },
+  });
+  assert.equal(conflict.status, 409);
+  const changedReplies = await Promise.all([
+    publicCall(target.id, "POST", {
+      reply: { ...reply, expectedVersion: 1, requestKey: randomUUID() },
+    }),
+    publicCall(target.id, "POST", {
+      reply: { ...reply, expectedVersion: 1, requestKey: randomUUID() },
+    }),
+  ]);
+  assert.deepEqual(changedReplies.map((r) => r.status).sort(), [200, 409]);
+  const decline = {
+    ...reply,
+    requestKey: randomUUID(),
+    expectedVersion: 2,
+    kind: "DECLINE",
+    proposal: null,
+    expiresAt: null,
+    reason: "해당 시간은 어렵습니다",
+  };
+  const ownerReply = await call(
+    `owner/inquiries/${target.id}`,
+    winning.jar,
+    "POST",
+    { reply: decline },
+  );
+  await json(ownerReply);
+  assert.equal(
+    (await call(`owner/inquiries/${target.id}`, winning.alien)).status,
+    404,
+  );
+  const result = await json<{
+    request: {
+      id: string;
+      snapshot: unknown;
+      responseCount: number;
+      declineCount: number;
+    };
+  }>(await call(path, organizer));
+  assert.equal(result.request.id, inquiry.id);
+  assert.deepEqual(result.request.snapshot, inquiry.snapshot);
+  assert.equal(result.request.responseCount, 1);
+  assert.equal(result.request.declineCount, 1);
+  const report = [
+    {
+      messageId: delivery.providerMessageId,
+      groupId: delivery.providerGroupId,
+      statusCode: "4000",
+      customFields: { deliveryId: delivery.id },
+    },
+  ];
+  async function webhook(payload: unknown, valid = true) {
+    const rawBody = Buffer.from(JSON.stringify(payload)),
+      timestamp = Math.floor(Date.now() / 1000);
+    const signature = createHmac(
+      "sha256",
+      createHash("sha1").update(secret).digest("hex"),
+    )
+      .update(`${timestamp}.`)
+      .update(rawBody)
+      .digest("hex");
+    return fetch(`${url}/api/v1/webhooks/solapi`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Solapi-Signature": `t=${timestamp},v1=${valid ? signature : "0".repeat(64)}`,
+      },
+      body: rawBody,
+    });
+  }
+  assert.equal((await webhook(report, false)).status, 403);
+  await json(await webhook(report));
+  await json(await webhook(report));
+  await json(await webhook([{ ...report[0], statusCode: "2000" }]));
+  assert.equal(
+    (
+      await db
+        .getRepository(MessageDelivery)
+        .findOneByOrFail({ id: delivery.id })
+    ).status,
+    "DELIVERED",
+  );
+  // A pending dispatch can be claimed once even by two explicit operator requests.
+  await db
+    .getRepository(MessageDelivery)
+    .update(uncertain.id, { status: "PENDING" });
+  let retryCalls = 0;
+  t.mock.method(provider, "send", async () => {
+    retryCalls++;
+    return {
+      status: "ACCEPTED",
+      provider: "fake",
+      messageId: "fake-retry",
+      groupId: "fake-retry-group",
+    };
+  });
+  await Promise.allSettled([
+    app
+      .get(MessageDeliveryService)
+      .dispatch(uncertain.id, { actor: "ops", reason: "경쟁 검증" }),
+    app
+      .get(MessageDeliveryService)
+      .dispatch(uncertain.id, { actor: "ops", reason: "경쟁 검증" }),
+  ]);
+  assert.equal(retryCalls, 1);
+  await db.getRepository(MessageDelivery).update(uncertain.id, {
+    status: "PROCESSING",
+    leaseUntil: new Date(Date.now() - 1),
+  });
+  await app.get(MessageDeliveryService).dispatch(uncertain.id);
+  assert.equal(
+    (
+      await db
+        .getRepository(MessageDelivery)
+        .findOneByOrFail({ id: uncertain.id })
+    ).status,
+    "UNKNOWN",
+  );
+  assert.equal(retryCalls, 1);
+  await links.regenerate(target.id, "test-operator", "링크 재발급", false);
+  assert.equal((await publicCall(target.id)).status, 403);
+  assert.equal(
+    (
+      await call(`merchant-replies/${target.id}/access`, "", "POST", {
+        token: raw,
+      })
+    ).status,
+    403,
+  );
+  const regenerated = await db
+    .getRepository(MerchantReplyLink)
+    .findOneByOrFail({ targetId: target.id });
+  const newRaw = new URLSearchParams(
+    new URL(links.url(regenerated)).hash.slice(1),
+  ).get("token")!;
+  const nextAccess = await json<{ accessToken: string }>(
+    await call(`merchant-replies/${target.id}/access`, "", "POST", {
+      token: newRaw,
+    }),
+  );
+  await db
+    .getRepository(MerchantReplyLink)
+    .update(target.id, { expiresAt: new Date(Date.now() - 1) });
+  assert.equal(
+    (
+      await publicCall(
+        target.id,
+        "POST",
+        { reply: { ...decline, expectedVersion: 3, requestKey: randomUUID() } },
+        nextAccess.accessToken,
+      )
+    ).status,
+    403,
+  );
+  await db
+    .getRepository(MerchantReplyLink)
+    .update(target.id, { expiresAt: regenerated.expiresAt });
+  await db
+    .getRepository(RestaurantContact)
+    .update({ restaurantId: r.id }, { active: false });
+  assert.equal(
+    (await publicCall(target.id, "GET", undefined, nextAccess.accessToken))
+      .status,
+    403,
+  );
+  // Explicit handover uses a new contact and link, retaining every original snapshot.
+  const newContact = randomUUID();
+  await db.getRepository(RestaurantContact).save({
+    id: newContact,
+    restaurantId: r.id,
+    name: "새 담당자 fixture",
+    phone: "01033334444",
+    active: true,
+    requestConsentAt: null,
+    consentNote: "test only",
+  });
+  const deliveries = app.get(MessageDeliveryService);
+  await assert.rejects(
+    deliveries.changeRecipient(
+      target.id,
+      newContact,
+      "ops",
+      "담당자 확인",
+      false,
+    ),
+  );
+  await db
+    .getRepository(RestaurantContact)
+    .update(newContact, { requestConsentAt: new Date() });
+  const handover = await deliveries.changeRecipient(
+    target.id,
+    newContact,
+    "ops",
+    "담당자 확인",
+    false,
+  );
+  const repeatedHandover = await deliveries.changeRecipient(
+    target.id,
+    newContact,
+    "ops",
+    "재시도",
+    false,
+  );
+  assert.equal(handover.deliveryId, repeatedHandover.deliveryId);
+  assert.equal(sent.length, 2); // Handover prepares a record; only explicit retry sends it.
+  await json(await webhook(report));
+  const pending = await json<{
+    request: { targets: { id: string; deliveryStatus: string }[] };
+  }>(await call(path, organizer));
+  assert.equal(
+    pending.request.targets.find((t) => t.id === target.id)!.deliveryStatus,
+    "PENDING",
+  );
+  t.mock.method(
+    provider,
+    "send",
+    async (id: string, _to: string, _text: string, attempt: number) => {
+      await json(
+        await webhook([
+          {
+            messageId: `handover-${id}`,
+            groupId: `handover-group-${id}`,
+            statusCode: "4000",
+            customFields: { deliveryId: id, deliveryAttempt: String(attempt) },
+          },
+        ]),
+      );
+      return {
+        status: "ACCEPTED",
+        provider: "solapi",
+        messageId: `handover-${id}`,
+        groupId: `handover-group-${id}`,
+      };
+    },
+  );
+  await deliveries.dispatch(handover.deliveryId!, {
+    actor: "ops",
+    reason: "새 수신자 발송 확인",
+  });
+  assert.equal(
+    (
+      await db
+        .getRepository(MessageDelivery)
+        .findOneByOrFail({ id: handover.deliveryId! })
+    ).status,
+    "DELIVERED",
+  );
+  const original = await db.query(
+    "SELECT contact_id, contact_phone FROM reservation_request_targets WHERE id = $1",
+    [target.id],
+  );
+  assert.equal(original[0].contact_id, delivery.contactId);
+  assert.equal(original[0].contact_phone, delivery.phoneSnapshot);
+  assert.equal(
+    (await publicCall(target.id, "GET", undefined, nextAccess.accessToken))
+      .status,
+    403,
+  );
+  const activeLink = await db
+    .getRepository(MerchantReplyLink)
+    .findOneByOrFail({ targetId: target.id });
+  const handoverRaw = new URLSearchParams(
+    new URL(links.url(activeLink)).hash.slice(1),
+  ).get("token")!;
+  const handoverAccess = await json<{ accessToken: string }>(
+    await call(`merchant-replies/${target.id}/access`, "", "POST", {
+      token: handoverRaw,
+    }),
+  );
+  await json(
+    await publicCall(target.id, "GET", undefined, handoverAccess.accessToken),
+  );
+  assert(!JSON.stringify(logs).includes(raw));
+  assert(!JSON.stringify(logs).includes(access.accessToken));
+  const targetIds = inquiry.targets.map((t) => t.id);
+  for (const table of [
+    "message_delivery_reports",
+    "message_deliveries",
+    "merchant_reply_revisions",
+    "merchant_reply_links",
+    "reservation_operations",
+  ]) {
+    if (table === "message_delivery_reports")
+      await db.query(
+        "DELETE FROM message_delivery_reports WHERE delivery_id IN (SELECT id FROM message_deliveries WHERE target_id = ANY($1::uuid[]))",
+        [targetIds],
+      );
+    else
+      await db.query(`DELETE FROM ${table} WHERE target_id = ANY($1::uuid[])`, [
+        targetIds,
+      ]);
+  }
+  await db.query(
+    "DELETE FROM reservation_request_targets WHERE request_id = $1",
+    [inquiry.id],
+  );
+  await db.query("DELETE FROM reservation_requests WHERE id = $1", [
+    inquiry.id,
+  ]);
+  await db.query("DELETE FROM restaurant_drafts WHERE id = ANY($1::uuid[])", [
+    [a.id, b.id],
+  ]);
+  for (const table of [
+    "restaurant_operations",
+    "restaurant_contacts",
+    "restaurant_spaces",
+  ])
+    await db.query(
+      `DELETE FROM ${table} WHERE restaurant_id = ANY($1::uuid[])`,
+      [[r.id, unownedId]],
+    );
+  await db.getRepository(Restaurant).delete(r.id);
+  await db.getRepository(Restaurant).delete(unownedId);
+});

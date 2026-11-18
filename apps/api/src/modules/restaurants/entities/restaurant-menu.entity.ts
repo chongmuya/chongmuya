@@ -23,5 +23,6 @@ export class RestaurantMenu {
   @Column({ type: "varchar", length: 8 }) kind!: "REGULAR" | "SET";
   @Column({ type: "integer", nullable: true }) price!: number | null;
   @Column({ type: "varchar", length: 30 }) unit!: string;
+  @Column({ type: "integer", default: 0 }) position!: number;
   @Column({ type: "boolean", default: true }) available!: boolean;
 }

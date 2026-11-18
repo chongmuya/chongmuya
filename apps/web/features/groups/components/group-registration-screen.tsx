@@ -66,9 +66,9 @@ export function GroupRegistrationScreen() {
   if (account.accountType === "owner")
     return (
       <main className="app-page">
-        <h1>매장 등록은 준비 중이에요</h1>
+        <h1>사장님 홈에서 매장을 관리해 주세요</h1>
         <p>사장님은 총무용 모임이나 명단을 등록하지 않아도 돼요.</p>
-        <Link href="/">홈으로 가기</Link>
+        <Link href="/owner">사장님 홈으로 가기</Link>
       </main>
     );
   const onNavigate = (path: string) => {

@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 
 const environmentSchema = z
@@ -39,6 +40,57 @@ const environmentSchema = z
         );
       })
       .optional(),
+    TRUSTED_PROXY_CIDRS: z
+      .string()
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean),
+      )
+      .refine((items) =>
+        items.every((item) => {
+          const [ip, bits, extra] = item.split("/");
+          const family = isIP(ip);
+          return (
+            family !== 0 &&
+            extra === undefined &&
+            (bits === undefined ||
+              (/^\d+$/.test(bits) &&
+                Number(bits) > 0 &&
+                Number(bits) <= (family === 4 ? 32 : 128)))
+          );
+        }),
+      ),
+    MESSAGE_PROVIDER: z.enum(["fake", "solapi"]).default("fake"),
+    SOLAPI_API_KEY: z.string().min(1).optional(),
+    SOLAPI_API_SECRET: z.string().min(1).optional(),
+    SOLAPI_SENDER_NUMBER: z
+      .string()
+      .regex(/^\d{8,15}$/)
+      .optional(),
+    SOLAPI_WEBHOOK_SECRET: z.string().min(16).optional(),
+    GEOCODING_PROVIDER: z.enum(["fake", "naver"]).default("fake"),
+    NAVER_MAP_CLIENT_ID: z.string().min(1).optional(),
+    NAVER_MAP_CLIENT_SECRET: z.string().min(1).optional(),
+    OWNER_SUPPORT_EMAIL: z.email().optional(),
+    MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY: z
+      .string()
+      .regex(/^[a-fA-F0-9]{64}$/)
+      .optional(),
+    PROVIDER_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(10000)
+      .default(5000),
+    MERCHANT_REPLY_TTL_HOURS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(720)
+      .default(168),
     AUTH_SECRET: z.string().min(32),
     RESEND_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
     RESEND_FROM: z
@@ -152,6 +204,19 @@ const environmentSchema = z
     }
   })
   .transform((env) => ({
+    trustedProxyCidrs: env.TRUSTED_PROXY_CIDRS,
+    messageProvider: env.MESSAGE_PROVIDER,
+    solapiApiKey: env.SOLAPI_API_KEY,
+    solapiApiSecret: env.SOLAPI_API_SECRET,
+    solapiSenderNumber: env.SOLAPI_SENDER_NUMBER,
+    solapiWebhookSecret: env.SOLAPI_WEBHOOK_SECRET,
+    geocodingProvider: env.GEOCODING_PROVIDER,
+    naverMapClientId: env.NAVER_MAP_CLIENT_ID,
+    naverMapClientSecret: env.NAVER_MAP_CLIENT_SECRET,
+    ownerSupportEmail: env.OWNER_SUPPORT_EMAIL,
+    merchantReplyTokenEncryptionKey: env.MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY,
+    providerTimeoutMs: env.PROVIDER_TIMEOUT_MS,
+    merchantReplyTtlHours: env.MERCHANT_REPLY_TTL_HOURS,
     kakaoClientId: env.KAKAO_CLIENT_ID,
     kakaoClientSecret: env.KAKAO_CLIENT_SECRET,
     kakaoRedirectUri: env.KAKAO_REDIRECT_URI,

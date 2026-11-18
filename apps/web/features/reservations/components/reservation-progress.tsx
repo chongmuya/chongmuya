@@ -1,4 +1,5 @@
 "use client";
+import { ReplySummary } from "@/features/merchant-replies/client";
 import { ConditionSummary } from "./condition-summary";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -17,10 +18,12 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
     <section className="my-6 space-y-7 text-copy">
       <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
         <p className="text-sm font-semibold text-brand">문의 접수 완료</p>
-        <h2 className="mt-2 text-xl font-bold">매장 전달을 준비하고 있어요</h2>
+        <h2 className="mt-2 text-xl font-bold">
+          매장별 전달·답변 상태를 확인해 주세요
+        </h2>
         <p className="mt-2 text-sm text-muted">
-          아직 문자를 발송하지 않았어요. 접수한 문의는 이 행사에서 다시 확인할
-          수 있어요.
+          문자 접수와 실제 전달은 구분돼요. 매장 답변은 아래에 반영되며, 아직
+          예약이 확정된 상태는 아니에요.
         </p>
       </div>
       <div className="space-y-3">
@@ -34,10 +37,27 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
             <div className="flex items-center justify-between gap-2">
               <strong className="text-sm">{t.restaurantName}</strong>
               <span className="shrink-0 rounded-pill bg-brand/10 px-2 py-1 text-xs text-brand">
-                전달 대기
+                {
+                  {
+                    PENDING: "발송 대기",
+                    PROCESSING: "발송 요청 중",
+                    ACCEPTED: "발송 접수",
+                    DELIVERED: "전달 완료",
+                    FAILED: "전달 실패",
+                    UNKNOWN: "접수 확인 필요",
+                    HELD: "발송 보류",
+                    CANCELLED: "발송 중단",
+                  }[t.deliveryStatus]
+                }
               </span>
             </div>
             <p className="mt-1 text-xs text-muted">{t.address}</p>
+            {t.delivery?.provider === "fake" && (
+              <p className="mt-2 text-xs text-muted">
+                개발용 발송 대역 결과 · 실제 문자 발송 아님
+              </p>
+            )}
+            {t.response && <ReplySummary response={t.response} />}
             {t.isDemo && (
               <p className="text-xs text-brand">
                 개발용 가상 매장 · 실제 발송 안 함
@@ -49,7 +69,9 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
       <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
         <h3 className="font-semibold">도착한 응답 {inquiry.responseCount}건</h3>
         <p className="mt-1 text-sm text-muted">
-          아직 매장 응답이 없어요. 매장 응답·수락 기능은 준비 중이에요.
+          {inquiry.responseCount
+            ? `가능·변경 제안 ${inquiry.proposalCount ?? 0}건 · 불가 ${inquiry.declineCount ?? 0}건`
+            : "아직 매장 답변이 없어요."}
         </p>
       </div>
       <details className="rounded-control bg-surface p-5 text-sm shadow-card">
@@ -86,7 +108,11 @@ export function ReservationProgress({
   eventId: string;
   request: SessionRequest;
 }) {
-  const result = useQuery(inquiryQuery(accountId, eventId, request));
+  const result = useQuery({
+    ...inquiryQuery(accountId, eventId, request),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+  });
   if (result.isError)
     return (
       <ErrorState retry={() => void result.refetch()}>

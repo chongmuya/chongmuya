@@ -167,3 +167,17 @@ test("login resumes only known internal routes and valid resource parameters", (
     "/events",
   );
 });
+
+test("login return preserves attendance views and owner paths without arbitrary query", () => {
+  const id = "752fb868-6dc0-4ef8-8f4a-0ed7049ff010";
+  for (const view of ["attendance", "roster", "reservation"])
+    assert.equal(
+      safeReturnPath(`/events?event=${id}&view=${view}&round=${id}`),
+      `/events?event=${id}&round=${id}&view=${view}`,
+    );
+  assert.equal(
+    safeReturnPath(`/owner/inquiries?target=${id}&ownerId=evil`),
+    `/owner/inquiries?target=${id}`,
+  );
+  assert.equal(safeReturnPath("/owner/arbitrary"), "/events");
+});

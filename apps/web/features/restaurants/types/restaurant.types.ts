@@ -19,6 +19,13 @@ export type Restaurant = {
   latitude: number | null;
   longitude: number | null;
   maxCapacity: number | null;
+  minimumGuests?: number | null;
+  minimumOrder?: {
+    kind: string;
+    amount: number | null;
+    quantity: number | null;
+    unit: string;
+  } | null;
   photoPath: string | null;
   spacePhotos: { path: string; description: string; position: number }[];
   operatingHours: string | null;

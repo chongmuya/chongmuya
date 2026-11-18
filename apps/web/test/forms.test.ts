@@ -1237,9 +1237,9 @@ test("first setup resumes the missing step, updates session and preserves next w
             view.container.querySelector<HTMLInputElement>(
               'input[value="owner"]',
             )!.disabled,
-            true,
+            false,
           );
-          assert.match(view.container.textContent!, /준비 중/);
+          assert.match(view.container.textContent!, /사장님이에요/);
           await act(async () =>
             view.container
               .querySelector<HTMLInputElement>(`input[value="${value}"]`)!

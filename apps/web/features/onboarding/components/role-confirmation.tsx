@@ -63,7 +63,7 @@ export function RoleConfirmation({
           className="w-full max-w-[270px] text-control font-medium"
         >
           {owner
-            ? "사장님은 매장을 운영하는 분을 위한 유형이에요. 매장 등록과 예약 문의 관리는 준비 중이에요. "
+            ? "사장님은 매장을 운영하는 분을 위한 유형이에요. 매장을 등록하고 예약 문의에 답변할 수 있어요. "
             : "총무는 모임과 행사를 준비하는 유형이에요. 예약 문의와 참석 관리를 사용할 수 있어요. 정산은 준비 중이에요. "}
           <span className="text-brand">
             선택한 사용자 유형은 이후 변경할 수 없어요.

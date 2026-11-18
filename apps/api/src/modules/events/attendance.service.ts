@@ -38,12 +38,13 @@ import type {
 } from "./dto/response/attendance.response.dto.js";
 import type { AttendanceAnswer } from "./types/attendance.js";
 
-// Same DB fixed window as authentication. Direct socket IP, never X-Forwarded-For.
+// Per-round 15-minute DB windows permit 100 shared-NAT participants.
+// Name-scoped guessing limits are separate from successful write limits.
 export const ATTENDANCE_LIMITS = {
-  infoIp: 120,
-  openIp: 60,
+  infoIp: 600,
+  openIp: 600,
   openIdentity: 20,
-  saveIp: 60,
+  saveIp: 600,
   saveIdentity: 20,
 } as const;
 
@@ -209,7 +210,7 @@ export class AttendanceService {
     const db = await this.database.connect();
     await consumeRequestLimit(
       db.manager,
-      `attendance:info:ip:${ip}`,
+      `attendance:info:ip:${shareId}:${ip}`,
       ATTENDANCE_LIMITS.infoIp,
     );
     const { round, event } = await this.publicScope(shareId, db.manager);
@@ -265,8 +266,13 @@ export class AttendanceService {
     const name = normalizePersonName(input.name);
     await consumeRequestLimit(
       db.manager,
-      `attendance:open:ip:${ip}`,
+      `attendance:open:ip:${shareId}:${ip}`,
       ATTENDANCE_LIMITS.openIp,
+    );
+    await consumeRequestLimit(
+      db.manager,
+      `attendance:guess:${shareId}:${ip}:${name}`,
+      30,
     );
     await consumeRequestLimit(
       db.manager,
@@ -332,7 +338,7 @@ export class AttendanceService {
     const db = await this.database.connect();
     await consumeRequestLimit(
       db.manager,
-      `attendance:save:ip:${ip}`,
+      `attendance:save:ip:${shareId}:${ip}`,
       ATTENDANCE_LIMITS.saveIp,
     );
     const access: AttendanceAccess = readAttendanceAccess(

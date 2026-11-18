@@ -169,7 +169,7 @@ function AccountHome({
           </h1>
           <p className="mt-2 text-xs text-muted">
             {owner
-              ? "매장 등록과 예약 문의 관리는 준비 중이에요."
+              ? "매장 정보를 관리하고 받은 예약 문의에 답변해 주세요."
               : selected
                 ? "번거로운 모임 준비, 총무야에서 한 번에 관리해요."
                 : "모임 없이도 행사를 준비하고 관리할 수 있어요."}
@@ -190,6 +190,12 @@ function AccountHome({
           <p className="rounded-control bg-surface p-5 text-caption shadow-control">
             사장님은 총무용 모임이나 명단을 등록하지 않아도 돼요. 계정 정보와
             카카오 연결은 마이페이지에서 확인할 수 있어요.
+            <Link
+              className={buttonStyles({ className: "mt-4 w-full" })}
+              href="/owner"
+            >
+              내 매장 관리하기
+            </Link>
           </p>
         ) : (
           <>

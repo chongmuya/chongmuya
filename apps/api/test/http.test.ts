@@ -198,3 +198,21 @@ test("disabled OpenAPI routes are unavailable", async (t) => {
   assert.equal((await fetch(`${url}/docs-json`)).status, 404);
   assert.equal((await fetch(`${url}/health`)).status, 200);
 });
+
+test("only explicit trusted proxy addresses affect client IP; spoofed left-most XFF is ignored", async (t) => {
+  for (const [trusted, expected] of [
+    ["", "127.0.0.1"],
+    ["127.0.0.1/32", "203.0.113.5"],
+  ]) {
+    const { app, url } = await startTestApplication(
+      "postgresql://test@127.0.0.1:1/test",
+      false,
+      { TRUSTED_PROXY_CIDRS: trusted },
+    );
+    t.after(() => app.close());
+    const r = await fetch(`${url}/test/ip`, {
+      headers: { "X-Forwarded-For": "198.51.100.99, 203.0.113.5" },
+    });
+    assert.equal((await r.json()).ip, expected);
+  }
+});

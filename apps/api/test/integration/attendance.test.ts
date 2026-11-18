@@ -624,3 +624,62 @@ test("pending identity reviews remain separate from counts, resolve atomically w
   });
   assert.equal(limited.status, 429);
 });
+
+test("100 participants behind one NAT can open and save a round; name guessing remains limited", async (t) => {
+  const { call, signup } = await startResourceApplication(t);
+  const jar = await signup();
+  const event = await json<{ id: string }>(
+    await call("events", jar, "POST", { name: "공유 IP 행사" }),
+    201,
+  );
+  await json(
+    await call(`events/${event.id}/participants`, jar, "POST", {
+      requestKey: randomUUID(),
+      members: Array.from({ length: 100 }, (_, i) => ({
+        name: `NAT 참여자${i}`,
+        phoneLast4: String(i).padStart(4, "0"),
+        label: null,
+      })),
+    }),
+    201,
+  );
+  const round = await json<RoundDetailDto>(
+    await call(`events/${event.id}/attendance-rounds`, jar, "POST", {
+      title: "1차",
+      requestKey: randomUUID(),
+    }),
+    201,
+  );
+  for (let i = 0; i < 100; i++) {
+    const opened = await json<PublicAttendanceAccess>(
+      await call(`attendance/${round.shareId}/open`, "", "POST", {
+        name: `NAT 참여자${i}`,
+        phoneLast4: String(i).padStart(4, "0"),
+      }),
+    );
+    await json(
+      await call(`attendance/${round.shareId}/response`, "", "POST", {
+        accessToken: opened.accessToken,
+        answer: "ATTENDING",
+      }),
+    );
+  }
+  const detail = await json<RoundDetailDto>(
+    await call(`events/${event.id}/attendance-rounds/${round.id}`, jar),
+  );
+  assert.equal(detail.counts.attending, 100);
+  for (let i = 0; i < 30; i++)
+    await call(`attendance/${round.shareId}/open`, "", "POST", {
+      name: "반복 추측",
+      phoneLast4: String(i).padStart(4, "0"),
+    });
+  assert.equal(
+    (
+      await call(`attendance/${round.shareId}/open`, "", "POST", {
+        name: "반복 추측",
+        phoneLast4: "9999",
+      })
+    ).status,
+    429,
+  );
+});

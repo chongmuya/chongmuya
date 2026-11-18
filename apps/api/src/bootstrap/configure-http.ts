@@ -1,3 +1,4 @@
+import type { Request, Response } from "express";
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { validationException } from "../common/http/domain-http.exception.js";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -14,18 +15,34 @@ export function configureHttp(
     new Logger("HTTP").log(JSON.stringify(entry)),
 ) {
   app.disable("x-powered-by");
+  app.set(
+    "trust proxy",
+    environment.trustedProxyCidrs.length
+      ? environment.trustedProxyCidrs
+      : false,
+  );
   app.use(requestContext(log));
   app.enableCors({
     origin: (origin, callback) =>
       callback(null, origin === environment.webOrigin),
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-CSRF-Protection"],
+    allowedHeaders: ["Content-Type", "X-CSRF-Protection", "X-Merchant-Access"],
     exposedHeaders: ["x-request-id"],
     optionsSuccessStatus: 204,
   });
   // Up to 500 roster names plus optional last-four digits, including UTF-8 text.
   app.useBodyParser("json", { limit: "256kb" });
+  app.use((req: Request, res: Response, next: () => void) => {
+    if (
+      req.path.startsWith("/api/v1/merchant-replies/") ||
+      req.path.startsWith("/api/v1/owner/")
+    ) {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Referrer-Policy", "no-referrer");
+    }
+    next();
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

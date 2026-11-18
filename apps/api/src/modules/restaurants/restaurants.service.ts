@@ -1,3 +1,4 @@
+import { policyDescriptions } from "./lib/restaurant-policy.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { In, IsNull, Not, type EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
@@ -13,6 +14,37 @@ import type { RestaurantsQuery } from "./dto/request/restaurants-query.request.d
 export class RestaurantsService {
   constructor(private readonly database: DatabaseService) {}
 
+  async assertOwned(
+    ownerId: string,
+    id: string,
+    manager: EntityManager,
+    lock = false,
+  ) {
+    const row = await manager.findOne(Restaurant, {
+      where: { id, ownerAccountId: ownerId },
+      ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
+    });
+    if (!row) throw new NotFoundException();
+    return row;
+  }
+  async ownedIds(ownerId: string, manager: EntityManager) {
+    return (
+      await manager.find(Restaurant, {
+        where: { ownerAccountId: ownerId },
+        select: { id: true },
+      })
+    ).map((r) => r.id);
+  }
+  async replyDefaults(id: string, manager: EntityManager) {
+    const r = await manager.findOneBy(Restaurant, { id });
+    if (!r) throw new NotFoundException();
+    return {
+      policies: r.policies,
+      depositPolicy: r.depositPolicy,
+      menuPolicy: r.menuPolicy,
+      bookingPolicy: r.bookingPolicy,
+    };
+  }
   async list(input: RestaurantsQuery) {
     const db = await this.database.connect();
     const query = db
@@ -73,7 +105,7 @@ export class RestaurantsService {
       }),
       manager.getRepository(RestaurantMenu).find({
         where: { restaurantId: In(ids), available: true },
-        order: { name: "ASC", id: "ASC" },
+        order: { position: "ASC", name: "ASC", id: "ASC" },
       }),
       manager.getRepository(RestaurantContact).find({
         select: { restaurantId: true },
@@ -93,6 +125,8 @@ export class RestaurantsService {
       latitude: r.latitude,
       longitude: r.longitude,
       maxCapacity: r.maxCapacity,
+      minimumGuests: r.minimumGuests,
+      minimumOrder: r.policies?.minimumOrder ?? null,
       photoPath: r.photoPath,
       spacePhotos: [...r.spacePhotos].sort((a, b) => a.position - b.position),
       operatingHours: r.operatingHours,
@@ -100,6 +134,7 @@ export class RestaurantsService {
       bookingPolicy: r.bookingPolicy,
       depositPolicy: r.depositPolicy,
       menuPolicy: r.menuPolicy,
+      ...(r.policies ? policyDescriptions(r.policies) : {}),
       cancellationPolicy: r.cancellationPolicy,
       isDemo: r.isDemo,
       inquiryAvailable: contacts.some((c) => c.restaurantId === r.id),
@@ -136,7 +171,14 @@ export class RestaurantsService {
       contactPhone: string;
     }[],
     manager: EntityManager,
+    liveDelivery = false,
   ) {
+    const restaurants =
+      liveDelivery && targets.length
+        ? await manager.findBy(Restaurant, {
+            id: In(targets.map((t) => t.restaurantId)),
+          })
+        : [];
     const contacts = targets.length
       ? await manager.findBy(RestaurantContact, {
           id: In(targets.map((t) => t.contactId)),
@@ -148,6 +190,18 @@ export class RestaurantsService {
           c.id === target.contactId && c.restaurantId === target.restaurantId,
       );
       const reasons: string[] = [];
+      if (liveDelivery) {
+        const restaurant = restaurants.find(
+          (r) => r.id === target.restaurantId,
+        );
+        if (!restaurant?.published) reasons.push("RESTAURANT_UNPUBLISHED");
+        if (
+          restaurant?.isDemo ||
+          /^0+$/.test(target.contactPhone) ||
+          !/^01[016789]\d{7,8}$/.test(target.contactPhone)
+        )
+          reasons.push("DEMO_RECIPIENT");
+      }
       if (!current) reasons.push("CONTACT_DELETED");
       else {
         if (!current.active) reasons.push("CONTACT_INACTIVE");
@@ -157,6 +211,26 @@ export class RestaurantsService {
       }
       return reasons;
     });
+  }
+
+  async deliveryRecipient(
+    restaurantId: string,
+    contactId: string,
+    manager: EntityManager,
+  ) {
+    const contact = await manager.findOneBy(RestaurantContact, {
+      id: contactId,
+      restaurantId,
+    });
+    if (!contact) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+    const recipient = { restaurantId, contactId, contactPhone: contact.phone };
+    const [reasons] = await this.deliveryEligibility(
+      [recipient],
+      manager,
+      true,
+    );
+    if (reasons.length) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+    return recipient;
   }
 
   async inquiryTargets(ids: string[], manager: EntityManager) {

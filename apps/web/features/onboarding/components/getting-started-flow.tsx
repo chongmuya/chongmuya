@@ -128,13 +128,27 @@ export function GettingStartedFlow({
               </h1>
               <p className="mt-2 text-control text-muted">
                 {owner
-                  ? `${displayName ? `${displayName}님, ` : ""}사장님 설정을 마쳤어요. 매장 상세 등록은 준비 중이에요.`
+                  ? `${displayName ? `${displayName}님, ` : ""}매장을 등록해 총무들의 단체 예약 문의를 받아보세요.`
                   : usage === "group"
                     ? "모임을 등록해 총무야와 함께 행사를 준비해봐요."
                     : "행사를 등록해 총무야와 함께 준비해봐요."}
               </p>
             </div>
             <div className="mt-auto space-y-2 pt-12">
+              {owner && (
+                <Button
+                  className="w-full"
+                  onClick={() =>
+                    onNavigate(
+                      returnTo.startsWith("/owner")
+                        ? returnTo
+                        : "/owner/register",
+                    )
+                  }
+                >
+                  매장 등록하기
+                </Button>
+              )}
               {!owner && (
                 <Button
                   className="w-full"

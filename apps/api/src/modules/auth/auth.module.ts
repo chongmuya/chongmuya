@@ -55,6 +55,6 @@ import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
     OptionalAccessGuard,
     { provide: APP_GUARD, useClass: CsrfGuard },
   ],
-  exports: [AccessGuard, AuthService],
+  exports: [AccessGuard, AuthService, PhoneVerificationService],
 })
 export class AuthModule {}

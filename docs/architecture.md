@@ -177,7 +177,7 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 ### DB 작업과 트랜잭션
 
-모임 등록은 groups 업무에서 Group·GroupMember를 같은 EntityManager로 저장한다. `(owner_id, creation_key)` 고유 인덱스와 입력 해시로 같은 등록의 동시 요청·통신 재시도를 처리한다. 명단은 계정이나 행사 명단과 관계없는 비공개 기본 자료다. 동명이인은 총무가 확인하고 서로 다른 구분 표시(label)를 입력한 별도 행으로 보존한다. 이름과 구분 표시는 별도 컬럼이며 전화번호 뒤 4자리는 앞의 0을 보존하는 nullable 문자열이다. 그룹 단위 조회에 소유권을 검사하고 응답에 인증·권한 필드를 포함하지 않는다. JSON body는 500명의 긴 UTF-8 이름을 수용하도록 256KB까지 허용하고, DTO의 행 수·필드 길이 제한도 적용한다.
+모임 등록은 groups 업무에서 Group·GroupMember를 같은 EntityManager로 저장한다. `(owner_id, creation_key)` 고유 인덱스와 입력 해시로 같은 등록의 동시 요청·통신 재시도를 처리한다. 명단은 계정이나 행사 명단과 관계없는 비공개 기본 자료다. 동명이인은 총무가 확인하고 선택적인 구분 표시(label)를 가진 별도 행으로 보존한다. 이름과 구분 표시는 별도 컬럼이며 전화번호 뒤 4자리는 앞의 0을 보존하는 nullable 문자열이다. 그룹 단위 조회에 소유권을 검사하고 응답에 인증·권한 필드를 포함하지 않는다. JSON body는 500명의 긴 UTF-8 이름을 수용하도록 256KB까지 허용하고, DTO의 행 수·필드 길이 제한도 적용한다.
 
 `POST /groups/:groupId/members`는 `{ requestKey, members, duplicatesConfirmed? }`로 기존 명단에 구성원을 추가한다. 소유한 Group 행을 먼저 잠근 뒤 최신 명단과 이름·구분 표시를 비교한다. 기존 구성원을 선택하면 `existingMemberId`와 해당 구성원의 이름·구분 표시·뒤 4자리를 검증하고 추가나 수정 없이 유지한다. 새 동명이인은 기존 명단과도 구분되는 표시를 요구한다. GroupMember 추가와 GroupRosterAddition의 `(group_id, request_key)` 재시도 기록을 같은 트랜잭션에서 저장한다. 같은 키의 다른 입력은 409이며 기존 행·순서·ID나 행사 명단을 교체하지 않는다. 최초 등록과 `/groups/new?group=<id>`의 추가 등록은 GroupRegistration의 입력·TXT·미리보기를 재사용한다. 변경된 원문만 다시 해석하고 원문이 같으면 편집·제외 결과를 보존한다.
 

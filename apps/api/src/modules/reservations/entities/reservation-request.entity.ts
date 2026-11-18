@@ -12,6 +12,8 @@ export class ReservationRequest {
   @Column({ type: "uuid", name: "event_id" })
   eventId!: string;
   @Column({ type: "uuid", name: "request_key" }) requestKey!: string;
+  @Column({ type: "timestamptz", name: "closed_at", nullable: true })
+  closedAt!: Date | null;
   @Column({ type: "varchar", length: 64 }) digest!: string;
   @Column({ type: "jsonb" }) snapshot!: InquirySnapshot;
   @Column({ type: "varchar", length: 80, name: "contact_name" })

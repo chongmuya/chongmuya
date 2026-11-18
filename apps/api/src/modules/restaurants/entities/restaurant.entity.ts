@@ -1,4 +1,12 @@
-import { Check, Column, Entity, Index, PrimaryColumn } from "typeorm";
+import type { RestaurantPolicies } from "../types/registration.js";
+import {
+  Check,
+  Column,
+  Entity,
+  ForeignKey,
+  Index,
+  PrimaryColumn,
+} from "typeorm";
 
 @Entity("restaurants")
 @Index("restaurants_public_region", ["published", "region"])
@@ -14,6 +22,45 @@ import { Check, Column, Entity, Index, PrimaryColumn } from "typeorm";
 export class Restaurant {
   @PrimaryColumn("uuid", { primaryKeyConstraintName: "restaurants_pkey" })
   id!: string;
+  @ForeignKey("accounts", "id")
+  @Column({ type: "uuid", name: "owner_account_id", nullable: true })
+  ownerAccountId!: string | null;
+  @Column({ type: "integer", default: 1 }) version!: number;
+  @Column({ type: "varchar", length: 80, name: "branch_name", nullable: true })
+  branchName!: string | null;
+  @Column({
+    type: "varchar",
+    length: 200,
+    name: "base_address",
+    nullable: true,
+  })
+  baseAddress!: string | null;
+  @Column({
+    type: "varchar",
+    length: 200,
+    name: "jibun_address",
+    nullable: true,
+  })
+  jibunAddress!: string | null;
+  @Column({
+    type: "varchar",
+    length: 120,
+    name: "detail_address",
+    nullable: true,
+  })
+  detailAddress!: string | null;
+  @Index("restaurants_registration_key", { unique: true })
+  @Column({
+    type: "varchar",
+    length: 64,
+    name: "registration_key",
+    nullable: true,
+  })
+  registrationKey!: string | null;
+  @Column({ type: "integer", name: "minimum_guests", nullable: true })
+  minimumGuests!: number | null;
+  @Column({ type: "jsonb", nullable: true })
+  policies!: RestaurantPolicies | null;
   @Column({ type: "varchar", length: 100 }) name!: string;
   @Column({ type: "varchar", length: 240 }) address!: string;
   @Column({ type: "varchar", length: 80 }) region!: string;
