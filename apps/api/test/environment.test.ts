@@ -351,7 +351,15 @@ test("compiled migration DataSource loads with only DATABASE_URL despite invalid
   const file = new URL("../src/database/data-source.js", import.meta.url).href;
   const result = spawnSync(
     process.execPath,
-    ["--input-type=module", "-e", `await import(${JSON.stringify(file)})`],
+    [
+      "--input-type=module",
+      "-e",
+      `const {default: source} = await import(${JSON.stringify(file)});
+       const assert = (await import('node:assert/strict')).default;
+       assert.equal(source.options.extra.statement_timeout, 60000);
+       assert.equal(source.options.extra.lock_timeout, 5000);
+       assert.equal(source.options.migrationsRun, false);`,
+    ],
     {
       env: {
         DATABASE_URL: databaseUrl,

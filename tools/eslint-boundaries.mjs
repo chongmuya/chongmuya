@@ -206,7 +206,9 @@ export default {
               !/^modules\/[^/]+\/entities\/[^/]+\.entity\.[cm]?[jt]s$/.test(
                 targetPath,
               ) &&
-              !/^database\/database-options\.[cm]?[jt]s$/.test(targetPath) &&
+              !/^database\/(database-options|migration-state)\.[cm]?[jt]s$/.test(
+                targetPath,
+              ) &&
               !/^config\/(database-environment|link-environment)\.[cm]?[jt]s$/.test(
                 targetPath,
               ) &&

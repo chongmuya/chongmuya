@@ -64,7 +64,19 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
   };
 
   try {
-    await seedRestaurants(db, fixture);
+    const preview = await seedRestaurants(db, fixture, undefined, {
+      dryRun: true,
+    });
+    assert.equal(preview.restaurants.created, fixture.restaurants.length);
+    assert.equal(await restaurants.countBy({ id: In(ids) }), 0);
+    assert.equal(await spaces.countBy({ restaurantId: In(ids) }), 0);
+    assert.equal(await menus.countBy({ restaurantId: In(ids) }), 0);
+    const seeded = await seedRestaurants(db, fixture);
+    assert.deepEqual(seeded, preview);
+    const preserved = await seedRestaurants(db, fixture);
+    assert.equal(preserved.restaurants.created, 0);
+    assert.equal(preserved.menus.created, 0);
+    assert.equal(preserved.spaces.created, 0);
     assert.equal(await restaurants.countBy({ id: In(ids) }), 4);
     const realAddress = await restaurants.findOneByOrFail({ id: ids[0]! });
     await assert.rejects(
@@ -361,14 +373,14 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     );
     assert.equal(await restaurants.countBy({ id: In(invalidIds) }), 0);
 
-    // Pass structural validation, then fail PostgreSQL's integer range after
-    // the first restaurant and its children have been inserted.
+    // A different fixed key must not silently claim an existing restaurant.
+    // Reject the second collision and roll back the first new restaurant too.
     const rollback = structuredClone(fixture);
     rollback.restaurants = rollback.restaurants.slice(0, 2);
     rollback.restaurants.forEach((restaurant, index) => {
       restaurant.key = rollbackKeys[index]!;
     });
-    rollback.restaurants[1]!.maxCapacity = 2147483648;
+    rollback.restaurants[0]!.name = "운영 시드 충돌 테스트 첫 매장";
     await assert.rejects(seedRestaurants(db, rollback));
     const rollbackIds = rollbackKeys.map((key) =>
       restaurantSeedId("restaurant", key),

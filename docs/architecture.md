@@ -256,7 +256,7 @@ TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수
 
 ### 시드 실행 경계
 
-`src/database/seeds`의 독립 CLI는 Entity·최소 DB/링크 설정과 명시적으로 허용한 무부작용 password/merchant-link/message-delivery codec만 참조하며 AppModule·업무 Service·발송 provider를 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않도록 ESLint로 검사한다. 공개 JSON만 빌드하고 `*.private.json`은 명시적 파일 옵션으로만 읽는다. 실행 방법은 [README](../README.md#매장-시드)를 따른다.
+`src/database/seeds`의 독립 CLI는 Entity·최소 DB/링크 설정·읽기 전용 migration 상태 조회와 명시적으로 허용한 무부작용 password/merchant-link/message-delivery codec만 참조하며 AppModule·업무 Service·발송 provider를 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않도록 ESLint로 검사한다. 공개 JSON만 빌드하고 `*.private.json`은 명시적 파일 옵션으로만 읽는다. 로컬 실행은 [README](../README.md#매장-시드), 공개 식당만 추가하는 별도 운영 진입점과 잠금은 [배포 안내](deployment.md)를 따른다. 운영 이미지에는 데모 시드 진입점·가상 계정 fixture를 포함하지 않는다.
 
 ## 의존 경계 검사와 CI
 
