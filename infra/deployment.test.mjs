@@ -199,7 +199,7 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "--platform",
     "linux/amd64",
     "--user",
-    "0",
+    `${process.getuid()}:${process.getgid()}`,
     "-v",
     `${directory}:/release`,
     "-v",

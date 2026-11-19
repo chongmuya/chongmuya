@@ -177,6 +177,13 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       `RDS_CA_FILE=${certificate}`,
       runner,
       "bash",
+      "-c",
+      // SSM runs as root. Keep that behavior inside the runner, then return
+      // only this test's files to the host account without relaxing 0600.
+      'test_owner=$1; test_root=$2; shift 2; trap \'chown -R "$test_owner" "$test_root"\' EXIT; bash "$@"',
+      "deployment-test",
+      `${process.getuid()}:${process.getgid()}`,
+      root,
       ...extra,
       ...(extra.length ? [] : [join(bundle, "deploy.sh"), ...args]),
     ]);
