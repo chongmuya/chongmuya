@@ -110,7 +110,7 @@ export function completionIssues(s: ReservationPreparation, now = Date.now()) {
 }
 export function completionStatus(s: ReservationPreparation, now = Date.now()) {
   if (s.cancellation)
-    return s.refundExpected === null
+    return s.refundExpected === null || s.refunded > s.refundExpected
       ? "REFUND_REVIEW"
       : s.refunded < s.refundExpected
         ? "REFUND_PENDING"

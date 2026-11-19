@@ -1,4 +1,4 @@
-import { koreanDateLabel } from "@/shared/lib/korean-date";
+import { ProposalComparison } from "./proposal-comparison";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { CommandForm, isoDate, localDate, type Field } from "./command-form";
 import { won } from "./completion-summary";
@@ -29,31 +29,7 @@ export function ChangeForms({
           <p className="whitespace-pre-wrap">{pending.reason}</p>
           <p>문의만으로 예약 조건이나 환불이 바뀌지 않아요.</p>
           {pending.proposal && (
-            <>
-              <p>처리 내용: {pending.proposal.reason}</p>
-              <p>
-                {koreanDateLabel(pending.proposal.agreement.startsAt)} ·{" "}
-                {pending.proposal.agreement.expectedGuests}명
-              </p>
-              <ul>
-                {pending.proposal.order?.lines.map((l) => (
-                  <li key={l.id}>
-                    {l.name} × {l.quantity} · {won(l.subtotal)}
-                  </li>
-                ))}
-              </ul>
-              <p>
-                메뉴 {won(pending.proposal.order?.total)} · 예약금{" "}
-                {won(pending.proposal.guidance.amount)} · 환불 예정{" "}
-                {won(pending.proposal.refundExpected)}
-              </p>
-              <p>{pending.proposal.guidance.policy}</p>
-              <p>
-                {pending.proposal.guidance.channel === "SMS"
-                  ? "계좌는 문자로 안내해요."
-                  : `${pending.proposal.guidance.bank} ${pending.proposal.guidance.account} ${pending.proposal.guidance.holder}`}
-              </p>
-            </>
+            <ProposalComparison data={q} proposal={pending.proposal} />
           )}
         </div>
       )}

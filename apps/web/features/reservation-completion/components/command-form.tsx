@@ -1,7 +1,7 @@
 "use client";
 import { fromKoreanDateInput } from "@/shared/lib/korean-date";
 import { useId, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/shared/ui/button";
@@ -12,6 +12,7 @@ import { ApiError } from "@/shared/http/api-error";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { useCompletionCommand } from "../hooks/use-completion-command";
+import { UncertainCommand } from "./uncertain-command";
 import { ReviewCurrent } from "./review-current";
 export type Field = {
   name: string;
@@ -98,18 +99,30 @@ export function CommandForm({
       fields.map((f) => [f.name, f.value ?? ""]),
     ),
   });
+  const values = useWatch({ control: form.control });
+  const completed = (result: Completion) => {
+    if (!mutation.active.current) return;
+    setBase(result);
+    form.reset(Object.fromEntries(fields.map((f) => [f.name, f.value ?? ""])));
+    onDone?.();
+  };
   return (
     <form
       noValidate
       className="space-y-4 rounded-control bg-surface p-5 shadow-card"
       onSubmit={form.handleSubmit(async (v) => {
-        if (base.version !== data.version) return;
+        if (
+          mutation.uncertain ||
+          mutation.isPending ||
+          base.version !== data.version
+        )
+          return;
         try {
-          await mutation.mutateAsync({
+          const result = await mutation.mutateAsync({
             action,
             input: { ...build(v, base), expectedVersion: base.version },
           });
-          if (mutation.active.current) onDone?.();
+          completed(result);
         } catch (error) {
           if (error instanceof ApiError && error.code === "VALIDATION_FAILED")
             for (const issue of error.fieldErrors ?? [])
@@ -127,79 +140,99 @@ export function CommandForm({
     >
       <h3 className="font-semibold">{title}</h3>
       {description && <p className="text-xs text-muted">{description}</p>}
-      {fields.map((f) => (
-        <FormField
-          key={f.name}
-          id={`${id}-${f.name}`}
-          label={f.label}
-          required={!f.optional}
-          error={form.formState.errors[f.name]?.message}
-        >
-          {(attrs) =>
-            f.options ? (
-              <select
-                {...attrs}
-                {...form.register(f.name)}
-                className="min-h-11 w-full rounded-control border border-field bg-surface px-3"
-              >
-                <option value="">선택해 주세요</option>
-                {f.options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            ) : f.type === "textarea" ? (
-              <textarea
-                {...attrs}
-                {...form.register(f.name)}
-                rows={3}
-                maxLength={f.max}
-                className="w-full rounded-control border border-field p-3"
-              />
-            ) : f.type === "checkbox" ? (
-              <input
-                {...attrs}
-                type="checkbox"
-                className="size-5"
-                onChange={(e) =>
-                  form.setValue(f.name, e.target.checked ? "yes" : "", {
-                    shouldValidate: true,
-                  })
-                }
-              />
-            ) : (
-              <Input
-                {...attrs}
-                type={f.type ?? "text"}
-                {...form.register(f.name)}
-              />
-            )
-          }
-        </FormField>
-      ))}
-      <ReviewCurrent
-        data={data}
-        baseVersion={base.version}
-        onReview={() => {
-          setBase(data);
-          mutation.reset();
-        }}
-      />
-      <FormError
-        message={
-          form.formState.errors.root?.message ??
-          (mutation.error ? safeErrorMessage(mutation.error) : undefined)
-        }
-      />
-      <Button
-        type="submit"
-        className="w-full"
-        disabled={base.version !== data.version}
-        loading={mutation.isPending}
+      <fieldset
+        disabled={mutation.uncertain || mutation.isPending}
+        className="contents"
       >
-        {title}
-      </Button>
+        {fields.map((f) => (
+          <FormField
+            key={f.name}
+            id={`${id}-${f.name}`}
+            label={f.label}
+            required={!f.optional}
+            error={form.formState.errors[f.name]?.message}
+          >
+            {(attrs) =>
+              f.options ? (
+                <select
+                  {...attrs}
+                  {...form.register(f.name)}
+                  className="min-h-11 w-full rounded-control border border-field bg-surface px-3"
+                >
+                  <option value="">선택해 주세요</option>
+                  {f.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === "textarea" ? (
+                <textarea
+                  {...attrs}
+                  {...form.register(f.name)}
+                  rows={3}
+                  maxLength={f.max}
+                  className="w-full rounded-control border border-field p-3"
+                />
+              ) : f.type === "checkbox" ? (
+                <input
+                  {...attrs}
+                  type="checkbox"
+                  checked={values[f.name] === "yes"}
+                  className="size-5"
+                  onChange={(e) =>
+                    form.setValue(f.name, e.target.checked ? "yes" : "", {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    })
+                  }
+                />
+              ) : (
+                <Input
+                  {...attrs}
+                  type={f.type ?? "text"}
+                  {...form.register(f.name)}
+                />
+              )
+            }
+          </FormField>
+        ))}
+        {!mutation.uncertain && (
+          <ReviewCurrent
+            data={data}
+            baseVersion={base.version}
+            onReview={() => {
+              setBase(data);
+              mutation.reset();
+            }}
+          />
+        )}
+        <FormError
+          message={
+            form.formState.errors.root?.message ??
+            (mutation.error ? safeErrorMessage(mutation.error) : undefined)
+          }
+        />
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={base.version !== data.version}
+          loading={mutation.isPending}
+        >
+          {title}
+        </Button>
+      </fieldset>
+      {mutation.uncertain && (
+        <UncertainCommand
+          loading={mutation.isPending}
+          onRetry={() => {
+            void mutation
+              .retryUncertain()
+              .then(completed)
+              .catch(() => undefined);
+          }}
+        />
+      )}
       {mutation.isSuccess && (
         <p role="status" className="text-sm">
           기록을 저장했어요.

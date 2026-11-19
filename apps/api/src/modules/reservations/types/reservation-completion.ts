@@ -178,3 +178,11 @@ export const refundCommand = commandSchema
     reason: z.string().trim().min(1).max(500),
   })
   .strict();
+
+export type RefundFact = {
+  amount: number;
+  refundedAt: string;
+  expected: number | null;
+  totalReturned: number;
+  variance: number | null;
+};

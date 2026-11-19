@@ -302,17 +302,24 @@ export class ReservationChangesService {
         const s = c.state;
         if (
           !s.cancellation ||
-          s.refundExpected === null ||
           Date.parse(input.refundedAt) > Date.now() ||
-          s.refunded + input.amount > (s.receipt?.amount ?? 0) ||
-          s.refunded + input.amount > s.refundExpected
+          s.refunded + input.amount > (s.receipt?.amount ?? 0)
         )
           throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
         s.refunded += input.amount;
+        c.evidence = {
+          refund: {
+            amount: input.amount,
+            refundedAt: input.refundedAt,
+            expected: s.refundExpected,
+            totalReturned: s.refunded,
+            variance:
+              s.refundExpected === null ? null : s.refunded - s.refundExpected,
+          },
+        };
         c.audit = {
           ...c.audit,
           reason: input.reason,
-          confirmedAt: input.refundedAt,
         };
         await this.completion.notify(
           c,
@@ -336,8 +343,7 @@ export class ReservationChangesService {
       async (c, input) => {
         if (
           !c.state.cancellation ||
-          input.amount > (c.state.receipt?.amount ?? 0) ||
-          input.amount < c.state.refunded
+          input.amount > (c.state.receipt?.amount ?? 0)
         )
           throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
         c.state.refundExpected = input.amount;

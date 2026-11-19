@@ -99,6 +99,19 @@ export function CompletionWorkspace({
                 {koreanDateLabel(h.audit.recordedAt)}
               </p>
               <p>{h.audit.reason}</p>
+              {h.refund && (
+                <p>
+                  실제 반환 {h.refund.amount.toLocaleString()}원 · 반환 시각{" "}
+                  {koreanDateLabel(h.refund.refundedAt)} · 당시 예정{" "}
+                  {h.refund.expected === null
+                    ? "미확인"
+                    : `${h.refund.expected.toLocaleString()}원`}{" "}
+                  · 누적 반환과 예정의 차이{" "}
+                  {h.refund.variance === null
+                    ? "미확인"
+                    : `${h.refund.variance.toLocaleString()}원`}
+                </p>
+              )}
               <p>
                 {koreanDateLabel(h.agreement.startsAt)} ·{" "}
                 {h.agreement.expectedGuests}명 · 당시 예약금{" "}

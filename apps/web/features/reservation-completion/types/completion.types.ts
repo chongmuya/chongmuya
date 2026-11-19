@@ -127,6 +127,13 @@ export type Completion = {
   history: {
     version: number;
     action: string;
+    refund?: {
+      amount: number;
+      refundedAt: string;
+      expected: number | null;
+      totalReturned: number;
+      variance: number | null;
+    };
     agreement: Agreement;
     guidance: Guidance;
     audit: Audit;

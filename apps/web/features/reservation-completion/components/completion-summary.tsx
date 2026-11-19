@@ -99,6 +99,15 @@ export function CompletionSummary({
             </>
           )}
         </dl>
+        {q.cancellation && (
+          <p className="text-sm">
+            {q.refundExpected === null
+              ? `환불 예정액은 아직 미확인이며 실제 반환 ${won(q.refundedAmount)}을 별도로 기록했어요.`
+              : q.refundedAmount > q.refundExpected
+                ? `예정액보다 ${won(q.refundedAmount - q.refundExpected)} 더 반환한 사실이 있어요. 예정액과 차이를 확인해 주세요.`
+                : `실제 수령 잔액 ${won(q.receivedAmount - q.refundedAmount)}`}
+          </p>
+        )}
         {q.transfer && (
           <p className="text-sm">
             총무 송금 신고: {q.transfer.payer} · {won(q.transfer.amount)} ·{" "}

@@ -25,6 +25,7 @@ import type {
   ReservationPrincipal,
   ReservationPreparation,
   ReservationAudit,
+  RefundFact,
 } from "./types/reservation-completion.js";
 import {
   initialPreparation,
@@ -228,6 +229,7 @@ export class ReservationCompletionService {
         receipt: h.snapshot.receipt,
         receivedAmount: h.snapshot.receipt?.amount ?? 0,
         refundedAmount: h.snapshot.refunded,
+        refund: h.evidence.refund as RefundFact | undefined,
       })),
       catalog: await this.restaurants.reservationMenu(target.restaurantId, m),
       notifications: (await this.notices.messages(request.id, m))

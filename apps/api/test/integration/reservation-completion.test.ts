@@ -664,5 +664,94 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       );
     },
   );
+
+  await t.test(
+    "actual refunds preserve unknown or lower plans and only enforce remaining received funds",
+    async () => {
+      for (const plan of [null, 2000]) {
+        let v = await fixture("UNKNOWN");
+        v = await payments.guidance(v.id, operator, guide(v));
+        v = await payments.receipt(v.id, operator, {
+          ...key(v.version),
+          guidanceRevision: v.guidance.revision,
+          amount: 10000,
+          receivedAt: new Date().toISOString(),
+          corrects: null,
+          reason: "은행 실수령 확인",
+        });
+        v = await post(v.id, "change-request", {
+          ...key(v.version),
+          kind: "CANCEL",
+          subject: "OTHER",
+          reason: "취소 합의",
+        });
+        v = await changes.propose(v.id, operator, {
+          ...key(v.version),
+          changeId: v.changes[0].id,
+          reason: "예정과 실제 반환 분리",
+          refundExpected: plan,
+        });
+        v = await post(v.id, "change-accept", {
+          ...key(v.version),
+          changeId: v.changes[0].id,
+          confirmed: true,
+        });
+        const command = {
+          ...key(v.version),
+          amount: 6000,
+          refundedAt: new Date().toISOString(),
+          reason: "은행에서 6000원 반환 확인",
+        };
+        v = await changes.refund(v.id, operator, command);
+        assert.equal(v.refundExpected, plan);
+        assert.equal(v.refundedAmount, 6000);
+        assert.equal(v.progress, "REFUND_REVIEW");
+        await changes.refund(v.id, operator, command);
+        assert.equal((await view(v.id)).refundedAmount, 6000);
+        const history = await db.manager.findBy(ReservationCompletionHistory, {
+          reservationId: v.id,
+          action: "REFUND_RECORDED",
+        });
+        assert.equal(history.length, 1);
+        assert.deepEqual(history[0].evidence.refund, {
+          amount: 6000,
+          refundedAt: command.refundedAt,
+          expected: plan,
+          totalReturned: 6000,
+          variance: plan === null ? null : 4000,
+        });
+        assert.equal(history[0].audit.confirmer, operator.confirmer);
+        assert.equal(history[0].audit.confirmedAt, operator.confirmedAt);
+        await assert.rejects(
+          changes.refund(v.id, operator, {
+            ...key(v.version),
+            amount: 4001,
+            refundedAt: new Date().toISOString(),
+            reason: "잔액 초과",
+          }),
+        );
+        const remainder = {
+          ...key(v.version),
+          amount: 4000,
+          refundedAt: new Date().toISOString(),
+          reason: "잔액 반환",
+        };
+        await Promise.all([
+          changes.refund(v.id, operator, remainder),
+          changes.refund(v.id, operator, remainder),
+        ]);
+        v = await view(v.id);
+        assert.equal(v.refundedAmount, 10000);
+        assert.equal(v.refundExpected, plan);
+        assert.equal(
+          await db.manager.countBy(ReservationCompletionHistory, {
+            reservationId: v.id,
+            action: "REFUND_RECORDED",
+          }),
+          2,
+        );
+      }
+    },
+  );
   assert.deepEqual((await db.driver.createSchemaBuilder().log()).upQueries, []);
 });
