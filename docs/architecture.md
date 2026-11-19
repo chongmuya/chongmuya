@@ -149,7 +149,7 @@ Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 �
 
 업무 모듈 루트에는 `*.module.ts`, `*.controller.ts`, `*.service.ts`를 둡니다. 요청 DTO는 `dto/request/*.request.dto.ts`, 응답 DTO는 `dto/response/*.response.dto.ts`, Entity는 `entities/*.entity.ts`에 둡니다. 인증 구현은 guards·strategies·decorators·repositories·types·utils·exceptions로 나눕니다. 실제 파일이 있는 폴더만 만들며 단순 CRUD를 위해 별도 Repository나 Mapper 계층을 만들지 않습니다. Event DTO는 Group DTO를 상속하지 않습니다. 응답은 작은 변환 함수로 만들고 Entity를 노출하지 않습니다. 기존 Swagger 스키마 클래스 이름은 유지합니다.
 
-의존 방향은 `events → groups → auth`, `events → auth`입니다. GroupsModule은 GroupsService를, AuthModule은 AccessGuard·AuthService를 Nest `exports`에 공개합니다. 사용하는 쪽은 해당 Module을 `imports`에 넣고 실제 Service/Guard 파일에서 named import합니다. `AuthUser`와 `CurrentUser`는 공개 타입·데코레이터로 직접 사용합니다. `.module.ts`는 DI 조립만 맡으며 내부 구현을 TypeScript로 재수출하지 않습니다. 내부 Repository/Entity는 외부 모듈에서 직접 사용하지 않습니다. Event FK는 테이블 이름 `accounts`·`groups`로 지정해 Entity import 없이 기존 제약 이름과 스키마를 유지합니다.
+의존 방향은 `events → groups → auth`, `events → auth`입니다. `handovers`는 Groups/Events/Reservations/Settlements/Files/Calendar/Favorites의 공개 서비스를 조립하며 역참조하지 않습니다. GroupsModule은 GroupsService를, AuthModule은 AccessGuard·AuthService를 Nest `exports`에 공개합니다. 사용하는 쪽은 해당 Module을 `imports`에 넣고 실제 Service/Guard 파일에서 named import합니다. `AuthUser`와 `CurrentUser`는 공개 타입·데코레이터로 직접 사용합니다. `.module.ts`는 DI 조립만 맡으며 내부 구현을 TypeScript로 재수출하지 않습니다. 내부 Repository/Entity는 외부 모듈에서 직접 사용하지 않습니다. Event FK는 테이블 이름 `accounts`·`groups`로 지정해 Entity import 없이 기존 제약 이름과 스키마를 유지합니다.
 
 `AccessGuard`가 인증을 확인하고 `@CurrentUser()`가 검증된 id/email을 제공합니다. 모임 소유권은 GroupsService, 행사 소유권은 EventsService가 검사합니다. 행사 상세·수정은 id와 ownerId로 조회하며 타인 자원과 없는 자원은 모두 404입니다. 목록을 모임으로 필터링해도 행사 ownerId 조건을 유지합니다. 이름 trim·길이, nullable 일정·시간대 검증, 고정 목록 정렬과 no-store를 적용합니다.
 
@@ -179,7 +179,7 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. 요청 제한 공통 함수는 원자적인 upsert를 수행하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
 
-업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 행사 수정은 id/ownerId 조건의 FOR UPDATE 잠금과 expectedVersion 검사로 경합을 처리하며 groupId는 변경하지 않습니다. 현재 모임 소유자 변경·삭제 API는 없으며, 향후 추가 시 동시 권한 변경에 대한 잠금 정책도 함께 설계해야 합니다.
+업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 행사 수정은 id/ownerId 조건의 FOR UPDATE 잠금과 expectedVersion 검사로 경합을 처리하며 groupId는 변경하지 않습니다. 모임 인수인계는 실제 모임 → 행사 → 업무 자원 잠금 순서로 현재 관리자와 버전을 재검증합니다. `creatorId`는 불변이며 `ownerId`는 현재 관리자 projection입니다. 계정 멤버십·명단·이전 범위·기존 기록 보존 계약은 [모임 인수인계](group-handover.md)를 따릅니다.
 
 AuthService는 이메일·휴대폰 인증 소비·가입 계정·동의·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
 
