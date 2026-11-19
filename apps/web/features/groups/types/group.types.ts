@@ -5,6 +5,7 @@ export type Group = {
   memberCount: number;
 };
 export type GroupMember = {
+  version: number;
   id: string;
   name: string;
   phoneLast4: string | null;

@@ -7,6 +7,7 @@ import { Button, buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import Link from "next/link";
+import { Memberships } from "@/features/handovers/client";
 import Image from "next/image";
 
 export function AccountNavigation({
@@ -54,6 +55,10 @@ export function AccountNavigation({
       ) : (
         <MyGroups groupId={groupId} accountId={accountId} request={request} />
       )}
+      <Memberships accountId={accountId} request={request} />
+      <Link href="/favorites" className="my-4 block">
+        개인·모임 매장 즐겨찾기
+      </Link>
       <NotificationSettings accountId={accountId} request={request} />
       <Link href="/mypage?view=account" className="my-4 block">
         연락처 인증 및 변경 · 약관 및 개인정보 처리방침

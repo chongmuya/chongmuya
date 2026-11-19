@@ -1,4 +1,7 @@
 "use client";
+import { useState } from "react";
+import { EditMember } from "./edit-member";
+import { Button } from "@/shared/ui/button";
 import { isAccessError } from "@/shared/http/access-error";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
@@ -16,6 +19,7 @@ export function GroupRoster({
   groupId: string;
   request: SessionRequest;
 }) {
+  const [editing, setEditing] = useState<string>();
   const members = useQuery(
     groupMembersQueryOptions(accountId, groupId, request),
   );
@@ -43,7 +47,7 @@ export function GroupRoster({
                 className="flex flex-wrap items-center gap-3 py-3"
               >
                 <span className="text-xs text-muted">{index + 1}</span>
-                <span className="min-w-0 flex-1 break-words">
+                <span className="min-w-[7rem] flex-1 break-words">
                   {member.name}
                   {member.label && (
                     <span className="ml-2 text-caption text-muted">
@@ -55,6 +59,18 @@ export function GroupRoster({
                   <span className="text-caption text-muted">
                     뒤 4자리 {member.phoneLast4}
                   </span>
+                )}
+                <Button variant="outline" onClick={() => setEditing(member.id)}>
+                  수정·제외
+                </Button>
+                {editing === member.id && (
+                  <EditMember
+                    member={member}
+                    groupId={groupId}
+                    request={request}
+                    refresh={() => void members.refetch()}
+                    onClose={() => setEditing(undefined)}
+                  />
                 )}
               </li>
             ))}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GroupManagement } from "@/features/handovers/client";
 import { useState } from "react";
 import { GroupSwitcher } from "./group-switcher";
 import type { SessionRequest } from "@/features/auth/types";
@@ -37,6 +38,9 @@ export function GroupSettings({
           onClose={() => setSwitching(false)}
         />
       )}
+      <p className="mb-4 text-sm text-muted">
+        모임 유형: {selected.groupType ?? "미지정"}
+      </p>
       <GroupForm
         accountId={accountId}
         request={request}
@@ -44,6 +48,11 @@ export function GroupSettings({
         title="모임 이름 수정"
       />
       <GroupRoster
+        accountId={accountId}
+        groupId={selected.id}
+        request={request}
+      />
+      <GroupManagement
         accountId={accountId}
         groupId={selected.id}
         request={request}

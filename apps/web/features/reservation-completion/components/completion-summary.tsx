@@ -65,6 +65,20 @@ export function CompletionSummary({
             참석 관리하러 가기
           </Link>
         )}
+        {q.currentContact && (
+          <div className="text-sm">
+            <p>
+              현재 담당자: {q.currentContact.name}{" "}
+              {q.currentContact.maskedPhone}
+            </p>
+            {q.currentContact.changedAt && (
+              <p className="text-muted">
+                인수인계로 담당자가 변경됐어요. 당시 문의·입금 확인·발송 기록은
+                그대로 남아요.
+              </p>
+            )}
+          </div>
+        )}
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
           <dt className="text-muted">매장</dt>
           <dd>{q.restaurantName}</dd>

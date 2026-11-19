@@ -593,3 +593,35 @@ test("profile and verified phone responses merge only their own fields in either
     assert.equal(client.getSnapshot().account, null);
   }
 });
+
+test("authority loss clears private cache and rejects a late successful management payload without logging out", async () => {
+  let resolve!: (value: unknown) => void;
+  const pending = new Promise<unknown>((r) => (resolve = r));
+  let cleared = 0,
+    blocked = 0;
+  const client = new SessionClient(
+    () => cleared++,
+    transport(async (path) => {
+      if (path.includes("restore")) return session;
+      if (path === "/api/v1/events/old") return pending;
+      throw new ApiError("", 404, "RESOURCE_NOT_FOUND");
+    }),
+    async (action) => action(),
+    () => blocked++,
+  );
+  await client.restore();
+  const late = client.request("/api/v1/events/old");
+  await assert.rejects(
+    client.request("/api/v1/groups/old"),
+    (e: unknown) => e instanceof ApiError && e.status === 404,
+  );
+  resolve({ privateRoster: ["must not return"] });
+  await assert.rejects(
+    late,
+    (e: unknown) =>
+      e instanceof ApiError && e.code === "GROUP_AUTHORITY_CHANGED",
+  );
+  assert.equal(cleared, 1);
+  assert.equal(blocked, 1);
+  assert.equal(client.getSnapshot().status, "authenticated");
+});

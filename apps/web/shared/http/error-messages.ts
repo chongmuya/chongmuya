@@ -5,6 +5,19 @@ export const messages: Record<
     message: string;
   }
 > = {
+  GROUP_TARGET_UNAVAILABLE: {
+    status: 400,
+    message: "초대할 총무 계정의 인증된 이메일을 확인해 주세요.",
+  },
+  GROUP_LINK_UNAVAILABLE: {
+    status: 404,
+    message: "초대 또는 인수인계 요청을 사용할 수 없어요.",
+  },
+  GROUP_HANDOVER_CONFLICT: {
+    status: 409,
+    message: "모임 권한 또는 요청이 바뀌었어요. 최신 상태를 확인해 주세요.",
+  },
+
   WORKSPACE_VERSION_CONFLICT: {
     status: 409,
     message: "내용이 변경됐어요. 최신 내용을 확인한 뒤 다시 적용해 주세요.",

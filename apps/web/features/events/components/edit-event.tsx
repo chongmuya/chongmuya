@@ -89,8 +89,8 @@ export function EditEvent({
         {base.reservationScheduleLocked && (
           <p className="rounded-control bg-choice p-4 text-sm">
             발송한 문의 또는 선택한 매장의 일정을 유지하고 있어요. 모두 종료되면
-            재문의에서 날짜·인원을 바꿀 수 있어요. 선택한 예약의 일정 변경
-            기능은 준비 중이에요.
+            재문의에서 날짜·인원을 바꿀 수 있어요. 선택한 예약의 일정 변경은
+            예약 관리에서 변경을 제안하고 상대의 확인을 받아 주세요.
           </p>
         )}
         {changed && (

@@ -12,6 +12,12 @@ type Lock = <T>(action: () => Promise<T>) => Promise<T>;
 
 // Instance belongs to the mounted provider, never to a server-wide singleton.
 export class SessionClient {
+  readonly instanceId = crypto.randomUUID();
+  notifyAuthorityChange() {
+    const channel = new BroadcastChannel("chongmuya-group-authority");
+    channel.postMessage({ source: this.instanceId });
+    channel.close();
+  }
   private state: AuthState = { status: "loading", account: null };
   private listeners = new Set<() => void>();
   private restoring?: Promise<void>;
@@ -20,6 +26,7 @@ export class SessionClient {
   private authenticating?: Promise<Session>;
   private generation = 0;
   private revision = 0;
+  private authorityRevision = 0;
   // Same-account profile writes do not rotate credentials or invalidate requests.
   private profileRevision = 0;
   private ending = false;
@@ -27,7 +34,13 @@ export class SessionClient {
     private readonly clearUserCache: () => void,
     private readonly transport: Transport = requestJson,
     private readonly lock: Lock = (action) => action(),
+    private readonly onAuthorityLost: () => void = () => undefined,
   ) {}
+  invalidateAuthority = () => {
+    this.authorityRevision++;
+    this.clearUserCache();
+    this.onAuthorityLost();
+  };
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -130,6 +143,7 @@ export class SessionClient {
   ): Promise<T> {
     const generation = this.generation;
     const revision = this.revision;
+    const authorityRevision = this.authorityRevision;
     if (this.ending)
       throw new ApiError("로그아웃 처리 중입니다.", 401, "SESSION_INVALID");
     try {
@@ -148,8 +162,23 @@ export class SessionClient {
       }
       if (generation !== this.generation)
         throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");
+      if (authorityRevision !== this.authorityRevision)
+        throw new ApiError(
+          "관리 권한을 다시 확인해 주세요.",
+          403,
+          "GROUP_AUTHORITY_CHANGED",
+        );
       return result;
     } catch (error) {
+      if (
+        authorityRevision === this.authorityRevision &&
+        error instanceof ApiError &&
+        [403, 404].includes(error.status) &&
+        /^\/api\/v1\/(groups|events|calendar|reservations|favorites)(?:\/|$)/.test(
+          path,
+        )
+      )
+        this.invalidateAuthority();
       if (
         generation === this.generation &&
         error instanceof ApiError &&

@@ -368,6 +368,7 @@ test("existing roster addition requires resolving namesakes and labels without u
   const existing = {
     id: "00000000-0000-4000-8000-000000000001",
     name: "A",
+    version: 1,
     phoneLast4: "0012",
     label: null,
   };
@@ -437,6 +438,7 @@ test("existing-person selection restores each stable row's direct phone and opti
     const existing = {
       id: "00000000-0000-4000-8000-000000000001",
       name: "김민수",
+      version: 1,
       phoneLast4: "0012",
       label: "운영팀",
     };

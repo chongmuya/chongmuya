@@ -30,6 +30,7 @@ export function safeReturnPath(
       "/owner/hours",
       "/calendar",
       "/notifications",
+      "/favorites",
     ].includes(url.pathname)
   )
     return "/events";

@@ -1,4 +1,5 @@
 "use client";
+import { Favorites } from "@/features/favorites/client";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import Image from "next/image";
@@ -53,6 +54,7 @@ export function RestaurantDetail({
             <h1 id="restaurant-detail-title" className="text-2xl font-bold">
               {r.name}
             </h1>
+            <Favorites restaurantId={r.id} />
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-4 text-xs">
               <dt className="text-secondary">주소</dt>
               <dd>{r.address}</dd>
