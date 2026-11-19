@@ -77,7 +77,7 @@ test("configuration rejects missing/invalid required values without exposing val
       UNRELATED_VARIABLE: "allowed",
     }),
     {
-      trustedProxyCidrs: [],
+      trustProxyHops: 0,
       messageProvider: "fake",
       solapiApiKey: undefined,
       solapiApiSecret: undefined,
@@ -128,11 +128,65 @@ test("configuration rejects missing/invalid required values without exposing val
   );
 });
 
+test("proxy trust defaults to zero in every environment and accepts only explicit hop counts", () => {
+  for (const nodeEnv of ["development", "test", "production"]) {
+    const base = {
+      DATABASE_URL: databaseUrl,
+      ...productionProviders,
+      NODE_ENV: nodeEnv,
+      WEB_ORIGIN: "https://example.test",
+    };
+    assert.equal(parseEnvironment(base).trustProxyHops, 0);
+    for (const hops of ["0", "1"])
+      assert.equal(
+        parseEnvironment({ ...base, TRUST_PROXY_HOPS: hops }).trustProxyHops,
+        Number(hops),
+      );
+  }
+  for (const invalid of [
+    "",
+    "true",
+    "false",
+    "-1",
+    "2",
+    "1.0",
+    "0.5",
+    "01",
+    " 1",
+    "1 ",
+    "private-value",
+  ])
+    assert.throws(
+      () =>
+        parseEnvironment({
+          DATABASE_URL: databaseUrl,
+          TRUST_PROXY_HOPS: invalid,
+        }),
+      { message: "Invalid environment variables: TRUST_PROXY_HOPS" },
+    );
+  assert.equal(
+    parseEnvironment({ DATABASE_URL: databaseUrl, TRUSTED_PROXY_CIDRS: "" })
+      .trustProxyHops,
+    0,
+  );
+  for (const hops of [undefined, "0", "1"])
+    assert.throws(
+      () =>
+        parseEnvironment({
+          DATABASE_URL: databaseUrl,
+          TRUST_PROXY_HOPS: hops,
+          TRUSTED_PROXY_CIDRS: "127.0.0.1/32",
+        }),
+      { message: "Invalid environment variables: TRUSTED_PROXY_CIDRS" },
+    );
+});
+
 test("real server refuses to start with invalid configuration", () => {
   for (const overrides of [
     { DATABASE_URL: "" },
     { API_PORT: "bad-port" },
     { API_DOCS_ENABLED: "not-a-boolean" },
+    { TRUSTED_PROXY_CIDRS: "private-legacy-value", TRUST_PROXY_HOPS: "1" },
   ]) {
     const result = spawnSync(
       process.execPath,
@@ -142,6 +196,8 @@ test("real server refuses to start with invalid configuration", () => {
           ...process.env,
           NODE_ENV: "test",
           DATABASE_URL: databaseUrl,
+          AUTH_SECRET: authSecret,
+          WEB_ORIGIN: webOrigin,
           ...overrides,
         },
         encoding: "utf8",
@@ -155,6 +211,13 @@ test("real server refuses to start with invalid configuration", () => {
       /Invalid environment variables/,
     );
     assert.doesNotMatch(result.stdout + result.stderr, /postgresql:\/\//);
+    if (overrides.TRUSTED_PROXY_CIDRS) {
+      assert.match(result.stdout + result.stderr, /TRUSTED_PROXY_CIDRS/);
+      assert.doesNotMatch(
+        result.stdout + result.stderr,
+        /private-legacy-value/,
+      );
+    }
   }
 });
 

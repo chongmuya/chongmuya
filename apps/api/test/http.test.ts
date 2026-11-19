@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer as createHttpServer, request } from "node:http";
 import { createServer } from "node:net";
 import { test } from "node:test";
 import { startTestApplication } from "./support/test-application.js";
@@ -199,15 +200,15 @@ test("disabled OpenAPI routes are unavailable", async (t) => {
   assert.equal((await fetch(`${url}/health`)).status, 200);
 });
 
-test("only explicit trusted proxy addresses affect client IP; spoofed left-most XFF is ignored", async (t) => {
-  for (const [trusted, expected] of [
-    ["", "127.0.0.1"],
-    ["127.0.0.1/32", "203.0.113.5"],
+test("zero hops uses the socket IP and one hop uses only the nearest forwarded IP", async (t) => {
+  for (const [hops, expected] of [
+    ["0", "127.0.0.1"],
+    ["1", "203.0.113.5"],
   ]) {
     const { app, url } = await startTestApplication(
       "postgresql://test@127.0.0.1:1/test",
       false,
-      { TRUSTED_PROXY_CIDRS: trusted },
+      { TRUST_PROXY_HOPS: hops },
     );
     t.after(() => app.close());
     const r = await fetch(`${url}/test/ip`, {
@@ -215,4 +216,56 @@ test("only explicit trusted proxy addresses affect client IP; spoofed left-most 
     });
     assert.equal((await r.json()).ip, expected);
   }
+});
+
+test("a single local HTTP proxy overwrites forwarded IP, host and protocol", async (t) => {
+  const { app, url } = await startTestApplication(
+    "postgresql://test@127.0.0.1:1/test",
+    false,
+    { TRUST_PROXY_HOPS: "1" },
+  );
+  t.after(() => app.close());
+  const proxy = createHttpServer((incoming, outgoing) => {
+    const host = incoming.headers.host;
+    const peer = incoming.socket.remoteAddress;
+    if (!host || !peer) {
+      outgoing.writeHead(400).end();
+      return;
+    }
+    const upstream = request(
+      `${url}/test/ip`,
+      {
+        headers: {
+          ...incoming.headers,
+          host,
+          "x-forwarded-for": peer,
+          "x-forwarded-host": host,
+          "x-forwarded-proto": "http",
+        },
+      },
+      (response) => {
+        outgoing.writeHead(response.statusCode!, response.headers);
+        response.pipe(outgoing);
+      },
+    );
+    upstream.on("error", () => outgoing.writeHead(502).end());
+    upstream.end();
+  });
+  await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  t.after(() => proxy[Symbol.asyncDispose]());
+  const address = proxy.address();
+  assert(address && typeof address !== "string");
+  const response = await fetch(`http://127.0.0.1:${address.port}/test/ip`, {
+    headers: {
+      "X-Forwarded-For": "198.51.100.99",
+      "X-Forwarded-Host": "client.example.test",
+      "X-Forwarded-Proto": "https",
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ip: "127.0.0.1",
+    hostname: "127.0.0.1",
+    protocol: "http",
+  });
 });

@@ -1603,6 +1603,7 @@ test("home preserves the selected group and never falls back to personal creatio
     ] as const) {
       const pending = deferred<Response>();
       let eventReads = 0;
+      let failPersonalEvents = scenario === "selected";
       globalThis.fetch = async (path) => {
         const url = String(path);
         if (url.endsWith("restore"))
@@ -1619,6 +1620,27 @@ test("home preserves the selected group and never falls back to personal creatio
         if (url.endsWith("/groups")) return pending.promise;
         if (url.includes("/events")) {
           eventReads++;
+          if (url.endsWith("/events")) {
+            if (failPersonalEvents)
+              return Response.json(
+                { code: "SERVICE_UNAVAILABLE", statusCode: 503 },
+                { status: 503 },
+              );
+            return Response.json([
+              {
+                id: "personal",
+                groupId: null,
+                name: "친구들과 송년 모임",
+                scheduledAt: null,
+              },
+              {
+                id: "group-event",
+                groupId: "second",
+                name: "기존 모임의 행사",
+                scheduledAt: null,
+              },
+            ]);
+          }
           return Response.json([]);
         }
         throw new Error("unexpected path");
@@ -1705,6 +1727,55 @@ test("home preserves the selected group and never falls back to personal creatio
                 'nav a[aria-current="page"][href="/?group=second"]',
               ),
             );
+        }
+        assert.doesNotMatch(
+          view.container.textContent!,
+          /개인 행사 보기|개인 행사 접기/,
+        );
+        const switcher = view.container.querySelector<HTMLButtonElement>(
+          'header button[aria-label="모임·행사 선택"]',
+        )!;
+        assert.equal(switcher.getAttribute("aria-expanded"), "false");
+        await act(async () => switcher.click());
+        const dialog =
+          view.container.querySelector<HTMLDialogElement>("dialog[open]")!;
+        assert(dialog);
+        if (scenario === "selected") {
+          await until(() =>
+            assert.match(dialog.textContent!, /단기 행사를 불러오지 못했어요/),
+          );
+          assert.match(dialog.textContent!, /두 번째 모임/);
+          assert.doesNotMatch(dialog.textContent!, /친구들과 송년 모임/);
+          failPersonalEvents = false;
+          await click(dialog, "다시 시도");
+        }
+        await until(() =>
+          assert.match(dialog.textContent!, /친구들과 송년 모임/),
+        );
+        assert.doesNotMatch(dialog.textContent!, /기존 모임의 행사/);
+        const eventLink = dialog.querySelector<HTMLAnchorElement>(
+          'a[href="/events?event=personal"]',
+        )!;
+        assert(eventLink);
+        // Chrome verifies navigation. JSDOM checks the destination and dismissal.
+        eventLink.addEventListener("click", (event) => event.preventDefault(), {
+          once: true,
+        });
+        await act(async () => eventLink.click());
+        assert(!view.container.querySelector("dialog[open]"));
+        if (scenario === "selected") {
+          await act(async () => switcher.click());
+          const groupLink = view.container.querySelector<HTMLAnchorElement>(
+            'dialog a[href="/?group=first"]',
+          )!;
+          assert(groupLink);
+          groupLink.addEventListener(
+            "click",
+            (event) => event.preventDefault(),
+            { once: true },
+          );
+          await act(async () => groupLink.click());
+          assert(!view.container.querySelector("dialog[open]"));
         }
       } finally {
         pending.resolve(Response.json([]));

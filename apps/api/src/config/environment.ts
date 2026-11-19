@@ -1,4 +1,3 @@
-import { isIP } from "node:net";
 import { z } from "zod";
 import { linkEnvironmentFields } from "./link-environment.js";
 import { databaseEnvironmentSchema } from "./database-environment.js";
@@ -31,29 +30,12 @@ const environmentSchema = z
         );
       })
       .optional(),
-    TRUSTED_PROXY_CIDRS: z
-      .string()
-      .default("")
-      .transform((value) =>
-        value
-          .split(",")
-          .map((v) => v.trim())
-          .filter(Boolean),
-      )
-      .refine((items) =>
-        items.every((item) => {
-          const [ip, bits, extra] = item.split("/");
-          const family = isIP(ip);
-          return (
-            family !== 0 &&
-            extra === undefined &&
-            (bits === undefined ||
-              (/^\d+$/.test(bits) &&
-                Number(bits) > 0 &&
-                Number(bits) <= (family === 4 ? 32 : 128)))
-          );
-        }),
-      ),
+    TRUST_PROXY_HOPS: z
+      .enum(["0", "1"])
+      .default("0")
+      .transform((value) => (value === "1" ? 1 : 0)),
+    // Reject stale deployment settings while accepting old, empty local entries.
+    TRUSTED_PROXY_CIDRS: z.literal("").optional(),
     MESSAGE_PROVIDER: z.enum(["fake", "solapi"]).default("fake"),
     SOLAPI_API_KEY: z.string().min(1).optional(),
     SOLAPI_API_SECRET: z.string().min(1).optional(),
@@ -210,7 +192,7 @@ const environmentSchema = z
     }
   })
   .transform((env) => ({
-    trustedProxyCidrs: env.TRUSTED_PROXY_CIDRS,
+    trustProxyHops: env.TRUST_PROXY_HOPS,
     messageProvider: env.MESSAGE_PROVIDER,
     solapiApiKey: env.SOLAPI_API_KEY,
     solapiApiSecret: env.SOLAPI_API_SECRET,

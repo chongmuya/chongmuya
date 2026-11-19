@@ -15,12 +15,7 @@ export function configureHttp(
     new Logger("HTTP").log(JSON.stringify(entry)),
 ) {
   app.disable("x-powered-by");
-  app.set(
-    "trust proxy",
-    environment.trustedProxyCidrs.length
-      ? environment.trustedProxyCidrs
-      : false,
-  );
+  app.set("trust proxy", environment.trustProxyHops === 1 ? 1 : false);
   app.use(requestContext(log));
   app.enableCors({
     origin: (origin, callback) =>
