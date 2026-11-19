@@ -1,0 +1,34 @@
+name: chongmuya
+services:
+  migrate:
+    profiles: ["tools"]
+    image: ${API_IMAGE:?API_IMAGE required}
+    platform: linux/amd64
+    env_file:
+      - path: ${TOOLS_ENV_FILE:?TOOLS_ENV_FILE required}
+        format: raw
+    volumes:
+      - type: bind
+        source: ${RDS_CA_FILE:?RDS_CA_FILE required}
+        target: /run/certs/rds-global-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: "no"
+    command: ["node", "scripts/migrate.mjs"]
+  seed-restaurants:
+    profiles: ["tools"]
+    image: ${API_IMAGE:?API_IMAGE required}
+    platform: linux/amd64
+    env_file:
+      - path: ${TOOLS_ENV_FILE:?TOOLS_ENV_FILE required}
+        format: raw
+    volumes:
+      - type: bind
+        source: ${RDS_CA_FILE:?RDS_CA_FILE required}
+        target: /run/certs/rds-global-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: "no"
+    command: ["node", "dist/database/seeds/run-production-restaurants.js"]

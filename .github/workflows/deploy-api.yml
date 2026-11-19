@@ -1,4 +1,4 @@
-name: Publish API
+name: Deploy API
 on:
   workflow_dispatch:
 
@@ -8,32 +8,36 @@ permissions:
   id-token: write
 
 concurrency:
-  group: publish-api
+  group: production-api
   cancel-in-progress: false
 
 jobs:
-  publish:
-    if: github.ref == 'refs/heads/main'
+  deploy:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
+    environment: production
     env:
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       AWS_REGION: ap-northeast-2
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.TARGET_SHA }}
           persist-credentials: false
       - name: Require successful main CI for this SHA
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          conclusion=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
-            -f head_sha="$GITHUB_SHA" -f event=push -f per_page=1 \
-            --jq '.workflow_runs[0].conclusion')
-          test "$conclusion" = success || { echo 'Run CI successfully on this main SHA first.'; exit 1; }
+          bash infra/verify-main.sh
           [[ $AWS_ACCOUNT_ID =~ ^[0-9]{12}$ ]]
           [[ $ECR_REPOSITORY =~ ^[a-z0-9][a-z0-9._/-]*$ ]]
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
@@ -41,21 +45,22 @@ jobs:
           role-to-assume: ${{ vars.API_PUBLISH_ROLE_ARN }}
           aws-region: ap-northeast-2
           allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
-          role-session-name: api-publish-${{ github.run_id }}
+          role-session-name: api-deploy-${{ github.run_id }}
       - name: Build and push immutable API image
+        id: image
         run: |
           set -euo pipefail
           registry="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
           aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
-          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$GITHUB_SHA" \
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$TARGET_SHA" \
             > "$RUNNER_TEMP/existing-image.json" 2> "$RUNNER_TEMP/ecr-error"; then
             digest=$(jq -er '.imageDetails[0].imageDigest' "$RUNNER_TEMP/existing-image.json")
             echo 'This SHA already has an image; reusing its digest without overwriting the tag.'
           elif grep -q '(ImageNotFoundException)' "$RUNNER_TEMP/ecr-error"; then
             docker buildx create --use --driver docker-container
             docker buildx build --platform linux/amd64 --push \
-              --file apps/api/Dockerfile --tag "$registry/$ECR_REPOSITORY:$GITHUB_SHA" \
-              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              --file apps/api/Dockerfile --tag "$registry/$ECR_REPOSITORY:$TARGET_SHA" \
+              --label "org.opencontainers.image.revision=$TARGET_SHA" \
               --metadata-file "$RUNNER_TEMP/api-image.json" .
             digest=$(jq -er '."containerimage.digest"' "$RUNNER_TEMP/api-image.json")
           else
@@ -65,20 +70,20 @@ jobs:
           [[ $digest =~ ^sha256:[a-f0-9]{64}$ ]]
           image="$registry/$ECR_REPOSITORY@$digest"
           docker pull --platform linux/amd64 "$image"
-          test "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$GITHUB_SHA"
-          printf '%s\n' "$GITHUB_SHA" > infra/source-sha
-          printf '%s\n' "$image" > infra/image
-          tar -czf "$RUNNER_TEMP/deployment-$GITHUB_SHA.tar.gz" infra/deploy.sh infra/compose.prod.yml infra/nginx infra/source-sha infra/image docs/deployment.md README.md
-          {
-            echo "Commit $GITHUB_SHA"
-            echo "Image $image"
-            echo "Deployment files https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA/infra"
-            echo "Download artifact deployment-$GITHUB_SHA; it includes matching source-sha and image files."
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: deployment-${{ github.sha }}
-          path: ${{ runner.temp }}/deployment-${{ github.sha }}.tar.gz
-          if-no-files-found: error
-          retention-days: 90
-          overwrite: true
+          test "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$TARGET_SHA"
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+      - name: Deploy on EC2 and verify HTTPS
+        id: ssm
+        env:
+          OPERATION: deploy
+          SOURCE_SHA: ${{ env.TARGET_SHA }}
+          API_IMAGE: ${{ steps.image.outputs.image }}
+          EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+        run: node infra/ssm-command.mjs
+      - name: Report pre-SSM failure
+        if: failure() && steps.ssm.outcome == 'skipped'
+        env:
+          IMAGE_RESULT: ${{ steps.image.outcome }}
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+        run: |
+          printf 'Commit: %s\nInstance: %s\nBuild/push: %s\nSSM: not started\n' "$TARGET_SHA" "$INSTANCE_ID" "$IMAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"

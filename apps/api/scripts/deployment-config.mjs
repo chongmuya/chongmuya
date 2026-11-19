@@ -6,7 +6,8 @@ import {
   parseEnvironment,
 } from "../dist/config/environment.js";
 import {
-  parseProductionDatabaseEnvironment,
+  parseDeploymentDatabase,
+  validateDeploymentDatabasePair,
   rdsCaPath,
 } from "../dist/config/database-environment.js";
 
@@ -36,7 +37,7 @@ async function validate(env) {
   )
     wrong.push("KAKAO_REDIRECT_URI");
   if (wrong.length) invalid(wrong);
-  parseProductionDatabaseEnvironment(env);
+  parseDeploymentDatabase(env.DATABASE_URL, "app");
   try {
     await access(caPath, constants.R_OK);
   } catch {
@@ -55,39 +56,62 @@ async function atomicEnv(path, entries) {
 }
 
 try {
-  const [mode, directory] = process.argv.slice(2);
-  if (mode === "prepare" && directory) {
+  const [mode, directory, migrationFile] = process.argv.slice(2);
+  if ((mode === "prepare" || mode === "seed") && directory) {
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
     const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (!Array.isArray(payload.Parameters) || payload.NextToken)
-      throw new Error("Parameter Store response is incomplete.");
-    const env = {};
-    for (const parameter of payload.Parameters) {
+    if (mode === "seed") {
       if (
-        typeof parameter.Name !== "string" ||
-        !parameter.Name.startsWith("/chongmuya/prod/")
+        payload.Parameter?.Name !== "/chongmuya/prod/DATABASE_URL" ||
+        typeof payload.Parameter.Value !== "string" ||
+        /[\r\n\0]/.test(payload.Parameter.Value)
       )
-        throw new Error("Invalid Parameter Store response.");
-      const key = parameter.Name.slice("/chongmuya/prod/".length);
-      // Only application configuration reaches the process; never NODE_OPTIONS/PGSSL*.
-      if (!environmentVariableNames.includes(key)) continue;
-      if (
-        Object.hasOwn(env, key) ||
-        typeof parameter.Value !== "string" ||
-        /[\r\n\0]/.test(parameter.Value)
-      )
-        invalid([key]);
-      env[key] = parameter.Value;
+        invalid(["DATABASE_URL"]);
+      parseDeploymentDatabase(payload.Parameter.Value, "app");
+      await atomicEnv(join(directory, "db.env"), [
+        ["DATABASE_URL", payload.Parameter.Value],
+      ]);
+    } else {
+      if (!Array.isArray(payload.Parameters) || payload.NextToken)
+        throw new Error("Parameter Store response is incomplete.");
+      const env = {};
+      for (const parameter of payload.Parameters) {
+        if (
+          typeof parameter.Name !== "string" ||
+          !parameter.Name.startsWith("/chongmuya/prod/")
+        )
+          throw new Error("Invalid Parameter Store response.");
+        const key = parameter.Name.slice("/chongmuya/prod/".length);
+        // Only application configuration reaches the process; never NODE_OPTIONS/PGSSL*.
+        if (!environmentVariableNames.includes(key)) continue;
+        if (
+          Object.hasOwn(env, key) ||
+          typeof parameter.Value !== "string" ||
+          /[\r\n\0]/.test(parameter.Value)
+        )
+          invalid([key]);
+        env[key] = parameter.Value;
+      }
+      await validate(env);
+      if (migrationFile) {
+        const { Parameter } = JSON.parse(await readFile(migrationFile, "utf8"));
+        if (
+          Parameter?.Name !== "/chongmuya/deploy/prod/DATABASE_URL" ||
+          typeof Parameter.Value !== "string" ||
+          /[\r\n\0]/.test(Parameter.Value)
+        )
+          invalid(["DATABASE_URL"]);
+        validateDeploymentDatabasePair(env.DATABASE_URL, Parameter.Value);
+        await atomicEnv(join(directory, "db.env"), [
+          ["DATABASE_URL", Parameter.Value],
+        ]);
+      }
+      await atomicEnv(
+        join(directory, "api.env"),
+        Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
+      );
     }
-    await validate(env);
-    await atomicEnv(
-      join(directory, "api.env"),
-      Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
-    );
-    await atomicEnv(join(directory, "db.env"), [
-      ["DATABASE_URL", env.DATABASE_URL],
-    ]);
   } else if (mode === "check") {
     await validate(process.env);
     // Read the CA as the runtime user as well as checking its existence.

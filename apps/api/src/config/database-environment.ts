@@ -71,3 +71,30 @@ export function parseProductionDatabaseEnvironment(env: NodeJS.ProcessEnv) {
     throw new Error("Invalid environment variables: DATABASE_URL");
   return { ...parsed, host: url.hostname, database: "chongmuya" };
 }
+
+// Deployment accounts are separate privileges, not two copies of one URL.
+export function parseDeploymentDatabase(
+  value: string | undefined,
+  role: "app" | "migrator",
+) {
+  const parsed = parseProductionDatabaseEnvironment({
+    NODE_ENV: "production",
+    DATABASE_URL: value,
+  });
+  if (
+    decodeURIComponent(new URL(parsed.databaseUrl).username) !==
+    `chongmuya_${role}`
+  )
+    throw new Error("Invalid environment variables: DATABASE_URL");
+  return parsed;
+}
+
+export function validateDeploymentDatabasePair(app: string, migrator: string) {
+  const runtime = parseDeploymentDatabase(app, "app");
+  const migration = parseDeploymentDatabase(migrator, "migrator");
+  if (
+    runtime.host !== migration.host ||
+    runtime.database !== migration.database
+  )
+    throw new Error("Invalid environment variables: DATABASE_URL");
+}

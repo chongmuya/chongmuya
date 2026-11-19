@@ -4,7 +4,7 @@ services:
     image: ${API_IMAGE:?API_IMAGE required}
     platform: linux/amd64
     env_file:
-      - path: ${RELEASE_DIR:?RELEASE_DIR required}/api.env
+      - path: ${API_ENV_FILE:?API_ENV_FILE required}
         format: raw
     ports:
       - "127.0.0.1:3001:3001"
@@ -35,35 +35,3 @@ services:
       timeout: 3s
       start_period: 10s
       retries: 12
-  migrate:
-    profiles: ["tools"]
-    image: ${API_IMAGE:?API_IMAGE required}
-    platform: linux/amd64
-    env_file:
-      - path: ${RELEASE_DIR:?RELEASE_DIR required}/db.env
-        format: raw
-    volumes:
-      - type: bind
-        source: ${RDS_CA_FILE:?RDS_CA_FILE required}
-        target: /run/certs/rds-global-bundle.pem
-        read_only: true
-        bind:
-          create_host_path: false
-    restart: "no"
-    command: ["node", "scripts/migrate.mjs"]
-  seed-restaurants:
-    profiles: ["tools"]
-    image: ${API_IMAGE:?API_IMAGE required}
-    platform: linux/amd64
-    env_file:
-      - path: ${RELEASE_DIR:?RELEASE_DIR required}/db.env
-        format: raw
-    volumes:
-      - type: bind
-        source: ${RDS_CA_FILE:?RDS_CA_FILE required}
-        target: /run/certs/rds-global-bundle.pem
-        read_only: true
-        bind:
-          create_host_path: false
-    restart: "no"
-    command: ["node", "dist/database/seeds/run-production-restaurants.js"]

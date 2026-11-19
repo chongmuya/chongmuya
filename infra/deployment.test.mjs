@@ -116,7 +116,45 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       break;
     await new Promise((r) => setTimeout(r, 500));
   }
-  const databaseUrl = `postgresql://postgres:local-test-only@${host}:5432/chongmuya?sslmode=verify-full&sslrootcert=/run/certs/rds-global-bundle.pem`;
+  const sql = (query, user = "postgres") =>
+    ok(
+      run(
+        "docker",
+        [
+          "exec",
+          "-i",
+          name,
+          "psql",
+          "-v",
+          "ON_ERROR_STOP=1",
+          "-U",
+          user,
+          "-d",
+          "chongmuya",
+          "-At",
+        ],
+        { input: query },
+      ),
+    ).trim();
+  sql(readFileSync(resolve("infra/database-bootstrap.sql"), "utf8"));
+  sql(
+    "ALTER ROLE chongmuya_app PASSWORD 'app-test-only'; ALTER ROLE chongmuya_migrator PASSWORD 'migrator-test-only'",
+  );
+  const databaseUrl = `postgresql://chongmuya_app:app-test-only@${host}:5432/chongmuya?sslmode=verify-full&sslrootcert=/run/certs/rds-global-bundle.pem`;
+  const migrationUrl = databaseUrl.replace(
+    "chongmuya_app:app-test-only",
+    "chongmuya_migrator:migrator-test-only",
+  );
+  const migrationPayload = {
+    Parameter: {
+      Name: "/chongmuya/deploy/prod/DATABASE_URL",
+      Value: migrationUrl,
+    },
+  };
+  writeFileSync(
+    join(directory, "migration.json"),
+    JSON.stringify(migrationPayload),
+  );
   const env = {
     DATABASE_URL: databaseUrl,
     NODE_ENV: "production",
@@ -171,6 +209,7 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "scripts/deployment-config.mjs",
     "prepare",
     "/release",
+    "/release/migration.json",
   ];
   const invalidPayload = structuredClone(payload);
   invalidPayload.Parameters.find((p) => p.Name.endsWith("/AUTH_SECRET")).Value =
@@ -187,11 +226,11 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
   ok(run("docker", prepare, { input: JSON.stringify(payload) }));
   assert.equal(
     readFileSync(join(directory, "db.env"), "utf8"),
-    `DATABASE_URL=${databaseUrl}\n`,
+    `DATABASE_URL=${migrationUrl}\n`,
   );
   writeFileSync(
     join(directory, "compose.env"),
-    `API_IMAGE=${image}\nRELEASE_DIR=${directory}\nRDS_CA_FILE=${certificate}\n`,
+    `API_IMAGE=${image}\nAPI_ENV_FILE=${directory}/api.env\nTOOLS_ENV_FILE=${directory}/db.env\nRDS_CA_FILE=${certificate}\n`,
   );
   writeFileSync(
     join(directory, "override.yml"),
@@ -227,23 +266,24 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "import fs from 'node:fs';import assert from 'node:assert/strict';for(const [k,v] of Object.entries(JSON.parse(fs.readFileSync('/expected.json'))))assert.equal(process.env[k],v,k);assert.notEqual(process.getuid(),0)",
     ]),
   );
-  const sql = (query) =>
-    ok(
-      run("docker", [
-        "exec",
-        name,
-        "psql",
-        "-U",
-        "postgres",
-        "-d",
-        "chongmuya",
-        "-Atc",
-        query,
-      ]),
-    ).trim();
+  const toolCompose = [
+    "compose",
+    "-p",
+    name,
+    "--env-file",
+    join(directory, "compose.env"),
+    "-f",
+    resolve("infra/compose.tools.yml"),
+    "-f",
+    join(directory, "tools-override.yml"),
+  ];
+  writeFileSync(
+    join(directory, "tools-override.yml"),
+    `networks:\n  default:\n    external: true\n    name: ${name}\n`,
+  );
   const seed = (...args) =>
     run("docker", [
-      ...compose,
+      ...toolCompose,
       "run",
       "--rm",
       "--no-deps",
@@ -258,11 +298,67 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "0",
     "pending check must not create migration history",
   );
-  ok(run("docker", [...compose, "run", "--rm", "--no-deps", "migrate"]));
+  ok(run("docker", [...toolCompose, "run", "--rm", "--no-deps", "migrate"]));
   assert.match(
-    ok(run("docker", [...compose, "run", "--rm", "--no-deps", "migrate"])),
+    ok(run("docker", [...toolCompose, "run", "--rm", "--no-deps", "migrate"])),
     /"appliedCount":0/,
   );
+  assert.equal(
+    sql("SELECT DISTINCT tableowner FROM pg_tables WHERE schemaname='public'"),
+    "chongmuya_migrator",
+  );
+  assert.notEqual(
+    run("docker", [
+      "exec",
+      name,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "chongmuya_app",
+      "-d",
+      "chongmuya",
+      "-c",
+      "CREATE TABLE forbidden(id int)",
+    ]).status,
+    0,
+  );
+  assert.notEqual(
+    run("docker", [
+      "exec",
+      name,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "chongmuya_app",
+      "-d",
+      "chongmuya",
+      "-c",
+      "ALTER TABLE accounts ADD COLUMN forbidden int",
+    ]).status,
+    0,
+  );
+  sql(
+    "CREATE TABLE default_grant_probe (id serial primary key, value text)",
+    "chongmuya_migrator",
+  );
+  assert.equal(
+    sql(
+      "INSERT INTO default_grant_probe(value) VALUES ('ok') RETURNING id",
+      "chongmuya_app",
+    ).split("\n")[0],
+    "1",
+  );
+  sql(
+    "UPDATE default_grant_probe SET value='updated'; DELETE FROM default_grant_probe",
+    "chongmuya_app",
+  );
+  sql("DROP TABLE default_grant_probe", "chongmuya_migrator");
+  // Production seed needs DML only and uses a freshly loaded app URL, never master.
+  writeFileSync(join(directory, "db.env"), `DATABASE_URL=${databaseUrl}\n`, {
+    mode: 0o600,
+  });
   const fixture = JSON.parse(
     readFileSync(
       resolve("apps/api/src/database/seeds/data/restaurants.json"),
@@ -349,6 +445,8 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     ]);
     assert.equal(result.status, 1, "wrong host/CA must reject TLS");
   }
+  rmSync(join(directory, "db.env"));
+  ok(run("docker", [...compose, "config", "--quiet"])); // No absent migration env dependency.
   ok(
     run("docker", [
       ...compose,
@@ -374,18 +472,35 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "wrong.test",
     ),
   );
+  const badReady = run("docker", [
+    ...compose,
+    "up",
+    "-d",
+    "--force-recreate",
+    "--wait",
+    "--wait-timeout",
+    "12",
+    "api",
+  ]);
+  if (badReady.status === 0) {
+    const running = ok(run("docker", [...compose, "ps", "-q", "api"])).trim();
+    console.log(
+      ok(
+        run("docker", [
+          "exec",
+          running,
+          "node",
+          "--input-type=module",
+          "-e",
+          "console.log(new URL(process.env.DATABASE_URL).hostname);console.log((await fetch('http://127.0.0.1:3001/ready')).status)",
+        ]),
+      ),
+    );
+  }
   assert.notEqual(
-    run("docker", [
-      ...compose,
-      "up",
-      "-d",
-      "--force-recreate",
-      "--wait",
-      "--wait-timeout",
-      "12",
-      "api",
-    ]).status,
+    badReady.status,
     0,
+    "bad TLS hostname must fail API readiness",
   );
   ok(run("docker", [...compose, "down", "--remove-orphans"]));
   await verifyDeploymentFlow({
@@ -394,6 +509,7 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     certificate,
     image,
     payload,
+    migrationPayload,
     run,
     ok,
     t,
@@ -431,11 +547,19 @@ test("Nginx bootstrap and HTTPS configs load without logging callback query secr
       "run",
       "--rm",
       "-v",
-      `${resolve("infra/nginx/api.http.conf")}:/etc/nginx/conf.d/default.conf:ro`,
+      `${resolve("infra/nginx/api.conf")}:/etc/nginx/conf.d/default.conf:ro`,
       "nginx:stable-alpine",
       "nginx",
       "-t",
     ]),
+  );
+  // Simulate Certbot's host-owned TLS additions; Git supplies HTTP/proxy only.
+  writeFileSync(
+    join(directory, "https.conf"),
+    readFileSync(resolve("infra/nginx/api.conf"), "utf8").replace(
+      "listen 80;",
+      "listen 443 ssl;\n    ssl_certificate /etc/letsencrypt/live/api.chongmuya.com/fullchain.pem;\n    ssl_certificate_key /etc/letsencrypt/live/api.chongmuya.com/privkey.pem;",
+    ),
   );
   ok(
     run("docker", [
@@ -446,7 +570,7 @@ test("Nginx bootstrap and HTTPS configs load without logging callback query secr
       "-p",
       "127.0.0.1::443",
       "-v",
-      `${resolve("infra/nginx/api.conf")}:/etc/nginx/conf.d/default.conf:ro`,
+      `${join(directory, "https.conf")}:/etc/nginx/conf.d/default.conf:ro`,
       "-v",
       `${certificate}:/etc/letsencrypt/live/api.chongmuya.com/fullchain.pem:ro`,
       "-v",
