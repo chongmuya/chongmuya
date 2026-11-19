@@ -513,7 +513,7 @@ export class MessageDeliveryService {
           target_id: c.target.id,
           received_at: c.request.createdAt,
           conditions: c.request.snapshot,
-          organizer_name: c.request.contactName,
+          organizer_name: c.request.currentContactName ?? c.request.contactName,
           organizer_phone: c.request.contactPhone,
           restaurant_id: c.target.restaurantId,
           restaurant_name: c.target.restaurantName,

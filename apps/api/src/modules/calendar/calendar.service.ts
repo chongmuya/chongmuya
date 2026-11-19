@@ -1,7 +1,7 @@
 import { ReservationFactsService } from "../reservations/reservation-facts.service.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import { IsNull, type EntityManager } from "typeorm";
+import { type EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { GroupsService } from "../groups/groups.service.js";
@@ -66,6 +66,9 @@ export class CalendarService {
     return { schedules, events };
   }
   async owned(ownerId: string, id: string, m: EntityManager, lock = false) {
+    const seed = await m.findOneBy(CalendarSchedule, { id });
+    if (!seed) throw new NotFoundException();
+    if (seed.groupId) await this.groups.assertOwned(ownerId, seed.groupId, m);
     const row = await m.findOne(CalendarSchedule, {
       where: { id, ownerId },
       ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
@@ -106,19 +109,21 @@ export class CalendarService {
       .digest("hex");
     const db = await this.database.connect();
     return db.transaction(async (m) => {
-      if (input.groupId)
+      if (id) await this.owned(ownerId, id, m, true);
+      else if (input.groupId)
         await this.groups.assertOwned(ownerId, input.groupId, m);
       await m.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
         `schedule:${ownerId}:${id ?? input.requestKey}`,
       ]);
       if (!id) {
         const old = await m.findOneBy(CalendarSchedule, {
-          ownerId,
+          creatorId: ownerId,
           creationKey: input.requestKey,
         });
         if (old) {
           if (old.creationDigest !== digest)
             throw new DomainHttpException("WORKSPACE_VERSION_CONFLICT");
+          await this.owned(ownerId, old.id, m);
           return old;
         }
         if (input.expectedVersion !== 0)
@@ -127,6 +132,7 @@ export class CalendarService {
           ...data,
           id: randomUUID(),
           ownerId,
+          creatorId: ownerId,
           creationKey: input.requestKey,
           creationDigest: digest,
           version: 1,
@@ -202,8 +208,8 @@ export class CalendarService {
   ) {
     await m.update(
       CalendarSchedule,
-      { groupId, ownerId: from, deletedAt: IsNull() },
-      { ownerId: to, updatedAt: new Date() },
+      { groupId, ownerId: from },
+      { ownerId: to, version: () => "version + 1", updatedAt: new Date() },
     );
   }
 }

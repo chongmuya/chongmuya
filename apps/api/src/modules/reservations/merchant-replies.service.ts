@@ -113,7 +113,9 @@ export class MerchantRepliesService {
                 : null,
         restaurantName: c.target.restaurantName,
         snapshot,
-        organizerName: c.request.contactName,
+        organizerName: c.request.currentContactName ?? c.request.contactName,
+        organizerMaskedPhone: `${(c.request.currentContactPhone ?? c.request.contactPhone).slice(0, 3)}-****-${(c.request.currentContactPhone ?? c.request.contactPhone).slice(-4)}`,
+        contactChangedAt: c.request.contactChanges.at(-1)?.at ?? null,
         version: c.target.replyVersion,
         response: replyView(response),
         defaults: {

@@ -28,9 +28,18 @@ export class ReservationRequest {
   createdById!: string | null;
   @Column({ type: "uuid", name: "current_contact_account_id", nullable: true })
   currentContactAccountId!: string | null;
+  @Column({ type: "jsonb", name: "contact_changes", default: [] })
+  contactChanges!: {
+    handoverId: string;
+    from: string;
+    to: string;
+    name: string;
+    at: string;
+    actor: string;
+  }[];
   @Column({
     type: "varchar",
-    length: 80,
+    length: 100,
     name: "current_contact_name",
     nullable: true,
   })

@@ -78,6 +78,10 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
         for (const id of ids) {
           try {
             await db.transaction(async (m) => {
+              if (kind === "OTHER") {
+                const seed = await m.findOneBy(CalendarSchedule, { id });
+                if (seed?.groupId) await this.groups.lock(seed.groupId, m);
+              }
               const row =
                 kind === "EVENT"
                   ? await this.events.reminderCurrent(id, m)

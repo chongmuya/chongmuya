@@ -16,6 +16,9 @@ import {
 export class GroupMember {
   @PrimaryColumn("uuid", { primaryKeyConstraintName: "group_members_pkey" })
   id!: string;
+  @Column({ type: "integer", default: 1 }) version!: number;
+  @Column({ type: "timestamptz", name: "excluded_at", nullable: true })
+  excludedAt!: Date | null;
   @Index("group_members_group")
   @ForeignKey("groups", "id", { name: "group_members_group_id_fkey" })
   @Column({ type: "uuid", name: "group_id" })

@@ -15,6 +15,76 @@ import type {
 } from "./types/notification.js";
 @Injectable()
 export class NotificationsService {
+  async messageRequest(id: string, m: EntityManager) {
+    const message = await m.findOneBy(NotificationMessage, { id });
+    return message
+      ? (await m.findOneBy(NotificationFact, { eventKey: message.eventKey }))
+          ?.requestId
+      : undefined;
+  }
+  async replanOrganizer(
+    requestId: string,
+    from: string,
+    to: { id: string; phone: string },
+    actor: string,
+    handoverId: string,
+    m: EntityManager,
+  ) {
+    const facts = await m.findBy(NotificationFact, { requestId });
+    if (!facts.length) return;
+    const rows = await m
+      .createQueryBuilder(NotificationMessage, "n")
+      .where("n.eventKey IN (:...keys)", { keys: facts.map((f) => f.eventKey) })
+      .andWhere(
+        "split_part(n.recipientKey, ':', 2) = :from AND n.recipientKey LIKE 'organizer:%'",
+        { from },
+      )
+      .orderBy("n.id", "ASC")
+      .setLock("pessimistic_write")
+      .getMany();
+    for (const row of rows) {
+      if (
+        !["PENDING", "HELD"].includes(row.status) &&
+        !(row.status === "FAILED" && row.failureStage === "SUBMISSION")
+      )
+        continue;
+      if (row.errorCode === "RECIPIENT_CHANGED") continue;
+      row.status = "HELD";
+      row.errorCode = "RECIPIENT_CHANGED";
+      row.updatedAt = new Date();
+      row.operations = [
+        ...row.operations,
+        {
+          actor,
+          reason: "모임 인수인계",
+          action: "REPLAN",
+          at: new Date().toISOString(),
+        },
+      ];
+      await m.save(row);
+      await m
+        .createQueryBuilder()
+        .insert()
+        .into(NotificationMessage)
+        .values({
+          id: randomUUID(),
+          eventKey: row.eventKey,
+          recipientKey: `organizer:${to.id}:handover:${handoverId}`,
+          phoneSnapshot: to.phone,
+          contactIdSnapshot: null,
+          text: row.text,
+          isDemo: row.isDemo,
+          status: "PENDING",
+          attempts: 0,
+          updatedAt: new Date(),
+          operations: [],
+          reports: [],
+        })
+        .orIgnore()
+        .execute();
+    }
+  }
+
   constructor(private readonly database: DatabaseService) {}
   async record(m: EntityManager, input: NotificationInput) {
     const { accounts, messages, ...fact } = input;

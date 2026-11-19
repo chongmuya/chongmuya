@@ -9,7 +9,7 @@ import { ReservationManagementLink } from "./entities/reservation-progress.entit
 import { SelectedReservation } from "./entities/selected-reservation.entity.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
 import { MessageGateway } from "./providers/message.gateway.js";
-import type { ReservationRequest } from "./entities/reservation-request.entity.js";
+import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 @Injectable()
 export class ReservationNotificationsService {
@@ -124,6 +124,23 @@ export class ReservationNotificationsService {
       retry,
     );
     if (!row) return;
+    if (row.recipientKey.startsWith("organizer:")) {
+      const db = await this.database.connect();
+      const requestId = await this.notices.messageRequest(row.id, db.manager);
+      const request = requestId
+        ? await db.manager.findOneBy(ReservationRequest, { id: requestId })
+        : null;
+      if (
+        !request ||
+        row.recipientKey.split(":")[1] !==
+          (request.currentContactAccountId ?? request.id) ||
+        row.phoneSnapshot !==
+          (request.currentContactPhone ?? request.contactPhone)
+      ) {
+        await this.notices.hold(row.id, "RECIPIENT_CHANGED");
+        return;
+      }
+    }
     if (
       row.recipientKey.startsWith("merchant:") ||
       row.recipientKey.startsWith("reservation:")

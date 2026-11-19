@@ -24,6 +24,14 @@ import type { RestaurantsQuery } from "./dto/request/restaurants-query.request.d
 export class RestaurantsService {
   constructor(private readonly database: DatabaseService) {}
 
+  async favoriteSummaries(ids: string[], m: EntityManager) {
+    return ids.length
+      ? this.summaries(
+          await m.findBy(Restaurant, { id: In(ids), published: true }),
+          m,
+        )
+      : [];
+  }
   async assertOwned(
     ownerId: string,
     id: string,

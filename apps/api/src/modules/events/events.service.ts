@@ -27,6 +27,12 @@ const eventDto = (event: Event): EventDto => ({
 
 @Injectable()
 export class EventsService {
+  async groupEvents(groupId: string, m: EntityManager) {
+    return (
+      await m.find(Event, { where: { groupId }, order: { id: "ASC" } })
+    ).map(eventDto);
+  }
+
   constructor(
     private readonly database: DatabaseService,
     private readonly groups: GroupsService,
@@ -45,6 +51,7 @@ export class EventsService {
     );
   }
   async reminderCurrent(id: string, m: EntityManager) {
+    await this.lockGroup(id, m);
     const e = await m.findOne(Event, {
       where: { id },
       lock: { mode: "pessimistic_write" },
@@ -168,12 +175,44 @@ export class EventsService {
       })),
     };
   }
+  private async lockGroup(id: string, m: EntityManager) {
+    const seed = await m.findOneBy(Event, { id });
+    if (!seed) throw new NotFoundException();
+    if (seed.groupId) await this.groups.lock(seed.groupId, m);
+  }
+
+  async transferGroup(
+    groupId: string,
+    from: string,
+    to: string,
+    m: EntityManager,
+  ) {
+    const rows = await m.find(Event, {
+      where: { groupId },
+      order: { id: "ASC" },
+      lock: { mode: "pessimistic_write" },
+    });
+    for (const row of rows) {
+      if (row.ownerId !== from)
+        throw new DomainHttpException("VERSION_CONFLICT");
+      row.ownerId = to;
+      row.version++;
+      await m.save(row);
+    }
+    return rows.map(eventDto);
+  }
+
+  async groupCount(groupId: string, m: EntityManager) {
+    return m.countBy(Event, { groupId });
+  }
+
   async assertOwned(
     ownerId: string,
     id: string,
     manager: EntityManager,
     lock = false,
   ): Promise<EventDto> {
+    await this.lockGroup(id, manager);
     const event = await manager.getRepository(Event).findOne({
       where: { id, ownerId },
       ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
@@ -187,6 +226,7 @@ export class EventsService {
     id: string,
     manager: EntityManager,
   ): Promise<EventDto> {
+    await this.lockGroup(id, manager);
     const event = await manager.findOne(Event, {
       where: { id },
       lock: { mode: "pessimistic_write" },
@@ -245,12 +285,13 @@ export class EventsService {
     return db.transaction(async (manager) => {
       if (input.creationKey) {
         const previous = await manager.findOneBy(Event, {
-          ownerId,
+          creatorId: ownerId,
           creationKey: input.creationKey,
         });
         if (previous) {
           if (previous.creationDigest !== digest)
             throw new DomainHttpException("EVENT_CREATION_CONFLICT");
+          await this.assertOwned(ownerId, previous.id, manager);
           return eventDto(previous);
         }
       }
@@ -270,6 +311,7 @@ export class EventsService {
       const event = manager.getRepository(Event).create({
         id: randomUUID(),
         ownerId,
+        creatorId: ownerId,
         groupId: input.groupId ?? null,
         version: 1,
         creationKey: input.creationKey ?? null,
@@ -292,12 +334,13 @@ export class EventsService {
       if (!(inserted.raw as unknown[]).length) {
         const previous = input.creationKey
           ? await manager.findOneBy(Event, {
-              ownerId,
+              creatorId: ownerId,
               creationKey: input.creationKey,
             })
           : null;
         if (!previous || previous.creationDigest !== digest)
           throw new DomainHttpException("EVENT_CREATION_CONFLICT");
+        await this.assertOwned(ownerId, previous.id, manager);
         return eventDto(previous);
       }
       if (members?.length) await copyGroupRoster(manager, event.id, members);
@@ -317,6 +360,7 @@ export class EventsService {
   ): Promise<EventDto> {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
+      await this.lockGroup(id, manager);
       const repository = manager.getRepository(Event);
       const event = await repository.findOne({
         where: { id, ownerId },

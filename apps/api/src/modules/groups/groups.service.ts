@@ -1,6 +1,17 @@
+import { AuthService } from "../auth/auth.service.js";
+import { consumeRequestLimit } from "../../common/http/request-limit.js";
+import {
+  GroupMembership,
+  GroupInvitation,
+  GroupRosterEdit,
+} from "./entities/group-membership.entity.js";
+import type {
+  InvitationInput,
+  EditGroupMemberInput,
+} from "./dto/request/membership.request.dto.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import type { EntityManager } from "typeorm";
+import { IsNull, type EntityManager } from "typeorm";
 import {
   normalizePersonName,
   personNamePattern,
@@ -27,7 +38,10 @@ const groupDto = (group: Group, memberCount: number): GroupDto => ({
 
 @Injectable()
 export class GroupsService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly auth: AuthService,
+  ) {}
 
   // Public resource authorization boundary. A caller's transaction must supply its manager.
   async assertOwned(
@@ -35,8 +49,19 @@ export class GroupsService {
     id: string,
     manager: EntityManager,
   ): Promise<void> {
-    if (!(await manager.getRepository(Group).existsBy({ id, ownerId })))
-      throw new NotFoundException();
+    const group = await this.lock(id, manager);
+    if (group.ownerId !== ownerId) throw new NotFoundException();
+  }
+
+  async lock(id: string, manager: EntityManager) {
+    const group = await manager.findOne(Group, {
+      where: { id },
+      ...(manager.queryRunner?.isTransactionActive
+        ? { lock: { mode: "pessimistic_write" as const } }
+        : {}),
+    });
+    if (!group) throw new NotFoundException();
+    return group;
   }
 
   async getLabel(
@@ -60,7 +85,7 @@ export class GroupsService {
       .createQueryBuilder("member")
       .select("member.groupId", "groupId")
       .addSelect("COUNT(*)", "count")
-      .where("member.groupId IN (:...ids)", {
+      .where("member.excludedAt IS NULL AND member.groupId IN (:...ids)", {
         ids: groups.map((group) => group.id),
       })
       .groupBy("member.groupId")
@@ -86,6 +111,8 @@ export class GroupsService {
       const group = manager.getRepository(Group).create({
         id: randomUUID(),
         ownerId,
+        creatorId: ownerId,
+        version: 1,
         name: input.name,
         groupType,
         creationKey: input.creationKey ?? null,
@@ -105,17 +132,24 @@ export class GroupsService {
         const existing = input.creationKey
           ? await manager
               .getRepository(Group)
-              .findOneBy({ ownerId, creationKey: input.creationKey })
+              .findOneBy({ creatorId: ownerId, creationKey: input.creationKey })
           : null;
         if (!existing || existing.creationDigest !== digest)
           throw new DomainHttpException("GROUP_REGISTRATION_CONFLICT");
+        await this.assertOwned(ownerId, existing.id, manager);
         return groupDto(
           existing,
           await manager
             .getRepository(GroupMember)
-            .countBy({ groupId: existing.id }),
+            .countBy({ groupId: existing.id, excludedAt: IsNull() }),
         );
       }
+      await manager.insert(GroupMembership, {
+        groupId: group.id,
+        accountId: ownerId,
+        role: "ADMIN",
+        joinedAt: group.createdAt,
+      });
       this.validateNames(members, [], input.duplicatesConfirmed);
       if (members.length)
         await manager.getRepository(GroupMember).insert(
@@ -169,7 +203,7 @@ export class GroupsService {
       });
       if (!group) throw new NotFoundException();
       const existing = await manager.find(GroupMember, {
-        where: { groupId: id },
+        where: { groupId: id, excludedAt: IsNull() },
       });
       const receipt = await manager.findOneBy(GroupRosterAddition, {
         groupId: id,
@@ -237,7 +271,9 @@ export class GroupsService {
     if (!group) throw new NotFoundException();
     return groupDto(
       group,
-      await db.getRepository(GroupMember).countBy({ groupId: group.id }),
+      await db
+        .getRepository(GroupMember)
+        .countBy({ groupId: group.id, excludedAt: IsNull() }),
     );
   }
 
@@ -258,10 +294,12 @@ export class GroupsService {
     });
     if (!group) throw new NotFoundException();
     return (
-      await manager
-        .getRepository(GroupMember)
-        .find({ where: { groupId: id }, order: { position: "ASC", id: "ASC" } })
-    ).map(({ id: memberId, name, phoneLast4, label }) => ({
+      await manager.getRepository(GroupMember).find({
+        where: { groupId: id, excludedAt: IsNull() },
+        order: { position: "ASC", id: "ASC" },
+      })
+    ).map(({ id: memberId, name, phoneLast4, label, version }) => ({
+      version,
       id: memberId,
       label,
       name,
@@ -275,10 +313,289 @@ export class GroupsService {
     input: GroupInput,
   ): Promise<GroupDto> {
     const db = await this.database.connect();
-    const result = await db
-      .getRepository(Group)
-      .update({ id, ownerId }, { name: input.name });
-    if (!result.affected) throw new NotFoundException();
+    await db.transaction(async (m) => {
+      await this.assertOwned(ownerId, id, m);
+      await m.update(Group, { id }, { name: input.name });
+    });
     return this.get(ownerId, id);
+  }
+  async membershipBasics(accountId: string) {
+    const db = await this.database.connect();
+    const memberships = await db.manager.find(GroupMembership, {
+      where: { accountId },
+    });
+    return Promise.all(
+      memberships.map(async (member) => {
+        const group = await db.manager.findOneByOrFail(Group, {
+          id: member.groupId,
+        });
+        return {
+          id: group.id,
+          name: group.name,
+          groupType: group.groupType,
+          role: member.role,
+        };
+      }),
+    );
+  }
+  async membershipState(ownerId: string, id: string) {
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      await this.assertOwned(ownerId, id, m);
+      const group = await this.lock(id, m);
+      const memberships = await m.find(GroupMembership, {
+        where: { groupId: id },
+        order: { joinedAt: "ASC" },
+      });
+      const accounts = [];
+      for (const row of memberships) {
+        try {
+          const a = await this.auth.groupAccount(m, { id: row.accountId });
+          accounts.push({
+            id: a.id,
+            name: a.name,
+            email: a.email,
+            role: row.role,
+          });
+        } catch (error) {
+          if (
+            !(error instanceof DomainHttpException) ||
+            error.code !== "GROUP_TARGET_UNAVAILABLE"
+          )
+            throw error;
+        }
+      }
+      const invitations = await m.find(GroupInvitation, {
+        where: { groupId: id },
+        order: { createdAt: "DESC" },
+        take: 20,
+      });
+      return {
+        version: group.version,
+        ownerId: group.ownerId,
+        accounts,
+        invitations: invitations.map((r) => ({
+          id: r.id,
+          targetId: r.targetId,
+          status: r.status,
+          expiresAt: r.expiresAt,
+        })),
+      };
+    });
+  }
+  async invite(ownerId: string, id: string, input: InvitationInput) {
+    const db = await this.database.connect();
+    await consumeRequestLimit(db.manager, `group-invite:${ownerId}`, 20);
+    return db.transaction(async (m) => {
+      await this.assertOwned(ownerId, id, m);
+      const target = await this.auth.groupAccount(m, { email: input.email });
+      if (target.id === ownerId)
+        throw new DomainHttpException("GROUP_TARGET_UNAVAILABLE");
+      const tokenHash = createHash("sha256")
+        .update(`group-invitation:${input.token}`)
+        .digest("hex");
+      const digest = createHash("sha256")
+        .update(JSON.stringify({ id, target: target.id, tokenHash }))
+        .digest("hex");
+      const previous = await m.findOneBy(GroupInvitation, {
+        actorId: ownerId,
+        requestKey: input.requestKey,
+      });
+      if (previous) {
+        if (previous.digest !== digest)
+          throw new DomainHttpException("GROUP_HANDOVER_CONFLICT");
+        return {
+          id: previous.id,
+          status: previous.status,
+          expiresAt: previous.expiresAt,
+        };
+      }
+      const row = await m.save(GroupInvitation, {
+        id: randomUUID(),
+        groupId: id,
+        actorId: ownerId,
+        targetId: target.id,
+        requestKey: input.requestKey,
+        digest,
+        tokenHash,
+        status: "PENDING",
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+        completedAt: null,
+      });
+      return { id: row.id, status: row.status, expiresAt: row.expiresAt };
+    });
+  }
+  async invitation(
+    accountId: string,
+    id: string,
+    token: string,
+    accept = false,
+  ) {
+    const db = await this.database.connect();
+    await consumeRequestLimit(
+      db.manager,
+      `group-invitation-link:${accountId}`,
+      60,
+    );
+    return db.transaction(async (m) => {
+      const seed = await m.findOneBy(GroupInvitation, { id });
+      if (!seed) throw new DomainHttpException("GROUP_LINK_UNAVAILABLE");
+      const group = await this.lock(seed.groupId, m);
+      const row = await m.findOneOrFail(GroupInvitation, {
+        where: { id },
+        lock: { mode: "pessimistic_write" },
+      });
+      const hash = createHash("sha256")
+        .update(`group-invitation:${token}`)
+        .digest("hex");
+      if (
+        row.targetId !== accountId ||
+        row.tokenHash !== hash ||
+        row.status === "CANCELLED"
+      )
+        throw new DomainHttpException("GROUP_LINK_UNAVAILABLE");
+      // Accepted links return only a completion receipt and never regain admin data.
+      if (row.status === "ACCEPTED")
+        return { id, status: row.status, completedAt: row.completedAt };
+      if (row.expiresAt <= new Date() || row.actorId !== group.ownerId)
+        throw new DomainHttpException("GROUP_LINK_UNAVAILABLE");
+      await this.auth.groupAccount(m, { id: accountId });
+      if (!accept)
+        return {
+          id,
+          status: row.status,
+          groupName: group.name,
+          expiresAt: row.expiresAt,
+        };
+      await m
+        .createQueryBuilder()
+        .insert()
+        .into(GroupMembership)
+        .values({
+          groupId: group.id,
+          accountId,
+          role: "MEMBER",
+          joinedAt: new Date(),
+        })
+        .orIgnore()
+        .execute();
+      row.status = "ACCEPTED";
+      row.completedAt = new Date();
+      await m.save(row);
+      return { id, status: row.status, completedAt: row.completedAt };
+    });
+  }
+  async cancelInvitation(ownerId: string, groupId: string, id: string) {
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      await this.assertOwned(ownerId, groupId, m);
+      const row = await m.findOneBy(GroupInvitation, { id, groupId });
+      if (!row) throw new NotFoundException();
+      if (row.status === "ACCEPTED")
+        throw new DomainHttpException("GROUP_HANDOVER_CONFLICT");
+      row.status = "CANCELLED";
+      await m.save(row);
+      return { ok: true };
+    });
+  }
+  async assertActiveMember(
+    groupId: string,
+    accountId: string,
+    m: EntityManager,
+  ) {
+    if (!(await m.existsBy(GroupMembership, { groupId, accountId })))
+      throw new DomainHttpException("GROUP_TARGET_UNAVAILABLE");
+    return this.auth.groupAccount(m, { id: accountId });
+  }
+  async acceptManager(
+    groupId: string,
+    from: string,
+    to: string,
+    version: number,
+    m: EntityManager,
+  ) {
+    const group = await this.lock(groupId, m);
+    if (group.ownerId !== from || group.version !== version || from === to)
+      throw new DomainHttpException("GROUP_HANDOVER_CONFLICT");
+    await this.assertActiveMember(groupId, to, m);
+    await m.update(
+      GroupMembership,
+      { groupId, accountId: from },
+      { role: "MEMBER" },
+    );
+    await m.update(
+      GroupMembership,
+      { groupId, accountId: to },
+      { role: "ADMIN" },
+    );
+    group.ownerId = to;
+    group.version++;
+    await m.save(group);
+    return group.version;
+  }
+  async rosterCount(groupId: string, m: EntityManager) {
+    return m.countBy(GroupMember, { groupId, excludedAt: IsNull() });
+  }
+  async editMember(
+    ownerId: string,
+    groupId: string,
+    memberId: string,
+    input: EditGroupMemberInput,
+  ) {
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      await this.assertOwned(ownerId, groupId, m);
+      const digest = createHash("sha256")
+        .update(JSON.stringify({ memberId, input }))
+        .digest("hex");
+      const old = await m.findOneBy(GroupRosterEdit, {
+        groupId,
+        actorId: ownerId,
+        requestKey: input.requestKey,
+      });
+      if (old) {
+        if (old.digest !== digest)
+          throw new DomainHttpException("GROUP_HANDOVER_CONFLICT");
+        return { ok: true };
+      }
+      const row = await m.findOneBy(GroupMember, {
+        id: memberId,
+        groupId,
+        excludedAt: IsNull(),
+      });
+      if (!row || row.version !== input.expectedVersion)
+        throw new DomainHttpException("ROSTER_MEMBER_CONFLICT");
+      const beforeSnapshot = { ...row };
+      const name = normalizePersonName(input.name);
+      const others = (
+        await m.find(GroupMember, { where: { groupId, excludedAt: IsNull() } })
+      ).filter((r) => r.id !== memberId);
+      if (!input.exclude)
+        this.validateNames(
+          [{ name, label: input.label }],
+          others,
+          input.duplicatesConfirmed,
+        );
+      Object.assign(row, {
+        name,
+        phoneLast4: input.phoneLast4 ?? null,
+        label: input.label ?? null,
+        version: row.version + 1,
+        excludedAt: input.exclude ? new Date() : null,
+      });
+      await m.save(row);
+      await m.insert(GroupRosterEdit, {
+        groupId,
+        actorId: ownerId,
+        requestKey: input.requestKey,
+        memberId,
+        digest,
+        beforeSnapshot,
+        afterSnapshot: { ...row },
+        createdAt: new Date(),
+      });
+      return { ok: true };
+    });
   }
 }

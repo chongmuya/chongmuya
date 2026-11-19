@@ -23,6 +23,12 @@ const dto = (f: EventFile) => ({
 });
 @Injectable()
 export class FilesService {
+  async handoverCount(events: string[], m: EntityManager) {
+    return events.length
+      ? m.countBy(EventFile, { eventId: In(events), status: "READY" })
+      : 0;
+  }
+
   constructor(
     private readonly notifications: NotificationsService,
     private readonly database: DatabaseService,

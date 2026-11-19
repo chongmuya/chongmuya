@@ -59,6 +59,18 @@ const depositConflicts = (
 };
 @Injectable()
 export class SettlementsService {
+  async handoverCounts(events: string[], m: EntityManager) {
+    const rows = events.length
+      ? await m.findBy(EventSettlement, { eventId: In(events) })
+      : [];
+    return {
+      settlements: rows.length,
+      incompleteSettlements: rows.filter((r) =>
+        calculate(r.state).people.some((p) => p.remaining > 0),
+      ).length,
+    };
+  }
+
   constructor(
     private readonly notifications: NotificationsService,
     private readonly database: DatabaseService,
@@ -87,7 +99,7 @@ export class SettlementsService {
             title: n.title,
             createdAt: n.createdAt,
             calculationVersion: n.calculationVersion,
-            outdated: noticeOutdated(n, s),
+            outdated: noticeOutdated(n, s) || n.actorId !== owner,
           })),
         },
         summary: calculate(s),
@@ -105,7 +117,7 @@ export class SettlementsService {
     const s = await this.state(event, db.manager),
       n = s.notices.find((n) => n.id === id);
     if (!n) throw new NotFoundException();
-    return { ...n, outdated: noticeOutdated(n, s) };
+    return { ...n, outdated: noticeOutdated(n, s) || n.actorId !== owner };
   }
   async records(
     owner: string,
