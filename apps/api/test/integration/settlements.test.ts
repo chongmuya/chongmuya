@@ -155,7 +155,7 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
     saveBank: true,
     deadline: null,
     includePeople: true,
-    scope: "ALL",
+    scope: "UNCONFIRMED",
   };
   state = await post(notice);
   const oldId = state.state.notices[0]!.id,
@@ -171,6 +171,12 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
     calculationVersion: state.state.calculationVersion,
   });
   assert.equal(state.summary.status, "COMPLETE");
+  assert.equal(state.state.notices[0]!.outdated, true);
+  const staleNotice = await json<{ text: string; outdated: boolean }>(
+    await call(`${path}/notices/${oldId}`, owner),
+  );
+  assert.equal(staleNotice.outdated, true);
+  assert.equal(staleNotice.text, oldText.text);
   state = await post({ ...first, total: 12000 });
   assert.equal(state.summary.people[0]!.remaining, 2000);
   assert.equal(state.summary.received, 10000);
@@ -179,17 +185,35 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
   assert.equal(state.summary.people[0]!.excess, 2000);
   const refund = {
     action: "RETURN",
+    returnedAt: "2026-01-01T10:00:00.000Z",
     participantId: f.people[0]!.id,
     amount: 2000,
     reason: "실제 반환 확인",
     requestKey: randomUUID(),
     expectedVersion: state.state.version,
   };
+  await post(
+    { ...refund, requestKey: randomUUID(), returnedAt: undefined },
+    400,
+  );
+  await post(
+    { ...refund, requestKey: randomUUID(), returnedAt: "invalid" },
+    400,
+  );
+  await post(
+    { ...refund, requestKey: randomUUID(), returnedAt: "2099-01-01T00:00:00Z" },
+    400,
+  );
   state = await post(refund);
   state = await post(refund);
   assert.equal(
     state.state.payments.filter((p) => p.kind === "RETURN").length,
     1,
+  );
+  assert.equal(state.state.payments[1]!.returnedAt, "2026-01-01T10:00:00.000Z");
+  assert.notEqual(
+    state.state.payments[1]!.at,
+    state.state.payments[1]!.returnedAt,
   );
   assert.equal(state.summary.status, "COMPLETE");
   assert.equal(state.summary.received, 8000);
@@ -204,6 +228,7 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
   await post(
     {
       action: "RETURN",
+      returnedAt: "2026-01-01T10:00:00.000Z",
       participantId: f.people[0]!.id,
       amount: 8001,
       reason: "초과",
@@ -219,6 +244,7 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
   assert.equal(state.state.payments.length, 3);
   state = await post({
     action: "RETURN",
+    returnedAt: "2026-01-01T10:00:00.000Z",
     participantId: f.people[0]!.id,
     amount: 2000,
     reason: "은행 확인 후 실제 반환",
@@ -347,6 +373,18 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
   assert.equal(downloaded.status, 200);
   assert.match(downloaded.headers.get("content-disposition")!, /attachment/);
   assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), png);
+  const objectKey = [...memory.objects.keys()][0]!;
+  memory.objects.set(objectKey, Buffer.from(png).fill(0));
+  assert.equal(
+    (await call(`${f.base}/files/${fid}/download`, owner)).status,
+    503,
+  );
+  memory.objects.set(objectKey, png.subarray(1));
+  assert.equal(
+    (await call(`${f.base}/files/${fid}/download`, owner)).status,
+    503,
+  );
+  memory.objects.set(objectKey, png);
   const foreignPath = `${foreign.base}/settlement`;
   assert.equal(
     (
@@ -437,6 +475,107 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
     (
       await call(`${f.base}/files/${lateId}/delete`, owner, "POST", {
         expectedVersion: 2,
+      })
+    ).status,
+    200,
+  );
+  // A stale provider result cannot overwrite a newer successful delete.
+  const overlapId = randomUUID();
+  assert.equal((await upload(overlapId)).status, 200);
+  const realDelete = storage.delete;
+  let enterDelete!: () => void, releaseDelete!: () => void;
+  const deleteStarted = new Promise<void>((r) => {
+    enterDelete = r;
+  });
+  const deleteGate = new Promise<void>((r) => {
+    releaseDelete = r;
+  });
+  storage.delete = async () => {
+    enterDelete();
+    await deleteGate;
+    throw new Error("late failure");
+  };
+  const oldDelete = call(`${f.base}/files/${overlapId}/delete`, owner, "POST", {
+    expectedVersion: 1,
+  });
+  await deleteStarted;
+  assert.equal(
+    (
+      await call(`${f.base}/files/${overlapId}/delete`, owner, "POST", {
+        expectedVersion: 2,
+      })
+    ).status,
+    409,
+  );
+  await db.manager.update(
+    EventFile,
+    { id: overlapId },
+    { updatedAt: new Date(Date.now() - 180000) },
+  );
+  storage.delete = realDelete;
+  assert.equal(
+    (
+      await call(`${f.base}/files/${overlapId}/delete`, owner, "POST", {
+        expectedVersion: 2,
+      })
+    ).status,
+    200,
+  );
+  releaseDelete();
+  assert.equal((await oldDelete).status, 200);
+  assert.equal(
+    (await db.manager.findOneByOrFail(EventFile, { id: overlapId })).status,
+    "DELETED",
+  );
+  // A stale success must not claim that a newer failed cleanup is complete.
+  const reverseId = randomUUID();
+  assert.equal((await upload(reverseId)).status, 200);
+  let enteredReverse!: () => void, releaseReverse!: () => void;
+  const reverseStarted = new Promise<void>((r) => {
+    enteredReverse = r;
+  });
+  const reverseGate = new Promise<void>((r) => {
+    releaseReverse = r;
+  });
+  storage.delete = async (key) => {
+    enteredReverse();
+    await reverseGate;
+    await realDelete(key);
+  };
+  const reverseOld = call(
+    `${f.base}/files/${reverseId}/delete`,
+    owner,
+    "POST",
+    { expectedVersion: 1 },
+  );
+  await reverseStarted;
+  await db.manager.update(
+    EventFile,
+    { id: reverseId },
+    { updatedAt: new Date(Date.now() - 180000) },
+  );
+  storage.delete = async () => {
+    throw new Error("new failure");
+  };
+  assert.equal(
+    (
+      await call(`${f.base}/files/${reverseId}/delete`, owner, "POST", {
+        expectedVersion: 2,
+      })
+    ).status,
+    503,
+  );
+  releaseReverse();
+  assert.equal((await reverseOld).status, 409);
+  assert.equal(
+    (await db.manager.findOneByOrFail(EventFile, { id: reverseId })).status,
+    "DELETE_FAILED",
+  );
+  storage.delete = realDelete;
+  assert.equal(
+    (
+      await call(`${f.base}/files/${reverseId}/delete`, owner, "POST", {
+        expectedVersion: 3,
       })
     ).status,
     200,
@@ -770,7 +909,7 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
       status,
     );
   await save(expense, 400);
-  await payments.receipt(reservationId, operator, {
+  progress = await payments.receipt(reservationId, operator, {
     requestKey: randomUUID(),
     expectedVersion: progress.version,
     guidanceRevision: progress.guidance.revision,
@@ -797,4 +936,101 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   v = await save({ action: "DELETE_EXPENSE", id: expense.id });
   v = await save({ ...expense, id: randomUUID() });
   assert.equal(v.reservations[0]!.receivedAmount, 10000);
+  const notice = {
+    action: "NOTICE",
+    replaces: null,
+    title: "전액 지원",
+    message: "정산 내역 확인",
+    bank: null,
+    saveBank: false,
+    deadline: null,
+    includePeople: true,
+    scope: "ALL",
+  };
+  v = await save(notice);
+  const oldNoticeId = v.state.notices[0]!.id;
+  const oldNotice = await json<{ text: string }>(
+    await call(`${path}/notices/${oldNoticeId}`, owner),
+  );
+  assert.match(oldNotice.text, /추가 입금 요청이 없습니다/);
+  assert.doesNotMatch(oldNotice.text, /입금 부탁/);
+  progress = await payments.receipt(reservationId, operator, {
+    requestKey: randomUUID(),
+    expectedVersion: progress.version,
+    guidanceRevision: progress.guidance.revision,
+    amount: 5000,
+    receivedAt: "2026-01-01T10:00:00.000Z",
+    corrects: progress.receipt!.id,
+    reason: "은행 수령액 정정",
+  });
+  v = await json<View>(await call(path, owner));
+  assert.equal(v.depositConflicts?.[0]?.applied, 10000);
+  assert.equal(v.depositConflicts?.[0]?.remaining, 5000);
+  await save(notice, 409);
+  const unchanged = await json<{ text: string }>(
+    await call(`${path}/notices/${oldNoticeId}`, owner),
+  );
+  assert.equal(unchanged.text, oldNotice.text);
+  for (const e of v.state.expenses.filter((e) => !e.deletedAt))
+    v = await save({ action: "DELETE_EXPENSE", id: e.id });
+  v = await save({
+    ...expense,
+    id: randomUUID(),
+    deposit: 5000,
+    support: 5000,
+  });
+  assert.deepEqual(v.depositConflicts, []);
+  v = await save(notice);
+  assert.equal(v.state.notices.length, 2);
+  const { ReservationChangesService } =
+    await import("../../src/modules/reservations/reservation-changes.service.js");
+  const changes = app.get(ReservationChangesService);
+  progress = await json(
+    await call(`reservations/${reservationId}/change-request`, owner, "POST", {
+      command: {
+        requestKey: randomUUID(),
+        expectedVersion: progress.version,
+        kind: "CANCEL",
+        subject: "OTHER",
+        reason: "합성 취소 협의",
+      },
+    }),
+  );
+  progress = await changes.propose(reservationId, operator, {
+    requestKey: randomUUID(),
+    expectedVersion: progress.version,
+    changeId: progress.changes[0]!.id,
+    reason: "일부 반환 합의",
+    refundExpected: 1000,
+  });
+  progress = await json(
+    await call(`reservations/${reservationId}/change-accept`, owner, "POST", {
+      command: {
+        requestKey: randomUUID(),
+        expectedVersion: progress.version,
+        changeId: progress.changes[0]!.id,
+        confirmed: true,
+      },
+    }),
+  );
+  await changes.refund(reservationId, operator, {
+    requestKey: randomUUID(),
+    expectedVersion: progress.version,
+    amount: 1000,
+    refundedAt: "2026-01-01T10:00:00.000Z",
+    reason: "실제 반환 확인",
+  });
+  v = await json<View>(await call(path, owner));
+  assert.equal(v.depositConflicts?.[0]?.remaining, 4000);
+  await save(notice, 409);
+  const activeExpense = v.state.expenses.find((e) => !e.deletedAt)!;
+  v = await save({
+    ...expense,
+    id: activeExpense.id,
+    deposit: 4000,
+    support: 6000,
+  });
+  assert.deepEqual(v.depositConflicts, []);
+  v = await save(notice);
+  assert.equal(v.state.notices.length, 3);
 });

@@ -109,3 +109,28 @@ test("unconfigured real S3 adapter fails instead of fabricating a stored file", 
   await assert.rejects(storage.get("test"), /FILE_STORAGE_UNCONFIGURED/);
   await assert.rejects(storage.delete("test"), /FILE_STORAGE_UNCONFIGURED/);
 });
+
+test("S3 body reading stops at the file cap and rejects truncated streams", async () => {
+  const { Readable } = await import("node:stream");
+  const { readFileBody } = await import("../src/modules/files/file-storage.js");
+  let yielded = 0;
+  const stream = Readable.from(
+    (async function* () {
+      for (let i = 0; i < 30; i++) {
+        yielded++;
+        yield Buffer.alloc(1024 * 1024);
+      }
+    })(),
+  );
+  await assert.rejects(readFileBody(stream), /FILE_TOO_LARGE/);
+  assert(yielded < 30);
+  assert.equal(stream.destroyed, true);
+  await assert.rejects(
+    readFileBody(Readable.from([Buffer.from("short")]), 10),
+    /FILE_LENGTH_MISMATCH/,
+  );
+  assert.equal(
+    (await readFileBody(Readable.from([Buffer.from("ok")]), 2)).toString(),
+    "ok",
+  );
+});

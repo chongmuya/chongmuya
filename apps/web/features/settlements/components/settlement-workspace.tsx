@@ -15,8 +15,13 @@ import type { Access, Detail, Expense } from "../types/settlement.types";
 import { ExpenseForm } from "./expense-form";
 import { NoticePanel } from "./notice-panel";
 import { CommandStatus } from "./command-status";
+const validReturnTime = (value: string) =>
+  !!value &&
+  Number.isFinite(Date.parse(value)) &&
+  Date.parse(value) <= Date.now();
 const reasonSchema = z.object({
   amount: z.string().regex(/^\d+$/, "정수 금액을 입력해 주세요."),
+  returnedAt: z.string(),
   reason: z
     .string()
     .trim()
@@ -43,12 +48,22 @@ function MoneyAction({
     row = data.summary.people.find((p) => p.person.id === target.participantId),
     form = useForm<z.infer<typeof reasonSchema>>({
       resolver: zodResolver(reasonSchema),
-      defaultValues: { amount: String(row?.excess ?? 0), reason: "" },
+      defaultValues: {
+        amount: String(row?.excess ?? 0),
+        reason: "",
+        returnedAt: "",
+      },
     });
   return (
     <form
       className="space-y-3 rounded-lg border border-field p-4"
       onSubmit={form.handleSubmit(async (v) => {
+        if (target.kind === "RETURN" && !validReturnTime(v.returnedAt)) {
+          form.setError("returnedAt", {
+            message: "실제 반환한 시각을 현재 이전으로 입력해 주세요.",
+          });
+          return;
+        }
         try {
           await c.mutateAsync({
             action: target.kind,
@@ -57,6 +72,7 @@ function MoneyAction({
               ? {
                   participantId: target.participantId,
                   amount: Number(v.amount),
+                  returnedAt: new Date(v.returnedAt).toISOString(),
                 }
               : { paymentId: target.paymentId }),
             reason: v.reason,
@@ -85,6 +101,20 @@ function MoneyAction({
             />
             <span id="return-amount-error" className="text-danger">
               {form.formState.errors.amount?.message}
+            </span>
+          </label>
+        )}
+        {target.kind === "RETURN" && (
+          <label>
+            실제 반환 시각
+            <Input
+              type="datetime-local"
+              {...form.register("returnedAt")}
+              aria-invalid={!!form.formState.errors.returnedAt}
+              aria-describedby="return-time-error"
+            />
+            <span id="return-time-error" className="text-danger">
+              {form.formState.errors.returnedAt?.message}
             </span>
           </label>
         )}
@@ -292,10 +322,18 @@ function People({ a, data }: { a: Access; data: Detail }) {
               {p.amount.toLocaleString()}원
             </p>
             <small>
-              {new Date(p.at).toLocaleString("ko-KR")} · 계산{" "}
+              기록 시각 {new Date(p.at).toLocaleString("ko-KR")} · 계산{" "}
               {p.calculationVersion} · 기록자 {p.actorId}
             </small>
             <p>{p.reason}</p>
+            {p.kind === "RETURN" && (
+              <p>
+                실제 반환 시각:{" "}
+                {p.returnedAt
+                  ? new Date(p.returnedAt).toLocaleString("ko-KR")
+                  : "미기록 (과거 기록)"}
+              </p>
+            )}
             {p.kind !== "CORRECTION" &&
               !data.state.payments.some((x) => x.corrects === p.id) && (
                 <Button
@@ -402,6 +440,13 @@ export function SettlementWorkspace({
           {safeErrorMessage(q.error)}
         </p>
       )}
+      {q.data.depositConflicts?.length ? (
+        <p role="alert">
+          예약금 실제 잔액이 변경되어 기존 적용액을 초과했습니다. 연결 지출의
+          예약금을 재확인·수정한 뒤 새 정산문을 발행해 주세요. 기존 기록은
+          보존됩니다.
+        </p>
+      ) : null}
       <Loaded access={a} data={q.data} record={record} />
     </>
   );

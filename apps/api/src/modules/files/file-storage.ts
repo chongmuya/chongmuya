@@ -1,3 +1,5 @@
+import { MAX_FILE_BYTES } from "./lib/validate-file.js";
+import { Readable } from "node:stream";
 import { Injectable } from "@nestjs/common";
 import {
   S3Client,
@@ -44,12 +46,36 @@ export class S3FileStorage extends FileStorage {
       { abortSignal: AbortSignal.timeout(30000) },
     );
     if (!r.Body) throw new Error("FILE_MISSING");
-    return r.Body.transformToByteArray();
+    if (!(r.Body instanceof Readable)) throw new Error("FILE_STREAM_INVALID");
+    return readFileBody(r.Body, r.ContentLength);
   }
   async delete(key: string) {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: this.bucket(), Key: key }),
       { abortSignal: AbortSignal.timeout(30000) },
     );
+  }
+}
+
+export async function readFileBody(body: Readable, contentLength?: number) {
+  const chunks: Buffer[] = [];
+  let length = 0;
+  try {
+    if (
+      contentLength !== undefined &&
+      (contentLength < 0 || contentLength > MAX_FILE_BYTES)
+    )
+      throw new Error("FILE_TOO_LARGE");
+    for await (const chunk of body) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      length += bytes.length;
+      if (length > MAX_FILE_BYTES) throw new Error("FILE_TOO_LARGE");
+      chunks.push(bytes);
+    }
+    if (contentLength !== undefined && length !== contentLength)
+      throw new Error("FILE_LENGTH_MISMATCH");
+    return Buffer.concat(chunks, length);
+  } finally {
+    body.destroy();
   }
 }

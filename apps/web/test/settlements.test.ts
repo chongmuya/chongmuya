@@ -278,6 +278,7 @@ test("switching settlement tabs preserves an unresolved return command", async (
     await click(view.container, "개인별 정산");
     await click(view.container, "실제 반환 기록");
     await fill(view.container, "reason", "실제 확인");
+    await fill(view.container, "returnedAt", "2026-01-01T10:00");
     await submit(view.container);
     await until(() =>
       assert.match(view.container.textContent!, /같은 요청 재시도/),
@@ -324,6 +325,193 @@ test("a deleted receipt can be explicitly deselected before saving an expense", 
     assert.doesNotMatch(
       view.container.textContent!,
       /현재 연결할 수 없는 이전 영수증/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("failed upload can be abandoned without deleting a saved file; retry preserves identity and draft", async () => {
+  const { EventFiles } =
+    await import("../features/files/components/event-files");
+  const { act } = await import("react");
+  for (const status of [409, 503, 0, 400, 413]) {
+    const writes: { path: string; file: File }[] = [];
+    let fail = true;
+    const a: Access = {
+      accountId: "a",
+      eventId: `files-${status}`,
+      request: async <T>(path: string, o?: RequestInit) => {
+        if (!o?.body)
+          return {
+            files: [],
+            limits: { count: 100, totalBytes: 10485760 },
+          } as T;
+        writes.push({ path, file: (o.body as FormData).get("file") as File });
+        if (fail) throw new ApiError("", status, "FILE_UNAVAILABLE");
+        return {} as T;
+      },
+    };
+    function Screen() {
+      const [draft, setDraft] = useState("초안 보존");
+      return createElement(
+        "div",
+        {},
+        createElement("input", {
+          name: "draft",
+          value: draft,
+          onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+            setDraft(e.target.value),
+        }),
+        createElement(EventFiles, { access: a }),
+      );
+    }
+    const view = await render(createElement(Screen));
+    const choose = async (name: string) => {
+      const input =
+        view.container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      assert.equal(input.disabled, false);
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new File(["receipt"], name, { type: "image/png" })],
+      });
+      await act(async () =>
+        input.dispatchEvent(new window.Event("change", { bubbles: true })),
+      );
+      return input;
+    };
+    try {
+      const input = await choose("a.png");
+      await until(() => assert.equal(writes.length, 1));
+      await until(() => assert(view.container.querySelector('[role="alert"]')));
+      assert.equal(input.value, "");
+      if ([400, 413].includes(status)) {
+        fail = false;
+        await choose("a.png");
+      } else {
+        await click(view.container, "같은 파일 업로드 재시도");
+        await until(() => assert.equal(writes.length, 2));
+        assert.equal(writes[0]!.path, writes[1]!.path);
+        assert.equal(
+          await writes[0]!.file.text(),
+          await writes[1]!.file.text(),
+        );
+        await click(view.container, "이 시도 그만두고 다른 파일 선택");
+        assert.match(
+          view.container.textContent!,
+          /이미 저장된 파일은 삭제되지 않습니다/,
+        );
+        fail = false;
+        await choose("b.png");
+      }
+      await until(() =>
+        assert.match(view.container.textContent!, /행사 자료에 저장했습니다/),
+      );
+      assert.notEqual(writes[0]!.path, writes.at(-1)!.path);
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>('[name="draft"]')!.value,
+        "초안 보존",
+      );
+    } finally {
+      await view.unmount();
+    }
+  }
+});
+
+test("zero-request notice defaults omit payment requests and preserve direct edits", async () => {
+  const { NoticePanel } =
+    await import("../features/settlements/components/notice-panel");
+  const { act } = await import("react");
+  for (const target of [0, 10000]) {
+    const data = fixture();
+    data.summary.status = "COMPLETE";
+    data.summary.target = target;
+    const a: Access = {
+      accountId: "a",
+      eventId: "e",
+      request: async <T>() => data as T,
+    };
+    const view = await render(createElement(NoticePanel, { access: a, data }));
+    try {
+      await click(view.container, "새 정산문 만들기");
+      const message = () =>
+        view.container.querySelector<HTMLTextAreaElement>('[name="message"]')!;
+      if (target === 0) assert.doesNotMatch(message().value, /입금 부탁/);
+      else {
+        assert.match(message().value, /입금 부탁/);
+        const scope =
+          view.container.querySelector<HTMLSelectElement>('[name="scope"]')!;
+        await act(async () => {
+          scope.value = "UNCONFIRMED";
+          scope.dispatchEvent(new window.Event("change", { bubbles: true }));
+        });
+        await until(() => assert.doesNotMatch(message().value, /입금 부탁/));
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype,
+            "value",
+          )!.set!.call(message(), "직접 쓴 안내");
+          message().dispatchEvent(new window.Event("input", { bubbles: true }));
+        });
+        await act(async () => {
+          scope.value = "ALL";
+          scope.dispatchEvent(new window.Event("change", { bubbles: true }));
+        });
+        assert.equal(message().value, "직접 쓴 안내");
+      }
+    } finally {
+      await view.unmount();
+    }
+  }
+});
+
+test("deposit conflicts block new notices while stale historical text remains visible", async () => {
+  const { NoticePanel } =
+    await import("../features/settlements/components/notice-panel");
+  const data = fixture();
+  data.summary.status = "COMPLETE";
+  data.depositConflicts = [
+    { reservationId: "r", applied: 10000, remaining: 5000 },
+  ];
+  data.state.notices = [
+    {
+      id: "old",
+      title: "과거 정산문",
+      createdAt: "2026-01-01T10:00:00Z",
+      calculationVersion: 1,
+      outdated: true,
+    },
+  ];
+  const a: Access = {
+    accountId: "a",
+    eventId: "e",
+    request: async <T>() =>
+      ({
+        ...data.state.notices[0],
+        text: "원래 입금 미확인 잔액: 10,000원",
+        outdated: true,
+      }) as T,
+  };
+  const view = await render(createElement(NoticePanel, { access: a, data }));
+  try {
+    const button = [...view.container.querySelectorAll("button")].find(
+      (b) => b.textContent === "새 정산문 만들기",
+    )!;
+    assert.equal(button.disabled, true);
+    assert.match(
+      view.container.textContent!,
+      /지출 보완 전 새 정산문을 발행할 수 없습니다/,
+    );
+    button.parentElement!.querySelectorAll("button")[1]!.click();
+    await until(() =>
+      assert.match(
+        view.container.textContent!,
+        /현재 분담액 또는 미확인 대상·잔액과 달라 재생성 필요/,
+      ),
+    );
+    assert.match(
+      view.container.querySelector("pre")!.textContent!,
+      /원래 입금 미확인 잔액: 10,000원/,
     );
   } finally {
     await view.unmount();

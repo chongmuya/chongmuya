@@ -14,6 +14,11 @@ export type SettlementDetailDto = {
     }[];
   };
   summary: SettlementSummaryDto;
+  depositConflicts?: {
+    reservationId: string;
+    applied: number;
+    remaining: number;
+  }[];
   bankDefault: Bank | null;
   facts: Awaited<ReturnType<EventsService["settlementFacts"]>>;
   reservations: Awaited<ReturnType<ReservationFactsService["forEvent"]>>;

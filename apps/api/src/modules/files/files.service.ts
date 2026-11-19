@@ -196,6 +196,16 @@ export class FilesService {
     let body: Uint8Array;
     try {
       body = await this.storage.get(f.objectKey);
+      if (
+        body.byteLength !== f.size ||
+        body.byteLength > MAX_FILE_BYTES ||
+        createHash("sha256")
+          .update(f.name)
+          .update(f.mime)
+          .update(body)
+          .digest("hex") !== f.digest
+      )
+        throw new Error("FILE_CONTENT_MISMATCH");
     } catch {
       throw new DomainHttpException("FILE_UNAVAILABLE");
     }
@@ -218,7 +228,7 @@ export class FilesService {
       if (!f) throw new NotFoundException();
       if (f.status === "DELETED") return f;
       if (
-        f.status === "UPLOADING" &&
+        (f.status === "UPLOADING" || f.status === "DELETING") &&
         Date.now() - f.updatedAt.getTime() < 120000
       )
         throw new DomainHttpException("FILE_BUSY");
@@ -242,11 +252,19 @@ export class FilesService {
     } catch {
       /* Durable retryable failure. */
     }
-    await db.manager.update(
+    const completed = await db.manager.update(
       EventFile,
-      { id, status: "DELETING" },
+      { id, eventId: event, version: row.version, status: "DELETING" },
       { status: success ? "DELETED" : "DELETE_FAILED", updatedAt: new Date() },
     );
+    if (completed.affected !== 1) {
+      const current = await db.manager.findOneBy(EventFile, {
+        id,
+        eventId: event,
+      });
+      if (current?.status === "DELETED") return;
+      throw new DomainHttpException("FILE_BUSY");
+    }
     if (!success) throw new DomainHttpException("FILE_UNAVAILABLE");
   }
 }

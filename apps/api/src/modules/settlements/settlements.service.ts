@@ -24,6 +24,38 @@ import {
   type SettlementInput,
 } from "./dto/request/settlement.request.dto.js";
 const invalid = () => new DomainHttpException("SETTLEMENT_INVALID");
+const noticeOutdated = (n: Notice, s: SettlementState) =>
+  n.calculationVersion !== s.calculationVersion ||
+  (n.scope === "UNCONFIRMED" &&
+    JSON.stringify(n.snapshot.people.map((p) => [p.id, p.amount]).sort()) !==
+      JSON.stringify(
+        calculate(s)
+          .people.filter((p) => p.remaining > 0)
+          .map((p) => [p.person.id, p.remaining])
+          .sort(),
+      ));
+const depositConflicts = (
+  s: SettlementState,
+  facts: { reservationId: string; remainingAmount: number }[],
+) => {
+  const used = new Map<string, number>();
+  for (const e of s.expenses)
+    if (!e.deletedAt && e.reservationId)
+      used.set(e.reservationId, (used.get(e.reservationId) ?? 0) + e.deposit);
+  return [...used]
+    .filter(
+      ([id, amount]) =>
+        amount >
+        (facts.find((f) => f.reservationId === id)?.remainingAmount ?? 0),
+    )
+    .map(([reservationId, applied]) => ({
+      reservationId,
+      applied,
+      remaining:
+        facts.find((f) => f.reservationId === reservationId)?.remainingAmount ??
+        0,
+    }));
+};
 @Injectable()
 export class SettlementsService {
   constructor(
@@ -43,7 +75,9 @@ export class SettlementsService {
     return db.transaction("REPEATABLE READ", async (m) => {
       await this.events.assertOwned(owner, event, m);
       const s = await this.state(event, m);
+      const reservations = await this.reservations.forEvent(owner, event, m);
       return {
+        depositConflicts: depositConflicts(s, reservations),
         state: {
           ...s,
           notices: s.notices.map((n) => ({
@@ -51,12 +85,12 @@ export class SettlementsService {
             title: n.title,
             createdAt: n.createdAt,
             calculationVersion: n.calculationVersion,
-            outdated: n.calculationVersion !== s.calculationVersion,
+            outdated: noticeOutdated(n, s),
           })),
         },
         summary: calculate(s),
         facts: await this.events.settlementFacts(owner, event, m),
-        reservations: await this.reservations.forEvent(owner, event, m),
+        reservations,
         bankDefault:
           (await m.findOneBy(SettlementBankDefault, { accountId: owner }))
             ?.bank ?? null,
@@ -69,7 +103,7 @@ export class SettlementsService {
     const s = await this.state(event, db.manager),
       n = s.notices.find((n) => n.id === id);
     if (!n) throw new NotFoundException();
-    return { ...n, outdated: n.calculationVersion !== s.calculationVersion };
+    return { ...n, outdated: noticeOutdated(n, s) };
   }
   async records(
     owner: string,
@@ -247,11 +281,16 @@ export class SettlementsService {
           c.amount !== row.remaining)
       )
         throw new DomainHttpException("SETTLEMENT_CONFLICT");
-      if (c.action === "RETURN" && c.amount > row.net) throw invalid();
+      if (
+        c.action === "RETURN" &&
+        (c.amount > row.net || Date.parse(c.returnedAt) > Date.now())
+      )
+        throw invalid();
       s.payments.push({
         id: randomUUID(),
         participant: row.person,
         kind: c.action,
+        ...(c.action === "RETURN" ? { returnedAt: c.returnedAt } : {}),
         amount: c.amount,
         corrects: null,
         reason: c.action === "RETURN" ? c.reason : "입금 사실 확인",
@@ -287,6 +326,11 @@ export class SettlementsService {
       return;
     }
     if (c.action === "NOTICE") {
+      if (
+        depositConflicts(s, await this.reservations.forEvent(owner, event, m))
+          .length
+      )
+        throw new DomainHttpException("SETTLEMENT_CONFLICT");
       if (summary.drafts || summary.status === "EMPTY")
         throw new DomainHttpException("SETTLEMENT_DRAFT");
       const prev = c.replaces

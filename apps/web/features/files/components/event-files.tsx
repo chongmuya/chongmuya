@@ -27,6 +27,7 @@ export function EventFiles({
   onSelect?: (ids: string[]) => void;
   expenses?: { id: string; name: string }[];
 }) {
+  const input = useRef<HTMLInputElement>(null);
   const [hasPending, setHasPending] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const q = useQuery(filesQuery(a)),
@@ -52,6 +53,7 @@ export function EventFiles({
     retry: false,
     onSuccess: () => {
       pending.current = null;
+      if (input.current) input.current.value = "";
       if (active.current) setHasPending(false);
       if (active.current)
         setNotice(
@@ -62,6 +64,7 @@ export function EventFiles({
     onError: (error) => {
       if (error instanceof ApiError && [400, 413].includes(error.status)) {
         pending.current = null;
+        if (input.current) input.current.value = "";
         if (active.current) setHasPending(false);
       }
       refresh();
@@ -107,12 +110,14 @@ export function EventFiles({
         <label className="block">
           파일 선택
           <input
+            ref={input}
             aria-label="행사 파일 선택"
             type="file"
             accept=".jpg,.jpeg,.png,.webp,.pdf,.xls,.xlsx"
             disabled={upload.isPending || hasPending}
             onChange={(e) => {
               const file = e.target.files?.[0];
+              e.target.value = "";
               if (!file) return;
               if (file.size > 10485760) {
                 setNotice("파일당 10MB 이하로 선택해 주세요.");
@@ -147,7 +152,31 @@ export function EventFiles({
           </p>
         ))}
       {hasPending && !upload.isPending && (
-        <Button onClick={() => upload.mutate()}>같은 파일 업로드 재시도</Button>
+        <div className="space-y-2">
+          <p role="status">
+            {upload.error instanceof ApiError && upload.error.status === 409
+              ? "파일 한도 또는 상태 충돌입니다. 목록을 확인한 뒤 재시도하거나 다른 파일을 선택해 주세요."
+              : "저장 완료를 확인하지 못했습니다. 같은 파일·요청으로 재확인할 수 있습니다."}
+          </p>
+          <Button onClick={() => upload.mutate()}>
+            같은 파일 업로드 재시도
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              pending.current = null;
+              setHasPending(false);
+              if (input.current) input.current.value = "";
+              upload.reset();
+              setNotice(
+                "이 시도의 재시도를 중단했습니다. 이미 저장된 파일은 삭제되지 않습니다. 목록을 확인하고 다른 파일을 선택할 수 있습니다.",
+              );
+              refresh();
+            }}
+          >
+            이 시도 그만두고 다른 파일 선택
+          </Button>
+        </div>
       )}
       {q.data?.files.map((f) => (
         <article key={f.id} className="rounded-lg border border-brand p-3">

@@ -32,6 +32,7 @@ export type Payment = {
   reason: string;
   actorId: string;
   at: string;
+  returnedAt?: string;
   calculationVersion: number;
 };
 export type Bank = { bank: string; account: string; holder: string };
@@ -109,6 +110,11 @@ export type Detail = {
     receivedAmount: number;
     refundedAmount: number;
     status: string;
+  }[];
+  depositConflicts?: {
+    reservationId: string;
+    applied: number;
+    remaining: number;
   }[];
   bankDefault: Bank | null;
 };

@@ -56,6 +56,7 @@ export const commandSchema = z.discriminatedUnion("action", [
     .object({
       ...base,
       action: z.literal("RETURN"),
+      returnedAt: z.iso.datetime({ offset: true }),
       participantId: z.uuid(),
       amount: amount.min(1),
       reason: z.string().trim().min(1).max(300),

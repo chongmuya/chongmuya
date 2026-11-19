@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -32,7 +32,9 @@ function NoticeForm({
       title: previous?.title ?? "행사 정산 안내",
       message:
         previous?.message ??
-        "함께해서 즐거웠어요! 확인 후 기한 내 입금 부탁드려요.",
+        (data.summary.target > 0
+          ? "함께해서 즐거웠어요! 확인 후 기한 내 입금 부탁드려요."
+          : "함께해서 즐거웠어요! 정산 내역을 확인해 주세요."),
       bank: bank?.bank ?? "",
       account: bank?.account ?? "",
       holder: bank?.holder ?? "",
@@ -47,11 +49,25 @@ function NoticeForm({
     v.scope === "ALL"
       ? data.summary.target
       : data.summary.people.reduce((n, p) => n + p.remaining, 0);
+  useEffect(() => {
+    if (!previous && !form.getFieldState("message").isDirty)
+      form.setValue(
+        "message",
+        amount > 0
+          ? "함께해서 즐거웠어요! 확인 후 기한 내 입금 부탁드려요."
+          : "함께해서 즐거웠어요! 정산 내역을 확인해 주세요.",
+      );
+  }, [amount, previous, form]);
   return (
     <form
       className="space-y-6"
       onSubmit={form.handleSubmit(async (v) => {
-        if (base !== data.state.version || command.uncertain) return;
+        if (
+          base !== data.state.version ||
+          command.uncertain ||
+          data.depositConflicts?.length
+        )
+          return;
         if (amount > 0 && (!v.bank || !v.account || !v.holder)) {
           form.setError("account", {
             message: "은행·계좌번호·예금주를 모두 입력해 주세요.",
@@ -168,6 +184,7 @@ function NoticeForm({
             command.isPending ||
             command.uncertain ||
             base !== data.state.version ||
+            !!data.depositConflicts?.length ||
             data.summary.drafts > 0
           }
         >
@@ -223,7 +240,8 @@ function NoticeDetail({
           <p>
             계산 버전 {n.calculationVersion} ·{" "}
             {new Date(n.createdAt).toLocaleString("ko-KR")}
-            {n.outdated && " · 현재 계산과 달라 재생성 필요"}
+            {n.outdated &&
+              " · 현재 분담액 또는 미확인 대상·잔액과 달라 재생성 필요"}
           </p>
           <pre className="whitespace-pre-wrap break-words rounded-[20px] bg-choice p-5 font-sans text-sm">
             {n.text}
@@ -289,10 +307,20 @@ export function NoticePanel({
     <div className="space-y-5">
       <Button
         onClick={() => setEditing("new")}
-        disabled={data.summary.drafts > 0 || data.summary.status === "EMPTY"}
+        disabled={
+          !!data.depositConflicts?.length ||
+          data.summary.drafts > 0 ||
+          data.summary.status === "EMPTY"
+        }
       >
         새 정산문 만들기
       </Button>
+      {!!data.depositConflicts?.length && (
+        <p role="alert">
+          예약금 실제 잔액과 연결 지출을 재확인해 주세요. 지출 보완 전 새
+          정산문을 발행할 수 없습니다.
+        </p>
+      )}
       {data.summary.drafts > 0 && (
         <p role="alert">
           미완성 지출 {data.summary.drafts}개를 먼저 완료해 주세요.
