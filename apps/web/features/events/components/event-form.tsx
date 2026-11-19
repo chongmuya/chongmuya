@@ -19,6 +19,7 @@ import {
   eventInput,
   type EventFormValues,
 } from "../schemas/event.schema";
+import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { useCreateEvent } from "../hooks/use-create-event";
 
 export function EventForm({
@@ -32,6 +33,7 @@ export function EventForm({
   request: SessionRequest;
   onCreated?: (event: { id: string }) => void;
 }) {
+  const active = useActiveScreen();
   const id = useId();
   const router = useRouter();
   const [importRoster, setImportRoster] = useState(true);
@@ -78,12 +80,15 @@ export function EventForm({
               : {}),
           },
           {
-            onError: (error) =>
-              applyFormError(error, setError, {
-                name: "name",
-                scheduledAt: "date",
-              }),
+            onError: (error) => {
+              if (active.current)
+                applyFormError(error, setError, {
+                  name: "name",
+                  scheduledAt: "date",
+                });
+            },
             onSuccess: (event) => {
+              if (!active.current) return;
               reset();
               if (onCreated) onCreated(event);
               else

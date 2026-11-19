@@ -186,7 +186,15 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
     assert(spec.components.schemas[name], `existing OpenAPI schema: ${name}`);
   assert.deepEqual(
     Object.keys(spec.components.schemas.EventDto.properties).sort(),
-    ["groupId", "id", "name", "ownerId", "scheduledAt", "version"],
+    [
+      "groupId",
+      "id",
+      "name",
+      "ownerId",
+      "reservationScheduleLocked",
+      "scheduledAt",
+      "version",
+    ],
   );
 });
 

@@ -207,8 +207,12 @@ test("event roster imports preserve 20 identities; round responses, public first
   // A direct event-only namesake remains a separate identity.
   const addition = {
     requestKey: randomUUID(),
+    expectedRoster: (await roster()).map(({ id, version }) => ({
+      id,
+      version,
+    })),
     members: [
-      { name: "김민수", phoneLast4: "9999" },
+      { name: "김민수", phoneLast4: "9999", newPersonConfirmed: true },
       { name: "최초 경쟁", phoneLast4: null },
     ],
   };
@@ -356,7 +360,12 @@ test("pending identity reviews remain separate from counts, resolve atomically w
     json(
       await call(`${base}/participants`, owner, "POST", {
         requestKey: randomUUID(),
-        members,
+        expectedRoster: (await list()).map(({ id, version }) => ({
+          id,
+          version,
+        })),
+        duplicatesConfirmed: true,
+        members: members.map((m) => ({ ...m, newPersonConfirmed: true })),
       }),
       201,
     );
@@ -381,14 +390,21 @@ test("pending identity reviews remain separate from counts, resolve atomically w
       ).status,
       400,
     );
-  await add([
-    { name: "동일인", phoneLast4: "1234" },
-    { name: "동일인", phoneLast4: "1234" },
-    { name: "이름중복" },
-    { name: "이름중복" },
-    { name: "연결 대상", phoneLast4: null },
-    { name: "고유 대상", phoneLast4: "9000" },
-  ]);
+  await json(
+    await call(`${base}/participants`, owner, "POST", {
+      requestKey: randomUUID(),
+      duplicatesConfirmed: true,
+      members: [
+        { name: "동일인", phoneLast4: "1234" },
+        { name: "동일인", phoneLast4: "1234" },
+        { name: "이름중복" },
+        { name: "이름중복" },
+        { name: "연결 대상", phoneLast4: null },
+        { name: "고유 대상", phoneLast4: "9000" },
+      ],
+    }),
+    201,
+  );
   const round = await json<RoundDetailDto>(
       await call(`${base}/attendance-rounds`, owner, "POST", {
         title: "1차",

@@ -1,4 +1,41 @@
-export const messages: Record<string, { status: number; message: string }> = {
+export const messages: Record<
+  string,
+  {
+    status: number;
+    message: string;
+  }
+> = {
+  RESERVATION_SELECTION_CONFLICT: {
+    status: 409,
+    message:
+      "문의 또는 제안이 바뀌었어요. 현재 선택 결과와 최신 답변을 확인해 주세요.",
+  },
+  RESERVATION_PROPOSAL_UNAVAILABLE: {
+    status: 409,
+    message:
+      "종료되었거나 선택 기한이 지난 제안이에요. 최신 상태를 확인해 주세요.",
+  },
+  RESERVATION_REINQUIRY_BLOCKED: {
+    status: 409,
+    message:
+      "무응답 후보·유효한 제안 또는 선택한 매장이 있어요. 현재 회차를 확인해 주세요.",
+  },
+  EVENT_SCHEDULE_CONFIRMATION: {
+    status: 409,
+    message:
+      "새 문의 일정으로 행사 날짜도 갱신하는 데 동의해 주세요. 이전 문의 일정은 보존됩니다.",
+  },
+  EVENT_CREATION_CONFLICT: {
+    status: 409,
+    message:
+      "이미 저장된 행사 요청과 내용이 달라요. 내 행사에서 생성 결과를 확인해 주세요.",
+  },
+  EVENT_SCHEDULE_LOCKED: {
+    status: 409,
+    message:
+      "발송한 문의 또는 선택한 매장의 일정이 있어요. 모두 종료된 문의는 재문의에서 날짜를 바꿀 수 있어요. 선택한 예약의 일정 변경은 아직 지원하지 않아요.",
+  },
+
   OWNER_REQUIRED: { status: 403, message: "사장님 계정으로 이용해 주세요." },
   RESTAURANT_DUPLICATE: {
     status: 409,
@@ -92,7 +129,8 @@ export const messages: Record<string, { status: number; message: string }> = {
   },
   ROSTER_LIMIT: {
     status: 400,
-    message: "행사 명단은 500명까지 등록할 수 있어요.",
+    message:
+      "행사 명단은 500명까지 등록할 수 있어요. 필요한 인원만 직접 입력해 주세요. 기존 명단은 유지됩니다.",
   },
   EVENT_GROUP_REQUIRED: {
     status: 400,

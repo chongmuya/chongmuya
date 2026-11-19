@@ -5,6 +5,7 @@ export class EventDto {
   @ApiProperty() name!: string;
   @ApiProperty() ownerId!: string;
   @ApiProperty({ type: String, nullable: true }) groupId!: string | null;
+  @ApiProperty() reservationScheduleLocked!: boolean;
   @ApiProperty() version!: number;
   @ApiProperty({ type: String, nullable: true }) scheduledAt!: string | null;
 }

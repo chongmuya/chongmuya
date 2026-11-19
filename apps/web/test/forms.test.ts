@@ -142,14 +142,19 @@ test("event form submits Korean time and refreshes the account list plus only it
     await fill(view.container, "date", "2026-11-14");
     await fill(view.container, "time", "18:30");
     await submit(view.container);
-    assert.equal(body, undefined);
+    assert.equal(typeof body, "undefined");
     await act(async () => {
       groups.resolve([{ id: event.groupId, name: "내 모임" }]);
     });
     await until(() => assert.match(view.container.textContent!, /내 모임/));
     await submit(view.container);
     await until(() => assert.deepEqual(view.navigations, ["/events?event=e1"]));
+    assert.match(
+      (body as { creationKey: string }).creationKey,
+      /^[0-9a-f-]{36}$/,
+    );
     assert.deepEqual(body, {
+      creationKey: (body as { creationKey: string }).creationKey,
       name: "새 행사",
       scheduledAt: event.scheduledAt,
       groupId: event.groupId,
@@ -343,7 +348,13 @@ test("the home group stays fixed through failed or missing reads and recovery pr
     );
     await submit(view.container);
     await until(() =>
-      assert.deepEqual(writes, [{ name: "작성하던 행사", groupId }]),
+      assert.deepEqual(writes, [
+        {
+          name: "작성하던 행사",
+          groupId,
+          creationKey: (writes[0] as { creationKey: string }).creationKey,
+        },
+      ]),
     );
   } finally {
     await view.unmount();
@@ -367,7 +378,9 @@ test("personal event creation works while groups fail and server field errors re
     if (!options?.method)
       throw new ApiError("unavailable", 503, "SERVICE_UNAVAILABLE");
     calls++;
-    assert.deepEqual(JSON.parse(String(options.body)), { name: "개인 일정" });
+    const { creationKey, ...body } = JSON.parse(String(options.body));
+    assert.match(creationKey, /^[0-9a-f-]{36}$/);
+    assert.deepEqual(body, { name: "개인 일정" });
     if (calls === 1)
       throw new ApiError("private", 400, "VALIDATION_FAILED", undefined, [
         { field: "name", code: "INVALID_LENGTH" },

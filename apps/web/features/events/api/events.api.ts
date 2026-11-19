@@ -18,3 +18,12 @@ export const getEvent = (
 ) => request<Event>(`${path}/${encodeURIComponent(eventId)}`, { signal });
 export const createEvent = (request: SessionRequest, input: EventInput) =>
   request<Event>(path, { method: "POST", body: JSON.stringify(input) });
+export const updateEvent = (
+  request: SessionRequest,
+  eventId: string,
+  input: { expectedVersion: number; name: string; scheduledAt?: string | null },
+) =>
+  request<Event>(`${path}/${eventId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });

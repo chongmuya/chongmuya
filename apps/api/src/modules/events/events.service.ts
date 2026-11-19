@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { GroupsService } from "../groups/groups.service.js";
@@ -15,6 +15,7 @@ const eventDto = (event: Event): EventDto => ({
   ownerId: event.ownerId,
   groupId: event.groupId,
   version: event.version,
+  reservationScheduleLocked: event.reservationScheduleLocked,
   name: event.name,
   scheduledAt: event.scheduledAt?.toISOString() ?? null,
 });
@@ -40,6 +41,37 @@ export class EventsService {
     return eventDto(event);
   }
 
+  // Internal callers must authorize their own principal, then acquire this event lock first.
+  async lockReservationEvent(
+    id: string,
+    manager: EntityManager,
+  ): Promise<EventDto> {
+    const event = await manager.findOne(Event, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!event) throw new NotFoundException();
+    return eventDto(event);
+  }
+  async setReservationSchedule(
+    id: string,
+    startsAt: string,
+    locked: boolean,
+    manager: EntityManager,
+  ) {
+    const event = await manager.findOneByOrFail(Event, { id });
+    const date = new Date(startsAt);
+    if (
+      event.scheduledAt?.getTime() !== date.getTime() ||
+      event.reservationScheduleLocked !== locked
+    ) {
+      event.scheduledAt = date;
+      event.reservationScheduleLocked = locked;
+      event.version++;
+      await manager.save(event);
+    }
+  }
+
   async list(ownerId: string, groupId?: string): Promise<EventDto[]> {
     const db = await this.database.connect();
     if (groupId) await this.groups.assertOwned(ownerId, groupId, db.manager);
@@ -52,8 +84,31 @@ export class EventsService {
   }
 
   async create(ownerId: string, input: EventInput): Promise<EventDto> {
+    const digest = createHash("sha256")
+      .update(
+        JSON.stringify({
+          name: input.name.trim(),
+          scheduledAt: input.scheduledAt
+            ? new Date(input.scheduledAt).toISOString()
+            : null,
+          groupId: input.groupId ?? null,
+          importGroupRoster: input.importGroupRoster ?? false,
+        }),
+      )
+      .digest("hex");
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
+      if (input.creationKey) {
+        const previous = await manager.findOneBy(Event, {
+          ownerId,
+          creationKey: input.creationKey,
+        });
+        if (previous) {
+          if (previous.creationDigest !== digest)
+            throw new DomainHttpException("EVENT_CREATION_CONFLICT");
+          return eventDto(previous);
+        }
+      }
       if (input.importGroupRoster && !input.groupId)
         throw new DomainHttpException("EVENT_GROUP_REQUIRED");
       const members =
@@ -67,15 +122,37 @@ export class EventsService {
           : null;
       if (input.groupId && !members)
         await this.groups.assertOwned(ownerId, input.groupId, manager);
-      const event = await manager.getRepository(Event).save({
+      const event = manager.getRepository(Event).create({
         id: randomUUID(),
         ownerId,
         groupId: input.groupId ?? null,
         version: 1,
+        creationKey: input.creationKey ?? null,
+        creationDigest: input.creationKey ? digest : null,
+        reservationScheduleLocked: false,
         name: input.name,
         scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
         createdAt: new Date(),
       });
+      const inserted = await manager
+        .createQueryBuilder()
+        .insert()
+        .into(Event)
+        .values(event)
+        .orIgnore()
+        .returning("id")
+        .execute();
+      if (!(inserted.raw as unknown[]).length) {
+        const previous = input.creationKey
+          ? await manager.findOneBy(Event, {
+              ownerId,
+              creationKey: input.creationKey,
+            })
+          : null;
+        if (!previous || previous.creationDigest !== digest)
+          throw new DomainHttpException("EVENT_CREATION_CONFLICT");
+        return eventDto(previous);
+      }
       if (members?.length) await copyGroupRoster(manager, event.id, members);
       return eventDto(event);
     });
@@ -101,6 +178,13 @@ export class EventsService {
       if (!event) throw new NotFoundException();
       if (event.version !== input.expectedVersion)
         throw new DomainHttpException("VERSION_CONFLICT");
+      if (
+        event.reservationScheduleLocked &&
+        input.scheduledAt !== undefined &&
+        (input.scheduledAt ? Date.parse(input.scheduledAt) : null) !==
+          (event.scheduledAt?.getTime() ?? null)
+      )
+        throw new DomainHttpException("EVENT_SCHEDULE_LOCKED");
       if (input.name !== undefined) event.name = input.name;
       if (input.scheduledAt !== undefined)
         event.scheduledAt =

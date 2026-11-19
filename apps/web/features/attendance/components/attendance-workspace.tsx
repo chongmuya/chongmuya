@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { QRCodeSVG } from "qrcode.react";
 import { StepLayout } from "@/shared/ui/step-layout";
 import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
@@ -17,6 +16,7 @@ import { FormError } from "@/shared/ui/form-error";
 import { Input } from "@/shared/ui/input";
 import { cn } from "@/shared/lib/cn";
 import { AttendanceRoster } from "./attendance-roster";
+import { InviteParticipants } from "./invite-participants";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
@@ -25,7 +25,6 @@ import { useAttendanceAction } from "../hooks/use-attendance-action";
 import { stateLabel, reasonLabel } from "../lib/attendance-labels";
 import type {
   AttendanceCounts,
-  RoundDto,
   RoundDetailDto,
   ReviewDto,
   AttendanceAnswer,
@@ -47,7 +46,7 @@ export function AttendanceWorkspace({
   const [creating, setCreating] = useState(false);
   if (roundId && params.get("review"))
     return <RoundDetail key={roundId} {...props} roundId={roundId} />;
-  if (list.isError && !list.data)
+  if (list.isError && (!list.data || isAccessError(list.error)))
     return <ErrorState retry={() => void list.refetch()} />;
   if (!list.data) return <LoadingState>참석 차수 확인 중…</LoadingState>;
   return (
@@ -248,7 +247,7 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
       managerOverride: value,
     });
   }
-  if (query.isError && !query.data)
+  if (query.isError && (!query.data || isAccessError(query.error)))
     return <ErrorState retry={() => void query.refetch()} />;
   if (!query.data) return <LoadingState>차수 확인 중…</LoadingState>;
   const round = query.data;
@@ -308,7 +307,7 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
         <div className="flex gap-2">
           {!round.closedAt && (
             <Button className="flex-1" onClick={() => setShare(true)}>
-              링크 · QR 공유
+              참여자 초대
             </Button>
           )}
           <Button
@@ -386,7 +385,13 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
         <FormError
           message={action.error ? safeErrorMessage(action.error) : undefined}
         />
-        {share && <ShareRound round={round} onClose={() => setShare(false)} />}
+        {share && (
+          <InviteParticipants
+            shareId={round.shareId}
+            roundTitle={round.title}
+            onClose={() => setShare(false)}
+          />
+        )}
         {closing && (
           <Dialog
             labelledBy="close-round-title"
@@ -431,69 +436,6 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
         )}
       </fieldset>
     </div>
-  );
-}
-function ShareRound({
-  round,
-  onClose,
-}: {
-  round: RoundDto;
-  onClose: () => void;
-}) {
-  const [url] = useState(
-      () =>
-        new URL(`/attendance/${round.shareId}`, window.location.origin).href,
-    ),
-    [copied, setCopied] = useState(false),
-    [copyError, setCopyError] = useState(false);
-  return (
-    <BottomSheet title={`${round.title} 참석 링크 공유`} onClose={onClose}>
-      <QRCodeSVG
-        value={url}
-        size={250}
-        marginSize={4}
-        title={`${round.title} 참석 응답 QR`}
-        className="mx-auto h-auto max-w-full"
-      />
-      <a
-        href={url}
-        className="mb-4 block break-all text-xs text-link underline"
-      >
-        {url}
-      </a>
-      <Button
-        className="w-full"
-        variant="outline"
-        onClick={() => {
-          void navigator.clipboard.writeText(url).then(
-            () => {
-              setCopied(true);
-              setCopyError(false);
-            },
-            () => setCopyError(true),
-          );
-        }}
-      >
-        {copied ? "링크를 복사했어요" : "링크 복사"}
-      </Button>
-      {copyError && (
-        <p role="status" className="text-xs">
-          자동 복사를 사용할 수 없어요. 위 링크를 길게 눌러 복사해 주세요.
-        </p>
-      )}
-      {typeof navigator.share === "function" && (
-        <Button
-          className="mt-3 w-full"
-          onClick={() =>
-            void navigator
-              .share({ title: `${round.title} 참석 응답`, url })
-              .catch(() => undefined)
-          }
-        >
-          공유하기
-        </Button>
-      )}
-    </BottomSheet>
   );
 }
 function ResolveReviewPage({
