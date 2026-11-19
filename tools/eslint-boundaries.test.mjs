@@ -249,6 +249,7 @@ test("offline seeds can use entities but remain isolated from runtime services",
       false,
     ],
     ["database/seeds/probe.ts", "../database-options.js", false],
+    ["database/seeds/probe.ts", "../migration-state.js", false],
     ["database/seeds/probe.ts", "../../config/database-environment.js", false],
     ["database/seeds/probe.ts", "../../modules/auth/utils/password.js", false],
     [

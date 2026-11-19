@@ -41,3 +41,33 @@ export function parseDatabaseEnvironment(env: NodeJS.ProcessEnv) {
     throw new Error("Invalid environment variables: DATABASE_URL");
   return { databaseUrl: parsed.data.DATABASE_URL };
 }
+
+export const rdsCaPath = "/run/certs/rds-global-bundle.pem";
+
+// Shared by deployment preflight and the DB-only production seed. A restored
+// Seoul RDS instance may have a new hostname; never replace TLS verification.
+export function parseProductionDatabaseEnvironment(env: NodeJS.ProcessEnv) {
+  const parsed = parseDatabaseEnvironment(env);
+  if (env.NODE_ENV !== "production")
+    throw new Error("Invalid environment variables: NODE_ENV");
+  const url = new URL(parsed.databaseUrl);
+  if (
+    !/^[a-z0-9][a-z0-9.-]*\.ap-northeast-2\.rds\.amazonaws\.com$/.test(
+      url.hostname,
+    ) ||
+    url.pathname !== "/chongmuya" ||
+    !url.username ||
+    !url.password ||
+    (url.port && url.port !== "5432") ||
+    url.hash ||
+    url.searchParams.getAll("sslmode").length !== 1 ||
+    url.searchParams.get("sslmode") !== "verify-full" ||
+    url.searchParams.getAll("sslrootcert").length !== 1 ||
+    url.searchParams.get("sslrootcert") !== rdsCaPath ||
+    [...url.searchParams.keys()].some(
+      (key) => !["sslmode", "sslrootcert"].includes(key),
+    )
+  )
+    throw new Error("Invalid environment variables: DATABASE_URL");
+  return { ...parsed, host: url.hostname, database: "chongmuya" };
+}

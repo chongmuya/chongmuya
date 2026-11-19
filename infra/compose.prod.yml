@@ -1,0 +1,69 @@
+name: chongmuya
+services:
+  api:
+    image: ${API_IMAGE:?API_IMAGE required}
+    platform: linux/amd64
+    env_file:
+      - path: ${RELEASE_DIR:?RELEASE_DIR required}/api.env
+        format: raw
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - type: bind
+        source: ${RDS_CA_FILE:?RDS_CA_FILE required}
+        target: /run/certs/rds-global-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "--input-type=module",
+          "-e",
+          "const r = await fetch('http://127.0.0.1:3001/ready', {signal: AbortSignal.timeout(2000)}); process.exit(r.ok ? 0 : 1)",
+        ]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 12
+  migrate:
+    profiles: ["tools"]
+    image: ${API_IMAGE:?API_IMAGE required}
+    platform: linux/amd64
+    env_file:
+      - path: ${RELEASE_DIR:?RELEASE_DIR required}/db.env
+        format: raw
+    volumes:
+      - type: bind
+        source: ${RDS_CA_FILE:?RDS_CA_FILE required}
+        target: /run/certs/rds-global-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: "no"
+    command: ["node", "scripts/migrate.mjs"]
+  seed-restaurants:
+    profiles: ["tools"]
+    image: ${API_IMAGE:?API_IMAGE required}
+    platform: linux/amd64
+    env_file:
+      - path: ${RELEASE_DIR:?RELEASE_DIR required}/db.env
+        format: raw
+    volumes:
+      - type: bind
+        source: ${RDS_CA_FILE:?RDS_CA_FILE required}
+        target: /run/certs/rds-global-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: "no"
+    command: ["node", "dist/database/seeds/run-production-restaurants.js"]

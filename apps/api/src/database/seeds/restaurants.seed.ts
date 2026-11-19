@@ -100,7 +100,8 @@ export async function seedRestaurants(
   db: DataSource,
   publicFixture: unknown,
   privateContacts: unknown = { contacts: [] },
-): Promise<void> {
+  options: { dryRun?: boolean } = {},
+) {
   const { restaurants } = fixtureSchema.parse(publicFixture);
   const { contacts } = contactsSchema.parse(privateContacts);
   assertUnique(restaurants.map((restaurant) => restaurant.key));
@@ -117,7 +118,20 @@ export async function seedRestaurants(
     assertUnique(restaurant.menus.map((menu) => menu.key));
   }
 
+  if (options.dryRun && contacts.length)
+    throw new Error("Public fixture preview only");
+  const result = {
+    keys: [...restaurantKeys],
+    restaurants: { created: 0, preserved: 0 },
+    spaces: { created: 0, preserved: 0 },
+    menus: { created: 0, preserved: 0 },
+  };
   await db.transaction(async (manager) => {
+    if (options.dryRun) await manager.query("SET TRANSACTION READ ONLY");
+    else
+      await manager.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('restaurant-registration',0))",
+      );
     for (const restaurant of restaurants) {
       const {
         key: restaurantKey,
@@ -127,44 +141,68 @@ export async function seedRestaurants(
         ...fields
       } = restaurant;
       const restaurantId = restaurantSeedId("restaurant", restaurantKey);
-      await manager
-        .createQueryBuilder()
-        .insert()
-        .into(Restaurant)
-        .values({
-          ...fields,
-          policies: catalogPolicies(fields),
-          id: restaurantId,
-          isDemo: false,
-          verifiedAt: verifiedAt ? new Date(verifiedAt) : null,
-        })
-        .orIgnore()
-        .execute();
-      for (const { key: spaceKey, ...space } of spaces) {
+      const existing = await manager.findOneBy(Restaurant, {
+        id: restaurantId,
+      });
+      if (existing?.isDemo)
+        throw new Error("Restaurant seed identity collision");
+      if (!existing) {
+        const collisions = (await manager.query(
+          "SELECT id FROM restaurants WHERE normalized_name=restaurant_identity_text($1) AND normalized_address=restaurant_identity_text($2) LIMIT 1",
+          [fields.name, fields.address],
+        )) as { id: string }[];
+        if (collisions.length)
+          throw new Error("Restaurant seed identity collision");
+      }
+      result.restaurants[existing ? "preserved" : "created"]++;
+      if (!options.dryRun && !existing)
         await manager
           .createQueryBuilder()
           .insert()
-          .into(RestaurantSpace)
+          .into(Restaurant)
           .values({
-            ...space,
-            id: restaurantSeedId("space", `${restaurantKey}/${spaceKey}`),
-            restaurantId,
+            ...fields,
+            policies: catalogPolicies(fields),
+            id: restaurantId,
+            isDemo: false,
+            verifiedAt: verifiedAt ? new Date(verifiedAt) : null,
           })
-          .orIgnore()
           .execute();
+      for (const { key: spaceKey, ...space } of spaces) {
+        const id = restaurantSeedId("space", `${restaurantKey}/${spaceKey}`);
+        const existing = await manager.findOneBy(RestaurantSpace, { id });
+        if (existing && existing.restaurantId !== restaurantId)
+          throw new Error("Space seed identity collision");
+        result.spaces[existing ? "preserved" : "created"]++;
+        if (!options.dryRun && !existing)
+          await manager
+            .createQueryBuilder()
+            .insert()
+            .into(RestaurantSpace)
+            .values({
+              ...space,
+              id,
+              restaurantId,
+            })
+            .execute();
       }
       for (const { key: menuKey, ...menu } of menus) {
-        await manager
-          .createQueryBuilder()
-          .insert()
-          .into(RestaurantMenu)
-          .values({
-            ...menu,
-            id: restaurantSeedId("menu", `${restaurantKey}/${menuKey}`),
-            restaurantId,
-          })
-          .orIgnore()
-          .execute();
+        const id = restaurantSeedId("menu", `${restaurantKey}/${menuKey}`);
+        const existing = await manager.findOneBy(RestaurantMenu, { id });
+        if (existing && existing.restaurantId !== restaurantId)
+          throw new Error("Menu seed identity collision");
+        result.menus[existing ? "preserved" : "created"]++;
+        if (!options.dryRun && !existing)
+          await manager
+            .createQueryBuilder()
+            .insert()
+            .into(RestaurantMenu)
+            .values({
+              ...menu,
+              id,
+              restaurantId,
+            })
+            .execute();
       }
     }
     for (const { restaurantKey, requestConsentAt, ...contact } of contacts) {
@@ -192,4 +230,5 @@ export async function seedRestaurants(
         .execute();
     }
   });
+  return result;
 }

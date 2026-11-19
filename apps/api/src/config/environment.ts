@@ -2,117 +2,122 @@ import { z } from "zod";
 import { linkEnvironmentFields } from "./link-environment.js";
 import { databaseEnvironmentSchema } from "./database-environment.js";
 
-const environmentSchema = z
-  .object({
-    NODE_ENV: z
-      .enum(["development", "test", "production"])
-      .default("development"),
-    API_PORT: z
-      .string()
-      .regex(/^\d+$/)
-      .default("3001")
-      .transform(Number)
-      .pipe(z.int().min(1).max(65535)),
-    ...databaseEnvironmentSchema.shape,
-    KAKAO_CLIENT_ID: z.string().min(1).regex(/^\S+$/).optional(),
-    KAKAO_CLIENT_SECRET: z.string().min(1).regex(/^\S+$/).optional(),
-    KAKAO_REDIRECT_URI: z
-      .url()
-      .refine((value) => {
-        const url = new URL(value);
-        return (
-          ["http:", "https:"].includes(url.protocol) &&
-          !url.username &&
-          !url.password &&
-          !url.search &&
-          !url.hash &&
-          url.pathname === "/api/v1/auth/kakao/callback"
-        );
-      })
-      .optional(),
-    TRUST_PROXY_HOPS: z
-      .enum(["0", "1"])
-      .default("0")
-      .transform((value) => (value === "1" ? 1 : 0)),
-    // Reject stale deployment settings while accepting old, empty local entries.
-    TRUSTED_PROXY_CIDRS: z.literal("").optional(),
-    MESSAGE_PROVIDER: z.enum(["fake", "solapi"]).default("fake"),
-    SOLAPI_API_KEY: z.string().min(1).optional(),
-    SOLAPI_API_SECRET: z.string().min(1).optional(),
-    SOLAPI_SENDER_NUMBER: z
-      .string()
-      .regex(/^\d{8,15}$/)
-      .optional(),
-    SOLAPI_WEBHOOK_SECRET: z.string().min(16).optional(),
-    GEOCODING_PROVIDER: z.enum(["fake", "naver"]).default("fake"),
-    NAVER_MAP_CLIENT_ID: z.string().min(1).optional(),
-    NAVER_MAP_CLIENT_SECRET: z.string().min(1).optional(),
-    OWNER_SUPPORT_EMAIL: z.email().optional(),
-    ...linkEnvironmentFields,
-    PROVIDER_TIMEOUT_MS: z.coerce
-      .number()
-      .int()
-      .min(100)
-      .max(10000)
-      .default(5000),
-    MERCHANT_REPLY_TTL_HOURS: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(720)
-      .default(168),
-    AUTH_SECRET: linkEnvironmentFields.AUTH_SECRET.unwrap(),
-    RESEND_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
-    RESEND_FROM: z
-      .string()
-      .max(320)
-      .refine((value) => {
-        if (z.email().safeParse(value).success) return true;
-        const match = /^[^<>\r\n]+ <([^<>\s]+)>$/.exec(value);
-        return !!match && z.email().safeParse(match[1]).success;
-      })
-      .optional(),
-    RESEND_REPLY_TO: z.email().default("support@chongmuya.com"),
-    EMAIL_VERIFICATION_SECRET: z.string().min(32).optional(),
-    RESEND_DEBUG: z.enum(["false"]).optional(),
-    OCTOMO_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
-    SIGNUP_TERMS_JSON: z
-      .string()
-      .transform((value, ctx) => {
-        try {
-          return JSON.parse(value) as unknown;
-        } catch {
-          ctx.addIssue({ code: "custom", message: "Invalid JSON" });
-          return z.NEVER;
-        }
-      })
-      .pipe(
-        z
-          .array(
-            z.object({
-              id: z.enum([
-                "serviceTerms",
-                "privacyCollection",
-                "privacyPolicy",
-                "marketing",
-              ]),
-              version: z
-                .string()
-                .min(1)
-                .max(64)
-                .regex(/^[A-Za-z0-9._-]+$/),
-              url: z
-                .url()
-                .refine((value) => new URL(value).protocol === "https:"),
-            }),
-          )
-          .length(4)
-          .refine((items) => new Set(items.map((item) => item.id)).size === 4),
-      )
-      .optional(),
-    // Boolean("false") is true; accept only these two explicit strings.
-    API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
-  })
+const environmentInputSchema = z.object({
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
+  API_PORT: z
+    .string()
+    .regex(/^\d+$/)
+    .default("3001")
+    .transform(Number)
+    .pipe(z.int().min(1).max(65535)),
+  ...databaseEnvironmentSchema.shape,
+  KAKAO_CLIENT_ID: z.string().min(1).regex(/^\S+$/).optional(),
+  KAKAO_CLIENT_SECRET: z.string().min(1).regex(/^\S+$/).optional(),
+  KAKAO_REDIRECT_URI: z
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return (
+        ["http:", "https:"].includes(url.protocol) &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
+        url.pathname === "/api/v1/auth/kakao/callback"
+      );
+    })
+    .optional(),
+  TRUST_PROXY_HOPS: z
+    .enum(["0", "1"])
+    .default("0")
+    .transform((value) => (value === "1" ? 1 : 0)),
+  // Reject stale deployment settings while accepting old, empty local entries.
+  TRUSTED_PROXY_CIDRS: z.literal("").optional(),
+  MESSAGE_PROVIDER: z.enum(["fake", "solapi"]).default("fake"),
+  SOLAPI_API_KEY: z.string().min(1).optional(),
+  SOLAPI_API_SECRET: z.string().min(1).optional(),
+  SOLAPI_SENDER_NUMBER: z
+    .string()
+    .regex(/^\d{8,15}$/)
+    .optional(),
+  SOLAPI_WEBHOOK_SECRET: z.string().min(16).optional(),
+  GEOCODING_PROVIDER: z.enum(["fake", "naver"]).default("fake"),
+  NAVER_MAP_CLIENT_ID: z.string().min(1).optional(),
+  NAVER_MAP_CLIENT_SECRET: z.string().min(1).optional(),
+  OWNER_SUPPORT_EMAIL: z.email().optional(),
+  ...linkEnvironmentFields,
+  PROVIDER_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(10000)
+    .default(5000),
+  MERCHANT_REPLY_TTL_HOURS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(720)
+    .default(168),
+  AUTH_SECRET: linkEnvironmentFields.AUTH_SECRET.unwrap(),
+  RESEND_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
+  RESEND_FROM: z
+    .string()
+    .max(320)
+    .refine((value) => {
+      if (z.email().safeParse(value).success) return true;
+      const match = /^[^<>\r\n]+ <([^<>\s]+)>$/.exec(value);
+      return !!match && z.email().safeParse(match[1]).success;
+    })
+    .optional(),
+  RESEND_REPLY_TO: z.email().default("support@chongmuya.com"),
+  EMAIL_VERIFICATION_SECRET: z.string().min(32).optional(),
+  RESEND_DEBUG: z.enum(["false"]).optional(),
+  OCTOMO_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
+  SIGNUP_TERMS_JSON: z
+    .string()
+    .transform((value, ctx) => {
+      try {
+        return JSON.parse(value) as unknown;
+      } catch {
+        ctx.addIssue({ code: "custom", message: "Invalid JSON" });
+        return z.NEVER;
+      }
+    })
+    .pipe(
+      z
+        .array(
+          z.object({
+            id: z.enum([
+              "serviceTerms",
+              "privacyCollection",
+              "privacyPolicy",
+              "marketing",
+            ]),
+            version: z
+              .string()
+              .min(1)
+              .max(64)
+              .regex(/^[A-Za-z0-9._-]+$/),
+            url: z
+              .url()
+              .refine((value) => new URL(value).protocol === "https:"),
+          }),
+        )
+        .length(4)
+        .refine((items) => new Set(items.map((item) => item.id)).size === 4),
+    )
+    .optional(),
+  // Boolean("false") is true; accept only these two explicit strings.
+  API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
+});
+
+export const environmentVariableNames = Object.keys(
+  environmentInputSchema.shape,
+);
+
+const environmentSchema = environmentInputSchema
   .superRefine((env, ctx) => {
     const required = (fields: (keyof typeof env)[]) => {
       for (const field of fields)

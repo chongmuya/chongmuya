@@ -145,12 +145,15 @@ TEST_DATABASE_URL=<격리된_PostgreSQL_URL> pnpm test:integration
 
 Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 **26.x**로 맞추고 변경된 커밋을 재배포합니다. `package.json`의 `engines.node`가 프로젝트 설정보다 우선하며, Vercel은 26.x의 마이너·패치 업데이트를 자동 적용하므로 `.nvmrc`의 정확한 패치로 고정되지는 않습니다. 빌드와 Functions의 실제 패치 버전도 다를 수 있습니다. 자세한 정책은 [Vercel Node.js 버전 문서](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions)를 참고하세요.
 
-별도 API 호스팅 환경도 Node 26.x와 pnpm 11.25.0을 사용하고, 정확한 패치를 지정하는 환경은 `.nvmrc`에 맞춥니다. 이 저장소에는 앱 Dockerfile이 없으며 `compose.yaml`은 로컬 PostgreSQL만 실행합니다.
+API 운영 이미지는 Node 26.13.1·pnpm 11.25.0으로 빌드합니다. GitHub Actions의 수동 이미지 발행과 EC2의 첫 배포·업데이트·복구는 [운영 배포 안내](docs/deployment.md)를 따릅니다. 루트 `compose.yaml`은 로컬 PostgreSQL용이고 `infra/compose.prod.yml`은 RDS를 사용하는 운영 API용입니다.
+
+첫 운영 식당 데이터는 별도 `db:seed:restaurants:production` 진입점으로 실제 공개 정보만 추가합니다. EC2에서는 같은 잠금을 사용하는 `infra/deploy.sh seed-restaurants`로 미리보고 `--execute`로 반영합니다. 기존 로컬 시드의 운영 차단은 유지합니다. 배포는 `deploy <digest>`, 수동 복구는 `rollback <release-id> --confirm-compatibility`이며 상세 명령·설정·복구 제약은 배포 안내에 있습니다.
 
 ## 문서
 
 - [아키텍처](docs/architecture.md): 책임·의존 방향·API·캐시·오류·migration
 - [인증 기준](docs/authentication.md): Passport·쿠키·CSRF·세션·개인 자원 접근
+- [운영 배포](docs/deployment.md): 이미지 발행·EC2 실행·RDS TLS·Nginx·실패 복구
 - [협업 규칙](docs/CONTRIBUTING.md): 커밋·브랜치·PR과 검증
 - [PR 템플릿](.github/pull_request_template.md)
 
@@ -158,7 +161,7 @@ Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 
 
 `/owner`에서 사장님 첫 설정, 계정별 등록 초안, 정보·메뉴 수정과 받은 문의를 이용한다. 신규 매장은 공개 대기이며, 기존 운영 매장은 계정 연결 없이도 유효 연락처와 수신 동의가 있으면 문자 문의를 받을 수 있다. `/merchant-reply?target=<id>#token=<비밀값>`은 로그인 없는 단일 문의 답변·수정 링크다. 가능·변경 제안은 예약 확정이 아니며, 접수 후 같은 행사 재문의는 계속 금지한다.
 
-API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery`, `DeliveryLinkGenerations` migration을 기존 명시적 `db:migration:run`으로 적용한다. Node/pnpm, `pnpm dev`, 브라우저→Nest 통신은 그대로다. `.env.example`의 서버 설정을 `apps/api/.env` 또는 실제 Nest 프로세스 환경에 주입한다. Turbo 개발 실행에도 전달된다. Compose는 기존 로컬 PostgreSQL만 실행하며 별도 워커·Redis는 없다.
+API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery`, `DeliveryLinkGenerations` migration을 기존 명시적 `db:migration:run`으로 적용한다. Node/pnpm, `pnpm dev`, 브라우저→Nest 통신은 그대로다. `.env.example`의 서버 설정을 `apps/api/.env` 또는 실제 Nest 프로세스 환경에 주입한다. Turbo 개발 실행에도 전달된다. 운영 Compose와 migration 실행은 배포 안내를 따르며 별도 워커·Redis는 없다.
 
 - 개발/CI: `MESSAGE_PROVIDER=fake`, `GEOCODING_PROVIDER=fake`. 실제 전달 완료로 표시하지 않는다. 운영에서는 fake를 허용하지 않는다.
 - 실제 연동: 이미 발급한 SOLAPI Key/Secret과 등록 발신번호, 이미 Geocoding을 활성화한 Maps Application의 ID/Secret을 서버에 설정한다. 지도 표시용 `NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`와 서버 Secret을 구분한다.
