@@ -11,7 +11,7 @@ export function SplashScreen() {
           src="/images/auth/brand-symbol.svg"
           alt=""
           width={84}
-          height={74.286}
+          height={74}
           className="mx-auto"
           priority
         />
@@ -19,7 +19,7 @@ export function SplashScreen() {
           src="/images/auth/brand-wordmark.svg"
           alt="총무야"
           width={121}
-          height={43.53}
+          height={44}
           priority
         />
         <p role="status" className="sr-only">

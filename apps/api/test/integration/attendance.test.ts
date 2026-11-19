@@ -48,6 +48,22 @@ test("event roster imports preserve 20 identities; round responses, public first
     }),
     201,
   );
+  const copied = await json<{ id: string }>(
+    await call("events", owner, "POST", {
+      name: "명단과 함께 생성",
+      groupId: group.id,
+      importGroupRoster: true,
+    }),
+    201,
+  );
+  const copiedRoster = await json<ParticipantDto[]>(
+    await call(`events/${copied.id}/participants`, owner),
+  );
+  assert.equal(copiedRoster.length, members.length);
+  assert.deepEqual(
+    copiedRoster.map((p) => p.name),
+    members.map((m) => m.name),
+  );
   const base = `events/${event.id}`,
     rounds = `${base}/attendance-rounds`;
   assert.deepEqual(await json(await call(rounds, owner)), {

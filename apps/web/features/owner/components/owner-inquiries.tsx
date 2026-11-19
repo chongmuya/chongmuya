@@ -24,7 +24,7 @@ export function OwnerInquiries({
   });
   return (
     <StepLayout
-      title="받은 문의"
+      title={targetId ? "받은 문의" : ""}
       onBack={() => onNavigate(targetId ? "/owner/inquiries" : "/owner")}
     >
       {targetId ? (

@@ -1,6 +1,7 @@
 "use client";
 import { isAccessError } from "@/shared/http/access-error";
 import Link from "next/link";
+import { EventBanner } from "./event-banner";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { buttonStyles } from "@/shared/ui/button";
@@ -25,8 +26,22 @@ export function EventSummary({
     : personal
       ? events.data?.filter((e) => e.groupId === null)
       : events.data;
+  const featured = shown?.[0];
   return (
     <section className="space-y-4">
+      {shown && (
+        <EventBanner
+          href={
+            featured
+              ? `/events?event=${featured.id}`
+              : groupId
+                ? `/events?group=${groupId}`
+                : "/events"
+          }
+          eventName={featured?.name}
+        />
+      )}
+
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-label text-copy">
           {groupId ? "우리 모임 행사" : personal ? "개인 행사" : "내 행사"}
@@ -56,10 +71,10 @@ export function EventSummary({
           {shown.map((event) => (
             <li key={event.id}>
               <Link
-                className="block rounded-control bg-surface p-5 shadow-card"
+                className="block rounded-control bg-surface px-5 py-4 shadow-card"
                 href={`/events?event=${event.id}`}
               >
-                <span className="mb-3 block text-copy font-semibold break-words">
+                <span className="mb-3 block text-control font-semibold break-words">
                   {event.name}
                 </span>
                 <span className="text-xs text-secondary">

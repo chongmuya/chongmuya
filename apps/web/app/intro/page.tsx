@@ -1,9 +1,9 @@
 import { Suspense } from "react";
-import { ServiceIntroduction, SplashScreen } from "@/features/auth/client";
+import { AuthEntryScreen, SplashScreen } from "@/features/auth/client";
 export default function IntroductionPage() {
   return (
     <Suspense fallback={<SplashScreen />}>
-      <ServiceIntroduction />
+      <AuthEntryScreen screen="start" />
     </Suspense>
   );
 }

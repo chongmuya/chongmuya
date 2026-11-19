@@ -9,8 +9,10 @@ import { applyFormError } from "@/shared/lib/apply-form-error";
 import { useGroups } from "@/features/groups/client";
 import { ErrorState } from "@/shared/ui/states";
 import { Button } from "@/shared/ui/button";
+import { Checkbox } from "@/shared/ui/checkbox";
 import { Input } from "@/shared/ui/input";
 import Image from "next/image";
+import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import {
   eventSchema,
@@ -32,6 +34,7 @@ export function EventForm({
 }) {
   const id = useId();
   const router = useRouter();
+  const [importRoster, setImportRoster] = useState(true);
   const [findVenue, setFindVenue] = useState(false);
   const {
     register,
@@ -45,6 +48,7 @@ export function EventForm({
     defaultValues: {
       name: "",
       date: "",
+      time: "",
     },
   });
   const create = useCreateEvent(accountId, request);
@@ -66,23 +70,31 @@ export function EventForm({
           return;
         }
         clearErrors();
-        create.mutate(eventInput(values, groupId || undefined), {
-          onError: (error) =>
-            applyFormError(error, setError, {
-              name: "name",
-              scheduledAt: "date",
-            }),
-          onSuccess: (event) => {
-            reset();
-            if (onCreated) onCreated(event);
-            else
-              router.push(
-                findVenue
-                  ? `/restaurants?event=${event.id}&inquiry=1`
-                  : `/events?event=${encodeURIComponent(event.id)}`,
-              );
+        create.mutate(
+          {
+            ...eventInput(values, groupId || undefined),
+            ...(groupId && group?.memberCount && importRoster
+              ? { importGroupRoster: true }
+              : {}),
           },
-        });
+          {
+            onError: (error) =>
+              applyFormError(error, setError, {
+                name: "name",
+                scheduledAt: "date",
+              }),
+            onSuccess: (event) => {
+              reset();
+              if (onCreated) onCreated(event);
+              else
+                router.push(
+                  findVenue
+                    ? `/restaurants?event=${event.id}&inquiry=1`
+                    : `/events?event=${encodeURIComponent(event.id)}`,
+                );
+            },
+          },
+        );
       })}
     >
       <h2 className="mb-7 text-2xl leading-tight font-bold">
@@ -119,19 +131,41 @@ export function EventForm({
           />
           <FormError id={`${id}-name-error`} message={errors.name?.message} />
         </div>
-        <div className="space-y-3">
-          <label htmlFor={`${id}-date`}>일정 (선택 · 한국 시간)</label>
-          <Input
-            variant="form"
-            id={`${id}-date`}
-            type="datetime-local"
-            {...register("date")}
-            disabled={create.isPending}
-            aria-invalid={!!errors.date}
-            aria-describedby={errors.date ? `${id}-date-error` : undefined}
-          />
-          <FormError id={`${id}-date-error`} message={errors.date?.message} />
-        </div>
+        <fieldset>
+          <legend className="sr-only">일정 (선택 · 한국 시간)</legend>
+          <div className="grid grid-cols-2 gap-3">
+            {(["date", "time"] as const).map((field) => (
+              <FormField
+                key={field}
+                id={`${id}-${field}`}
+                label={field === "date" ? "날짜 (선택)" : "시간 (한국 시간)"}
+                error={errors[field]?.message}
+                className="min-w-0 gap-3"
+              >
+                {(attrs) => (
+                  <Input
+                    {...attrs}
+                    className="min-w-0"
+                    variant="form"
+                    type={field}
+                    {...register(field)}
+                    disabled={create.isPending}
+                  />
+                )}
+              </FormField>
+            ))}
+          </div>
+        </fieldset>
+        {group && group.memberCount > 0 && (
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <Checkbox
+              checked={importRoster}
+              disabled={create.isPending}
+              onChange={(e) => setImportRoster(e.target.checked)}
+            />
+            모임 기본 명단 불러오기 ({group.memberCount}명)
+          </label>
+        )}
         {!onCreated && (
           <fieldset className="pt-3">
             <legend className="mb-5 text-sm font-semibold">

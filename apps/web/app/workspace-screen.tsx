@@ -13,8 +13,14 @@ import type { SessionRequest } from "@/features/auth/types";
 import { GroupBoundary, GroupSettings } from "@/features/groups/client";
 import { AttendanceWorkspace, EventRoster } from "@/features/attendance/client";
 import { ReservationProgress } from "@/features/reservations/client";
-import { EventForm, EventDetail, eventKeys } from "@/features/events/client";
+import {
+  EventForm,
+  EventDetail,
+  EventNavigation,
+  eventKeys,
+} from "@/features/events/client";
 
+import { AccountNavigation } from "@/features/home/client";
 import { buttonStyles } from "@/shared/ui/button";
 import { StepLayout } from "@/shared/ui/step-layout";
 
@@ -34,9 +40,12 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       >
         {status === "anonymous" ? (
           <section>
-            <h1>로그인이 필요합니다</h1>
+            <h1 className="mb-6 text-2xl font-bold">
+              로그인하고 이어서 진행해 주세요
+            </h1>
             <Link
-              href={`/auth?next=${encodeURIComponent(`${pathname}${params.size ? `?${params}` : ""}`)}`}
+              className={buttonStyles({ className: "w-full" })}
+              href={`/start?next=${encodeURIComponent(`${pathname}${params.size ? `?${params}` : ""}`)}`}
             >
               로그인 · 회원가입
             </Link>
@@ -94,7 +103,11 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       title={mode === "mypage" ? "마이페이지" : ""}
       onBack={() => {
         if (mode === "mypage" && params.get("view"))
-          return router.replace("/mypage");
+          return router.replace(
+            params.get("group")
+              ? `/mypage?group=${encodeURIComponent(params.get("group")!)}`
+              : "/mypage",
+          );
         const id = params.get("event");
         const event =
           id && mode === "events"
@@ -114,43 +127,13 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
           <KakaoConnection key={account.id} accountId={account.id} />
         </div>
       ) : mode === "mypage" && params.get("view") !== "groups" ? (
-        <nav className="space-y-4" aria-label="마이페이지 메뉴">
-          <Link
-            className={buttonStyles({
-              variant: "outline",
-              className: "w-full",
-            })}
-            href="/mypage?view=account"
-          >
-            계정 정보
-          </Link>
-          {account.accountType === "owner" ? (
-            <Link
-              className={buttonStyles({ className: "w-full" })}
-              href="/owner"
-            >
-              내 매장
-            </Link>
-          ) : (
-            <>
-              <Link
-                className={buttonStyles({
-                  variant: "outline",
-                  className: "w-full",
-                })}
-                href="/mypage?view=groups"
-              >
-                모임 관리
-              </Link>
-              <Link
-                className={buttonStyles({ className: "w-full" })}
-                href="/groups/new"
-              >
-                모임 만들기
-              </Link>
-            </>
-          )}
-        </nav>
+        <AccountNavigation
+          groupId={params.get("group")}
+          accountId={account.id}
+          request={client.request.bind(client)}
+          owner={account.accountType === "owner"}
+          name={account.nickname ?? account.name ?? "회원"}
+        />
       ) : (
         content
       )}
@@ -203,27 +186,7 @@ export function WorkspaceContent({
                 request={request}
                 eventId={eventId}
               />
-              <nav
-                aria-label="행사 관리"
-                className="mb-7 flex gap-2 border-b border-border pb-3 text-sm"
-              >
-                {[
-                  ["reservation", "예약"],
-                  ["attendance", "참석 관리"],
-                  ["roster", "명단 관리"],
-                ].map(([value, label]) => (
-                  <Link
-                    key={value}
-                    href={`/events?event=${eventId}&view=${value}`}
-                    className={`flex-1 rounded-pill px-2 py-3 text-center ${(view ?? "reservation") === value ? "bg-brand text-white" : "text-muted"}`}
-                    aria-current={
-                      (view ?? "reservation") === value ? "page" : undefined
-                    }
-                  >
-                    {label}
-                  </Link>
-                ))}
-              </nav>
+              <EventNavigation eventId={eventId} view={view} />
             </>
           )}
           {view === "attendance" ? (

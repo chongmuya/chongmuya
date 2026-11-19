@@ -42,8 +42,8 @@ export function RoleConfirmation({
             <Image
               src="/images/enrollment/confirm-owner.svg"
               alt=""
-              width={72.1323}
-              height={64.5}
+              width={72}
+              height={64}
               className="absolute -top-[2.25px] left-0"
             />
           </div>
@@ -52,8 +52,8 @@ export function RoleConfirmation({
             <Image
               src="/images/enrollment/confirm-organizer.svg"
               alt=""
-              width={72.4304}
-              height={64.4585}
+              width={72}
+              height={64}
               className="absolute top-0 -left-[2.255px]"
             />
           </div>

@@ -58,7 +58,8 @@ export function ReplyForm({
     active = useActiveScreen(),
     sending = useRef(false);
   const kind = useWatch({ control: form.control, name: "kind" });
-  const [editing, setEditing] = useState(!q.response);
+  const [editing, setEditing] = useState(false);
+  const [revising, setRevising] = useState(false);
   const offers = useRef<
     Partial<Record<"AVAILABLE" | "CHANGE", MerchantReplyInput["proposal"]>>
   >({});
@@ -70,6 +71,29 @@ export function ReplyForm({
   const deposit = offered?.deposit.kind ?? "UNKNOWN";
   const deadline = useWatch({ control: form.control, name: "expiresAt" });
   const changed = q.version !== form.getValues("expectedVersion");
+  function chooseKind(v: MerchantReplyInput["kind"]) {
+    if (kind !== v) {
+      if (kind !== "DECLINE") {
+        offers.current[kind] = structuredClone(form.getValues("proposal"));
+        previousDeadline.current = form.getValues("expiresAt");
+      }
+      form.setValue("kind", v);
+      form.setValue(
+        "proposal",
+        v === "DECLINE"
+          ? null
+          : (offers.current[v] ?? structuredClone(q.defaults.proposal)),
+      );
+      form.setValue(
+        "expiresAt",
+        v === "DECLINE" ? null : previousDeadline.current,
+      );
+      form.setValue("holdConfirmed", false);
+
+      form.clearErrors();
+    }
+    setEditing(true);
+  }
   return (
     <>
       <h1 className="text-2xl font-bold">{q.restaurantName} 예약 문의</h1>
@@ -83,7 +107,7 @@ export function ReplyForm({
         <p className="mt-3 text-sm">담당자: {q.organizerName}</p>
       </section>
       {q.response && <ReplySummary response={q.response} />}
-      {!editing && q.response && (
+      {!editing && !revising && q.response && (
         <Button
           className="my-4 w-full"
           disabled={blocked}
@@ -92,11 +116,36 @@ export function ReplyForm({
             offers.current = {};
             previousDeadline.current =
               q.response?.expiresAt ?? q.defaults.expiresAt;
+            setRevising(true);
             setEditing(true);
           }}
         >
           답변 수정하기
         </Button>
+      )}
+      {!editing && (!q.response || revising) && (
+        <section aria-label="답변 선택" className="mt-auto space-y-2 pt-8">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="brand-outline"
+              disabled={blocked}
+              onClick={() => chooseKind("CHANGE")}
+            >
+              조건 변경 제안
+            </Button>
+            <Button disabled={blocked} onClick={() => chooseKind("AVAILABLE")}>
+              요청 조건으로 가능
+            </Button>
+          </div>
+          <button
+            type="button"
+            className="block min-h-11 w-full text-sm font-medium text-secondary underline underline-offset-4"
+            disabled={blocked}
+            onClick={() => chooseKind("DECLINE")}
+          >
+            이 문의는 어려워요
+          </button>
+        </section>
       )}
       {editing && changed && (
         <div
@@ -144,6 +193,7 @@ export function ReplyForm({
                 if (active.current) {
                   form.setValue("expectedVersion", result.version);
                   setEditing(false);
+                  setRevising(false);
                 }
               } catch {
                 /* Preserve fields and request key for an explicit retry. */
@@ -157,39 +207,20 @@ export function ReplyForm({
             disabled={mutation.isPending || changed || blocked}
             className="space-y-5"
           >
-            <legend className="mb-4 text-xl font-bold">문의에 답변하기</legend>
-            <label className="block space-y-2">
-              답변
-              <Select
-                value={kind}
-                onChange={(e) => {
-                  const v = e.target.value as MerchantReplyInput["kind"];
-                  if (kind !== "DECLINE") {
-                    offers.current[kind] = structuredClone(
-                      form.getValues("proposal"),
-                    );
-                    previousDeadline.current = form.getValues("expiresAt");
-                  }
-                  form.setValue("kind", v);
-                  form.setValue(
-                    "proposal",
-                    v === "DECLINE"
-                      ? null
-                      : (offers.current[v] ??
-                          structuredClone(q.defaults.proposal)),
-                  );
-                  form.setValue(
-                    "expiresAt",
-                    v === "DECLINE" ? null : previousDeadline.current,
-                  );
-                  form.setValue("holdConfirmed", false);
-                }}
-              >
-                <option value="AVAILABLE">요청 조건으로 가능</option>
-                <option value="CHANGE">조건 변경 제안</option>
-                <option value="DECLINE">불가</option>
-              </Select>
-            </label>
+            <legend className="mb-4 text-xl font-bold">
+              {kind === "DECLINE"
+                ? "어떤 이유로 어려우신가요?"
+                : kind === "CHANGE"
+                  ? "어떤 조건을 바꿀까요?"
+                  : "총무에게 보낼 답변을 써주세요"}
+            </legend>
+            <button
+              type="button"
+              className="text-sm text-link underline"
+              onClick={() => setEditing(false)}
+            >
+              답변 종류 다시 선택
+            </button>
             {kind === "DECLINE" ? (
               <label className="block space-y-2">
                 거절 사유 *
@@ -212,6 +243,8 @@ export function ReplyForm({
                           제안 일시 (한국 시간) *
                           <Input
                             type="datetime-local"
+                            name={field.name}
+                            ref={field.ref}
                             aria-invalid={
                               !!form.formState.errors.proposal?.startsAt
                             }
@@ -300,6 +333,8 @@ export function ReplyForm({
                             {label}
                             <Input
                               type="number"
+                              name={field.name}
+                              ref={field.ref}
                               min={0}
                               value={field.value ?? ""}
                               onChange={(e) =>
@@ -318,6 +353,7 @@ export function ReplyForm({
                     <label className="block space-y-2">
                       예약금
                       <Select
+                        name="proposal.deposit.kind"
                         value={deposit}
                         onChange={(e) => {
                           const v = e.target.value as typeof deposit;
@@ -367,6 +403,8 @@ export function ReplyForm({
                           메뉴 확정 기한 (미확인 시 비워 두세요)
                           <Input
                             type="datetime-local"
+                            name={field.name}
+                            ref={field.ref}
                             value={koreanDateInput(field.value)}
                             onChange={(e) =>
                               field.onChange(
@@ -387,6 +425,8 @@ export function ReplyForm({
                       제안 선택 기한 (한국 시간) *
                       <Input
                         type="datetime-local"
+                        name={field.name}
+                        ref={field.ref}
                         value={koreanDateInput(field.value)}
                         onChange={(e) =>
                           field.onChange(fromKoreanDateInput(e.target.value))

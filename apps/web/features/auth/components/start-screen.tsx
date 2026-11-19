@@ -11,12 +11,6 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
   const [guest, setGuest] = useState(false);
   return (
     <AuthLayout title="총무야 시작하기" start>
-      <Link
-        href={`/intro?next=${encodeURIComponent(returnTo)}`}
-        className="absolute top-8 right-4 text-caption text-brand-ink underline"
-      >
-        서비스 소개
-      </Link>
       <div className="mt-auto pt-16">
         <div className="flex flex-col gap-2">
           <Link
@@ -43,11 +37,11 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
       {guest && (
         <NoticeDialog
           title="회원가입 없이 진행할까요?"
-          description="서비스를 먼저 둘러볼 수 있어요. 내 행사나 모임·명단을 저장할 때는 회원가입과 로그인이 필요해요."
+          description="매장은 로그인 없이 둘러볼 수 있어요. 문의를 보내거나 참석을 관리하려면 로그인이 필요해요."
           onClose={() => setGuest(false)}
         >
           <Link
-            href="/"
+            href="/restaurants"
             className={buttonStyles({
               variant: "brand-outline",
               className: "text-caption",

@@ -15,9 +15,9 @@
   --color-background: #f9faf8;
   --color-surface: #ffffff;
   --color-foreground: #243b33;
-  --color-muted: #52616b;
+  --color-muted: #686868;
   --color-link: #13675e;
-  --color-border: #dce3e5;
+  --color-border: #e0e0e0;
   --color-input: #81929d;
   --color-placeholder: #c0c0c0;
   --color-kakao: #fbe300;
@@ -46,7 +46,7 @@
 
 @layer base {
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-copy font-sans;
     line-height: 1.6;
   }
   :focus-visible {

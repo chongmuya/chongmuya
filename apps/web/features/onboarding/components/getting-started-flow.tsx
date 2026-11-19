@@ -56,8 +56,8 @@ export function GettingStartedFlow({
                 <Image
                   src="/images/enrollment/group.svg"
                   alt=""
-                  width={92.2137}
-                  height={51.95}
+                  width={92}
+                  height={52}
                 />
                 <span className="mt-7 space-y-2">
                   <span className="block text-label">
@@ -115,8 +115,8 @@ export function GettingStartedFlow({
                 <Image
                   src="/images/enrollment/welcome.svg"
                   alt=""
-                  width={67.1996}
-                  height={59.4287}
+                  width={67}
+                  height={59}
                   className="absolute top-[14px] left-[10px]"
                 />
               </div>

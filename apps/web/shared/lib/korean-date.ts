@@ -12,4 +12,11 @@ export function fromKoreanDateInput(value: string) {
 }
 
 export const koreanDateLabel = (instant: string) =>
-  new Date(instant).toLocaleString("ko-KR", { timeZone });
+  new Date(instant).toLocaleString("ko-KR", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });

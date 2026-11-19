@@ -18,7 +18,6 @@ test("room choice and importance survive form validation and inquiry conversion"
     date: "2099-01-01",
     time: "18:00",
     expectedGuests: "20",
-    region: "건대입구",
     seating: "CLOSE",
     space: "ROOM",
     seatingImportance: "PREFERRED",
@@ -31,6 +30,7 @@ test("room choice and importance survive form validation and inquiry conversion"
     contactPhone: "01000000000",
   });
   const inquiry = inquiryConditions(values);
+  assert.equal(inquiry.region, "건대입구 · 세종대");
   assert.equal(inquiry.space, "ROOM");
   assert.equal(inquiry.spaceImportance, "REQUIRED");
   assert.equal(inquiry.expectedGuests, 20);

@@ -47,7 +47,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
         src="/images/attendance/brand.svg"
         alt="총무야"
         width={354}
-        height={35.9756}
+        height={36}
         className="h-auto w-full"
         priority
       />
@@ -57,8 +57,8 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
             <Image
               src="/images/attendance/unavailable.svg"
               alt=""
-              width={18.2}
-              height={18.2}
+              width={18}
+              height={18}
             />
           </div>
           <h1 className="text-xl font-semibold">
@@ -85,8 +85,8 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
               <Image
                 src="/images/attendance/people.svg"
                 alt=""
-                width={35.3614}
-                height={31.1998}
+                width={35}
+                height={31}
               />
             </div>
             <h1 className="text-2xl font-bold">

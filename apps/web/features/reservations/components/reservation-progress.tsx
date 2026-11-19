@@ -4,7 +4,7 @@ import { ConditionSummary } from "./condition-summary";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
-import { Button, buttonStyles } from "@/shared/ui/button";
+import { buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { inquiryQuery } from "../api/reservations.api";
 import type {
@@ -12,21 +12,33 @@ import type {
   ReservationRequest,
 } from "../types/inquiry.types";
 
-export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
+export function InquiryReceipt({
+  inquiry,
+  showEventLink = false,
+}: {
+  inquiry: ReservationRequest;
+  showEventLink?: boolean;
+}) {
   const c = inquiry.snapshot;
   return (
     <section className="my-6 space-y-7 text-copy">
-      <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
-        <p className="text-sm font-semibold text-brand-action">
-          문의 접수 완료
+      <header>
+        {showEventLink && (
+          <h1 className="mb-4 text-2xl font-bold">{c.eventName}</h1>
+        )}
+        <p className="text-xs text-secondary">문의 접수 완료</p>
+        <h2 className="mt-1 text-xl font-bold">
+          매장 답변{" "}
+          <span className="text-brand-action">
+            {inquiry.responseCount}/{inquiry.targets.length}
+          </span>
+        </h2>
+        <p className="mt-2 text-sm text-secondary">
+          {inquiry.responseCount
+            ? `가능·변경 제안 ${inquiry.proposalCount ?? 0}건 · 불가 ${inquiry.declineCount ?? 0}건`
+            : "아직 매장 답변이 없어요."}
         </p>
-        <h2 className="mt-2 text-xl font-bold">매장 답변</h2>
-      </div>
-      <div className="space-y-3">
-        <h3 className="text-xl font-bold">{c.eventName}</h3>
-        <p className="text-xs text-secondary">{c.groupName ?? "개인 행사"}</p>
-        <ConditionSummary conditions={c} />
-      </div>
+      </header>
       <ul className="space-y-3">
         {inquiry.targets.map((t) => (
           <li key={t.id} className="rounded-control bg-surface p-5 shadow-card">
@@ -58,18 +70,13 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
           </li>
         ))}
       </ul>
-      <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
-        <h3 className="font-semibold">도착한 응답 {inquiry.responseCount}건</h3>
-        <p className="mt-1 text-sm text-muted">
-          {inquiry.responseCount
-            ? `가능·변경 제안 ${inquiry.proposalCount ?? 0}건 · 불가 ${inquiry.declineCount ?? 0}건`
-            : "아직 매장 답변이 없어요."}
-        </p>
-      </div>
       <details className="rounded-control bg-surface p-5 text-sm shadow-card">
         <summary className="cursor-pointer font-semibold">
           접수한 조건 확인
         </summary>
+        <div className="mt-4">
+          <ConditionSummary conditions={c} />
+        </div>
         <InquiryDetails
           conditions={c}
           contact={{
@@ -78,12 +85,14 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
           }}
         />
       </details>
-      <Link
-        className={buttonStyles({ variant: "outline", className: "w-full" })}
-        href={`/events?event=${inquiry.eventId}`}
-      >
-        행사로 돌아가기
-      </Link>
+      {showEventLink && (
+        <Link
+          className={buttonStyles({ variant: "outline", className: "w-full" })}
+          href={`/events?event=${inquiry.eventId}`}
+        >
+          행사로 돌아가기
+        </Link>
+      )}
     </section>
   );
 }
@@ -117,13 +126,6 @@ export function ReservationProgress({
         </ErrorState>
       )}
       <InquiryReceipt inquiry={result.data} />
-      <Button
-        variant="outline"
-        onClick={() => void result.refetch()}
-        disabled={result.isFetching}
-      >
-        진행 상태 새로 확인
-      </Button>
     </>
   ) : (
     <section className="my-6 rounded-control bg-surface p-5 shadow-card">
@@ -150,10 +152,6 @@ export function InquiryDetails({
 }) {
   return (
     <dl className="mt-3 space-y-3">
-      <div>
-        <dt>희망 지역</dt>
-        <dd>{c.region}</dd>
-      </div>
       <div>
         <dt>함께 착석</dt>
         <dd>
@@ -184,20 +182,22 @@ export function InquiryDetails({
             ` · ${c.spaceImportance === "REQUIRED" ? "꼭 필요" : "가능하면 희망"}`}
         </dd>
       </div>
-      <div>
-        <dt>예산</dt>
-        <dd>
-          {c.budgetAmount
-            ? `${c.budgetBasis === "PER_PERSON" ? "1인당" : "전체"} ${c.budgetAmount.toLocaleString()}원 · 주류 ${c.alcohol === "INCLUDED" ? "포함" : c.alcohol === "EXCLUDED" ? "미포함" : "미정"}`
-            : "미입력"}
-        </dd>
-      </div>
-      <div>
-        <dt>요청사항</dt>
-        <dd className="whitespace-pre-wrap wrap-break-word">
-          {c.additionalRequests || "미입력"}
-        </dd>
-      </div>
+      {c.budgetAmount !== null && (
+        <div>
+          <dt>예산</dt>
+          <dd>
+            {`${c.budgetBasis === "PER_PERSON" ? "1인당" : "전체"} ${c.budgetAmount.toLocaleString()}원 · 주류 ${c.alcohol === "INCLUDED" ? "포함" : c.alcohol === "EXCLUDED" ? "미포함" : "미정"}`}
+          </dd>
+        </div>
+      )}
+      {c.additionalRequests && (
+        <div>
+          <dt>요청사항</dt>
+          <dd className="whitespace-pre-wrap wrap-break-word">
+            {c.additionalRequests}
+          </dd>
+        </div>
+      )}
       <div>
         <dt>담당자</dt>
         <dd>

@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
@@ -45,7 +46,14 @@ function PublicReply({ targetId }: { targetId: string }) {
     return () => controller.abort();
   }, [targetId, attempt]);
   return (
-    <main className="mx-auto min-h-svh max-w-[402px] bg-background px-5 py-10">
+    <main className="mx-auto flex min-h-svh max-w-[402px] flex-col bg-background px-5 pt-10 pb-[max(24px,env(safe-area-inset-bottom))]">
+      <Image
+        src="/images/auth/brand-wordmark-orange.svg"
+        alt="총무야"
+        width={91}
+        height={32}
+        className="mb-6"
+      />
       {missingLink || isMerchantAccessError(error) ? (
         <p role="alert">
           {isMerchantAccessError(error)
