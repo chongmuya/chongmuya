@@ -1092,7 +1092,10 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     false,
   );
   assert.equal(handover.deliveryId, repeatedHandover.deliveryId);
-  assert.equal(sent.length, 2); // Handover prepares a record; only explicit retry sends it.
+  assert.equal(
+    sent.filter((id) => id === delivery.id || id === uncertain.id).length,
+    2,
+  ); // Other sends are distinct organizer notifications.
   await json(await webhook(report));
   const pending = await json<{
     request: { targets: { id: string; deliveryStatus: string }[] };

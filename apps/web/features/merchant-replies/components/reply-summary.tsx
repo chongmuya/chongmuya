@@ -149,6 +149,35 @@ export function ReplySummary({ response: r }: { response: Reply }) {
                 </dd>
               </div>
             </dl>
+            <dl className="space-y-3 text-xs [&>div]:grid [&>div]:grid-cols-[6rem_minmax(0,1fr)] [&>div]:gap-2">
+              <div>
+                <dt className="text-muted">이용 시간</dt>
+                <dd>
+                  {p.usageTime?.kind === "UNLIMITED"
+                    ? "별도 시간 제한 없음"
+                    : p.usageTime?.kind === "MINUTES"
+                      ? `${p.usageTime.minutes}분`
+                      : "미확인"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">최소 주문 수량</dt>
+                <dd>
+                  {p.minimumQuantity == null
+                    ? "미확인"
+                    : `${p.minimumQuantity}개`}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted">변경·취소·환불</dt>
+                <dd className="whitespace-pre-wrap break-words">
+                  {p.changeCancellationPolicy || "미확인"}
+                </dd>
+              </div>
+            </dl>
+            <p className="text-xs text-muted">
+              선택 기한까지 제안한 날짜·시간·인원에 필요한 좌석을 유지해요.
+            </p>
             {p.note && (
               <p className="whitespace-pre-wrap break-words">{p.note}</p>
             )}

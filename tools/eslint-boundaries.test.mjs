@@ -13,6 +13,24 @@ test("app ESLint configs enforce dependency boundaries for aliases and relative 
   const cases = [
     [
       "api",
+      "src/modules/reservations/probe.ts",
+      'import { NotificationsService } from "../notifications/notifications.service.js";',
+      false,
+    ],
+    [
+      "api",
+      "src/modules/reservations/probe.ts",
+      'import type { NotificationInput } from "../notifications/types/notification.js";',
+      false,
+    ],
+    [
+      "api",
+      "src/modules/reservations/probe.ts",
+      'import { Notification } from "../notifications/entities/notification.entity.js";',
+      true,
+    ],
+    [
+      "api",
       "src/modules/auth/probe.module.ts",
       'import { AccessGuard } from "./guards/jwt-access.guard.js"; export { AccessGuard };',
       true,

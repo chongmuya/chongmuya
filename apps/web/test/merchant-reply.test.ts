@@ -183,7 +183,7 @@ test("merchant proposal deadlines use Korean wall time and respect the original 
   );
 });
 
-test("merchant access expiration keeps current-tab input and stops writes and focus retries", async (t) => {
+test("merchant access expiration hides private inquiry and stops writes and focus retries", async (t) => {
   const inquiry = merchantInquiryFixture();
   let denied = false,
     requests = 0;
@@ -236,13 +236,12 @@ test("merchant access expiration keeps current-tab input and stops writes and fo
       assert.match(view.container.textContent!, /문자에 있는 원래 링크/),
     );
     const count = requests;
-    await submit(view.container);
+    assert.equal(view.container.querySelector("form"), null);
+    assert.doesNotMatch(view.container.textContent!, /만료되어도 보존할 입력/);
     await act(async () => {
       await view.cache.refetchQueries();
     });
     assert.equal(requests, count);
-    assert.equal(field.value, "만료되어도 보존할 입력");
-    assert(view.container.querySelector("fieldset")!.disabled);
   } finally {
     await view.unmount();
   }

@@ -22,6 +22,36 @@ export type ReservationRequest = {
   eventId: string;
   createdAt: string;
   status: "RECEIVED";
+  round?: number;
+  version?: number;
+  lifecycle?: "ACTIVE" | "SELECTED" | "CLOSED";
+  isCurrent?: boolean;
+  canReinquire?: boolean;
+  reinquiryBlockedReason?:
+    "STORE_SELECTED" | "AWAITING_REPLY" | "VALID_PROPOSAL" | null;
+  history?: { id: string; round: number; state: string }[];
+  selection?: {
+    id: string;
+    targetId: string;
+    revision: number;
+    version: number;
+    status: "PREPARING";
+    snapshot: {
+      offered: NonNullable<
+        import("@/features/merchant-replies/types").Reply["snapshot"]["offered"]
+      > | null;
+      requested: InquirySnapshot;
+    };
+    selectedAt: string;
+  } | null;
+  notifications?: {
+    id: string;
+    recipientKind: "ORGANIZER" | "MERCHANT";
+    status: string;
+    provider: "fake" | "solapi" | null;
+    errorCode: string | null;
+    updatedAt: string;
+  }[];
   responseCount: number;
   proposalCount?: number;
   declineCount?: number;
@@ -33,8 +63,12 @@ export type ReservationRequest = {
   };
   targets: {
     id: string;
+    candidateState?: string;
+    closedAt?: string | null;
+    canSelect?: boolean;
     restaurantId: string;
     restaurantName: string;
+    photoPath?: string | null;
     address: string;
     isDemo: boolean;
     deliveryStatus:
@@ -57,6 +91,9 @@ export type ReservationRequest = {
 };
 
 export type CreateInquiry = {
+  previousRequestId?: string;
+  expectedRequestVersion?: number;
+  updateEventSchedule?: boolean;
   requestKey: string;
   mode: "DIRECT";
   expectedEventVersion: number;

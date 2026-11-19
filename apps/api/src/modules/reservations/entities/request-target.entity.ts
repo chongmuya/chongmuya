@@ -34,6 +34,8 @@ export class RequestTarget {
   restaurantId!: string;
   @Column({ type: "varchar", length: 100, name: "restaurant_name" })
   restaurantName!: string;
+  @Column({ type: "varchar", length: 500, name: "photo_path", nullable: true })
+  photoPath!: string | null;
   @Column({ type: "varchar", length: 240 }) address!: string;
   @Column({ type: "boolean", name: "is_demo" }) isDemo!: boolean;
   @Column({ type: "uuid", name: "contact_id" }) contactId!: string;
@@ -50,6 +52,31 @@ export class RequestTarget {
     default: "PENDING",
   })
   deliveryStatus!: import("../types/merchant-reply.js").DeliveryState;
+  @Column({
+    type: "varchar",
+    length: 24,
+    name: "candidate_state",
+    default: "OPEN",
+  })
+  candidateState!:
+    | "OPEN"
+    | "SELECTED"
+    | "ORGANIZER_DECLINED"
+    | "MERCHANT_DECLINED"
+    | "OTHER_SELECTED"
+    | "EXPIRED"
+    | "OPERATOR_CLOSED";
+  @Column({ type: "timestamptz", name: "closed_at", nullable: true })
+  closedAt!: Date | null;
+  @Column({ type: "varchar", length: 100, name: "closed_by", nullable: true })
+  closedBy!: string | null;
+  @Column({
+    type: "varchar",
+    length: 500,
+    name: "closure_reason",
+    nullable: true,
+  })
+  closureReason!: string | null;
   @Column({ type: "integer", name: "reply_version", default: 0 })
   replyVersion!: number;
 }

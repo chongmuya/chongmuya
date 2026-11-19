@@ -26,6 +26,18 @@ export const proposalSchema = z
       })
       .strict(),
     menuDeadlineAt: z.iso.datetime({ offset: true }).nullable(),
+    usageTime: z
+      .object({
+        kind: z.enum(["UNKNOWN", "UNLIMITED", "MINUTES"]),
+        minutes: z.number().int().min(1).max(1440).nullable(),
+      })
+      .strict()
+      .refine((v) =>
+        v.kind === "MINUTES" ? v.minutes !== null : v.minutes === null,
+      )
+      .optional(),
+    minimumQuantity: z.number().int().min(0).max(100000).nullable().optional(),
+    changeCancellationPolicy: z.string().trim().max(1500).nullable().optional(),
     note: z.string().max(1500),
   })
   .strict();
@@ -43,6 +55,7 @@ export const replySchema = z
 export type MerchantReplyInput = z.infer<typeof replySchema>;
 export type Proposal = z.infer<typeof proposalSchema>;
 export type ReplySnapshot = {
+  holdConfirmed?: boolean;
   offered: Proposal | null;
   requested: InquirySnapshot;
 };

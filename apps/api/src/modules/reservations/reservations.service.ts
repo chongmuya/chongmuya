@@ -1,10 +1,12 @@
 import { MessageDeliveryService } from "./message-delivery.service.js";
-import { MessageDelivery } from "./entities/message-delivery.entity.js";
-import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
-import { replyView } from "./lib/reply-view.js";
+
+import { ReservationQueriesService } from "./reservation-queries.service.js";
+import { ReservationSelectionService } from "./reservation-selection.service.js";
+import { ReservationNotificationsService } from "./reservation-notifications.service.js";
+
 import { Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import type { EntityManager } from "typeorm";
+
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { GroupsService } from "../groups/groups.service.js";
@@ -25,18 +27,16 @@ export class ReservationsService {
     private readonly groups: GroupsService,
     private readonly restaurants: RestaurantsService,
     private readonly delivery: MessageDeliveryService,
+    private readonly queries: ReservationQueriesService,
+    private readonly selection: ReservationSelectionService,
+    private readonly notifications: ReservationNotificationsService,
   ) {}
 
   async get(
     ownerId: string,
     eventId: string,
   ): Promise<ReservationRequestDto | null> {
-    const db = await this.database.connect();
-    await this.events.assertOwned(ownerId, eventId, db.manager);
-    const request = await db
-      .getRepository(ReservationRequest)
-      .findOneBy({ eventId });
-    return request ? this.dto(request, db.manager) : null;
+    return this.queries.get(ownerId, eventId);
   }
   async create(
     user: AuthUser,
@@ -65,6 +65,15 @@ export class ReservationsService {
           contact: { name: input.contact.name, phone: input.contact.phone },
           restaurantIds: [...input.restaurantIds].sort(),
           expectedEventVersion: input.expectedEventVersion,
+          ...(input.previousRequestId ||
+          input.expectedRequestVersion !== undefined ||
+          input.updateEventSchedule !== undefined
+            ? {
+                previousRequestId: input.previousRequestId ?? null,
+                expectedRequestVersion: input.expectedRequestVersion ?? null,
+                updateEventSchedule: input.updateEventSchedule ?? false,
+              }
+            : {}),
         }),
       )
       .digest("hex");
@@ -79,14 +88,25 @@ export class ReservationsService {
       );
       const existing = await manager
         .getRepository(ReservationRequest)
-        .findOneBy({ eventId });
+        .findOneBy({ eventId, requestKey: input.requestKey });
       if (existing) {
-        if (existing.requestKey !== input.requestKey)
-          throw new DomainHttpException("EVENT_REQUEST_EXISTS");
         if (existing.digest !== digest)
           throw new DomainHttpException("RESERVATION_RETRY_CONFLICT");
-        return this.dto(existing, manager);
+        return this.queries.dto(existing, manager);
       }
+      const previous = await manager.findOne(ReservationRequest, {
+        where: { eventId },
+        order: { round: "DESC" },
+      });
+      if (previous)
+        await this.selection.closeForReinquiry(
+          user.id,
+          previous,
+          input,
+          manager,
+        );
+      else if (input.previousRequestId)
+        throw new DomainHttpException("RESERVATION_SELECTION_CONFLICT");
       if (event.version !== input.expectedEventVersion)
         throw new DomainHttpException("VERSION_CONFLICT");
       if (new Date(conditions.startsAt).getTime() <= Date.now())
@@ -105,9 +125,25 @@ export class ReservationsService {
       const group = event.groupId
         ? await this.groups.getLabel(user.id, event.groupId, manager)
         : null;
+      const scheduleChanged = event.scheduledAt !== conditions.startsAt;
+      if (scheduleChanged && !input.updateEventSchedule && previous)
+        throw new DomainHttpException("EVENT_SCHEDULE_CONFIRMATION");
+      await this.events.setReservationSchedule(
+        eventId,
+        conditions.startsAt,
+        true,
+        manager,
+      );
       const row = await manager.getRepository(ReservationRequest).save({
         id: randomUUID(),
         eventId,
+        round: (previous?.round ?? 0) + 1,
+        version: 1,
+        state: "ACTIVE" as const,
+        createdById: user.id,
+        currentContactAccountId: user.id,
+        currentContactName: input.contact.name,
+        currentContactPhone: input.contact.phone,
         requestKey: input.requestKey,
         digest,
         snapshot: {
@@ -134,70 +170,14 @@ export class ReservationsService {
       );
       await this.delivery.prepare(row, savedTargets, manager);
       created = true;
-      return this.dto(row, manager);
+      return this.queries.dto(row, manager);
     });
     if (created) {
       await this.delivery.dispatchRequest(result.id);
+      if (input.previousRequestId)
+        await this.notifications.dispatchRequest(input.previousRequestId);
       return (await this.get(user.id, eventId))!;
     }
     return result;
-  }
-  private async dto(
-    row: ReservationRequest,
-    manager: EntityManager,
-  ): Promise<ReservationRequestDto> {
-    const targets = await manager
-      .getRepository(RequestTarget)
-      .find({ where: { requestId: row.id }, order: { restaurantId: "ASC" } });
-    const enriched = await Promise.all(
-      targets.map(async (t) => {
-        const response = replyView(
-          await manager.findOneBy(MerchantReplyRevision, {
-            targetId: t.id,
-            revision: t.replyVersion,
-          }),
-        );
-        const delivery = await manager.findOne(MessageDelivery, {
-          where: { targetId: t.id },
-          order: { createdAt: "DESC" },
-        });
-        return {
-          id: t.id,
-          restaurantId: t.restaurantId,
-          restaurantName: t.restaurantName,
-          address: t.address,
-          isDemo: t.isDemo,
-          deliveryStatus: t.deliveryStatus,
-          delivery: delivery
-            ? {
-                provider: delivery.provider,
-                failureStage: delivery.failureStage,
-                errorCode: delivery.errorCode,
-                updatedAt: delivery.updatedAt.toISOString(),
-              }
-            : null,
-          response,
-        };
-      }),
-    );
-    return {
-      id: row.id,
-      eventId: row.eventId,
-      createdAt: row.createdAt.toISOString(),
-      status: "RECEIVED",
-      responseCount: enriched.filter((t) => t.response).length,
-      proposalCount: enriched.filter(
-        (t) => t.response && t.response.kind !== "DECLINE",
-      ).length,
-      declineCount: enriched.filter((t) => t.response?.kind === "DECLINE")
-        .length,
-      snapshot: row.snapshot,
-      contact: {
-        name: row.contactName,
-        maskedPhone: `${row.contactPhone.slice(0, 3)}-****-${row.contactPhone.slice(-4)}`,
-        phoneVerifiedAt: row.contactPhoneVerifiedAt?.toISOString() ?? null,
-      },
-      targets: enriched,
-    };
   }
 }

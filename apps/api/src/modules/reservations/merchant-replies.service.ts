@@ -1,3 +1,4 @@
+import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 import { isDeepStrictEqual } from "node:util";
 import { replyView } from "./lib/reply-view.js";
 import { Injectable } from "@nestjs/common";
@@ -33,15 +34,23 @@ export class MerchantRepliesService {
     private readonly database: DatabaseService,
     private readonly restaurants: RestaurantsService,
     private readonly links: MerchantLinksService,
+    private readonly notifications: ReservationNotificationsService,
   ) {}
   private async authorize(
     targetId: string,
     principal: Principal,
     m: EntityManager,
     lock = false,
+    allowClosed = false,
   ) {
     if (principal.kind === "link")
-      return this.links.authorize(targetId, principal.access, m, lock);
+      return this.links.authorize(
+        targetId,
+        principal.access,
+        m,
+        lock,
+        allowClosed,
+      );
     const c = await this.links.context(targetId, m, lock);
     if (principal.kind === "owner") {
       if (principal.user.accountType !== "owner")
@@ -60,8 +69,10 @@ export class MerchantRepliesService {
     )
       throw new DomainHttpException("VALIDATION_FAILED");
     if (
-      c.request.closedAt ||
-      new Date(c.request.snapshot.startsAt).getTime() <= Date.now()
+      !allowClosed &&
+      (c.request.closedAt ||
+        c.target.candidateState !== "OPEN" ||
+        new Date(c.request.snapshot.startsAt).getTime() <= Date.now())
     )
       throw new DomainHttpException("MERCHANT_LINK_INVALID");
     return c;
@@ -69,7 +80,7 @@ export class MerchantRepliesService {
   async get(targetId: string, principal: Principal) {
     const db = await this.database.connect();
     return db.transaction("REPEATABLE READ", async (m) => {
-      const c = await this.authorize(targetId, principal, m);
+      const c = await this.authorize(targetId, principal, m, false, true);
       const response = await m.findOneBy(MerchantReplyRevision, {
         targetId,
         revision: c.target.replyVersion,
@@ -90,6 +101,12 @@ export class MerchantRepliesService {
         );
       return {
         targetId,
+        closedState:
+          c.target.candidateState !== "OPEN"
+            ? c.target.candidateState
+            : c.request.closedAt
+              ? "INQUIRY_CLOSED"
+              : null,
         restaurantName: c.target.restaurantName,
         snapshot,
         organizerName: c.request.contactName,
@@ -160,8 +177,10 @@ export class MerchantRepliesService {
     const digest = createHash("sha256")
       .update(JSON.stringify(input))
       .digest("hex");
-    return db.transaction(async (m) => {
-      const c = await this.authorize(targetId, principal, m, true);
+    let requestId: string | undefined;
+    const result = await db.transaction(async (m) => {
+      const c = await this.authorize(targetId, principal, m, true, true);
+      requestId = c.request.id;
       const existing = await m.findOneBy(MerchantReplyRevision, {
         targetId,
         requestKey: input.requestKey,
@@ -174,6 +193,12 @@ export class MerchantRepliesService {
           version: existing.revision,
         };
       }
+      if (
+        c.request.state !== "ACTIVE" ||
+        c.target.candidateState !== "OPEN" ||
+        Date.parse(c.request.snapshot.startsAt) <= Date.now()
+      )
+        throw new DomainHttpException("RESERVATION_PROPOSAL_UNAVAILABLE");
       if (c.target.replyVersion !== input.expectedVersion)
         throw new DomainHttpException("MERCHANT_REPLY_CONFLICT");
       this.validate(input, c.request.snapshot);
@@ -205,6 +230,8 @@ export class MerchantRepliesService {
             revision: c.target.replyVersion,
           })
         : null;
+      if (current?.expiresAt && current.expiresAt.getTime() <= Date.now())
+        throw new DomainHttpException("RESERVATION_PROPOSAL_UNAVAILABLE");
       if (
         current &&
         current.kind === input.kind &&
@@ -236,6 +263,7 @@ export class MerchantRepliesService {
         kind: input.kind,
         snapshot: {
           offered: p,
+          holdConfirmed: input.holdConfirmed,
           requested: c.request.snapshot,
         },
         reason: input.reason,
@@ -245,8 +273,19 @@ export class MerchantRepliesService {
       });
       c.target.replyVersion = row.revision;
       await m.save(c.target);
+      c.request.version++;
+      await m.save(c.request);
+      await this.notifications.organizer(
+        m,
+        c.request,
+        c.target,
+        "REPLY_RECEIVED",
+        row.revision,
+      );
       return { response: replyView(row), version: row.revision };
     });
+    if (requestId) await this.notifications.dispatchRequest(requestId);
+    return result;
   }
   private validate(
     input: MerchantReplyInput,

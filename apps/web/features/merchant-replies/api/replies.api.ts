@@ -56,6 +56,7 @@ export const exchangeLink = (
   signal?: AbortSignal,
 ) =>
   requestJson<{
+    closedState?: string;
     accessToken: string;
     accessExpiresAt: string;
     linkExpiresAt: string;

@@ -101,6 +101,7 @@ export class MessageDeliveryService {
         m,
         this.provider.requiresRealRecipient,
       );
+      if (c.target.candidateState !== "OPEN") reasons.unshift("INQUIRY_CLOSED");
       if (
         row.contactId !== c.link?.contactId ||
         row.phoneSnapshot !== c.link?.phoneSnapshot ||
@@ -251,25 +252,8 @@ export class MessageDeliveryService {
   }
   async applyReports(reports: MessageReport[]) {
     const db = await this.database.connect();
-    await db.transaction(async (m) => {
-      // Lock all targets in stable order before report rows, including mixed generations.
-      const records = reports.length
-        ? await m.find(MessageDelivery, {
-            where: reports.map((r) =>
-              r.deliveryId
-                ? { id: r.deliveryId }
-                : { providerMessageId: r.messageId },
-            ),
-          })
-        : [];
-      for (const targetId of [
-        ...new Set(records.map((r) => r.targetId)),
-      ].sort()) {
-        await this.lockDeliveryTarget(targetId, m);
-        await this.links.context(targetId, m, true);
-      }
-      for (const event of reports) await this.applyReport(event, m);
-    });
+    for (const report of reports)
+      await db.transaction((m) => this.applyReport(report, m));
     return { received: true };
   }
   async changeRecipient(
@@ -292,6 +276,7 @@ export class MessageDeliveryService {
       );
       if (
         c.request.closedAt ||
+        c.target.candidateState !== "OPEN" ||
         new Date(c.request.snapshot.startsAt).getTime() <= Date.now()
       )
         throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
@@ -364,6 +349,7 @@ export class MessageDeliveryService {
     });
   }
   private async lockDeliveryTarget(targetId: string, m: EntityManager) {
+    await this.links.context(targetId, m, true);
     await m.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
       `merchant-delivery:${targetId}`,
     ]);
@@ -387,6 +373,7 @@ export class MessageDeliveryService {
       if (
         reasons.length ||
         c.request.closedAt ||
+        c.target.candidateState !== "OPEN" ||
         new Date(c.request.snapshot.startsAt).getTime() <= Date.now()
       )
         throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");

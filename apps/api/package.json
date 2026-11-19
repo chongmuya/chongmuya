@@ -20,6 +20,7 @@
     "test:integration": "pnpm test:compile && node --test --test-concurrency=1 dist-test/test/integration/*.test.js",
     "db:seed:restaurants": "node dist/database/seeds/run-seed.js restaurants",
     "db:seed:restaurants:production": "node dist/database/seeds/run-production-restaurants.js",
+    "reservation:operations": "node scripts/reservation-operations.mjs",
     "merchant:operations": "node scripts/merchant-operations.mjs",
     "db:seed:demo": "node dist/database/seeds/run-demo.js seed",
     "db:demo:links": "node dist/database/seeds/run-demo.js links"

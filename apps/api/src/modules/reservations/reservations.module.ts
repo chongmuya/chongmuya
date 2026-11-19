@@ -1,3 +1,8 @@
+import { NotificationsModule } from "../notifications/notifications.module.js";
+import { ReservationLocksService } from "./reservation-locks.service.js";
+import { ReservationQueriesService } from "./reservation-queries.service.js";
+import { ReservationSelectionService } from "./reservation-selection.service.js";
+import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 import { MerchantInquiriesQuery } from "./merchant-inquiries.query.js";
 import { SolapiWebhookDecoder } from "./providers/solapi-webhook.js";
 import { FakeMessageGateway } from "./providers/fake-message.gateway.js";
@@ -23,6 +28,7 @@ import { ReservationsController } from "./reservations.controller.js";
 import { ReservationsService } from "./reservations.service.js";
 @Module({
   imports: [
+    NotificationsModule,
     ConfigModule,
     DatabaseModule,
     AuthModule,
@@ -38,6 +44,10 @@ import { ReservationsService } from "./reservations.service.js";
   ],
   providers: [
     ReservationsService,
+    ReservationLocksService,
+    ReservationQueriesService,
+    ReservationSelectionService,
+    ReservationNotificationsService,
     SolapiWebhookDecoder,
     MerchantInquiriesQuery,
     MerchantLinksService,

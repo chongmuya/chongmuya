@@ -15,6 +15,18 @@ export const proposalSchema = z
       })
       .strict(),
     menuDeadlineAt: z.iso.datetime({ offset: true }).nullable(),
+    usageTime: z
+      .object({
+        kind: z.enum(["UNKNOWN", "UNLIMITED", "MINUTES"]),
+        minutes: z.number().int().min(1).max(1440).nullable(),
+      })
+      .strict()
+      .refine((v) =>
+        v.kind === "MINUTES" ? v.minutes !== null : v.minutes === null,
+      )
+      .optional(),
+    minimumQuantity: z.number().int().min(0).max(100000).nullable().optional(),
+    changeCancellationPolicy: z.string().trim().max(1500).nullable().optional(),
     note: z.string().max(1500),
   })
   .strict();
@@ -77,7 +89,14 @@ export const replySchema = (original: Proposal) =>
         p.separateFee === original.separateFee &&
         p.deposit.kind === original.deposit.kind &&
         p.deposit.amount === original.deposit.amount &&
-        p.menuDeadlineAt === original.menuDeadlineAt
+        p.menuDeadlineAt === original.menuDeadlineAt &&
+        (p.usageTime?.kind ?? "UNKNOWN") ===
+          (original.usageTime?.kind ?? "UNKNOWN") &&
+        (p.usageTime?.minutes ?? null) ===
+          (original.usageTime?.minutes ?? null) &&
+        (p.minimumQuantity ?? null) === (original.minimumQuantity ?? null) &&
+        (p.changeCancellationPolicy ?? "") ===
+          (original.changeCancellationPolicy ?? "")
       )
         issue(
           ["proposal", "note"],
