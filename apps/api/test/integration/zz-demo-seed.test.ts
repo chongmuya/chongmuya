@@ -117,6 +117,11 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
   const target = await db.manager.findOneByOrFail(RequestTarget, {
     requestId: request.id,
   });
+  assert(
+    links.attendance.some(
+      (round) => round.eventId === eventId && round.eventName && round.roundId,
+    ),
+  );
   const capability = links.merchantReplies.find(
     (l) => l.targetId === target.id,
   )!;

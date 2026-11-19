@@ -74,8 +74,14 @@ export function deliveryTable(rows) {
   }));
 }
 
-export function printDeliveries(rows) {
-  if (rows.length) console.table(deliveryTable(rows));
+export function printDeliveries(rows, detailed = false) {
+  if (rows.length)
+    console.table(
+      deliveryTable(rows),
+      detailed
+        ? undefined
+        : ["매장", "발송ID", "상태", "수신번호", "실패 단계/코드"],
+    );
   else console.log("조건에 맞는 발송 기록이 없습니다.");
   console.log(
     `발송 기록 ${rows.length}건. 조회만 수행했으며 문자 발송·상태 변경은 없습니다.`,

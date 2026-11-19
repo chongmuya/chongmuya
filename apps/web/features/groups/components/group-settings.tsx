@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BottomSheet } from "@/shared/ui/bottom-sheet";
+import { GroupSwitcher } from "./group-switcher";
 import type { SessionRequest } from "@/features/auth/types";
 import type { Group } from "../types/group.types";
 import { GroupForm } from "./group-form";
@@ -30,42 +30,20 @@ export function GroupSettings({
         </Button>
       </div>
       {switching && (
-        <BottomSheet title="모임 전환" onClose={() => setSwitching(false)}>
-          <ul className="space-y-3">
-            {groups.map((group) => (
-              <li key={group.id}>
-                <Link
-                  className={buttonStyles({
-                    variant: group.id === selected.id ? "solid" : "outline",
-                    className: "w-full",
-                  })}
-                  href={`/mypage?view=groups&group=${group.id}`}
-                >
-                  {group.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <Link
-            className={buttonStyles({
-              variant: "outline",
-              className: "mt-5 w-full",
-            })}
-            href="/groups/new"
-          >
-            모임 만들기
-          </Link>
-        </BottomSheet>
+        <GroupSwitcher
+          groups={groups}
+          selected={selected.id}
+          view="roster"
+          onClose={() => setSwitching(false)}
+        />
       )}
       <GroupForm
-        key={selected.id}
         accountId={accountId}
         request={request}
         group={selected}
         title="모임 이름 수정"
       />
       <GroupRoster
-        key={selected.id}
         accountId={accountId}
         groupId={selected.id}
         request={request}

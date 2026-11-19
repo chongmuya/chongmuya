@@ -31,7 +31,7 @@ export function EventRoster(props: OwnerProps) {
     router = useRouter();
   const adding = params.get("action") === "add";
   const editingId = params.get("participant");
-  const close = () => router.push(`/events?event=${eventId}&view=roster`);
+  const close = () => router.replace(`/events?event=${eventId}&view=roster`);
   const roster = useQuery(participantsQuery(accountId, eventId, request)),
     event = useEvent(accountId, eventId, request);
   const action = useAttendanceAction(accountId, eventId, request),

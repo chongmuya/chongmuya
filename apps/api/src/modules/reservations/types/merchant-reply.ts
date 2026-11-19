@@ -42,7 +42,7 @@ export const replySchema = z
   .strict();
 export type MerchantReplyInput = z.infer<typeof replySchema>;
 export type Proposal = z.infer<typeof proposalSchema>;
-export type ReplySnapshot = InquirySnapshot & {
+export type ReplySnapshot = {
   offered: Proposal | null;
   requested: InquirySnapshot;
 };

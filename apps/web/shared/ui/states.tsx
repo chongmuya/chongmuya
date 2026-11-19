@@ -8,9 +8,6 @@ export function LoadingState({ children }: { children: ReactNode }) {
     </p>
   );
 }
-export function EmptyState({ children }: { children: ReactNode }) {
-  return <p className="py-3 text-muted">{children}</p>;
-}
 export function ErrorState({
   retry,
   children = "정보를 불러오지 못했습니다. 연결과 접근 권한을 확인해 주세요.",

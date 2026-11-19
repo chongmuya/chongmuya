@@ -8,7 +8,6 @@ import type {
   PublicAttendanceInfo,
   PublicAttendanceAccess,
   AttendanceAnswer,
-  AttendanceState,
   ResolveReview,
   AttendanceResponseDto,
 } from "../types/attendance.types";
@@ -80,7 +79,7 @@ export type AttendanceAction =
       roundId: string;
       participantId: string;
       expectedVersion: number;
-      managerOverride: AttendanceState | null;
+      managerOverride: AttendanceAnswer | null;
     }
   | {
       kind: "resolve";

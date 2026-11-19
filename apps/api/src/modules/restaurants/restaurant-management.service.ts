@@ -1,17 +1,15 @@
 import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
-import { createHash, createHmac, randomUUID } from "node:crypto";
-import { z } from "zod";
+  restaurantIdentityKey,
+  findDuplicateRestaurant,
+} from "./lib/restaurant-identity.js";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { createHmac, randomUUID } from "node:crypto";
 import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
-import { AuthService } from "../auth/auth.service.js";
 import { PhoneVerificationService } from "../auth/phone-verification.service.js";
 import { Restaurant } from "./entities/restaurant.entity.js";
 import { RestaurantDraft } from "./entities/restaurant-draft.entity.js";
@@ -42,7 +40,6 @@ export class RestaurantManagementService {
     private readonly restaurants: RestaurantsService,
     private readonly geocoding: Geocoder,
     private readonly phones: PhoneVerificationService,
-    private readonly auth: AuthService,
   ) {}
   private owner(user: AuthUser) {
     if (user.accountType !== "owner")
@@ -87,12 +84,16 @@ export class RestaurantManagementService {
         accountId: user.id,
         slot: restaurantId ?? "new",
       });
-      if (previous && (!restaurantId || !previous.submittedAt))
-        return this.view(previous);
       const r = restaurantId
         ? await this.restaurants.assertOwned(user.id, restaurantId, m, true)
         : null;
+      if (previous && !restaurantId) return this.view(previous);
       const { data, address, proof } = await this.contents(r, m);
+      const currentRestaurant = r
+        ? { version: r.version, published: r.published, data }
+        : null;
+      if (previous && !previous.submittedAt)
+        return { ...this.view(previous), currentRestaurant };
       const draft = await m.save(RestaurantDraft, {
         id: previous?.id ?? randomUUID(),
         accountId: user.id,
@@ -107,7 +108,7 @@ export class RestaurantManagementService {
         verifiedContact: proof,
         submittedAt: null,
       });
-      return this.view(draft);
+      return { ...this.view(draft), currentRestaurant };
     });
   }
   private async contents(r: Restaurant | null, m: EntityManager) {
@@ -117,7 +118,7 @@ export class RestaurantManagementService {
     if (r) {
       const contact = await m.findOne(RestaurantContact, {
         where: { restaurantId: r.id },
-        order: { active: "DESC", id: "ASC" },
+        order: { isPrimary: "DESC", active: "DESC", id: "ASC" },
       });
       const spaces = await m.findBy(RestaurantSpace, { restaurantId: r.id });
       Object.assign(data, {
@@ -125,11 +126,7 @@ export class RestaurantManagementService {
         branchName: r.branchName ?? "",
         addressQuery: r.baseAddress ?? r.address,
         detailAddress: r.baseAddress ? (r.detailAddress ?? "") : "",
-        category: ["한식", "호프·주점", "기타 음식점"].includes(
-          r.category ?? "",
-        )
-          ? r.category
-          : "기타 음식점",
+        category: r.category ?? "",
         phone: contact?.phone ?? "",
         receiveConsent: !!contact?.active && !!contact.requestConsentAt,
         maxCapacity: r.maxCapacity,
@@ -181,11 +178,10 @@ export class RestaurantManagementService {
         source: "existing",
       };
       // Existing operational contacts retain their provenance; a changed number needs new proof.
-      if (contact)
+      if (contact?.active && contact.requestConsentAt)
         proof = {
           phone: contact.phone,
-          verifiedAt:
-            contact.requestConsentAt?.toISOString() ?? new Date().toISOString(),
+          verifiedAt: contact.requestConsentAt.toISOString(),
         };
     }
     return { data, address, proof };
@@ -272,7 +268,9 @@ export class RestaurantManagementService {
       }
       d.data = parsed.data;
       const duplicate =
-        input.advance && d.step === 0 ? await this.duplicate(d, m) : undefined;
+        input.advance && d.step === 0
+          ? await findDuplicateRestaurant(d, m)
+          : undefined;
       if (!duplicate) d.step = input.step;
       d.version++;
       return {
@@ -336,56 +334,12 @@ export class RestaurantManagementService {
       });
     return result;
   }
-  private key(d: RestaurantDraft) {
-    return createHash("sha256")
-      .update(
-        JSON.stringify([
-          norm(d.data.name),
-          norm(d.selectedAddress!.baseAddress),
-          norm(d.data.detailAddress),
-        ]),
-      )
-      .digest("hex");
-  }
-  private async duplicate(d: RestaurantDraft, m: EntityManager) {
-    if (!d.selectedAddress || !d.data.name.trim())
-      throw new DomainHttpException("ADDRESS_SELECTION_REQUIRED");
-    const key = this.key(d);
-    // A shared catalog lock also covers legacy rows without a structured key and ops normalization.
-    await m.query(
-      "SELECT pg_advisory_xact_lock(hashtextextended('restaurant-registration', 0))",
-    );
-    const bases = [
-      d.selectedAddress.baseAddress,
-      d.selectedAddress.roadAddress,
-      d.selectedAddress.jibunAddress,
-    ]
-      .filter(Boolean)
-      .map(norm);
-    const detail = norm(d.data.detailAddress);
-    return m
-      .createQueryBuilder(Restaurant, "r")
-      .where("r.id <> :id", {
-        id: d.restaurantId ?? "00000000-0000-0000-0000-000000000000",
-      })
-      .andWhere("r.normalized_name = :name", { name: norm(d.data.name) })
-      .andWhere(
-        "(r.registration_key=:key OR r.normalized_address IN (:...addresses) OR (r.normalized_base_address IN (:...bases) AND r.normalized_detail_address=:detail))",
-        {
-          key,
-          addresses: bases.map((base) => norm(`${base} ${detail}`)),
-          bases,
-          detail,
-        },
-      )
-      .getOne();
-  }
   async checkDuplicate(user: AuthUser, id: string) {
     const db = await this.database.connect();
     await consumeRequestLimit(db.manager, `owner-duplicate:${user.id}`, 30);
     return db.transaction(async (m) => {
       const d = await this.draft(user, id, m);
-      const duplicate = await this.duplicate(d, m);
+      const duplicate = await findDuplicateRestaurant(d, m);
       return {
         duplicate: !!duplicate,
         ownRestaurantId:
@@ -402,23 +356,15 @@ export class RestaurantManagementService {
         return { restaurantId: d.restaurantId!, submitted: true };
       if (d.version !== version)
         throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
-      if (!validRegistration(d.data))
-        throw new DomainHttpException("VALIDATION_FAILED");
       if (
         !d.selectedAddress ||
         d.data.addressQuery !== d.selectedAddress.baseAddress
       )
         throw new DomainHttpException("ADDRESS_SELECTION_REQUIRED");
-      if (await this.duplicate(d, m))
+      if (await findDuplicateRestaurant(d, m))
         throw new DomainHttpException("RESTAURANT_DUPLICATE");
       const data = d.data,
         address = d.selectedAddress;
-      const verified =
-        (user.phone === data.phone && user.phoneVerifiedAt) ||
-        (d.verifiedContact?.phone === data.phone &&
-          d.verifiedContact.verifiedAt);
-      if (!verified)
-        throw new DomainHttpException("PHONE_VERIFICATION_REQUIRED");
       const previous = d.restaurantId
         ? await this.restaurants.assertOwned(user.id, d.restaurantId, m, true)
         : null;
@@ -426,7 +372,32 @@ export class RestaurantManagementService {
         throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
       if (previous && !previous.isDemo && address.source === "fake")
         throw new DomainHttpException("ADDRESS_SELECTION_REQUIRED");
+      if (
+        !["한식", "호프·주점", "기타 음식점"].includes(data.category) &&
+        !(previous && (previous.category ?? "") === data.category)
+      )
+        throw new DomainHttpException("VALIDATION_FAILED");
       const restaurantId = previous?.id ?? randomUUID();
+      const contacts = previous
+        ? await m.find(RestaurantContact, {
+            where: { restaurantId },
+            order: { isPrimary: "DESC", active: "DESC", id: "ASC" },
+          })
+        : [];
+      const original = contacts[0];
+      const contactChanged =
+        !previous ||
+        (original?.phone ?? "") !== data.phone ||
+        Boolean(original?.active && original.requestConsentAt) !==
+          data.receiveConsent;
+      if (!validRegistration(data, !!previous && !contactChanged))
+        throw new DomainHttpException("VALIDATION_FAILED");
+      const verified =
+        (user.phone === data.phone && user.phoneVerifiedAt) ||
+        (d.verifiedContact?.phone === data.phone &&
+          d.verifiedContact.verifiedAt);
+      if (contactChanged && !verified)
+        throw new DomainHttpException("PHONE_VERIFICATION_REQUIRED");
       const oldSpaces = previous
         ? await m.findBy(RestaurantSpace, { restaurantId })
         : [];
@@ -450,13 +421,13 @@ export class RestaurantManagementService {
             : address.baseAddress,
         jibunAddress: address.jibunAddress || null,
         detailAddress: data.detailAddress || null,
-        registrationKey: this.key(d),
-        category: data.category,
+        registrationKey: restaurantIdentityKey(d),
+        category: data.category || null,
         region: address.region,
         latitude: address.latitude,
         longitude: address.longitude,
         maxCapacity: data.maxCapacity,
-        minimumGuests: data.minimumGuests.value,
+        minimumGuests: previous?.minimumGuests ?? null,
         policies: savePolicies(
           data.policies,
           previous?.policies ?? null,
@@ -486,26 +457,32 @@ export class RestaurantManagementService {
           id: s.id ?? randomUUID(),
           restaurantId,
         });
-      const contacts = await m.findBy(RestaurantContact, { restaurantId });
-      const matching =
-        contacts.find((c) => c.phone === data.phone && c.active) ??
-        contacts.find((c) => c.phone === data.phone);
-      for (const c of contacts)
-        if (c.id !== matching?.id && c.active) {
-          c.active = false;
-          await m.save(c);
+      if (contactChanged) {
+        const matching =
+          contacts.find((c) => c.phone === data.phone && c.active) ??
+          contacts.find((c) => c.phone === data.phone);
+        if (original?.isPrimary && original.id !== matching?.id) {
+          await m.update(RestaurantContact, original.id, {
+            isPrimary: false,
+            active: false,
+          });
         }
-      await m.save(RestaurantContact, {
-        id: matching?.id ?? randomUUID(),
-        restaurantId,
-        name: row.name.slice(0, 80),
-        phone: data.phone,
-        active: data.receiveConsent,
-        requestConsentAt: data.receiveConsent
-          ? (matching?.requestConsentAt ?? new Date())
-          : null,
-        consentNote: data.receiveConsent ? `OWNER_ACCOUNT:${user.id}` : null,
-      });
+        await m.save(RestaurantContact, {
+          id: matching?.id ?? randomUUID(),
+          restaurantId,
+          name: matching?.name ?? row.name.slice(0, 80),
+          phone: data.phone,
+          active: data.receiveConsent,
+          isPrimary: data.receiveConsent,
+          requestConsentAt: data.receiveConsent
+            ? (matching?.requestConsentAt ?? new Date())
+            : null,
+          consentNote:
+            data.receiveConsent && matching?.requestConsentAt
+              ? matching.consentNote
+              : `OWNER_ACCOUNT:${user.id}`,
+        });
+      }
       await m.save(RestaurantOperation, {
         id: randomUUID(),
         restaurantId,
@@ -567,14 +544,23 @@ export class RestaurantManagementService {
       );
       if (r.version !== version)
         throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
-      if (
-        parsed.data.id &&
-        !(await m.existsBy(RestaurantMenu, {
+      if (parsed.data.id) {
+        const stored = await m.findOneBy(RestaurantMenu, {
           id: parsed.data.id,
           restaurantId,
-        }))
-      )
-        throw new NotFoundException();
+        });
+        if (!stored) throw new NotFoundException();
+        const { name, kind, price, unit, position, available } = parsed.data;
+        if (
+          name === stored.name &&
+          kind === stored.kind &&
+          price === stored.price &&
+          unit === stored.unit &&
+          position === stored.position &&
+          available === stored.available
+        )
+          return { version: r.version };
+      }
       await m.save(RestaurantMenu, {
         ...parsed.data,
         id: parsed.data.id ?? randomUUID(),
@@ -583,211 +569,6 @@ export class RestaurantManagementService {
       r.version++;
       await m.save(r);
       return { version: r.version };
-    });
-  }
-  async addressReview() {
-    const db = await this.database.connect();
-    return db.query(
-      "SELECT id,name,address,identity_review AS reason FROM restaurants WHERE identity_review IS NOT NULL ORDER BY name,id",
-    ) as Promise<
-      { id: string; name: string; address: string; reason: string }[]
-    >;
-  }
-  async normalizeAddress(input: {
-    restaurantId: string;
-    actor: string;
-    reason: string;
-    query: string;
-    baseAddress: string;
-    detailAddress: string;
-    version: number;
-    dryRun: boolean;
-  }) {
-    if (
-      !input.actor?.trim() ||
-      !input.reason?.trim() ||
-      !input.query?.trim() ||
-      !input.baseAddress?.trim() ||
-      !Number.isInteger(input.version)
-    )
-      throw new DomainHttpException("VALIDATION_FAILED");
-    const results = await this.geocoding.search(input.query);
-    const matches = results.filter((a) => a.baseAddress === input.baseAddress);
-    if (matches.length !== 1)
-      throw new DomainHttpException("ADDRESS_SELECTION_REQUIRED");
-    const db = await this.database.connect();
-    return db.transaction(async (m) => {
-      await m.query(
-        "SELECT pg_advisory_xact_lock(hashtextextended('restaurant-registration', 0))",
-      );
-      const r = await m.findOne(Restaurant, {
-        where: { id: input.restaurantId },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!r) throw new NotFoundException();
-      if (r.version !== input.version)
-        throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
-      if (!r.isDemo && matches[0].source === "fake")
-        throw new DomainHttpException("ADDRESS_SELECTION_REQUIRED");
-      const draft = Object.assign(new RestaurantDraft(), {
-        restaurantId: r.id,
-        selectedAddress: matches[0],
-        data: {
-          ...emptyRegistration(),
-          name: r.name,
-          detailAddress: input.detailAddress,
-        },
-      });
-      if (await this.duplicate(draft, m))
-        throw new DomainHttpException("RESTAURANT_DUPLICATE");
-      const oldAddress = r.address;
-      if (!input.dryRun) {
-        const a = matches[0];
-        Object.assign(r, {
-          baseAddress: a.baseAddress,
-          jibunAddress: a.jibunAddress || null,
-          detailAddress: input.detailAddress || null,
-          address: `${a.baseAddress} ${input.detailAddress}`.trim(),
-          latitude: a.latitude,
-          longitude: a.longitude,
-          registrationKey: this.key(draft),
-          version: r.version + 1,
-        });
-        if (r.address.length > 240)
-          throw new DomainHttpException("VALIDATION_FAILED");
-        await m.save(r);
-        await m.save(RestaurantOperation, {
-          id: randomUUID(),
-          restaurantId: r.id,
-          action: "ADDRESS_NORMALIZED",
-          actor: input.actor,
-          reason: input.reason,
-          details: {},
-          createdAt: new Date(),
-        });
-      }
-      return {
-        restaurantId: r.id,
-        dryRun: input.dryRun,
-        oldAddress,
-        selectedAddress: matches[0].baseAddress,
-        detailAddress: input.detailAddress,
-      };
-    });
-  }
-  async recordContact(
-    restaurantId: string,
-    input: unknown,
-    actor: string,
-    reason: string,
-    dryRun: boolean,
-  ) {
-    const parsed = z
-      .object({
-        id: z.uuid(),
-        name: z.string().trim().min(1).max(80),
-        phone: z.string().regex(/^01[016789]\d{7,8}$/),
-        requestConsentAt: z.iso.datetime({ offset: true }).nullable(),
-        consentNote: z.string().trim().min(1).max(500),
-      })
-      .strict()
-      .safeParse(input);
-    if (
-      !parsed.success ||
-      !actor.trim() ||
-      !reason.trim() ||
-      (parsed.data.requestConsentAt &&
-        Date.parse(parsed.data.requestConsentAt) > Date.now())
-    )
-      throw new DomainHttpException("VALIDATION_FAILED");
-    const data = parsed.data;
-    const db = await this.database.connect();
-    return db.transaction(async (m) => {
-      const restaurant = await m.findOne(Restaurant, {
-        where: { id: restaurantId },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!restaurant) throw new NotFoundException();
-      const existing = await m.findOneBy(RestaurantContact, { id: data.id });
-      if (
-        existing &&
-        (existing.restaurantId !== restaurantId ||
-          existing.phone !== data.phone)
-      )
-        throw new DomainHttpException("VALIDATION_FAILED");
-      // The supplied stable ID makes retries harmless; consent and phone history are never rewritten.
-      if (existing)
-        return { restaurantId, contactId: existing.id, existing: true, dryRun };
-      if (!dryRun) {
-        await m.save(RestaurantContact, {
-          ...data,
-          restaurantId,
-          active: !!data.requestConsentAt,
-          requestConsentAt: data.requestConsentAt
-            ? new Date(data.requestConsentAt)
-            : null,
-        });
-        restaurant.version++;
-        await m.save(restaurant);
-        await m.save(RestaurantOperation, {
-          id: randomUUID(),
-          restaurantId,
-          actor,
-          reason,
-          action: "CONTACT_RECORDED",
-          details: { contactId: data.id },
-          createdAt: new Date(),
-        });
-      }
-      return { restaurantId, contactId: data.id, dryRun };
-    });
-  }
-  // Only the explicit server-side CLI invokes these operations; never exposed as owner HTTP routes.
-  async operate(input: {
-    restaurantId: string;
-    actor: string;
-    reason: string;
-    accountId?: string;
-    published?: boolean;
-    dryRun: boolean;
-  }) {
-    if (!input.actor.trim() || !input.reason.trim())
-      throw new ForbiddenException();
-    const db = await this.database.connect();
-    return db.transaction(async (m) => {
-      await m.query(
-        "SELECT pg_advisory_xact_lock(hashtextextended('restaurant-registration', 0))",
-      );
-      const r = await m.findOne(Restaurant, {
-        where: { id: input.restaurantId },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!r) throw new NotFoundException();
-      if (input.accountId) {
-        await this.auth.assertOwnerAccount(input.accountId, m);
-        if (r.ownerAccountId && r.ownerAccountId !== input.accountId)
-          throw new ForbiddenException();
-      }
-      if (!input.dryRun) {
-        if (input.accountId) r.ownerAccountId = input.accountId;
-        if (input.published !== undefined) r.published = input.published;
-        r.version++;
-        await m.save(r);
-        await m.save(RestaurantOperation, {
-          id: randomUUID(),
-          restaurantId: r.id,
-          actor: input.actor,
-          reason: input.reason,
-          action: input.accountId ? "OWNER_LINKED" : "PUBLICATION_CHANGED",
-          details: { accountId: input.accountId, published: input.published },
-          createdAt: new Date(),
-        });
-      }
-      return {
-        restaurantId: r.id,
-        dryRun: input.dryRun,
-        structuredAddress: !!r.baseAddress,
-      };
     });
   }
 }

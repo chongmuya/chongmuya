@@ -170,6 +170,11 @@ export async function seedRestaurants(
     for (const { restaurantKey, requestConsentAt, ...contact } of contacts) {
       const contactId = restaurantSeedId("contact", restaurantKey);
       if (!(await claimSeedContact(manager, contactId))) continue;
+      const restaurantId = restaurantSeedId("restaurant", restaurantKey);
+      const isPrimary =
+        contact.active &&
+        !!requestConsentAt &&
+        !(await manager.existsBy(RestaurantContact, { restaurantId }));
       await manager
         .createQueryBuilder()
         .insert()
@@ -177,7 +182,8 @@ export async function seedRestaurants(
         .values({
           ...contact,
           id: contactId,
-          restaurantId: restaurantSeedId("restaurant", restaurantKey),
+          restaurantId,
+          isPrimary,
           requestConsentAt: requestConsentAt
             ? new Date(requestConsentAt)
             : null,

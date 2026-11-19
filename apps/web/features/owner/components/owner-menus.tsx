@@ -72,6 +72,150 @@ export function OwnerMenus({
     save.reset();
   };
   const active = useActiveScreen();
+
+  const editor = result.data && (
+    <>
+      {result.isError && (
+        <ErrorState retry={() => void result.refetch()}>
+          최신 메뉴를 가져오지 못했어요. 작성한 입력은 유지됩니다.
+        </ErrorState>
+      )}
+      {changed && (
+        <section
+          role="alert"
+          className="mb-5 space-y-3 rounded-control border border-brand p-4"
+        >
+          <p>
+            다른 화면에서 매장이 변경됐어요. 위의 최신 메뉴와 입력을 비교한 뒤
+            선택해 주세요.
+          </p>
+          <Button
+            disabled={result.isError || result.isFetching}
+            onClick={() => {
+              setEditing({
+                version: result.data!.version,
+                snapshot: editing?.snapshot ?? empty,
+              });
+              setConflicted(false);
+              save.reset();
+            }}
+          >
+            내 입력으로 다시 적용
+          </Button>
+          <Button
+            variant="outline"
+            disabled={result.isError || result.isFetching}
+            onClick={() =>
+              load(
+                result.data!.menus.find((m) => m.id === form.getValues("id")) ??
+                  empty,
+              )
+            }
+          >
+            최신 메뉴 불러오기
+          </Button>
+        </section>
+      )}
+      <form
+        className="space-y-4"
+        onChangeCapture={() => {
+          if (!editing && result.data)
+            setEditing({ version: result.data.version, snapshot: empty });
+        }}
+        onSubmit={form.handleSubmit(async (menu) => {
+          if (changed) return;
+          try {
+            await save.mutateAsync({
+              version: editing?.version ?? result.data!.version,
+              menu,
+            });
+            if (active.current) {
+              if (menu.id)
+                document.getElementById(`menu-edit-${menu.id}`)?.focus();
+              form.reset(empty);
+              setEditing(null);
+              setConflicted(false);
+            }
+          } catch (e) {
+            if (
+              active.current &&
+              e instanceof ApiError &&
+              e.code === "RESTAURANT_VERSION_CONFLICT"
+            ) {
+              setConflicted(true);
+              await result.refetch();
+            }
+          }
+        })}
+      >
+        <label className="block space-y-2">
+          메뉴명
+          <Input {...form.register("name")} />
+        </label>
+        <label className="block space-y-2">
+          메뉴 종류
+          <Select {...form.register("kind")}>
+            <option value="REGULAR">일반 메뉴</option>
+            <option value="SET">세트</option>
+          </Select>
+        </label>
+        <Controller
+          name="price"
+          control={form.control}
+          render={({ field }) => (
+            <label className="block space-y-2">
+              가격 (원)
+              <Input
+                type="number"
+                min={0}
+                value={field.value ?? ""}
+                onChange={(e) =>
+                  field.onChange(
+                    e.target.value === "" ? null : Number(e.target.value),
+                  )
+                }
+                placeholder="가격 미확인"
+              />
+            </label>
+          )}
+        />
+        <label className="block space-y-2">
+          수량 단위
+          <Input {...form.register("unit")} placeholder="예: 1인분, 1세트" />
+        </label>
+        <label className="block space-y-2">
+          표시 순서
+          <Input
+            type="number"
+            min={0}
+            {...form.register("position", { valueAsNumber: true })}
+          />
+        </label>
+        <OwnerCheck {...form.register("available")}>판매 중</OwnerCheck>
+        {Object.keys(form.formState.errors).length > 0 && (
+          <FormError message="메뉴명·단위·가격·순서를 확인해 주세요." />
+        )}
+        <FormError
+          message={save.error ? safeErrorMessage(save.error) : undefined}
+        />
+        <Button
+          type="submit"
+          className="w-full"
+          loading={save.isPending}
+          disabled={changed}
+        >
+          메뉴 저장
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => load(empty)}
+        >
+          새 메뉴 입력
+        </Button>
+      </form>
+    </>
+  );
   return (
     <StepLayout title="메뉴 관리" onBack={() => onNavigate("/owner")}>
       {!restaurantId ? (
@@ -103,154 +247,19 @@ export function OwnerMenus({
                       {m.available ? "판매 중" : "판매 중단"} · {m.unit}
                     </small>
                   </span>
-                  <Button variant="outline" onClick={() => load(m)}>
+                  <Button
+                    id={`menu-edit-${m.id}`}
+                    variant="outline"
+                    onClick={() => load(m)}
+                  >
                     수정
                   </Button>
                 </div>
+                {editing?.snapshot.id === m.id && editor}
               </li>
             ))}
           </ul>
-          {result.isError && (
-            <ErrorState retry={() => void result.refetch()}>
-              최신 메뉴를 가져오지 못했어요. 작성한 입력은 유지됩니다.
-            </ErrorState>
-          )}
-          {changed && (
-            <section
-              role="alert"
-              className="mb-5 space-y-3 rounded-control border border-brand p-4"
-            >
-              <p>
-                다른 화면에서 매장이 변경됐어요. 위의 최신 메뉴와 입력을 비교한
-                뒤 선택해 주세요.
-              </p>
-              <Button
-                disabled={result.isError || result.isFetching}
-                onClick={() => {
-                  setEditing({
-                    version: result.data!.version,
-                    snapshot: editing?.snapshot ?? empty,
-                  });
-                  setConflicted(false);
-                  save.reset();
-                }}
-              >
-                내 입력으로 다시 적용
-              </Button>
-              <Button
-                variant="outline"
-                disabled={result.isError || result.isFetching}
-                onClick={() =>
-                  load(
-                    result.data!.menus.find(
-                      (m) => m.id === form.getValues("id"),
-                    ) ?? empty,
-                  )
-                }
-              >
-                최신 메뉴 불러오기
-              </Button>
-            </section>
-          )}
-          <form
-            className="space-y-4"
-            onChangeCapture={() => {
-              if (!editing && result.data)
-                setEditing({ version: result.data.version, snapshot: empty });
-            }}
-            onSubmit={form.handleSubmit(async (menu) => {
-              if (changed) return;
-              try {
-                const saved = await save.mutateAsync({
-                  version: editing?.version ?? result.data!.version,
-                  menu,
-                });
-                if (active.current) {
-                  form.reset(empty);
-                  setEditing({ version: saved.version, snapshot: empty });
-                  setConflicted(false);
-                }
-              } catch (e) {
-                if (
-                  active.current &&
-                  e instanceof ApiError &&
-                  e.code === "RESTAURANT_VERSION_CONFLICT"
-                ) {
-                  setConflicted(true);
-                  await result.refetch();
-                }
-              }
-            })}
-          >
-            <label className="block space-y-2">
-              메뉴명
-              <Input {...form.register("name")} />
-            </label>
-            <label className="block space-y-2">
-              메뉴 종류
-              <Select {...form.register("kind")}>
-                <option value="REGULAR">일반 메뉴</option>
-                <option value="SET">세트</option>
-              </Select>
-            </label>
-            <Controller
-              name="price"
-              control={form.control}
-              render={({ field }) => (
-                <label className="block space-y-2">
-                  가격 (원)
-                  <Input
-                    type="number"
-                    min={0}
-                    value={field.value ?? ""}
-                    onChange={(e) =>
-                      field.onChange(
-                        e.target.value === "" ? null : Number(e.target.value),
-                      )
-                    }
-                    placeholder="가격 미확인"
-                  />
-                </label>
-              )}
-            />
-            <label className="block space-y-2">
-              수량 단위
-              <Input
-                {...form.register("unit")}
-                placeholder="예: 1인분, 1세트"
-              />
-            </label>
-            <label className="block space-y-2">
-              표시 순서
-              <Input
-                type="number"
-                min={0}
-                {...form.register("position", { valueAsNumber: true })}
-              />
-            </label>
-            <OwnerCheck {...form.register("available")}>판매 중</OwnerCheck>
-            {Object.keys(form.formState.errors).length > 0 && (
-              <FormError message="메뉴명·단위·가격·순서를 확인해 주세요." />
-            )}
-            <FormError
-              message={save.error ? safeErrorMessage(save.error) : undefined}
-            />
-            <Button
-              type="submit"
-              className="w-full"
-              loading={save.isPending}
-              disabled={changed}
-            >
-              메뉴 저장
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => load(empty)}
-            >
-              새 메뉴 입력
-            </Button>
-          </form>
+          {!editing?.snapshot.id && editor}
         </>
       )}
     </StepLayout>

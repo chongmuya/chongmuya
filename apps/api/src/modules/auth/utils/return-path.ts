@@ -84,6 +84,8 @@ export function safeReturnPath(
   if (url.pathname === "/events" && url.searchParams.get("action") === "add")
     params.set("action", "add");
   const view = url.searchParams.get("view");
+  if (url.pathname === "/" && view === "personal" && !params.has("group"))
+    params.set("view", view);
   if (
     url.pathname === "/mypage" &&
     view &&

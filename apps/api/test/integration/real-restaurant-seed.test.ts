@@ -1,7 +1,7 @@
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
 import { MerchantReplyLink } from "../../src/modules/reservations/entities/merchant-reply-link.entity.js";
-import { RestaurantManagementService } from "../../src/modules/restaurants/restaurant-management.service.js";
+import { RestaurantOperationsService } from "../../src/modules/restaurants/restaurant-operations.service.js";
 import { RestaurantOperation } from "../../src/modules/restaurants/entities/restaurant-operation.entity.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -68,7 +68,7 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     assert.equal(await restaurants.countBy({ id: In(ids) }), 4);
     const realAddress = await restaurants.findOneByOrFail({ id: ids[0]! });
     await assert.rejects(
-      app.get(RestaurantManagementService).normalizeAddress({
+      app.get(RestaurantOperationsService).normalizeAddress({
         restaurantId: realAddress.id,
         actor: "test",
         reason: "fake must not overwrite real address",
@@ -102,6 +102,22 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
         .every((restaurant) => !restaurant.inquiryAvailable),
     );
 
+    for (const [size, count] of [
+      [20, 4],
+      [80, 4],
+      [81, 3],
+      [121, 1],
+      [191, 0],
+    ]) {
+      const list = (await (
+        await call("restaurants?expectedGuests=" + size)
+      ).json()) as { items: { id: string }[] };
+      assert.equal(list.items.filter((r) => ids.includes(r.id)).length, count);
+      const map = (await (
+        await call("restaurants/map?expectedGuests=" + size)
+      ).json()) as { id: string }[];
+      assert.equal(map.filter((r) => ids.includes(r.id)).length, count);
+    }
     const gaemijipId = restaurantSeedId("restaurant", "gaemijiptu");
     assert.equal(
       (await restaurants.findOneByOrFail({ id: gaemijipId })).maxCapacity,
@@ -222,7 +238,7 @@ test("real restaurant seed preserves surveyed conditions, unknown prices, privat
     const ownerJar = await signup();
     await call("auth/first-setup", ownerJar, "PATCH", { accountType: "owner" });
     const ownerAccount = await (await call("auth/me", ownerJar)).json();
-    await app.get(RestaurantManagementService).operate({
+    await app.get(RestaurantOperationsService).operate({
       restaurantId: ids[0]!,
       accountId: ownerAccount.id,
       actor: "seed-test",

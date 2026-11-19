@@ -58,7 +58,7 @@ export function SignupTerms({
                   />
                   <span className="text-[clamp(16px,4.8vw,20px)] leading-6">
                     {term.title}
-                    <span className={term.required ? "text-brand" : ""}>
+                    <span className={term.required ? "text-brand-action" : ""}>
                       ({term.required ? "필수" : "선택"})
                     </span>
                   </span>
@@ -137,9 +137,6 @@ export function SignupTermsDetail({
           ))}
         </div>
       )}
-      <p className="mt-8 text-caption text-muted">
-        상세 보기와 동의는 별개예요. 돌아가도 입력과 선택 상태는 유지돼요.
-      </p>
       <div className="mt-auto space-y-2 pt-8">
         <Button className="w-full" variant="brand-outline" onClick={onAgree}>
           동의하고 닫기

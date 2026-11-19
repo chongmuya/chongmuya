@@ -266,16 +266,25 @@ test("event roster imports preserve 20 identities; round responses, public first
     409,
   );
   row = (await getRound()).participants.find((p) => p.id === minsu.id)!;
+  assert.equal(
+    (
+      await call(`${rounds}/${first.id}/responses/${minsu.id}`, owner, "PUT", {
+        expectedVersion: row.response.version,
+        managerOverride: "UNANSWERED",
+      })
+    ).status,
+    400,
+  );
   await json(
     await call(`${rounds}/${first.id}/responses/${minsu.id}`, owner, "PUT", {
       expectedVersion: row.response.version,
-      managerOverride: "UNANSWERED",
+      managerOverride: "ABSENT",
     }),
   );
   assert.equal(
     (await getRound()).participants.find((p) => p.id === minsu.id)?.response
       .finalState,
-    "UNANSWERED",
+    "ABSENT",
   );
   const outsider = await json<{ id: string }>(
     await call("events", other, "POST", { name: "다른 총무" }),

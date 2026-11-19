@@ -34,7 +34,8 @@ import { ConditionSummary } from "./condition-summary";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import type { BrowseNavigation } from "@/features/restaurants/types";
 import { ApiError } from "@/shared/http/api-error";
-import { InquiryReceipt, InquiryDetails } from "./reservation-progress";
+import { InquiryReview } from "./inquiry-review";
+import { InquiryReceipt } from "./reservation-progress";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -334,11 +335,18 @@ function InquiryDraft({
   );
   const initialRestaurant = useRestaurant(initialRestaurantId);
   const targets = useSelectedRestaurants(browse.selected);
-  const targetsLoading = targets.some((target) => target.isPending);
-  const targetsFailed = targets.some((target) => target.isError);
-  const targetsUnavailable = targets.some(
-    (target) => target.data && !target.data.inquiryAvailable,
-  );
+  const targetState = targets.some((target) => target.isError)
+    ? "error"
+    : targets.some((target) => target.isPending)
+      ? "loading"
+      : targets.some(
+            ({ data }) =>
+              !data?.inquiryAvailable ||
+              data.maxCapacity === null ||
+              data.maxCapacity < Number(values.expectedGuests),
+          )
+        ? "unavailable"
+        : "ready";
   const [confirmationVersion, setConfirmationVersion] = useState(event.version);
   const submitting = useRef(false);
   const create = useCreateInquiry(account.id, event.id, request);
@@ -356,9 +364,7 @@ function InquiryDraft({
     if (
       submitting.current ||
       unavailable ||
-      targetsLoading ||
-      targetsFailed ||
-      targetsUnavailable ||
+      targetState !== "ready" ||
       !browse.selected.length
     )
       return;
@@ -468,95 +474,18 @@ function InquiryDraft({
           }}
         />
       ) : step === "review" ? (
-        <div className="space-y-6">
-          <p className="text-sm">
-            {values.date} {values.time} · {values.expectedGuests}명
-          </p>
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold">보낼 매장</h2>
-              <Button
-                variant="outline"
-                disabled={create.isPending}
-                onClick={() =>
-                  browse.onNavigate({ view: "list", restaurant: null })
-                }
-              >
-                매장 수정
-              </Button>
-            </div>
-            <ul className="space-y-3">
-              {browse.selected.map((id, index) => (
-                <li key={id} className="rounded-control bg-surface p-4">
-                  <strong className="text-sm">
-                    {targets[index]?.data?.name ?? "매장 확인 중…"}
-                  </strong>
-                  <p className="mt-1 text-xs text-secondary">
-                    {targets[index]?.data?.address}
-                  </p>
-                  {targets[index]?.data?.isDemo && (
-                    <p className="mt-2 text-xs text-muted">체험 매장</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-          {targetsLoading && <LoadingState>매장 확인 중…</LoadingState>}
-          {targetsFailed && (
-            <ErrorState
-              retry={() =>
-                targets.forEach((target) => {
-                  if (target.isError) void target.refetch();
-                })
-              }
-            >
-              매장 정보를 다시 확인해 주세요.
-            </ErrorState>
-          )}
-          {targetsUnavailable && (
-            <p role="alert" className="text-sm text-danger">
-              현재 문의할 수 없는 매장이 있어요. 매장 선택을 수정해 주세요.
-            </p>
-          )}
-          <InquiryDetails
-            conditions={inquiryConditions(values)}
-            contact={{ name: values.contactName, phone: values.contactPhone }}
-          />
-          <Button
-            variant="outline"
-            className="w-full"
-            disabled={create.isPending}
-            onClick={() =>
-              browse.onNavigate({ view: "conditions", restaurant: null })
-            }
-          >
-            문의 조건 수정
-          </Button>
-          <p className="rounded-control bg-choice p-4 text-sm">
-            보낸 뒤에는 조건이나 매장을 바꿀 수 없고, 이 행사에서 다시 문의할 수
-            없어요.
-          </p>
-          <FormError
-            message={
-              error ??
-              (create.error ? safeErrorMessage(create.error) : undefined)
-            }
-          />
-          <Button
-            className="w-full"
-            loading={create.isPending}
-            disabled={
-              unavailable ||
-              targetsLoading ||
-              targetsFailed ||
-              targetsUnavailable ||
-              !browse.selected.length
-            }
-            onClick={submit}
-          >
-            문의 보내기
-          </Button>
-        </div>
+        <InquiryReview
+          values={values}
+          browse={browse}
+          targets={targets}
+          targetState={targetState}
+          unavailable={unavailable}
+          sending={create.isPending}
+          onSubmit={submit}
+          error={
+            error ?? (create.error ? safeErrorMessage(create.error) : undefined)
+          }
+        />
       ) : (
         <>
           {browse.view === "list" && (
@@ -566,11 +495,7 @@ function InquiryDraft({
           )}
           <RestaurantBrowser
             {...browse}
-            conditions={{
-              expectedGuests: Number(values.expectedGuests),
-              seating: values.seating,
-              space: values.space,
-            }}
+            expectedGuests={Number(values.expectedGuests)}
             onEditConditions={() =>
               browse.onNavigate({ view: "conditions", restaurant: null })
             }

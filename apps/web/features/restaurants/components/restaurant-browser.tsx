@@ -14,11 +14,7 @@ import {
   restaurantQuery,
   restaurantMapQuery,
 } from "../api/restaurants.api";
-import type {
-  BrowseNavigation,
-  RestaurantConditions,
-} from "../types/restaurant.types";
-import { conditionsMatch } from "../lib/conditions-match";
+import type { BrowseNavigation } from "../types/restaurant.types";
 import { RestaurantPhoto } from "./restaurant-photo";
 import { RestaurantDetail } from "./restaurant-detail";
 import { RestaurantMap, type MapViewport } from "./restaurant-map";
@@ -32,13 +28,13 @@ export function RestaurantBrowser({
   view,
   region,
   page,
-  conditions,
+  expectedGuests,
   onSelect,
   onNavigate,
   onInquiry,
   onEditConditions,
 }: BrowseNavigation & {
-  conditions?: RestaurantConditions;
+  expectedGuests?: number;
   onInquiry: (ids: string[]) => void;
   onEditConditions?: () => void;
 }) {
@@ -50,11 +46,11 @@ export function RestaurantBrowser({
     defaultValues: { region },
   });
   const list = useQuery({
-    ...restaurantsQuery(region, page),
+    ...restaurantsQuery(region, page, expectedGuests),
     enabled: view === "list",
   });
   const map = useQuery({
-    ...restaurantMapQuery(region),
+    ...restaurantMapQuery(region, expectedGuests),
     enabled: view === "map",
   });
   const focus = useQuery({
@@ -203,7 +199,9 @@ export function RestaurantBrowser({
               {!list.data.items.length ? (
                 <section className="rounded-control bg-surface px-5 py-10 text-center">
                   <h2 className="text-lg font-bold">
-                    이 지역에 등록된 매장이 없어요
+                    {expectedGuests
+                      ? `이 지역에 ${expectedGuests}명 규모의 매장이 없어요`
+                      : "이 지역에 등록된 매장이 없어요"}
                   </h2>
                   <Button
                     className="mt-6 w-full"
@@ -249,11 +247,6 @@ export function RestaurantBrowser({
                             height={150}
                             eager={index === 0}
                           />
-                          {conditions && (
-                            <span className="absolute top-3 right-3 rounded-pill bg-surface/95 px-2 py-1 text-xs">
-                              {conditionsMatch(r, conditions)}
-                            </span>
-                          )}
                         </button>
                         <div className="p-4">
                           <div className="flex items-start justify-between gap-2">

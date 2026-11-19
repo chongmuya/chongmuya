@@ -59,7 +59,7 @@ export class RestaurantsService {
       .getRepository(Restaurant)
       .createQueryBuilder("r")
       .where("r.published = true");
-    this.filterRegion(query, input.region);
+    this.filterCatalog(query, input.region, input.expectedGuests);
     const [rows, total] = await query
       .orderBy("r.name", "ASC")
       .addOrderBy("r.id", "ASC")
@@ -73,7 +73,13 @@ export class RestaurantsService {
       pageSize: 24,
     };
   }
-  private filterRegion(query: SelectQueryBuilder<Restaurant>, region?: string) {
+  private filterCatalog(
+    query: SelectQueryBuilder<Restaurant>,
+    region?: string,
+    expectedGuests?: number,
+  ) {
+    if (expectedGuests !== undefined)
+      query.andWhere("r.max_capacity >= :expectedGuests", { expectedGuests });
     // A displayed area such as '세종대 · 어린이대공원' means either area.
     // Preserve spaces within an area name and escape literal SQL wildcards.
     const regions = [
@@ -95,13 +101,16 @@ export class RestaurantsService {
         ),
       );
   }
-  async map(region?: string): Promise<RestaurantMapDto[]> {
+  async map(
+    region?: string,
+    expectedGuests?: number,
+  ): Promise<RestaurantMapDto[]> {
     const db = await this.database.connect();
     const query = db
       .getRepository(Restaurant)
       .createQueryBuilder("r")
       .where("r.published=true");
-    this.filterRegion(query, region);
+    this.filterCatalog(query, region, expectedGuests);
     const rows = await query
       .select([
         "r.id",
@@ -160,6 +169,7 @@ export class RestaurantsService {
         where: {
           restaurantId: In(ids),
           active: true,
+          isPrimary: true,
           requestConsentAt: Not(IsNull()),
         },
       }),
@@ -301,7 +311,11 @@ export class RestaurantsService {
     return recipient;
   }
 
-  async inquiryTargets(ids: string[], manager: EntityManager) {
+  async inquiryTargets(
+    ids: string[],
+    expectedGuests: number,
+    manager: EntityManager,
+  ) {
     const targets = [];
     for (const id of [...ids].sort()) {
       const restaurant = await manager.getRepository(Restaurant).findOne({
@@ -312,12 +326,18 @@ export class RestaurantsService {
         where: {
           restaurantId: id,
           active: true,
+          isPrimary: true,
           requestConsentAt: Not(IsNull()),
         },
         order: { id: "ASC" },
         lock: { mode: "pessimistic_write" },
       });
-      if (!restaurant || !contact)
+      if (
+        !restaurant ||
+        restaurant.maxCapacity === null ||
+        restaurant.maxCapacity < expectedGuests ||
+        !contact
+      )
         throw new DomainHttpException("RESTAURANT_INQUIRY_UNAVAILABLE");
       targets.push({
         restaurantId: id,

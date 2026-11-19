@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import { QueryClient, queryOptions } from "@tanstack/react-query";
-import { getApiJson } from "../shared/http/browser-api";
+import { requestJson } from "../shared/http/request";
 import { ApiError } from "../shared/http/api-error";
 import { apiOrigin } from "../shared/http/api-origin";
 
@@ -36,14 +36,14 @@ test("public API origin is explicit in production and cannot contain credentials
 test("browser transport handles real HTTP errors, invalid data, cancellation and recovery", async (t) => {
   const healthQueryOptions = queryOptions({
     queryKey: ["health"],
-    queryFn: ({ signal }) => getApiJson("/health", { signal }),
+    queryFn: ({ signal }) => requestJson("/api/v1/restaurants", { signal }),
     staleTime: 0,
     retry: false,
   });
   let mode = "healthy";
   const server = createServer((request, response) => {
     if (mode === "slow") return;
-    response.setHeader("x-request-id", "test-correlation-id");
+    response.setHeader("x-request-id", "9fcf95b6-8b32-4f78-9e16-4b32f04c693b");
     if (mode === "down") {
       response.writeHead(503).end("not-json: private-internal-error");
       return;
@@ -62,7 +62,10 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
   const previousOrigin = process.env.NEXT_PUBLIC_API_ORIGIN;
   process.env.NEXT_PUBLIC_API_ORIGIN = `http://127.0.0.1:${address.port}`;
   globalThis.fetch = (input, options) => {
-    assert.equal(String(input), `${process.env.NEXT_PUBLIC_API_ORIGIN}/health`);
+    assert.equal(
+      String(input),
+      `${process.env.NEXT_PUBLIC_API_ORIGIN}/api/v1/restaurants`,
+    );
     assert.equal(options?.credentials, "include");
     return nativeFetch(input, options);
   };
@@ -85,7 +88,7 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
     (error: unknown) =>
       error instanceof ApiError &&
       error.status === 503 &&
-      error.requestId === "test-correlation-id" &&
+      error.requestId === "9fcf95b6-8b32-4f78-9e16-4b32f04c693b" &&
       !error.message.includes("private"),
   );
   assert.equal(client.getQueryState(["health"])?.status, "error");
@@ -106,11 +109,13 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
   }
   mode = "slow";
   await assert.rejects(
-    getApiJson("/health", { timeoutMs: 30 }),
+    requestJson("/api/v1/restaurants", {}, 30),
     (error: unknown) => error instanceof ApiError && error.code === "TIMEOUT",
   );
   const controller = new AbortController();
-  const pending = getApiJson("/health", { signal: controller.signal });
+  const pending = requestJson("/api/v1/restaurants", {
+    signal: controller.signal,
+  });
   controller.abort();
   await assert.rejects(
     pending,
@@ -119,7 +124,7 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await assert.rejects(
-    getApiJson("/health"),
+    requestJson("/api/v1/restaurants"),
     (error: unknown) =>
       error instanceof ApiError && error.code === "NETWORK_ERROR",
   );

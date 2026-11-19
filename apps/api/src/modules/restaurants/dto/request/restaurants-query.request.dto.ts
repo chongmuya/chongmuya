@@ -15,6 +15,16 @@ export class RestaurantRegionQuery {
   @IsString()
   @MaxLength(80)
   region?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value,
+  )
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  expectedGuests?: number;
 }
 
 export class RestaurantsQuery extends RestaurantRegionQuery {

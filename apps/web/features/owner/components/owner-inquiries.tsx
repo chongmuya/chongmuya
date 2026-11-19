@@ -58,18 +58,22 @@ export function OwnerInquiries({
                   <h2 className="font-bold">{i.eventName}</h2>
                   <p className="text-sm">
                     {i.restaurantName} · {i.expectedGuests}명<br />
-                    {new Date(i.startsAt).toLocaleString("ko-KR")}
+                    {new Date(i.startsAt).toLocaleString("ko-KR", {
+                      timeZone: "Asia/Seoul",
+                    })}
                   </p>
-                  <p className="text-sm text-brand">
+                  <p className="text-sm text-brand-action">
                     {i.closed
                       ? "문의 종료"
-                      : i.response
-                        ? {
-                            AVAILABLE: "가능 제안",
-                            CHANGE: "조건 변경 제안",
-                            DECLINE: "불가",
-                          }[i.response.kind]
-                        : "답변 대기"}
+                      : i.response?.state === "EXPIRED"
+                        ? "선택 기한 만료"
+                        : i.response
+                          ? {
+                              AVAILABLE: "가능 제안",
+                              CHANGE: "조건 변경 제안",
+                              DECLINE: "불가",
+                            }[i.response.kind]
+                          : "답변 대기"}
                   </p>
                   {!i.closed && (
                     <Link

@@ -17,7 +17,9 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
   return (
     <section className="my-6 space-y-7 text-copy">
       <div className="rounded-control bg-surface px-5 py-7 text-center shadow-card">
-        <p className="text-sm font-semibold text-brand">문의 접수 완료</p>
+        <p className="text-sm font-semibold text-brand-action">
+          문의 접수 완료
+        </p>
         <h2 className="mt-2 text-xl font-bold">매장 답변</h2>
       </div>
       <div className="space-y-3">
@@ -30,12 +32,15 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
           <li key={t.id} className="rounded-control bg-surface p-5 shadow-card">
             <div className="flex items-center justify-between gap-2">
               <strong className="text-sm">{t.restaurantName}</strong>
-              <span className="shrink-0 rounded-pill bg-brand/10 px-2 py-1 text-xs text-brand">
+              <span className="shrink-0 rounded-pill bg-brand/10 px-2 py-1 text-xs text-brand-action">
                 {
                   {
                     PENDING: "발송 대기",
                     PROCESSING: "발송 요청 중",
-                    ACCEPTED: "발송 접수",
+                    ACCEPTED:
+                      t.delivery?.provider === "fake"
+                        ? "체험 발송 접수"
+                        : "발송 접수",
                     DELIVERED:
                       t.delivery?.provider === "fake"
                         ? "체험 발송"
@@ -49,9 +54,6 @@ export function InquiryReceipt({ inquiry }: { inquiry: ReservationRequest }) {
               </span>
             </div>
             <p className="mt-1 text-xs text-muted">{t.address}</p>
-            {t.delivery?.provider === "fake" && (
-              <p className="mt-2 text-xs text-muted">체험 발송</p>
-            )}
             {t.response && <ReplySummary response={t.response} />}
           </li>
         ))}

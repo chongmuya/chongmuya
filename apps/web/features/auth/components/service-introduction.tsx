@@ -28,7 +28,7 @@ export function ServiceIntroduction() {
           height={47.2}
         />
         <div aria-live="polite" className="mt-12">
-          <p className="text-caption text-brand">{page + 1} / 2</p>
+          <p className="text-caption text-brand-action">{page + 1} / 2</p>
           <h1 className="mt-3 text-3xl leading-tight font-bold whitespace-pre-line">
             {page === 0
               ? "모임이 없어도,\n행사 준비를 가볍게"
@@ -53,8 +53,7 @@ export function ServiceIntroduction() {
         />
         <p className="rounded-control bg-brand/10 p-4 text-caption text-muted">
           여러 매장에 예약 조건을 문자로 문의하고, 링크·QR로 참석을 받을 수
-          있어요. 매장 답변을 확인할 수 있으며 제안 선택·예약 확정·정산은 다음
-          단계예요.
+          있어요.
         </p>
       </div>
       <div className="space-y-2">

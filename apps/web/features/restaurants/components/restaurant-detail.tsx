@@ -79,7 +79,7 @@ export function RestaurantDetail({
                   key={value}
                   variant="brand-outline"
                   aria-pressed={section === value}
-                  className="min-h-[69px] flex-col gap-2 rounded-control border-[0.5px] px-2 py-3 text-xs font-normal text-brand-ink shadow-control"
+                  className="min-h-[69px] flex-col gap-2 rounded-control border-[0.5px] px-2 py-3 text-xs font-normal text-brand-ink shadow-control aria-pressed:border-brand-ink aria-pressed:bg-choice aria-pressed:font-bold"
                   onClick={() => setSection(value)}
                 >
                   <Image
@@ -126,14 +126,6 @@ export function RestaurantDetail({
                   {section === "booking" ? (
                     <dl className="space-y-3">
                       {[
-                        [
-                          "최소 단체 인원",
-                          r.minimumGuests == null
-                            ? "확인 필요"
-                            : r.minimumGuests === 0
-                              ? "제한 없음"
-                              : `${r.minimumGuests}명`,
-                        ],
                         ["예약 기준", r.bookingPolicy],
                         ["예약금", r.depositPolicy],
                         ["메뉴 주문", r.menuPolicy],
@@ -248,7 +240,9 @@ export function RestaurantDetail({
                   disabled={!selected && full}
                   onClick={onInquiry}
                 >
-                  선택한 {targetCount}곳으로 계속
+                  {!selected && full
+                    ? "선택한 매장을 먼저 빼 주세요"
+                    : `선택한 ${targetCount}곳으로 계속`}
                 </Button>
               </div>
             ) : (

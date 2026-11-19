@@ -277,11 +277,13 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
     "deliveries",
     "--status",
     "ACCEPTED",
+    "--page",
+    "1",
     "--output",
     output,
   ]);
   assert.equal(queried.status, 0, queried.stderr);
-  assert.match(queried.stdout, /가상 온기홀/);
+  assert.match(queried.stdout, /온기홀/);
   assert.match(queried.stdout, /\*\*\*-\*\*\*\*-/);
   assert.doesNotMatch(
     queried.stdout + queried.stderr,
@@ -293,7 +295,8 @@ test("compiled seed CLI runs without source or HTTP configuration and rejects un
   assert.equal((await stat(output)).mode & 0o777, 0o600);
   const savedOutput = await readFile(output, "utf8");
   assert.equal(
-    operations(["--action", "deliveries", "--output", output]).status,
+    operations(["--action", "deliveries", "--page", "1", "--output", output])
+      .status,
     1,
   );
   assert.equal(await readFile(output, "utf8"), savedOutput);

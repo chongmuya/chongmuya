@@ -99,6 +99,7 @@ export class ReservationsService {
         throw new DomainHttpException("VALIDATION_FAILED");
       const targets = await this.restaurants.inquiryTargets(
         input.restaurantIds,
+        conditions.expectedGuests,
         manager,
       );
       const group = event.groupId

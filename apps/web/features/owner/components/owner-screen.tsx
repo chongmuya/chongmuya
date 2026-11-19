@@ -130,7 +130,7 @@ function OwnerHome({
                   {r.name}
                   {r.branchName ? ` (${r.branchName})` : ""}
                 </h2>
-                <p className="mt-2 text-sm text-brand">
+                <p className="mt-2 text-sm text-brand-action">
                   등록 완료 · {r.published ? "공개 중" : "공개 대기"}
                 </p>
               </div>

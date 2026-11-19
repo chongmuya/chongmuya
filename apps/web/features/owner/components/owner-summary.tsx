@@ -37,10 +37,9 @@ export function OwnerSummary({
       title: "수용 인원 및 공간",
       rows: [
         ["전체 수용 인원", count(d.maxCapacity)],
-        ["최소 단체 인원", count(d.minimumGuests.value)],
         ...d.spaces.map((s): [string, string] => [
           `${s.label || "이름 미입력"} · ${{ HALL: "홀", FLOOR: "층", WHOLE: "전체", ROOM: "룸" }[s.kind]}`,
-          `최대 ${count(s.capacity)} / 최소 ${count(s.minGuests)} / 최소 이용 ${money(s.minSpend)} / 별도 비용 ${money(s.separateFee)} / 착석 ${{ YES: "함께", NO: "분리", UNKNOWN: "확인 필요" }[s.togetherSeating]}${s.conditions ? ` / ${s.conditions}` : ""}`,
+          `${{ AVAILABLE: "운영 중", UNAVAILABLE: "이용 중단", UNKNOWN: "운영 여부 확인 필요" }[s.availability]} / 최대 ${count(s.capacity)} / 최소 ${count(s.minGuests)} / 최소 이용 ${money(s.minSpend)} / 별도 비용 ${money(s.separateFee)} / 착석 ${{ YES: "함께", NO: "분리", UNKNOWN: "확인 필요" }[s.togetherSeating]}${s.conditions ? ` / ${s.conditions}` : ""}`,
         ]),
       ],
     },

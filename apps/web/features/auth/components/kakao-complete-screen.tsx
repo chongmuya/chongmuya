@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
-import { NoticeDialog } from "@/shared/ui/notice-dialog";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useAuth, notifySessionChange } from "./auth-provider";
@@ -22,7 +21,6 @@ export function KakaoCompleteScreen() {
     router = useRouter();
   const action = usePrivateAuthAction();
   const [signupContext, setSignupContext] = useState<KakaoStatus>();
-  const [dismissedError, setDismissedError] = useState<unknown>();
   const failure = params.get("failure");
   const result = useQuery({
     queryKey: ["user", account?.id ?? "anonymous", "kakao-result"],
@@ -67,17 +65,6 @@ export function KakaoCompleteScreen() {
         }
       />
       <FormError message={errorMessage} />
-      {error && dismissedError !== error && (
-        <NoticeDialog
-          title="카카오 인증을 완료하지 못했어요"
-          description={errorMessage!}
-          onClose={() => setDismissedError(error)}
-        >
-          <Button className="w-full" onClick={() => setDismissedError(error)}>
-            확인
-          </Button>
-        </NoticeDialog>
-      )}
       {kind === "existing" ? (
         <>
           <p>

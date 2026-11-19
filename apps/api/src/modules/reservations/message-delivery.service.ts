@@ -17,7 +17,8 @@ import {
   ReservationOperation,
 } from "./entities/merchant-reply.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
-import type { ReservationRequest } from "./entities/reservation-request.entity.js";
+import { MerchantReplyLink } from "./entities/merchant-reply-link.entity.js";
+import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import type { DeliveryState } from "./types/merchant-reply.js";
 
 @Injectable()
@@ -93,15 +94,13 @@ export class MessageDeliveryService {
         return null;
       }
       const c = await this.links.context(row.targetId, m);
-      const reasons = await this.links.reasons(c.target, c.request, c.link, m);
-      if (this.provider.requiresRealRecipient) {
-        const [liveReasons] = await this.restaurants.deliveryEligibility(
-          [this.links.recipient(c.target, c.link)],
-          m,
-          true,
-        );
-        reasons.push(...liveReasons);
-      }
+      const reasons = await this.links.reasons(
+        c.target,
+        c.request,
+        c.link,
+        m,
+        this.provider.requiresRealRecipient,
+      );
       if (
         row.contactId !== c.link?.contactId ||
         row.phoneSnapshot !== c.link?.phoneSnapshot ||
@@ -152,7 +151,7 @@ export class MessageDeliveryService {
       const v = row.variables;
       return {
         row,
-        text: `[총무야] ${v.restaurantName}\n${v.eventName} 예약 문의\n${new Date(v.startsAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} / ${v.expectedGuests}명 / ${v.space}\n가능·조건 변경·불가 답변: ${url}\n예약 확정 전 문의입니다. 링크를 공유하지 마세요.`,
+        text: `[총무야] ${v.restaurantName}\n${v.eventName} 예약 문의\n${new Date(v.startsAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} / ${v.expectedGuests}명 / ${({ HALL: "일반 홀", ROOM: "룸", FLOOR: "한 층 대관", WHOLE: "전체 대관", ANY: "공간 무관" } as Record<string, string>)[v.space] ?? "공간 문의"}\n가능·조건 변경·불가 답변: ${url}\n예약 확정 전 문의입니다. 링크를 공유하지 마세요.`,
       };
     });
     if (!claimed) return { dispatchAttempted: false };
@@ -445,7 +444,7 @@ export class MessageDeliveryService {
     };
   }
   async listForOperations(
-    filter: { status?: DeliveryState; deliveryId?: string } = {},
+    filter: { status?: DeliveryState; deliveryId?: string; page?: number } = {},
   ) {
     const db = await this.database.connect();
     return db.transaction("REPEATABLE READ", async (m) => {
@@ -454,30 +453,56 @@ export class MessageDeliveryService {
           ...(filter.status ? { status: filter.status } : {}),
           ...(filter.deliveryId ? { id: filter.deliveryId } : {}),
         },
-        order: { createdAt: "ASC", id: "ASC" },
+        order: { createdAt: "DESC", id: "DESC" },
+        take: 50,
+        skip: filter.deliveryId ? 0 : ((filter.page ?? 1) - 1) * 50,
       });
-      const result = [];
-      for (const row of rows) {
-        const c = await this.links.context(row.targetId, m);
+      if (!rows.length) return [];
+      const targetIds = rows.map((row) => row.targetId);
+      const targets = await m.findBy(RequestTarget, { id: In(targetIds) });
+      const requests = await m.findBy(ReservationRequest, {
+        id: In(targets.map((target) => target.requestId)),
+      });
+      const links = await m.find(MerchantReplyLink, {
+        where: { targetId: In(targetIds) },
+        select: {
+          targetId: true,
+          generation: true,
+          contactId: true,
+          phoneSnapshot: true,
+          expiresAt: true,
+          revokedAt: true,
+        },
+      });
+      const targetById = new Map(targets.map((target) => [target.id, target]));
+      const requestById = new Map(
+        requests.map((request) => [request.id, request]),
+      );
+      const linkByTarget = new Map(links.map((link) => [link.targetId, link]));
+      const contexts = rows.map((row) => {
+        const target = targetById.get(row.targetId)!;
+        return {
+          target,
+          request: requestById.get(target.requestId)!,
+          link: linkByTarget.get(target.id) ?? null,
+        };
+      });
+      const eligibility = await this.restaurants.deliveryEligibility(
+        contexts.map(({ target, link }) => this.links.recipient(target, link)),
+        m,
+        this.provider.requiresRealRecipient,
+      );
+      return rows.map((row, index) => {
+        const c = contexts[index]!;
         const current =
           row.linkGeneration === c.link?.generation &&
           row.contactId === c.link?.contactId;
-        const reasons = await this.links.reasons(
-          c.target,
-          c.request,
-          c.link,
-          m,
-        );
-        if (this.provider.requiresRealRecipient) {
-          const [live] = await this.restaurants.deliveryEligibility(
-            [this.links.recipient(c.target, c.link)],
-            m,
-            true,
-          );
-          reasons.push(...live);
-        }
+        const reasons = [
+          ...eligibility[index]!,
+          ...this.links.linkReasons(c.request, c.link),
+        ];
         if (!current) reasons.push("SUPERSEDED");
-        result.push({
+        return {
           id: row.id,
           targetId: row.targetId,
           status: row.status,
@@ -510,9 +535,8 @@ export class MessageDeliveryService {
           original_contact_id: c.target.contactId,
           original_recipient_phone: c.target.contactPhone,
           original_consent_at: c.target.consentAt,
-        });
-      }
-      return result;
+        };
+      });
     });
   }
   async reconcile(id: string, actor: string, reason: string, dryRun = false) {

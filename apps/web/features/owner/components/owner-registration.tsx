@@ -132,7 +132,13 @@ export function OwnerRegistration({
     setAdvancing(true);
     setError(null);
     try {
-      const issues = registrationIssues(form.getValues()).filter(
+      const values = form.getValues();
+      const savedContact = draft.currentRestaurant?.data;
+      const unchangedContact =
+        !!savedContact &&
+        values.phone === savedContact.phone &&
+        values.receiveConsent === savedContact.receiveConsent;
+      const issues = registrationIssues(values, unchangedContact).filter(
         (issue) => step === 4 || issue.step === step,
       );
       if (issues.length) {
@@ -370,6 +376,16 @@ export function OwnerRegistration({
                   path="category"
                   label="음식 종류 *"
                   options={[
+                    ...(["한식", "호프·주점", "기타 음식점"].includes(
+                      draft.data.category,
+                    )
+                      ? []
+                      : [
+                          [
+                            draft.data.category,
+                            draft.data.category || "미확인",
+                          ] as const,
+                        ]),
                     ["한식", "한식"],
                     ["호프·주점", "호프·주점"],
                     ["기타 음식점", "기타 음식점"],
@@ -377,14 +393,18 @@ export function OwnerRegistration({
                 />
                 <OwnerField
                   path="phone"
-                  label="예약 문의 연락처 *"
+                  label={
+                    draft.restaurantId
+                      ? "예약 문의 연락처"
+                      : "예약 문의 연락처 *"
+                  }
                   placeholder="01012345678"
                 />
                 {data.phone &&
                 (verifiedPhone === data.phone ||
                   (account.phone === data.phone && account.phoneVerifiedAt)) ? (
                   <p className="text-sm">확인된 연락처입니다.</p>
-                ) : (
+                ) : data.phone ? (
                   <div className="space-y-3">
                     <Button
                       variant="brand-outline"
@@ -421,7 +441,7 @@ export function OwnerRegistration({
                       </>
                     )}
                   </div>
-                )}
+                ) : null}
                 <OwnerCheck
                   checked={data.receiveConsent}
                   onChange={(e) =>
@@ -443,33 +463,6 @@ export function OwnerRegistration({
                   path="maxCapacity"
                   label="매장 전체 수용 인원 (미확인 시 비워 두세요)"
                 />
-                <OwnerChoice
-                  path="minimumGuests.kind"
-                  label="최소 단체 인원"
-                  options={[
-                    ["UNKNOWN", "미확인"],
-                    ["NONE", "제한 없음"],
-                    ["AT_LEAST", "최소 인원 제한 있음"],
-                  ]}
-                  changed={(v) =>
-                    form.setValue(
-                      "minimumGuests.value",
-                      v === "NONE" ? 0 : null,
-                    )
-                  }
-                />
-                {data.minimumGuests.kind === "AT_LEAST" && (
-                  <OwnerField
-                    numeric
-                    path="minimumGuests.value"
-                    label="최소 예약 인원"
-                  />
-                )}
-                <p className="text-sm text-muted">
-                  공통 최소 인원·주문 조건과 각 공간 조건을 모두 충족해야 해요.
-                  같은 식사 금액의 최소 기준은 더하지 않고, 별도 대관료는 따로
-                  적용해요.
-                </p>
                 {fields.map((field, i) => (
                   <section
                     key={field.rowKey}
@@ -477,9 +470,11 @@ export function OwnerRegistration({
                   >
                     <div className="flex items-center justify-between">
                       <h2 className="font-bold">공간 {i + 1}</h2>
-                      <Button variant="outline" onClick={() => remove(i)}>
-                        공간 제외
-                      </Button>
+                      {!field.id && (
+                        <Button variant="outline" onClick={() => remove(i)}>
+                          입력 취소
+                        </Button>
+                      )}
                     </div>
                     <OwnerChoice
                       path={`spaces.${i}.kind`}
@@ -529,7 +524,7 @@ export function OwnerRegistration({
                     />
                     <OwnerChoice
                       path={`spaces.${i}.availability`}
-                      label="공간 이용 정보 (날짜별 예약 가능 확정 아님)"
+                      label="운영 상태"
                       options={[
                         ["UNKNOWN", "확인 필요"],
                         ["AVAILABLE", "운영 중"],

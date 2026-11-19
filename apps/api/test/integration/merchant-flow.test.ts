@@ -1,3 +1,4 @@
+import { RestaurantOperationsService } from "../../src/modules/restaurants/restaurant-operations.service.js";
 import { In } from "typeorm";
 import { Event } from "../../src/modules/events/entities/event.entity.js";
 import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
@@ -146,7 +147,11 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     .findOneByOrFail({ id: created.restaurantId });
   assert.equal(r.published, false);
   assert.equal(r.latitude, 37.5401);
-  assert.equal(r.minimumGuests, 10);
+  assert.equal(
+    r.minimumGuests,
+    null,
+    "일반 홀의 문의에는 매장 공통 최소 인원을 적용하지 않는다",
+  );
   assert.equal(
     (await db.getRepository(RestaurantSpace).findBy({ restaurantId: r.id }))[0]
       .kind,
@@ -165,14 +170,26 @@ test("owner draft/address registration races and ownership; direct delivery, ano
         menuPolicy: "메뉴는 방문 전 협의",
         operatingHours: "기존 영업시간",
       };
-      await db
-        .getRepository(Restaurant)
-        .update(r.id, { policies: catalogPolicies(legacy) });
+      await db.getRepository(Restaurant).update(r.id, {
+        category: "요리주점",
+        policies: catalogPolicies(legacy),
+      });
       type Draft = Awaited<ReturnType<RestaurantManagementService["getDraft"]>>;
       const edit = await json<Draft>(
         await call("owner/drafts", winning.jar, "POST", { restaurantId: r.id }),
         201,
       );
+      const recipientBefore = await db.manager.findOneByOrFail(
+        RestaurantContact,
+        { restaurantId: r.id, isPrimary: true },
+      );
+      assert.equal(edit.data.category, "요리주점");
+      edit.data.policies.minimumOrder = {
+        kind: "AMOUNT",
+        amount: 10000,
+        quantity: null,
+        unit: "",
+      };
       edit.data.branchName = "유지할 입력";
       edit.data.policies.hours = {
         start: "17:00",
@@ -230,7 +247,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
         (await call(`owner/drafts/${edit.id}`, winning.alien)).status,
         404,
       );
-      await app.get(RestaurantManagementService).operate({
+      await app.get(RestaurantOperationsService).operate({
         restaurantId: r.id,
         actor: "test-operator",
         reason: "공개 상태 경쟁 검증",
@@ -279,10 +296,56 @@ test("owner draft/address registration races and ownership; direct delivery, ano
         menuPolicy: string;
         operatingHours: string;
       }>(await call(`restaurants/${r.id}`));
-      assert.equal(publicView.bookingPolicy, legacy.bookingPolicy);
+      assert.equal(current.category, "요리주점");
+      assert.deepEqual(
+        await db.manager.findOneByOrFail(RestaurantContact, {
+          id: recipientBefore.id,
+        }),
+        recipientBefore,
+      );
+      assert.ok(publicView.bookingPolicy.includes(legacy.bookingPolicy));
+      assert.match(publicView.bookingPolicy, /10,000원/);
+      assert.doesNotMatch(publicView.bookingPolicy, /확인 필요/);
       assert.equal(publicView.depositPolicy, legacy.depositPolicy);
       assert.equal(publicView.menuPolicy, legacy.menuPolicy);
       assert.match(publicView.operatingHours, /17:00~24:00/);
+      // A catalog-only edit must also work before an operator adds the first contact.
+      await db.manager.delete(RestaurantContact, recipientBefore.id);
+      try {
+        const withoutPhone = await json<Draft>(
+          await call("owner/drafts", winning.jar, "POST", {
+            restaurantId: r.id,
+          }),
+          201,
+        );
+        assert.equal(withoutPhone.data.phone, "");
+        assert.equal(withoutPhone.currentRestaurant?.data.phone, "");
+        const saved = await json<Draft>(
+          await call(`owner/drafts/${withoutPhone.id}`, winning.jar, "PUT", {
+            version: withoutPhone.version,
+            data: {
+              ...withoutPhone.data,
+              branchName: "문의 연락처 등록 전 지점",
+            },
+            step: 4,
+          }),
+        );
+        await json(
+          await call(
+            `owner/drafts/${withoutPhone.id}/submit`,
+            winning.jar,
+            "POST",
+            { version: saved.version },
+          ),
+          201,
+        );
+        assert.equal(
+          await db.manager.countBy(RestaurantContact, { restaurantId: r.id }),
+          0,
+        );
+      } finally {
+        await db.manager.save(RestaurantContact, recipientBefore);
+      }
       // Persisted provenance is server-only: the next edit remains a valid form input.
       const again = await json<Draft>(
         await call("owner/drafts", winning.jar, "POST", { restaurantId: r.id }),
@@ -309,7 +372,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   assert.equal(duplicate.duplicate, true);
   assert.equal(duplicate.supportEmail, "owner@example.test");
   assert.doesNotMatch(JSON.stringify(duplicate), /ownerAccountId|phone/);
-  await app.get(RestaurantManagementService).operate({
+  await app.get(RestaurantOperationsService).operate({
     restaurantId: r.id,
     actor: "test-operator",
     reason: "가짜 fixture 검증",
@@ -330,6 +393,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   await db.getRepository(RestaurantContact).save({
     id: randomUUID(),
     restaurantId: unownedId,
+    isPrimary: true,
     name: "테스트 담당",
     phone: "01022223333",
     active: true,
@@ -442,7 +506,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     });
   const opened = await json<{
     version: number;
-    defaults: { proposal: unknown; expiresAt: string };
+    defaults: { proposal: { expectedGuests: number }; expiresAt: string };
     snapshot: unknown;
   }>(await publicCall(target.id));
   assert.equal(opened.version, 0);
@@ -484,12 +548,27 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     reply: { ...reply, requestKey: randomUUID() },
   });
   assert.equal(conflict.status, 409);
+  assert.equal(
+    (
+      await json<{ version: number }>(
+        await publicCall(target.id, "POST", {
+          reply: { ...reply, expectedVersion: 1, requestKey: randomUUID() },
+        }),
+      )
+    ).version,
+    1,
+  );
+  const changedReply = {
+    ...reply,
+    kind: "CHANGE",
+    proposal: { ...reply.proposal, expectedGuests: 18 },
+  };
   const changedReplies = await Promise.all([
     publicCall(target.id, "POST", {
-      reply: { ...reply, expectedVersion: 1, requestKey: randomUUID() },
+      reply: { ...changedReply, expectedVersion: 1, requestKey: randomUUID() },
     }),
     publicCall(target.id, "POST", {
-      reply: { ...reply, expectedVersion: 1, requestKey: randomUUID() },
+      reply: { ...changedReply, expectedVersion: 1, requestKey: randomUUID() },
     }),
   ]);
   assert.deepEqual(changedReplies.map((r) => r.status).sort(), [200, 409]);
@@ -506,6 +585,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     proposal: null,
     expiresAt: null,
     reason: "해당 시간은 어렵습니다",
+    holdConfirmed: false,
   };
   const ownerReply = await call(
     `owner/inquiries/${target.id}`,
@@ -514,6 +594,17 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     { reply: decline },
   );
   await json(ownerReply);
+  const editedDecline = await json<{ version: number }>(
+    await publicCall(target.id, "POST", {
+      reply: {
+        ...decline,
+        requestKey: randomUUID(),
+        expectedVersion: 3,
+        reason: "휴무일입니다",
+      },
+    }),
+  );
+  assert.equal(editedDecline.version, 4);
   assert.equal(
     (await call(`owner/inquiries/${target.id}`, winning.alien)).status,
     404,
@@ -918,15 +1009,15 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     requestConsentAt: new Date().toISOString(),
     consentNote: "test only, operator confirmation",
   };
-  const management = app.get(RestaurantManagementService);
-  await management.recordContact(
+  const operations = app.get(RestaurantOperationsService);
+  await operations.recordContact(
     r.id,
     confirmedContact,
     "ops",
     "확인한 연락처 등록",
     false,
   );
-  await management.recordContact(
+  await operations.recordContact(
     r.id,
     confirmedContact,
     "ops",
@@ -936,6 +1027,43 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   assert.equal(
     await db.getRepository(RestaurantContact).countBy({ id: newContact }),
     1,
+  );
+  const contacts = db.getRepository(RestaurantContact);
+  assert.equal(
+    (await contacts.findOneByOrFail({ id: newContact })).isPrimary,
+    true,
+  );
+  const alternative = {
+    ...confirmedContact,
+    id: randomUUID(),
+    phone: "01000009999",
+  };
+  await operations.recordContact(
+    r.id,
+    alternative,
+    "ops",
+    "추가 연락처 등록",
+    false,
+  );
+  assert.equal(
+    (await contacts.findOneByOrFail({ id: alternative.id })).isPrimary,
+    false,
+  );
+  await operations.recordContact(
+    r.id,
+    { ...alternative, primary: true },
+    "ops",
+    "대표 수신자 변경",
+    false,
+  );
+  assert.equal(
+    (await contacts.findOneByOrFail({ restaurantId: r.id, isPrimary: true }))
+      .id,
+    alternative.id,
+  );
+  assert.equal(
+    (await contacts.findOneByOrFail({ id: newContact })).active,
+    true,
   );
   // Reproduce a server stop before dispatch: the old recipient still has a queued message.
   await db

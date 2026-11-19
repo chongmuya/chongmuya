@@ -1,3 +1,4 @@
+import { koreanDateLabel } from "@/shared/lib/korean-date";
 import type { Reply, RequestSnapshot } from "../types/reply.types";
 export const spaceLabel = {
   ANY: "상관없음",
@@ -29,7 +30,7 @@ export function RequestSummary({ snapshot: s }: { snapshot: RequestSnapshot }) {
       <div>
         <dt className="text-muted">일시·인원</dt>
         <dd>
-          {new Date(s.startsAt).toLocaleString("ko-KR")} · {s.expectedGuests}명
+          {koreanDateLabel(s.startsAt)} · {s.expectedGuests}명
         </dd>
       </div>
       <div>
@@ -86,9 +87,7 @@ export function ReplySummary({ response: r }: { response: Reply }) {
         }{" "}
         · {r.revision}차 답변
       </h3>
-      <p className="text-xs text-muted">
-        {new Date(r.createdAt).toLocaleString("ko-KR")}
-      </p>
+      <p className="text-xs text-muted">{koreanDateLabel(r.createdAt)}</p>
       {r.kind === "DECLINE" ? (
         <p className="whitespace-pre-wrap break-words">{r.reason}</p>
       ) : (
@@ -102,11 +101,10 @@ export function ReplySummary({ response: r }: { response: Reply }) {
                     Date.parse(p.startsAt) !==
                       Date.parse(original.startsAt) && (
                       <span className="block text-muted">
-                        요청:{" "}
-                        {new Date(original.startsAt).toLocaleString("ko-KR")}
+                        요청: {koreanDateLabel(original.startsAt)}
                       </span>
                     )}
-                  {new Date(p.startsAt).toLocaleString("ko-KR")}
+                  {koreanDateLabel(p.startsAt)}
                 </dd>
               </div>
               <div>
@@ -141,7 +139,7 @@ export function ReplySummary({ response: r }: { response: Reply }) {
                 <dt>메뉴 확정</dt>
                 <dd>
                   {p.menuDeadlineAt
-                    ? new Date(p.menuDeadlineAt).toLocaleString("ko-KR")
+                    ? koreanDateLabel(p.menuDeadlineAt)
                     : "확인 필요"}
                 </dd>
               </div>
@@ -149,10 +147,10 @@ export function ReplySummary({ response: r }: { response: Reply }) {
             {p.note && (
               <p className="whitespace-pre-wrap break-words">{p.note}</p>
             )}
-            <p className="font-semibold text-brand">
+            <p className="font-semibold text-brand-action">
               {r.state === "EXPIRED"
                 ? "제안 선택 기한이 지났어요"
-                : `선택 기한: ${new Date(r.expiresAt!).toLocaleString("ko-KR")}`}
+                : `선택 기한: ${koreanDateLabel(r.expiresAt!)}`}
             </p>
           </>
         )

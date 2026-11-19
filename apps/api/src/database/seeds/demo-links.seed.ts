@@ -52,13 +52,22 @@ export async function demoLinks(db: DataSource, origin: string, key: Buffer) {
           .map((a) => a.id),
       })
       .andWhere("a.revoked_at IS NULL")
-      .addSelect("a.id", "round_id")
-      .addSelect("e.name", "event_name")
+      .select("a.id", "roundId")
+      .addSelect("a.event_id", "eventId")
+      .addSelect("e.name", "eventName")
+      .addSelect("a.title", "title")
+      .addSelect("a.share_id", "shareId")
+      .addSelect("a.closed_at IS NOT NULL", "closed")
       .orderBy("a.created_at")
-      .getRawAndEntities<{ round_id: string; event_name: string }>();
-    const eventNames = new Map(
-      roundRows.raw.map((r) => [r.round_id, r.event_name]),
-    );
+      .addOrderBy("a.id")
+      .getRawMany<{
+        roundId: string;
+        eventId: string;
+        eventName: string;
+        title: string;
+        shareId: string;
+        closed: boolean;
+      }>();
     return {
       generatedAt: new Date().toISOString(),
       warning: "로컬 개발 전용 비밀 링크입니다. 공유·커밋하지 마세요.",
@@ -69,13 +78,9 @@ export async function demoLinks(db: DataSource, origin: string, key: Buffer) {
         linkExpiresAt: l.expiresAt.toISOString(),
         url: merchantLinkUrl(origin, l, key),
       })),
-      attendance: roundRows.entities.map((a) => ({
-        eventName: eventNames.get(a.id)!,
-        eventId: a.eventId,
-        roundId: a.id,
-        title: a.title,
-        closed: !!a.closedAt,
-        url: `${origin}/attendance/${a.shareId}`,
+      attendance: roundRows.map(({ shareId, ...round }) => ({
+        ...round,
+        url: `${origin}/attendance/${shareId}`,
       })),
     };
   });

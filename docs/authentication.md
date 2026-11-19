@@ -5,7 +5,7 @@
 ## 책임
 
 - 웹 `app`: 라우팅·Provider 조립. `features/auth`: 인증 API 조정, 세션 상태, 사용자 Query, 화면. `features/onboarding`: 가입 후 이용 방식 선택·시작 안내. `shared/ui`: 단계 화면 틀·선택 카드·입력·버튼. `shared/http`: 업무를 모르는 HTTP 전송과 안전한 오류. shared → features 역참조 금지.
-- Nest `AuthController`: HTTP DTO·쿠키·응답. `JwtAccessStrategy`: 쿠키 JWT 추출, 서명·알고리즘·issuer·audience·만료 검증, 필수 claim 검사, 현재 세션과 계정으로 인증 사용자 구성. `AccessGuard`: 인증 필수 요청, `OptionalAccessGuard`: 최초 복원에서 비회원 허용. `AuthService`: 이메일 가입·로그인·세션 rotation/폐기와 트랜잭션 범위 관리. `SessionIssuerService`는 같은 EntityManager로 최초 세션·Refresh를 저장하고 JWT를 발급한다. `PasswordResetService`는 복구 링크, `KakaoFlowService`는 카카오 로그인·가입·연결, `KakaoOidcService`는 카카오 외부 통신과 OIDC 검증을 담당한다. `AuthAttemptsRepository`: 전달받은 EntityManager를 사용하는 원자적 시도 제한 조회. DB 오류 분류는 공통 HTTP 필터가 맡고 예상하지 못한 오류는 500으로 유지한다.
+- Nest `AuthController`: HTTP DTO·쿠키·응답. `JwtAccessStrategy`: 쿠키 JWT 추출, 서명·알고리즘·issuer·audience·만료 검증, 필수 claim 검사, 현재 세션과 계정으로 인증 사용자 구성. `AccessGuard`: 인증 필수 요청, `OptionalAccessGuard`: 최초 복원에서 비회원 허용. `AuthService`: 이메일 가입·로그인·세션 rotation/폐기와 트랜잭션 범위 관리. `SessionIssuerService`는 같은 EntityManager로 최초 세션·Refresh를 저장하고 JWT를 발급한다. `PasswordResetService`는 복구 링크, `KakaoFlowService`는 카카오 로그인·가입·연결, `KakaoOidcService`는 카카오 외부 통신과 OIDC 검증을 담당한다. 요청 횟수는 공용 DB 제한 함수가 원자적으로 기록한다. DB 오류 분류는 공통 HTTP 필터가 맡고 예상하지 못한 오류는 500으로 유지한다.
 - Controller는 Entity를 반환하지 않는다. `AccountDto`는 id/email/accountType, 이름·닉네임·전화번호와 휴대폰/이메일 인증 시각을 노출한다. 기존 계정의 추가 필드는 null이다. 비밀번호·Refresh·JWT를 JSON이나 로그에 넣지 않는다.
 - 인증과 자원 권한은 별개다. `/auth/me`는 `@CurrentUser()`로 읽은 검증된 사용자만 반환하고 사용자 ID 입력을 받지 않는다. JWT sub와 세션 accountId 일치를 확인한다. 모임·행사 Service는 인증 계정의 소유권을 각 자원 조회 조건으로 검증한다. 모임 소속만으로 행사 권한을 얻지 않는다.
 - 브라우저는 NEXT_PUBLIC_API_ORIGIN의 Nest `/api/v1`을 직접 호출한다. 운영 확인용 `/health`, `/ready`, `/docs`는 업무 API 밖에 유지한다. Next API·health rewrite와 콜백 중계 Route Handler는 없다.
@@ -40,7 +40,7 @@ Access와 Refresh는 API 호스트의 host-only HttpOnly 쿠키다. 웹과 API�
 
 첫 설정과 홈의 모임 만들기는 같은 `/groups/new` 화면을 사용한다. 모임 이름은 필수, 유형은 선택(최대 40자)이다. 명단은 직접 입력·붙여넣기·UTF-8 TXT(최대 128KB)로 가져오며 최대 500명이다. 한 줄에 한 명, 이름과 선택적인 전화번호 뒤 4자리를 탭으로 구분한다. 미리보기에서 수정·행 제외·추가할 수 있다. 이름은 최대 100자이고 뒤 4자리는 문자열로 저장해 앞의 0을 보존한다. 새 동명이인은 총무가 확인하고 선택적인 구분 표시(최대 40자)와 함께 별도 ID로 저장하며 자동 병합하지 않는다. 구분 표시는 이름과 별도로 저장한다. 잘못된 행은 수정하거나 명시적으로 제외해야 한다. 원문을 바꾸지 않고 앞뒤로 이동하면 미리보기 편집과 제외 결과를 유지하며, 붙여넣기 후 직접 추가도 하나의 명단으로 저장한다.
 
-명단 없이 만든 모임도 마이페이지의 해당 모임 명단에서 구성원을 추가할 수 있다. 최초 등록과 같은 입력·미리보기를 사용하며 기존 이름과 겹치면 기존 구성원 확인 또는 새 동명이인 등록을 선택한다. 기존 구성원 확인은 추가·수정을 하지 않고, 새 동명이인은 구분 표시가 필요하다. 서버는 모임 소유권을 검사하고 기존 구성원의 ID·정보를 보존한 채 새 행만 추가한다. 동일 requestKey로 재시도해도 한 번만 추가한다.
+명단 없이 만든 모임도 마이페이지의 해당 모임 명단에서 구성원을 추가할 수 있다. 최초 등록과 같은 입력·미리보기를 사용하며 기존 이름과 겹치면 기존 구성원 확인 또는 새 동명이인 등록을 선택한다. 기존 구성원 확인은 추가·수정을 하지 않고, 새 동명이인의 구분 메모는 선택이다. 서버는 모임 소유권을 검사하고 기존 구성원의 ID·정보를 보존한 채 새 행만 추가한다. 동일 requestKey로 재시도해도 한 번만 추가한다.
 
 `POST /api/v1/groups`는 `{ name, groupType?, creationKey?, members?: [{ name, phoneLast4? }], duplicatesConfirmed? }`를 받는다. 웹은 화면의 동일한 등록에 UUID creationKey를 재사용한다. 모임·명단을 같은 트랜잭션에 저장하고 소유자/creationKey 고유 제약으로 동시 재시도를 한 번만 생성한다. 이미 성공한 키로 다른 입력을 보내면 409다. 응답을 받지 못한 경우에는 같은 입력으로 재시도하거나 홈에서 결과를 확인한다. 단계 간 뒤로 가기는 입력·미리보기 수정을 유지한다. 화면 자체를 떠나거나 새로고침하면 저장하지 않은 입력은 사라지며 브라우저 이탈 경고를 제공한다. 개인정보를 브라우저 영구 저장소에 저장하지 않는다.
 

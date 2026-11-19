@@ -118,7 +118,7 @@ test("switching groups and accounts never renders another scope's cached events"
   assert.doesNotMatch(page, /mypage\?view=groups&amp;group=g2/);
   cache.clear();
 });
-test("query failure hides cached events and offers retry; recovery restores list", async () => {
+test("offline refetch retains this account’s cached events and offers retry", async () => {
   const cache = fixture();
   const key = ["user", "a", "groups", "g1", "events"];
   await assert.rejects(
@@ -131,7 +131,7 @@ test("query failure hides cached events and offers retry; recovery restores list
   );
   const failed = summary(cache, "g1");
   assert.match(failed, /다시 시도/);
-  assert.doesNotMatch(failed, /첫 모임 비공개 행사/);
+  assert.match(failed, /첫 모임 비공개 행사/);
   await cache.fetchQuery({ queryKey: key, queryFn: async () => [] });
   assert.match(summary(cache, "g1"), /등록된 행사가 없어요/);
   cache.clear();

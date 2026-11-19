@@ -82,7 +82,7 @@ compose.yaml            로컬 PostgreSQL만 실행
 
 `app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 개인 행사 생성 폼이며, 홈의 EventSummary가 행사 목록을 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 홈에서 선택한 모임에 고정된 행사 생성 폼이며 `/mypage?view=groups&group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 이용 유형 확인창의 문구·아이콘·저장은 onboarding이 맡고, shared/ui의 Dialog는 native showModal·초기 포커스·취소·포커스 복귀·스크롤 잠금만 담당한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`은 `/getting-started`로 이동하는 이전 링크다.
 
-공개 홈은 비로그인 접근을 허용한다. home은 auth·groups·events의 공개 진입점으로 실제 계정·선택 모임·행사를 조합한다. `/groups/new`는 첫 설정과 홈에서 재사용하는 등록 화면이다. 선택적인 유형·명단을 모두 저장한 응답을 받은 후 완료창을 표시한다. 모임 없는 홈에서는 개인 행사로 바로 진입한다. `/intro`와 `/start`는 auth의 공개 소개·가입 진입 화면이다. 개발 화면은 데모 계정의 실제 서비스 경로로 확인한다.
+공개 홈은 비로그인 접근을 허용한다. home은 auth·groups·events의 공개 진입점으로 실제 계정·선택 모임·행사를 조합한다. `/groups/new`는 첫 설정과 홈에서 재사용하는 등록 화면이다. 모임 등록 결과에서 해당 모임의 홈이나 행사 생성 화면으로 이동한다. 기존 모임에 구성원을 추가했을 때는 같은 모임의 명단으로 돌아갈 수 있다. 모임 없는 홈에서는 개인 행사로 바로 진입한다. `/intro`와 `/start`는 auth의 공개 소개·가입 진입 화면이다. 개발 화면은 데모 계정의 실제 서비스 경로로 확인한다.
 
 개인 화면은 인증 상태를 확인하고 로그인 링크에 원래 경로를 전달한다. auth의 safeReturnPath는 지원하는 내부 페이지와 UUID query만 재구성하며 외부 URL·프로토콜 상대 URL·역슬래시·제어 문자·인증/API 경로를 반환하지 않는다. next가 없는 새 가입·로그인은 홈으로 이동하고, 유효하지 않은 next의 안전한 기본값은 `/events`다. 실제 자료 권한은 Nest에서 검사한다.
 
@@ -173,11 +173,11 @@ EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`,
 
 모임 등록은 groups 업무에서 Group·GroupMember를 같은 EntityManager로 저장한다. `(owner_id, creation_key)` 고유 인덱스와 입력 해시로 같은 등록의 동시 요청·통신 재시도를 처리한다. 명단은 계정이나 행사 명단과 관계없는 비공개 기본 자료다. 동명이인은 총무가 확인하고 선택적인 구분 표시(label)를 가진 별도 행으로 보존한다. 이름과 구분 표시는 별도 컬럼이며 전화번호 뒤 4자리는 앞의 0을 보존하는 nullable 문자열이다. 그룹 단위 조회에 소유권을 검사하고 응답에 인증·권한 필드를 포함하지 않는다. JSON body는 500명의 긴 UTF-8 이름을 수용하도록 256KB까지 허용하고, DTO의 행 수·필드 길이 제한도 적용한다.
 
-`POST /groups/:groupId/members`는 `{ requestKey, members, duplicatesConfirmed? }`로 기존 명단에 구성원을 추가한다. 소유한 Group 행을 먼저 잠근 뒤 최신 명단과 이름·구분 표시를 비교한다. 기존 구성원을 선택하면 `existingMemberId`와 해당 구성원의 이름·구분 표시·뒤 4자리를 검증하고 추가나 수정 없이 유지한다. 새 동명이인은 기존 명단과도 구분되는 표시를 요구한다. GroupMember 추가와 GroupRosterAddition의 `(group_id, request_key)` 재시도 기록을 같은 트랜잭션에서 저장한다. 같은 키의 다른 입력은 409이며 기존 행·순서·ID나 행사 명단을 교체하지 않는다. 최초 등록과 `/groups/new?group=<id>`의 추가 등록은 GroupRegistration의 입력·TXT·미리보기를 재사용한다. 변경된 원문만 다시 해석하고 원문이 같으면 편집·제외 결과를 보존한다.
+`POST /groups/:groupId/members`는 `{ requestKey, members, duplicatesConfirmed? }`로 기존 명단에 구성원을 추가한다. 소유한 Group 행을 먼저 잠근 뒤 최신 명단과 이름·구분 표시를 비교한다. 기존 구성원을 선택하면 `existingMemberId`와 해당 구성원의 이름·구분 표시·뒤 4자리를 검증하고 추가나 수정 없이 유지한다. 새 동명이인은 총무가 확인한 별도 ID로 저장하며 구분 메모는 선택이다. GroupMember 추가와 GroupRosterAddition의 `(group_id, request_key)` 재시도 기록을 같은 트랜잭션에서 저장한다. 같은 키의 다른 입력은 409이며 기존 행·순서·ID나 행사 명단을 교체하지 않는다. 최초 등록과 `/groups/new?group=<id>`의 추가 등록은 GroupRegistration의 입력·TXT·미리보기를 재사용한다. 변경된 원문만 다시 해석하고 원문이 같으면 편집·제외 결과를 보존한다.
 
-홈의 모임 선택은 `/?group=<id>`로 유지하며 하단 홈과 새 행사 진입에 전달한다. 모임 조회가 미완료·실패했거나 요청한 모임에 접근할 수 없으면 행사 생성 진입을 표시하지 않는다. 조회에 성공한 빈 목록에서는 개인 행사를 바로 시작한다.
+홈의 모임 선택은 `/?group=<id>`, 개인 행사 선택은 `/?view=personal`에 유지한다. 행사 상세에서 돌아오면 선택한 목록을 다시 연다. 모임 재조회가 일시적으로 실패해도 이전에 읽은 목록을 유지한다. 특정 모임에 접근할 수 없으면 그 모임의 행사 생성을 차단한다. 모임을 지정하지 않은 홈에서는 모임 조회 실패 시에도 개인 행사를 시작할 수 있다.
 
-단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. AuthAttemptsRepository는 원자적인 시도 제한 upsert만 담당하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
+단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. 요청 제한 공통 함수는 원자적인 upsert를 수행하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
 
 업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 행사 수정은 id/ownerId 조건의 FOR UPDATE 잠금과 expectedVersion 검사로 경합을 처리하며 groupId는 변경하지 않습니다. 현재 모임 소유자 변경·삭제 API는 없으며, 향후 추가 시 동시 권한 변경에 대한 잠금 정책도 함께 설계해야 합니다.
 
@@ -289,7 +289,7 @@ PasswordResetService는 복구 토큰 발급·소비, KakaoFlowService는 브라
 
 새 테이블 기록, null 비밀번호, 인증 출처/자격 변경 기록이 있으면 down은 중단합니다. 이전 스키마로 돌리기 위해 소셜 계정을 지우거나 가짜 비밀번호를 넣지 않습니다. 데이터가 생긴 뒤에는 nullable 비밀번호를 지원하는 코드와 보존 가능한 후속 migration으로 복구합니다. 자동 migrate/synchronize/dropSchema는 계속 false이며 운영 DB를 초기화하지 않습니다. 만료된 시도/복구 이력의 보존·정리는 운영 정책에 따라 별도로 수행해야 합니다.
 
-브라우저의 HTTP 전송은 shared/http가 NEXT_PUBLIC_API_ORIGIN에 credentials를 포함해 요청합니다. 업무 요청은 기존 SessionClient를 사용하고, 공개 health 요청은 `/health`를 사용합니다. 인증 SSR과 BFF는 없으며 AuthProvider가 클라이언트에서 세션을 복원합니다. API 호스트의 host-only 쿠키는 Next 서버로 전달되지 않습니다.
+브라우저의 HTTP 전송은 shared/http가 NEXT_PUBLIC_API_ORIGIN에 credentials를 포함해 요청합니다. 인증된 업무 요청은 SessionClient를 사용합니다. 운영 상태는 Nest의 `/health`와 `/ready`에서 확인합니다. 인증 SSR과 BFF는 없으며 AuthProvider가 클라이언트에서 세션을 복원합니다. API 호스트의 host-only 쿠키는 Next 서버로 전달되지 않습니다.
 
 카카오 GET 콜백은 명시적인 KAKAO_REDIRECT_URI의 Nest 엔드포인트에서만 처리합니다. 임시 결과를 DB에 저장한 뒤 WEB_ORIGIN의 깨끗한 완료 화면으로 이동하고, 프론트가 Origin·CSRF 헤더를 갖춘 POST로 API에 최종 확정을 요청합니다. 콜백 query는 프론트 URL이나 애플리케이션 로그에 전달하지 않습니다. 운영 ingress·CDN·APM의 query 수집도 배포 설정에서 제외해야 합니다.
 

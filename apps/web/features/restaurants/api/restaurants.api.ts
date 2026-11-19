@@ -6,19 +6,29 @@ import type {
   RestaurantMap,
 } from "../types/restaurant.types";
 
-export const restaurantsQuery = (region = "", page = 1) =>
+function catalogParams(region: string, expectedGuests?: number, page?: number) {
+  const params = new URLSearchParams({ region });
+  if (page !== undefined) params.set("page", String(page));
+  if (expectedGuests !== undefined)
+    params.set("expectedGuests", String(expectedGuests));
+  return params;
+}
+export const restaurantsQuery = (
+  region = "",
+  page = 1,
+  expectedGuests?: number,
+) =>
   queryOptions({
-    queryKey: ["public", "restaurants", "list", region, page],
+    queryKey: ["public", "restaurants", "list", region, page, expectedGuests],
     queryFn: ({ signal }) =>
       requestJson<{
         items: RestaurantSummary[];
         total: number;
         page: number;
         pageSize: number;
-      }>(
-        `/api/v1/restaurants?${new URLSearchParams({ region, page: String(page) })}`,
-        { signal },
-      ),
+      }>(`/api/v1/restaurants?${catalogParams(region, expectedGuests, page)}`, {
+        signal,
+      }),
     staleTime: 0,
     retry: false,
   });
@@ -33,12 +43,12 @@ export const restaurantQuery = (id: string) =>
     retry: false,
   });
 
-export const restaurantMapQuery = (region = "") =>
+export const restaurantMapQuery = (region = "", expectedGuests?: number) =>
   queryOptions({
-    queryKey: ["public", "restaurants", "map", region],
+    queryKey: ["public", "restaurants", "map", region, expectedGuests],
     queryFn: ({ signal }) =>
       requestJson<RestaurantMap[]>(
-        `/api/v1/restaurants/map?${new URLSearchParams({ region })}`,
+        `/api/v1/restaurants/map?${catalogParams(region, expectedGuests)}`,
         { signal },
       ),
     retry: false,

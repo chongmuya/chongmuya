@@ -16,6 +16,7 @@ import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { Input } from "@/shared/ui/input";
 import { cn } from "@/shared/lib/cn";
+import { AttendanceRoster } from "./attendance-roster";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
@@ -27,7 +28,7 @@ import type {
   RoundDto,
   RoundDetailDto,
   ReviewDto,
-  AttendanceState,
+  AttendanceAnswer,
   ResolveReview,
 } from "../types/attendance.types";
 import type { OwnerProps } from "./event-roster";
@@ -37,9 +38,13 @@ export function AttendanceWorkspace({
   ...props
 }: OwnerProps & { roundId: string | null }) {
   const router = useRouter(),
-    list = useQuery(roundsQuery(props.accountId, props.eventId, props.request));
+    params = useSearchParams(),
+    list = useQuery({
+      ...roundsQuery(props.accountId, props.eventId, props.request),
+      enabled: !(roundId && params.get("review")),
+      refetchInterval: roundId ? false : 5000,
+    });
   const [creating, setCreating] = useState(false);
-  const params = useSearchParams();
   if (roundId && params.get("review"))
     return <RoundDetail key={roundId} {...props} roundId={roundId} />;
   if (list.isError && !list.data)
@@ -64,21 +69,25 @@ export function AttendanceWorkspace({
             차수 만들기
           </Button>
         </div>
-        <nav aria-label="참석 차수" className="flex flex-wrap gap-2">
-          {list.data.rounds.map((round) => (
-            <Link
-              key={round.id}
-              href={`/events?event=${props.eventId}&view=attendance&round=${round.id}`}
-              aria-current={round.id === roundId ? "page" : undefined}
-              className={cn(
-                "rounded-pill border border-brand px-4 py-2 text-sm",
-                round.id === roundId ? "bg-brand text-white" : "text-brand",
-              )}
-            >
-              {round.title}
-            </Link>
-          ))}
-        </nav>
+        {roundId && (
+          <nav aria-label="참석 차수" className="flex flex-wrap gap-2">
+            {list.data.rounds.map((round) => (
+              <Link
+                key={round.id}
+                href={`/events?event=${props.eventId}&view=attendance&round=${round.id}`}
+                aria-current={round.id === roundId ? "page" : undefined}
+                className={cn(
+                  "rounded-pill border border-brand px-4 py-2 text-sm",
+                  round.id === roundId
+                    ? "bg-brand-action text-white"
+                    : "text-brand-action",
+                )}
+              >
+                {round.title}
+              </Link>
+            ))}
+          </nav>
+        )}
         {roundId ? (
           <RoundDetail key={roundId} {...props} roundId={roundId} />
         ) : list.data.rounds.length ? (
@@ -100,7 +109,7 @@ export function AttendanceWorkspace({
           </ul>
         ) : (
           <p className="rounded-control bg-surface p-5 text-sm">
-            차수를 만들어 참석을 받아 보세요. 예약 문의 없이도 사용할 수 있어요.
+            차수를 만들어 참석을 받아 보세요.
           </p>
         )}
         {creating && (
@@ -126,7 +135,7 @@ function Counts({ counts }: { counts: AttendanceCounts }) {
       <span>참석 {counts.attending}명</span>
       <span>불참 {counts.absent}명</span>
       <span>미응답 {counts.unanswered}명</span>
-      <span className="text-brand">연결 확인 필요 {counts.pending}건</span>
+      {counts.pending > 0 && <span>연결할 응답 {counts.pending}건</span>}
     </div>
   );
 }
@@ -207,11 +216,19 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
     ),
     action = useAttendanceAction(props.accountId, props.eventId, props.request);
   const [share, setShare] = useState(false),
-    [closing, setClosing] = useState(false),
-    [search, setSearch] = useState("");
-  const [override, setOverride] = useState<
-    RoundDetailDto["participants"][number] | null
-  >(null);
+    [closing, setClosing] = useState(false);
+  function correct(
+    person: RoundDetailDto["participants"][number],
+    value: AttendanceAnswer | null,
+  ) {
+    action.mutate({
+      kind: "override",
+      roundId,
+      participantId: person.id,
+      expectedVersion: person.response.version,
+      managerOverride: value,
+    });
+  }
   if (query.isError && !query.data)
     return <ErrorState retry={() => void query.refetch()} />;
   if (!query.data) return <LoadingState>차수 확인 중…</LoadingState>;
@@ -223,7 +240,7 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
       <StepLayout
         title="제출한 사람 연결 확인"
         onBack={() =>
-          router.push(
+          router.replace(
             `/events?event=${props.eventId}&view=attendance&round=${roundId}`,
           )
         }
@@ -242,7 +259,7 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
               review={review}
               people={round.participants}
               onClose={() =>
-                router.push(
+                router.replace(
                   `/events?event=${props.eventId}&view=attendance&round=${roundId}`,
                 )
               }
@@ -267,13 +284,14 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
         className="min-w-0 space-y-5"
       >
         <div className="rounded-control bg-surface p-5 shadow-card">
-          <h3 className="mb-3 text-lg font-bold">{round.title}</h3>
           <Counts counts={round.counts} />
         </div>
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={() => setShare(true)}>
-            링크 · QR 공유
-          </Button>
+          {!round.closedAt && (
+            <Button className="flex-1" onClick={() => setShare(true)}>
+              링크 · QR 공유
+            </Button>
+          )}
           <Button
             className="flex-1"
             variant="outline"
@@ -283,99 +301,50 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
             {round.closedAt ? "참여자 응답 마감됨" : "참여자 응답 마감"}
           </Button>
         </div>
-        <label className="block text-sm">
-          명단 검색
-          <Input
-            variant="pill"
-            className="mt-2"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="이름 또는 구분 메모"
-          />
-        </label>
-        <ul className="divide-y divide-border">
-          {round.participants
-            .filter(
-              (person) =>
-                person.name.includes(search) || person.label?.includes(search),
-            )
-            .map((person) => (
-              <li key={person.id} className="py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <strong className="break-words text-sm">
-                      {person.name}
-                    </strong>
-                    {(person.phoneLast4 || person.label) && (
-                      <p className="text-xs text-muted">
-                        {[person.phoneLast4, person.label]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    )}
-                  </div>
+        <AttendanceRoster
+          people={round.participants}
+          eventId={props.eventId}
+          saving={action.isPending}
+          onCorrect={correct}
+        />
+        {round.counts.pending > 0 && (
+          <section className="space-y-3" aria-label="연결 확인 목록">
+            <h3 className="text-lg font-bold">
+              연결 확인 필요 · {round.counts.pending}건
+            </h3>
+            {round.reviews
+              .filter((item) => item.status === "PENDING")
+              .map((item) => (
+                <article
+                  key={item.id}
+                  className="space-y-2 rounded-control bg-surface p-4"
+                >
+                  <strong className="text-sm">
+                    {item.name} · {item.phoneLast4}
+                  </strong>
+                  <p className="text-sm">
+                    제출 답변: {stateLabel(item.answer)}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {reasonLabel(item.reason)}
+                    <br />
+                    {new Date(item.submittedAt).toLocaleString("ko-KR")}
+                  </p>
                   <Button
                     variant="outline"
-                    onClick={() => setOverride(person)}
-                    aria-label={`${person.name} 최종 상태 변경`}
+                    className="w-full"
+                    onClick={() =>
+                      router.push(
+                        `/events?event=${props.eventId}&view=attendance&round=${roundId}&review=${item.id}`,
+                      )
+                    }
                   >
-                    {stateLabel(person.response.finalState)}
+                    연결 확인
                   </Button>
-                </div>
-                {person.response.managerOverride !== null && (
-                  <p className="mt-2 text-xs text-secondary">
-                    본인 응답: {stateLabel(person.response.selfAnswer)} / 총무
-                    지정:{" "}
-                    {person.response.managerOverride === null
-                      ? "없음"
-                      : stateLabel(person.response.managerOverride)}
-                  </p>
-                )}
-              </li>
-            ))}
-        </ul>
-        {!round.participants.length && (
-          <Link
-            className="text-sm text-link underline"
-            href={`/events?event=${props.eventId}&view=roster`}
-          >
-            명단 관리에서 참여자 등록하기
-          </Link>
+                </article>
+              ))}
+          </section>
         )}
-        <section className="space-y-3" aria-label="연결 확인 목록">
-          <h3 className="text-lg font-bold">
-            연결 확인 필요 · {round.counts.pending}건
-          </h3>
-          {round.reviews
-            .filter((item) => item.status === "PENDING")
-            .map((item) => (
-              <article
-                key={item.id}
-                className="space-y-2 rounded-control bg-surface p-4"
-              >
-                <strong className="text-sm">
-                  {item.name} · {item.phoneLast4}
-                </strong>
-                <p className="text-sm">제출 답변: {stateLabel(item.answer)}</p>
-                <p className="text-xs text-muted">
-                  {reasonLabel(item.reason)}
-                  <br />
-                  {new Date(item.submittedAt).toLocaleString("ko-KR")}
-                </p>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() =>
-                    router.push(
-                      `/events?event=${props.eventId}&view=attendance&round=${roundId}&review=${item.id}`,
-                    )
-                  }
-                >
-                  연결 확인
-                </Button>
-              </article>
-            ))}
-        </section>
         {!!round.reviews.some((item) => item.status !== "PENDING") && (
           <details className="text-sm">
             <summary>처리 이력</summary>
@@ -441,14 +410,6 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
             </div>
           </Dialog>
         )}
-        {override && (
-          <OverrideDialog
-            {...props}
-            roundId={roundId}
-            person={override}
-            onClose={() => setOverride(null)}
-          />
-        )}
       </fieldset>
     </div>
   );
@@ -513,83 +474,6 @@ function ShareRound({
           공유하기
         </Button>
       )}
-    </BottomSheet>
-  );
-}
-function OverrideDialog({
-  person,
-  roundId,
-  onClose,
-  ...props
-}: OwnerProps & {
-  person: RoundDetailDto["participants"][number];
-  roundId: string;
-  onClose: () => void;
-}) {
-  const [value, setValue] = useState<AttendanceState | null>(
-      person.response.managerOverride,
-    ),
-    action = useAttendanceAction(props.accountId, props.eventId, props.request);
-  return (
-    <BottomSheet
-      title={`${person.name} 참석 상태`}
-      busy={action.isPending}
-      onClose={onClose}
-    >
-      <p className="my-4 text-sm">
-        본인 응답: {stateLabel(person.response.selfAnswer)}
-      </p>
-      <fieldset className="space-y-3" disabled={action.isPending}>
-        <legend className="sr-only">총무 지정</legend>
-        {([null, "UNANSWERED", "ATTENDING", "ABSENT"] as const).map((state) => (
-          <label
-            key={state ?? "self"}
-            className="flex min-h-11 items-center gap-3 rounded-control bg-background p-3 text-sm"
-          >
-            <input
-              type="radio"
-              name="override"
-              checked={value === state}
-              onChange={() => setValue(state)}
-            />
-            {state === null ? "본인 응답 사용" : stateLabel(state)}
-          </label>
-        ))}
-      </fieldset>
-      <FormError
-        message={action.error ? safeErrorMessage(action.error) : undefined}
-      />
-      {action.isError && (
-        <p className="text-xs">닫은 뒤 최신 상태에서 다시 확인해 주세요.</p>
-      )}
-      <div className="mt-5 flex gap-2">
-        <Button
-          className="flex-1"
-          variant="outline"
-          disabled={action.isPending}
-          onClick={onClose}
-        >
-          닫기
-        </Button>
-        <Button
-          className="flex-1"
-          loading={action.isPending}
-          onClick={() =>
-            action.mutate(
-              {
-                kind: "override",
-                roundId,
-                participantId: person.id,
-                expectedVersion: person.response.version,
-                managerOverride: value,
-              },
-              { onSuccess: onClose },
-            )
-          }
-        >
-          저장
-        </Button>
-      </div>
     </BottomSheet>
   );
 }

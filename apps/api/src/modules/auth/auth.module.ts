@@ -16,7 +16,7 @@ import { SignupController } from "./signup.controller.js";
 import { PhoneVerificationService } from "./phone-verification.service.js";
 import { OctomoService } from "./octomo.service.js";
 import { SignupTermsService } from "./signup-terms.service.js";
-import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+
 import { CsrfGuard } from "./guards/csrf.guard.js";
 
 import { JwtModule } from "@nestjs/jwt";
@@ -49,7 +49,6 @@ import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
     ResendMailService,
     OctomoService,
     SignupTermsService,
-    AuthAttemptsRepository,
     JwtAccessStrategy,
     AccessGuard,
     OptionalAccessGuard,

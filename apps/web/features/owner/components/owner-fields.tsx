@@ -1,6 +1,8 @@
 "use client";
 import { Controller, useFormContext, type FieldPath } from "react-hook-form";
-import type { ComponentProps, ReactNode } from "react";
+import { useId, type ComponentProps, type ReactNode } from "react";
+import { FormField } from "@/shared/ui/form-field";
+import { FormError } from "@/shared/ui/form-error";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { Input } from "@/shared/ui/input";
 import type { RegistrationData } from "../schemas/registration.schema";
@@ -19,53 +21,56 @@ export function OwnerField({
   changed?: () => void;
   onEnter?: () => void;
 }) {
+  const id = useId();
   const { control } = useFormContext<RegistrationData>();
   return (
     <Controller
       control={control}
       name={path}
       render={({ field, fieldState }) => (
-        <label className="block space-y-2 text-control">
-          <span className="block font-semibold">{label}</span>
-          <Input
-            variant="pill"
-            className="shadow-control"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && onEnter) {
-                e.preventDefault();
-                onEnter();
+        <FormField
+          id={id}
+          label={label}
+          labelClassName="font-semibold text-control"
+          error={fieldState.error?.message}
+        >
+          {(attributes) => (
+            <Input
+              variant="pill"
+              className="shadow-control"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && onEnter) {
+                  e.preventDefault();
+                  onEnter();
+                }
+              }}
+              name={field.name}
+              ref={field.ref}
+              onBlur={field.onBlur}
+              value={
+                typeof field.value === "number" ||
+                typeof field.value === "string"
+                  ? field.value
+                  : ""
               }
-            }}
-            name={field.name}
-            ref={field.ref}
-            onBlur={field.onBlur}
-            value={
-              typeof field.value === "number" || typeof field.value === "string"
-                ? field.value
-                : ""
-            }
-            type={numeric ? "number" : "text"}
-            min={numeric ? 0 : undefined}
-            inputMode={numeric ? "numeric" : undefined}
-            placeholder={placeholder ?? (numeric ? "미확인" : undefined)}
-            onChange={(e) => {
-              field.onChange(
-                numeric
-                  ? e.target.value === ""
-                    ? null
-                    : Number(e.target.value)
-                  : e.target.value,
-              );
-              changed?.();
-            }}
-            aria-invalid={!!fieldState.error}
-          />
-          {fieldState.error && (
-            <span role="alert" className="text-sm text-danger">
-              {fieldState.error.message ?? "입력값을 확인해 주세요."}
-            </span>
+              type={numeric ? "number" : "text"}
+              min={numeric ? 0 : undefined}
+              inputMode={numeric ? "numeric" : undefined}
+              placeholder={placeholder ?? (numeric ? "미확인" : undefined)}
+              onChange={(e) => {
+                field.onChange(
+                  numeric
+                    ? e.target.value === ""
+                      ? null
+                      : Number(e.target.value)
+                    : e.target.value,
+                );
+                changed?.();
+              }}
+              {...attributes}
+            />
           )}
-        </label>
+        </FormField>
       )}
     />
   );
@@ -81,19 +86,26 @@ export function OwnerChoice({
   options: readonly (readonly [string, string])[];
   changed?: (value: string) => void;
 }) {
+  const id = useId();
   const { control } = useFormContext<RegistrationData>();
   return (
     <Controller
       control={control}
       name={path}
-      render={({ field }) => (
-        <fieldset className="space-y-3 text-control">
+      render={({ field, fieldState }) => (
+        <fieldset
+          className="space-y-3 text-control"
+          aria-invalid={!!fieldState.error}
+          aria-describedby={fieldState.error ? id : undefined}
+        >
           <legend className="mb-3 font-semibold">{label}</legend>
-          {options.map(([key, text]) => (
+          {options.map(([key, text], index) => (
             <label className="flex min-h-8 items-center gap-3" key={key}>
               <input
                 className="size-6 accent-brand"
                 type="radio"
+                onBlur={field.onBlur}
+                ref={index === 0 ? field.ref : undefined}
                 name={field.name}
                 value={key}
                 checked={field.value === key}
@@ -105,6 +117,7 @@ export function OwnerChoice({
               <span>{text}</span>
             </label>
           ))}
+          <FormError id={id} message={fieldState.error?.message} />
         </fieldset>
       )}
     />

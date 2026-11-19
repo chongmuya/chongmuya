@@ -52,7 +52,14 @@ export function SignupFlow(
                     });
                   flow.setDetail(null);
                 }}
-                onClose={() => flow.setDetail(null)}
+                onClose={() => {
+                  if (flow.detail)
+                    flow.methods.setValue(flow.detail, false, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    });
+                  flow.setDetail(null);
+                }}
               />
             ) : (
               <form
