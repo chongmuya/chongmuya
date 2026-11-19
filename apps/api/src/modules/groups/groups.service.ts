@@ -50,7 +50,16 @@ export class GroupsService {
     manager: EntityManager,
   ): Promise<void> {
     const group = await this.lock(id, manager);
-    if (group.ownerId !== ownerId) throw new NotFoundException();
+    if (group.ownerId !== ownerId) {
+      if (
+        await manager.existsBy(GroupMembership, {
+          groupId: id,
+          accountId: ownerId,
+        })
+      )
+        throw new DomainHttpException("GROUP_AUTHORITY_CHANGED");
+      throw new NotFoundException();
+    }
   }
 
   async lock(id: string, manager: EntityManager) {
@@ -374,12 +383,30 @@ export class GroupsService {
         version: group.version,
         ownerId: group.ownerId,
         accounts,
-        invitations: invitations.map((r) => ({
-          id: r.id,
-          targetId: r.targetId,
-          status: r.status,
-          expiresAt: r.expiresAt,
-        })),
+        invitations: await Promise.all(
+          invitations.map(async (r) => {
+            let targetLabel = "사용할 수 없는 계정";
+            try {
+              const target = await this.auth.groupAccount(m, {
+                id: r.targetId,
+              });
+              const [local, domain] = target.email.split("@");
+              targetLabel = `${target.name} · ${local!.slice(0, 2)}***@${domain}`;
+            } catch (error) {
+              if (
+                !(error instanceof DomainHttpException) ||
+                error.code !== "GROUP_TARGET_UNAVAILABLE"
+              )
+                throw error;
+            }
+            return {
+              id: r.id,
+              targetLabel,
+              status: r.status,
+              expiresAt: r.expiresAt,
+            };
+          }),
+        ),
       };
     });
   }

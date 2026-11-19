@@ -594,34 +594,86 @@ test("profile and verified phone responses merge only their own fields in either
   }
 });
 
-test("authority loss clears private cache and rejects a late successful management payload without logging out", async () => {
+test("only scoped authority loss invalidates matching resources and rejects late responses", async () => {
   let resolve!: (value: unknown) => void;
   const pending = new Promise<unknown>((r) => (resolve = r));
-  let cleared = 0,
-    blocked = 0;
+  let cleared = 0;
+  const scopes: string[][] = [];
   const client = new SessionClient(
     () => cleared++,
     transport(async (path) => {
       if (path.includes("restore")) return session;
       if (path === "/api/v1/events/old") return pending;
+      if (path === "/api/v1/events/known")
+        return { id: "old", groupId: "group" };
+      if (path === "/api/v1/groups/group")
+        throw new ApiError("", 404, "GROUP_AUTHORITY_CHANGED");
+      if (path === "/api/v1/events/personal") return { name: "preserved" };
       throw new ApiError("", 404, "RESOURCE_NOT_FOUND");
     }),
     async (action) => action(),
-    () => blocked++,
+    (_account, ids) => scopes.push(ids),
   );
   await client.restore();
+  await client.request("/api/v1/events/known");
   const late = client.request("/api/v1/events/old");
+  await assert.rejects(client.request("/api/v1/calendar/deleted"));
   await assert.rejects(
-    client.request("/api/v1/groups/old"),
-    (e: unknown) => e instanceof ApiError && e.status === 404,
+    client.request("/api/v1/groups/invitations/wrong/preview"),
   );
+  assert.equal(scopes.length, 0);
+  await assert.rejects(client.request("/api/v1/groups/group"));
   resolve({ privateRoster: ["must not return"] });
   await assert.rejects(
     late,
-    (e: unknown) =>
-      e instanceof ApiError && e.code === "GROUP_AUTHORITY_CHANGED",
+    (e: unknown) => e instanceof ApiError && e.code === "GROUP_AUTHORITY_STALE",
   );
-  assert.equal(cleared, 1);
-  assert.equal(blocked, 1);
+  assert.equal(cleared, 0);
+  assert(scopes[0]!.includes("old"));
+  assert.deepEqual(await client.request("/api/v1/events/personal"), {
+    name: "preserved",
+  });
   assert.equal(client.getSnapshot().status, "authenticated");
+  const groupId = crypto.randomUUID();
+  client.receiveAuthorityChange({
+    source: "other",
+    accountId: "different",
+    groupId,
+  });
+  client.receiveAuthorityChange({
+    source: client.instanceId,
+    accountId: session.account!.id,
+    groupId,
+  });
+  assert.equal(scopes.length, 1);
+  client.receiveAuthorityChange({
+    source: "other",
+    accountId: session.account!.id,
+    groupId,
+  });
+  assert.equal(scopes.length, 2);
+});
+
+test("late authority denial from a previous account does not invalidate the current account", async () => {
+  let reject!: (error: unknown) => void;
+  const pending = new Promise((_resolve, r) => (reject = r));
+  let current = session,
+    scoped = 0;
+  const client = new SessionClient(
+    () => undefined,
+    transport(async (path) => {
+      if (path.includes("restore")) return current;
+      return pending;
+    }),
+    async (action) => action(),
+    () => scoped++,
+  );
+  await client.restore();
+  const old = client.request("/api/v1/events/old");
+  current = { ...session, account: { ...session.account!, id: "b" } };
+  await client.restore();
+  reject(new ApiError("", 404, "GROUP_AUTHORITY_CHANGED"));
+  await assert.rejects(old);
+  assert.equal(scoped, 0);
+  assert.equal(client.getSnapshot().account?.id, "b");
 });

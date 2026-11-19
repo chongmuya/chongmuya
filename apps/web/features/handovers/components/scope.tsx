@@ -25,7 +25,8 @@ export function TransferScope({ scope }: { scope: Scope }) {
         ))}
       </ul>
       <p className="mt-4 text-caption text-muted">
-        진행 중 예약 {scope.ongoingReservations}건과 미완료 정산{" "}
+        진행 중 문의 {scope.ongoingInquiries}건, 관리할 예약{" "}
+        {scope.ongoingReservations}건과 미완료 정산{" "}
         {scope.incompleteSettlements}건도 포함돼요. 개인 행사·일정·즐겨찾기와
         개인 기본 계좌는 넘어가지 않아요.
       </p>

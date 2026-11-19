@@ -45,7 +45,7 @@ export class HandoversService {
       ...(await this.settlements.handoverCounts(ids, m)),
       files: await this.files.handoverCount(ids, m),
       favorites: await this.favorites.count(groupId, m),
-      ongoingReservations: await this.reservations.ongoing(ids, m),
+      ...(await this.reservations.ongoing(ids, m)),
     };
   }
   async preview(ownerId: string, groupId: string) {

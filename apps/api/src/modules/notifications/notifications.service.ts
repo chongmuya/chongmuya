@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { In, type EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
@@ -15,6 +15,35 @@ import type {
 } from "./types/notification.js";
 @Injectable()
 export class NotificationsService {
+  // Only the dispatcher that owns this claim may prove no external submission occurred.
+  async replanUnsubmitted(
+    id: string,
+    attempts: number,
+    requestId: string,
+    to: { id: string; phone: string },
+    m: EntityManager,
+  ) {
+    const row = await m.findOne(NotificationMessage, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!row || row.status !== "PROCESSING" || row.attempts !== attempts)
+      return;
+    row.status = "HELD";
+    row.errorCode = "SUBMISSION_NOT_STARTED";
+    await m.save(row);
+    await this.replanOrganizer(
+      requestId,
+      row.recipientKey.split(":")[1]!,
+      to,
+      "dispatcher",
+      createHash("sha256")
+        .update(`unsubmitted:${id}:${attempts}`)
+        .digest("hex")
+        .slice(0, 32),
+      m,
+    );
+  }
   async messageRequest(id: string, m: EntityManager) {
     const message = await m.findOneBy(NotificationMessage, { id });
     return message

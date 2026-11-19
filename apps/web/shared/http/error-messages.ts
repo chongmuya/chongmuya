@@ -13,6 +13,11 @@ export const messages: Record<
     status: 404,
     message: "초대 또는 인수인계 요청을 사용할 수 없어요.",
   },
+  GROUP_AUTHORITY_CHANGED: {
+    status: 404,
+    message:
+      "이 모임의 관리 권한이 변경됐어요. 내 모임에서 현재 역할을 확인해 주세요.",
+  },
   GROUP_HANDOVER_CONFLICT: {
     status: 409,
     message: "모임 권한 또는 요청이 바뀌었어요. 최신 상태를 확인해 주세요.",

@@ -1,3 +1,6 @@
+import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
+import { ReservationProgress } from "./entities/reservation-progress.entity.js";
+import { candidateState, terminalCandidate } from "./lib/candidate-state.js";
 import { Injectable } from "@nestjs/common";
 import { In, type EntityManager } from "typeorm";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
@@ -14,13 +17,46 @@ export class ReservationHandoverService {
     private readonly sender: ReservationNotificationsService,
   ) {}
   async ongoing(events: string[], m: EntityManager) {
-    return events.length
-      ? m.countBy(SelectedReservation, {
-          eventId: In(events),
-          status: In(["PREPARING", "CONFIRMED"]),
-        })
-      : 0;
+    if (!events.length) return { ongoingReservations: 0, ongoingInquiries: 0 };
+    const now = new Date();
+    const selections = await m.findBy(SelectedReservation, {
+      eventId: In(events),
+    });
+    let ongoingReservations = 0;
+    for (const selection of selections) {
+      if (selection.cancelledAt || selection.status === "CANCELLED") continue;
+      if (selection.status === "CONFIRMED") {
+        const progress = await m.findOneBy(ReservationProgress, {
+          reservationId: selection.id,
+        });
+        const startsAt =
+          progress?.state.agreement.startsAt ??
+          selection.snapshot.offered?.startsAt;
+        if (startsAt && new Date(startsAt) < now) continue;
+      }
+      ongoingReservations++;
+    }
+    let ongoingInquiries = 0;
+    const requests = await m.findBy(ReservationRequest, {
+      eventId: In(events),
+      state: "ACTIVE",
+    });
+    for (const request of requests) {
+      const targets = await m.findBy(RequestTarget, { requestId: request.id });
+      for (const target of targets) {
+        const reply = await m.findOneBy(MerchantReplyRevision, {
+          targetId: target.id,
+          revision: target.replyVersion,
+        });
+        if (!terminalCandidate(candidateState(target, reply, now))) {
+          ongoingInquiries++;
+          break;
+        }
+      }
+    }
+    return { ongoingReservations, ongoingInquiries };
   }
+
   // Caller already holds group and every event lock, in sorted order.
   async transfer(
     events: string[],

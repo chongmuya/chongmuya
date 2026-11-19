@@ -65,8 +65,8 @@ export class SettlementsService {
       : [];
     return {
       settlements: rows.length,
-      incompleteSettlements: rows.filter((r) =>
-        calculate(r.state).people.some((p) => p.remaining > 0),
+      incompleteSettlements: rows.filter(
+        (r) => calculate(r.state).status === "IN_PROGRESS",
       ).length,
     };
   }

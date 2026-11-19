@@ -6,6 +6,7 @@ export type Scope = {
   files: number;
   favorites: number;
   ongoingReservations: number;
+  ongoingInquiries: number;
   incompleteSettlements: number;
 };
 export type Receipt = {
@@ -23,7 +24,7 @@ export type Accounts = {
   version: number;
   ownerId: string;
   accounts: { id: string; name: string; email: string; role: string }[];
-  invitations: (Receipt & { targetId: string; expiresAt: string })[];
+  invitations: (Receipt & { targetLabel: string; expiresAt: string })[];
 };
 export const handoverKey = (account: string, group: string) =>
   ["user", account, "handover", group] as const;

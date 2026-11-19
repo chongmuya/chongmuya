@@ -157,7 +157,11 @@ export function GroupManagement({
           )
           .map((r) => (
             <p key={r.id}>
-              초대 수락 대기{" "}
+              {r.targetLabel} · 초대 수락 대기 · 만료{" "}
+              {new Date(r.expiresAt).toLocaleString("ko-KR", {
+                timeZone: "Asia/Seoul",
+              })}{" "}
+              (한국 시간){" "}
               <Button
                 variant="outline"
                 disabled={busy || unresolved}
@@ -168,7 +172,7 @@ export function GroupManagement({
                   )
                 }
               >
-                초대 취소
+                {r.targetLabel} 초대 취소
               </Button>
             </p>
           ))}

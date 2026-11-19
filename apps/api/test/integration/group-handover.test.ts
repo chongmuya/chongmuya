@@ -1,8 +1,18 @@
+import { ReservationHandoverService } from "../../src/modules/reservations/reservation-handover.service.js";
+import { ReservationProgress } from "../../src/modules/reservations/entities/reservation-progress.entity.js";
+import { SelectedReservation } from "../../src/modules/reservations/entities/selected-reservation.entity.js";
+import { EventSettlement } from "../../src/modules/settlements/entities/settlement.entity.js";
+import { EventFile } from "../../src/modules/files/entities/event-file.entity.js";
+import { ReservationNotificationsService } from "../../src/modules/reservations/reservation-notifications.service.js";
+import { MessageGateway } from "../../src/modules/reservations/providers/message.gateway.js";
 import { MerchantRepliesService } from "../../src/modules/reservations/merchant-replies.service.js";
 import { ReservationCompletionService } from "../../src/modules/reservations/reservation-completion.service.js";
 import { ReservationPaymentsService } from "../../src/modules/reservations/reservation-payments.service.js";
 import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
-import { NotificationMessage } from "../../src/modules/notifications/entities/notification.entity.js";
+import {
+  NotificationMessage,
+  Notification as InboxNotification,
+} from "../../src/modules/notifications/entities/notification.entity.js";
 import type { ReservationRequestDto } from "../../src/modules/reservations/dto/response/reservation-request.response.dto.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -274,6 +284,46 @@ test("accepted handover preserves private history and personal ownership; member
       },
     }),
   );
+  const originalSettlement = structuredClone(view.state);
+  const draftState = structuredClone(view.state);
+  draftState.expenses[0]!.payers = [];
+  await db.manager.update(
+    EventSettlement,
+    { eventId: event.id },
+    { state: draftState },
+  );
+  assert.equal(
+    (await app.get(SettlementsService).handoverCounts([event.id], db.manager))
+      .incompleteSettlements,
+    1,
+  );
+  const excessState = structuredClone(view.state);
+  excessState.payments.push({
+    id: randomUUID(),
+    participant: excessState.expenses[0]!.payers[0]!,
+    kind: "RECEIPT",
+    amount: 12000,
+    corrects: null,
+    reason: "합성 초과 입금",
+    actorId: aa.id,
+    at: new Date().toISOString(),
+    calculationVersion: excessState.calculationVersion,
+  });
+  await db.manager.update(
+    EventSettlement,
+    { eventId: event.id },
+    { state: excessState },
+  );
+  assert.equal(
+    (await app.get(SettlementsService).handoverCounts([event.id], db.manager))
+      .incompleteSettlements,
+    1,
+  );
+  await db.manager.update(
+    EventSettlement,
+    { eventId: event.id },
+    { state: originalSettlement },
+  );
   const noticeId = view.state.notices[0].id;
   const oldNotice = await json(
     await call(`${settlement}/notices/${noticeId}`, a),
@@ -541,9 +591,10 @@ test("group lock serializes handover against stale writers, upload completion an
     await uploadGate;
     await memory.put(key, body);
   };
+  const delayedFileId = randomUUID();
   const upload = app
     .get(FilesService)
-    .upload(aa.id, e.id, randomUUID(), {
+    .upload(aa.id, e.id, delayedFileId, {
       buffer: Buffer.from("%PDF-1.4\n%%EOF"),
       originalname: "지연.pdf",
       mimetype: "application/pdf",
@@ -615,6 +666,21 @@ test("group lock serializes handover against stale writers, upload completion an
   await json(await acceptance, 201);
   releaseUpload();
   assert.equal(await upload, 404);
+  const completedFile = await db.manager.findOneByOrFail(EventFile, {
+    id: delayedFileId,
+  });
+  assert.equal(completedFile.status, "READY");
+  assert.equal(completedFile.actorId, aa.id);
+  storage.get = memory.get.bind(memory);
+  assert.equal(
+    (await app.get(FilesService).download(winner.user.id, e.id, delayedFileId))
+      .body.byteLength,
+    completedFile.size,
+  );
+  const fileNotice = await db.manager.findOneByOrFail(InboxNotification, {
+    eventKey: `file:${delayedFileId}`,
+  });
+  assert.equal(fileNotice.accountId, winner.user.id);
   for (const r of await Promise.all(staleWrites)) assert.equal(r.status, 404);
   assert.equal(
     (await db.manager.findOneByOrFail(Event, { id: e.id })).name,
@@ -772,12 +838,17 @@ test("reservation selection race, current merchant contact, pending SMS replanni
     },
     "handover-test",
   );
+  const scopeService = app.get(ReservationHandoverService);
+  assert.deepEqual(await scopeService.ongoing([e.id], db.manager), {
+    ongoingInquiries: 1,
+    ongoingReservations: 0,
+  });
   const originalRequest = await db.manager.findOneByOrFail(ReservationRequest, {
     id: inquiry.id,
   });
   const notices = app.get(NotificationsService);
   const facts: string[] = [];
-  for (const status of ["PENDING", "UNKNOWN", "ACCEPTED"]) {
+  for (const status of ["PENDING", "UNKNOWN", "ACCEPTED", "PENDING"]) {
     const eventKey = `handover-test:${randomUUID()}`;
     facts.push(eventKey);
     await db.transaction((m) =>
@@ -805,6 +876,37 @@ test("reservation selection race, current merchant contact, pending SMS replanni
         { status, provider: "fake", providerMessageId: `preserve-${status}` },
       );
   }
+  const claimedMessage = await db.manager.findOneByOrFail(NotificationMessage, {
+    eventKey: facts[3],
+  });
+  const claim = notices.claim.bind(notices);
+  let claimReached!: () => void, releaseClaim!: () => void;
+  const claimed = new Promise<void>((r) => (claimReached = r)),
+    claimGate = new Promise<void>((r) => (releaseClaim = r));
+  notices.claim = async (...args) => {
+    const result = await claim(...args);
+    if (args[0] === claimedMessage.id && result) {
+      claimReached();
+      await claimGate;
+    }
+    return result;
+  };
+  const gateway = app.get(MessageGateway),
+    send = gateway.send.bind(gateway),
+    submitted: string[] = [];
+  gateway.send = async (...args) => {
+    submitted.push(args[0]);
+    return send(...args);
+  };
+  t.after(() => {
+    notices.claim = claim;
+    gateway.send = send;
+    releaseClaim();
+  });
+  const delayedDispatch = app
+    .get(ReservationNotificationsService)
+    .dispatch(claimedMessage.id);
+  await claimed;
   const immutable = await db.manager.findBy(NotificationMessage, {
     eventKey: facts[1],
   });
@@ -854,6 +956,23 @@ test("reservation selection race, current merchant contact, pending SMS replanni
   release();
   await json(await acceptance, 201);
   assert.equal((await oldSelection).status, 404);
+  releaseClaim();
+  await delayedDispatch;
+  assert(!submitted.includes(claimedMessage.id));
+  const replanned = await db.manager.findBy(NotificationMessage, {
+    eventKey: facts[3],
+  });
+  assert.equal(replanned.length, 2);
+  assert.equal(
+    replanned.find((r) => r.id === claimedMessage.id)?.errorCode,
+    "RECIPIENT_CHANGED",
+  );
+  assert(
+    replanned.some(
+      (r) => r.phoneSnapshot === "01000009999" && r.status === "ACCEPTED",
+    ),
+  );
+
   await reminder;
   const updated = await db.manager.findOneByOrFail(ReservationRequest, {
     id: inquiry.id,
@@ -953,6 +1072,29 @@ test("reservation selection race, current merchant contact, pending SMS replanni
     reason: "가짜 은행 대조 기록",
   });
   assert.equal(view.status, "CONFIRMED");
+  assert.deepEqual(await scopeService.ongoing([e.id], db.manager), {
+    ongoingInquiries: 0,
+    ongoingReservations: 1,
+  });
+  const progress = await db.manager.findOneByOrFail(ReservationProgress, {
+    reservationId: id,
+  });
+  progress.state.agreement.startsAt = "2000-01-01T00:00:00Z";
+  await db.manager.save(progress);
+  assert.equal(
+    (await scopeService.ongoing([e.id], db.manager)).ongoingReservations,
+    0,
+  );
+  await db.manager.update(
+    SelectedReservation,
+    { id },
+    { status: "CHECK_REQUIRED" },
+  );
+  assert.equal(
+    (await scopeService.ongoing([e.id], db.manager)).ongoingReservations,
+    1,
+  );
+
   assert.equal(view.receipt?.audit.recorder, "test-recorder");
   assert.equal(view.currentContact.name, "새 합성 총무");
   assert.equal((await call(`reservations/${id}`, a)).status, 404);

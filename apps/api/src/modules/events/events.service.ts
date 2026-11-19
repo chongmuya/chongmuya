@@ -175,10 +175,13 @@ export class EventsService {
       })),
     };
   }
-  private async lockGroup(id: string, m: EntityManager) {
+  private async lockGroup(id: string, m: EntityManager, ownerId?: string) {
     const seed = await m.findOneBy(Event, { id });
     if (!seed) throw new NotFoundException();
-    if (seed.groupId) await this.groups.lock(seed.groupId, m);
+    if (seed.groupId) {
+      if (ownerId) await this.groups.assertOwned(ownerId, seed.groupId, m);
+      else await this.groups.lock(seed.groupId, m);
+    }
   }
 
   async transferGroup(
@@ -212,7 +215,7 @@ export class EventsService {
     manager: EntityManager,
     lock = false,
   ): Promise<EventDto> {
-    await this.lockGroup(id, manager);
+    await this.lockGroup(id, manager, ownerId);
     const event = await manager.getRepository(Event).findOne({
       where: { id, ownerId },
       ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
@@ -360,7 +363,7 @@ export class EventsService {
   ): Promise<EventDto> {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
-      await this.lockGroup(id, manager);
+      await this.lockGroup(id, manager, ownerId);
       const repository = manager.getRepository(Event);
       const event = await repository.findOne({
         where: { id, ownerId },

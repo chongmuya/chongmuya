@@ -13,10 +13,44 @@ type Lock = <T>(action: () => Promise<T>) => Promise<T>;
 // Instance belongs to the mounted provider, never to a server-wide singleton.
 export class SessionClient {
   readonly instanceId = crypto.randomUUID();
-  notifyAuthorityChange() {
+  private resourceGroups = new Map<string, string>();
+  private authorityRevisions = new Map<string, number>();
+  private authorityClock = 0;
+  private resource(path: string) {
+    return /^\/api\/v1\/(?:groups|events|calendar|reservations)\/([^/?]+)/.exec(
+      path,
+    )?.[1];
+  }
+  private remember(value: unknown) {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) this.remember(item);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record.id === "string" && typeof record.groupId === "string")
+      this.resourceGroups.set(record.id, record.groupId);
+    for (const item of Object.values(record))
+      if (item && typeof item === "object") this.remember(item);
+  }
+  notifyAuthorityChange(groupId: string) {
+    const accountId = this.state.account?.id;
+    if (!accountId) return;
     const channel = new BroadcastChannel("chongmuya-group-authority");
-    channel.postMessage({ source: this.instanceId });
+    channel.postMessage({ source: this.instanceId, accountId, groupId });
     channel.close();
+  }
+  receiveAuthorityChange(value: unknown) {
+    if (!value || typeof value !== "object") return;
+    const event = value as Record<string, unknown>;
+    if (
+      event.source === this.instanceId ||
+      event.accountId !== this.state.account?.id ||
+      typeof event.groupId !== "string" ||
+      !/^[a-f0-9-]{36}$/i.test(event.groupId)
+    )
+      return;
+    this.invalidateAuthority(event.groupId, false);
   }
   private state: AuthState = { status: "loading", account: null };
   private listeners = new Set<() => void>();
@@ -26,7 +60,6 @@ export class SessionClient {
   private authenticating?: Promise<Session>;
   private generation = 0;
   private revision = 0;
-  private authorityRevision = 0;
   // Same-account profile writes do not rotate credentials or invalidate requests.
   private profileRevision = 0;
   private ending = false;
@@ -34,12 +67,27 @@ export class SessionClient {
     private readonly clearUserCache: () => void,
     private readonly transport: Transport = requestJson,
     private readonly lock: Lock = (action) => action(),
-    private readonly onAuthorityLost: () => void = () => undefined,
+    private readonly onAuthorityLost: (
+      accountId: string,
+      resourceIds: string[],
+      denied: boolean,
+    ) => void = () => undefined,
   ) {}
-  invalidateAuthority = () => {
-    this.authorityRevision++;
-    this.clearUserCache();
-    this.onAuthorityLost();
+  invalidateAuthority = (resourceId: string, denied = true) => {
+    const accountId = this.state.account?.id;
+    if (!accountId) return;
+    const group = this.resourceGroups.get(resourceId) ?? resourceId;
+    const ids = [
+      group,
+      resourceId,
+      ...[...this.resourceGroups]
+        .filter(([, g]) => g === group)
+        .map(([id]) => id),
+    ];
+    this.authorityClock++;
+    for (const id of new Set(ids))
+      this.authorityRevisions.set(id, this.authorityClock);
+    this.onAuthorityLost(accountId, [...new Set(ids)], denied);
   };
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
@@ -61,6 +109,8 @@ export class SessionClient {
         : session.account;
     if (this.state.account?.id !== session.account?.id && this.state.account) {
       this.generation++;
+      this.resourceGroups.clear();
+      this.authorityRevisions.clear();
       this.clearUserCache();
     }
     this.set({
@@ -143,7 +193,8 @@ export class SessionClient {
   ): Promise<T> {
     const generation = this.generation;
     const revision = this.revision;
-    const authorityRevision = this.authorityRevision;
+    const resourceId = this.resource(path);
+    const authorityRevision = this.authorityClock;
     if (this.ending)
       throw new ApiError("로그아웃 처리 중입니다.", 401, "SESSION_INVALID");
     try {
@@ -162,23 +213,31 @@ export class SessionClient {
       }
       if (generation !== this.generation)
         throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");
-      if (authorityRevision !== this.authorityRevision)
+      this.remember(result);
+      if (
+        resourceId &&
+        Math.max(
+          this.authorityRevisions.get(resourceId) ?? 0,
+          this.authorityRevisions.get(
+            this.resourceGroups.get(resourceId) ?? "",
+          ) ?? 0,
+        ) > authorityRevision
+      )
         throw new ApiError(
           "관리 권한을 다시 확인해 주세요.",
           403,
-          "GROUP_AUTHORITY_CHANGED",
+          "GROUP_AUTHORITY_STALE",
         );
       return result;
     } catch (error) {
       if (
-        authorityRevision === this.authorityRevision &&
+        generation === this.generation &&
+        resourceId &&
+        authorityRevision >= (this.authorityRevisions.get(resourceId) ?? 0) &&
         error instanceof ApiError &&
-        [403, 404].includes(error.status) &&
-        /^\/api\/v1\/(groups|events|calendar|reservations|favorites)(?:\/|$)/.test(
-          path,
-        )
+        error.code === "GROUP_AUTHORITY_CHANGED"
       )
-        this.invalidateAuthority();
+        this.invalidateAuthority(resourceId);
       if (
         generation === this.generation &&
         error instanceof ApiError &&

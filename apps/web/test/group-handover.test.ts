@@ -22,6 +22,7 @@ test("lost handover creation preserves original token, version and request key a
       settlements: 1,
       files: 4,
       favorites: 1,
+      ongoingInquiries: 0,
       ongoingReservations: 1,
       incompleteSettlements: 1,
     },
@@ -145,5 +146,77 @@ test("roster edit explains exclusion, preserves inputs on conflict and retries a
     assert.match(v.container.textContent!, /과거 행사 기록 보존/);
   } finally {
     await v.unmount();
+  }
+});
+
+test("pending invitations identify masked recipients and cancel only the selected invitation", async () => {
+  const accountId = crypto.randomUUID(),
+    groupId = crypto.randomUUID();
+  const first = crypto.randomUUID(),
+    second = crypto.randomUUID();
+  const writes: string[] = [];
+  const request: SessionRequest = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "POST") {
+      writes.push(path);
+      return { id: second, status: "CANCELLED" } as T;
+    }
+    return (
+      path.endsWith("/accounts")
+        ? {
+            version: 1,
+            ownerId: accountId,
+            accounts: [],
+            invitations: [
+              {
+                id: first,
+                status: "PENDING",
+                targetLabel: "aa***@example.test",
+                expiresAt: "2099-01-01T00:00:00Z",
+              },
+              {
+                id: second,
+                status: "PENDING",
+                targetLabel: "bb***@example.test",
+                expiresAt: "2099-01-02T00:00:00Z",
+              },
+            ],
+          }
+        : {
+            group: { id: groupId, name: "모임", version: 1 },
+            requests: [],
+            scope: {
+              events: 0,
+              roster: 0,
+              settlements: 0,
+              files: 0,
+              favorites: 0,
+              ongoingInquiries: 0,
+              ongoingReservations: 0,
+              incompleteSettlements: 0,
+            },
+          }
+    ) as T;
+  };
+  const ui = await render(
+    createElement(GroupManagement, { accountId, groupId, request }),
+  );
+  try {
+    await until(() =>
+      assert(
+        ui.container.textContent!.includes("bb***@example.test 초대 취소"),
+      ),
+    );
+    assert(ui.container.textContent!.includes("2099"));
+    await click(ui.container, "bb***@example.test 초대 취소");
+    await until(() => assert.equal(writes.length, 1));
+    assert.equal(
+      writes[0],
+      `/api/v1/groups/${groupId}/invitations/${second}/cancel`,
+    );
+  } finally {
+    await ui.unmount();
   }
 });

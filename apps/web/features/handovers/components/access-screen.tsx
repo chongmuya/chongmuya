@@ -101,7 +101,8 @@ function Accept({
     setDone(true);
     void cache.cancelQueries({ queryKey: ["user", accountId] });
     cache.removeQueries({ queryKey: ["user", accountId] });
-    client.notifyAuthorityChange();
+    if (kind === "handover" && preview.data?.group.id)
+      client.notifyAuthorityChange(preview.data.group.id);
   });
   if (done)
     return (
@@ -124,8 +125,11 @@ function Accept({
   if (preview.isError && !accept.uncertain)
     return (
       <ErrorState retry={() => void preview.refetch()}>
-        요청이 만료·취소됐거나 이 계정의 요청이 아니에요. 관리권한은 변경되지
-        않았어요.
+        이 링크로 요청 상태를 확인할 수 없어요. 이미 처리됐거나 만료·취소됐을 수
+        있어요.
+        <Link href="/mypage?view=groups" className={buttonStyles()}>
+          내 모임에서 현재 역할 확인하기
+        </Link>
       </ErrorState>
     );
   if (!preview.data) return <LoadingState>초대 확인 중…</LoadingState>;
