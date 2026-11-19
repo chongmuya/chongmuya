@@ -139,7 +139,10 @@ export class ReservationPaymentsService {
       raw,
       "merchant",
       async (c, input) => {
-        this.completion.active(c);
+        // Late bank evidence does not reopen a cancelled reservation. Only the
+        // established audited PHONE/SMS operator path can record this exception.
+        if (c.state.cancellation && p.kind !== "operator")
+          throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
         const s = c.state;
         if (
           input.guidanceRevision !== s.guidance.revision ||
@@ -165,7 +168,9 @@ export class ReservationPaymentsService {
         await this.completion.notify(
           c,
           "RECEIPT_RECORDED",
-          "매장이 실제 수령액을 확인했어요. 남은 예약 조건을 확인해 주세요.",
+          s.cancellation
+            ? "취소된 예약의 실제 수령액을 확인·정정했어요. 예약은 취소 상태로 유지되며 반환 내역과 함께 확인해 주세요."
+            : "매장이 실제 수령액을 확인했어요. 남은 예약 조건을 확인해 주세요.",
           "organizer",
         );
       },

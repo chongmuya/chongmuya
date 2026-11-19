@@ -753,5 +753,186 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       }
     },
   );
+
+  await t.test(
+    "CHANGE rejects unused refund plans and revalidates proposal dates when either actor applies",
+    async (t) => {
+      let v = await fixture();
+      const original = v.agreement;
+      v = await post(v.id, "change-request", {
+        ...key(v.version),
+        kind: "CHANGE",
+        subject: "SCHEDULE",
+        reason: "일정 변경",
+      });
+      const changeId = v.changes[0].id;
+      for (const refundExpected of [0, 1000])
+        await assert.rejects(
+          changes.propose(v.id, operator, {
+            ...key(v.version),
+            changeId,
+            reason: "지원하지 않는 변경 환불",
+            refundExpected,
+          }),
+        );
+      assert.equal((await view(v.id)).changes[0].status, "REQUESTED");
+      const now = Date.now(),
+        agreement = {
+          ...v.agreement,
+          startsAt: new Date(now + 60000).toISOString(),
+          menuDeadlineAt: new Date(now + 30000).toISOString(),
+        };
+      v = await changes.propose(v.id, operator, {
+        ...key(v.version),
+        changeId,
+        agreement,
+        reason: "곧 시작하는 변경 제안",
+        refundExpected: null,
+      });
+      const version = v.version;
+      t.mock.timers.enable({ apis: ["Date"], now: now + 120000 });
+      try {
+        await post(
+          v.id,
+          "change-accept",
+          { ...key(version), changeId, confirmed: true },
+          400,
+        );
+        await assert.rejects(
+          changes.acceptOperator(v.id, operator, {
+            ...key(version),
+            changeId,
+            confirmed: true,
+            organizerConfirmer: "총무",
+            merchantConfirmer: "사장",
+            agreementEvidence: "양측 합의",
+          }),
+        );
+        const unchanged = await view(v.id);
+        assert.equal(unchanged.version, version);
+        assert.deepEqual(unchanged.agreement, original);
+        assert.equal(unchanged.changes[0].status, "PROPOSED");
+        assert.equal(
+          await db.manager.countBy(ReservationCompletionHistory, {
+            reservationId: v.id,
+            action: "CHANGE_APPLIED",
+          }),
+          0,
+        );
+        const event = await json<{ scheduledAt: string }>(
+          await call(`events/${v.eventId}`, organizer),
+        );
+        assert.equal(
+          Date.parse(event.scheduledAt),
+          Date.parse(original.startsAt),
+        );
+      } finally {
+        t.mock.timers.reset();
+      }
+    },
+  );
+  await t.test(
+    "audited operator can record and correct late bank evidence after cancellation without reopening or negative remaining funds",
+    async () => {
+      let v = await fixture("UNKNOWN");
+      v = await payments.guidance(v.id, operator, guide(v));
+      v = await post(v.id, "change-request", {
+        ...key(v.version),
+        kind: "CANCEL",
+        subject: "OTHER",
+        reason: "입금 확인 전 취소",
+      });
+      v = await changes.propose(v.id, operator, {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        reason: "환불 예정 미확인",
+        refundExpected: null,
+      });
+      v = await post(v.id, "change-accept", {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        confirmed: true,
+      });
+      const cancelled = v.cancellation;
+      const link = await db.manager.findOneByOrFail(ReservationManagementLink, {
+        reservationId: v.id,
+      });
+      const token = await access.exchange(
+        v.id,
+        new URL(access.url(link)).hash.slice(7),
+        "late-cancelled-receipt",
+      );
+      const input = {
+        ...key(v.version),
+        guidanceRevision: v.guidance.revision,
+        amount: 10000,
+        receivedAt: new Date().toISOString(),
+        corrects: null,
+        reason: "취소 후 은행 원장을 뒤늦게 확인",
+      };
+      await assert.rejects(
+        payments.receipt(
+          v.id,
+          { kind: "link", access: token.accessToken },
+          input,
+        ),
+      );
+      v = await payments.receipt(v.id, operator, input);
+      assert.equal(v.status, "CANCELLED");
+      assert.deepEqual(v.cancellation, cancelled);
+      assert.equal(v.receivedAmount, 10000);
+      assert.equal(v.confirmation, null);
+      v = await changes.refund(v.id, operator, {
+        ...key(v.version),
+        amount: 6000,
+        refundedAt: new Date().toISOString(),
+        reason: "뒤늦게 확인한 원금 중 실제 반환",
+      });
+      const correction = {
+        ...key(v.version),
+        guidanceRevision: v.guidance.revision,
+        receivedAt: new Date().toISOString(),
+        corrects: v.receipt!.id,
+        reason: "은행 수령 총액 재대조",
+      };
+      await assert.rejects(
+        payments.receipt(v.id, operator, { ...correction, amount: 5000 }),
+      );
+      v = await payments.receipt(v.id, operator, {
+        ...correction,
+        amount: 8000,
+      });
+      assert.equal(v.receivedAmount, 8000);
+      assert.equal(v.refundedAmount, 6000);
+      assert.equal(v.status, "CANCELLED");
+      assert.deepEqual(v.cancellation, cancelled);
+      assert.equal(v.confirmation, null);
+      const receipts = await db.manager.find(ReservationCompletionHistory, {
+        where: { reservationId: v.id, action: "RECEIPT_RECORDED" },
+        order: { version: "ASC" },
+      });
+      assert.deepEqual(
+        receipts.map((r) => r.snapshot.receipt!.amount),
+        [10000, 8000],
+      );
+      assert(
+        receipts.every(
+          (r) =>
+            r.audit.kind === "OPERATOR_RECORDED" &&
+            r.audit.confirmer === operator.confirmer,
+        ),
+      );
+      assert.equal(
+        (
+          await db.manager.findBy(NotificationFact, { reservationId: v.id })
+        ).filter((f) => f.eventKey.includes(":CONFIRMED:")).length,
+        0,
+      );
+      const event = await json<{ reservationScheduleLocked: boolean }>(
+        await call(`events/${v.eventId}`, organizer),
+      );
+      assert.equal(event.reservationScheduleLocked, false);
+    },
+  );
   assert.deepEqual((await db.driver.createSchemaBuilder().log()).upQueries, []);
 });

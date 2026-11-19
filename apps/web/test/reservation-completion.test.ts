@@ -2,6 +2,7 @@ import "./support/dom";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "../shared/http/api-error";
 import { completionQuery } from "../features/reservation-completion/api/completion.api";
+import { ChangeForms } from "../features/reservation-completion/components/change-forms";
 import { ProposalComparison } from "../features/reservation-completion/components/proposal-comparison";
 import { act, createElement, useState } from "react";
 import assert from "node:assert/strict";
@@ -493,7 +494,7 @@ test("organizer proposal preview shows all applied limits, fees and deadlines be
     },
   };
   const view = await render(
-    createElement(ProposalComparison, { data: q, proposal }),
+    createElement(ProposalComparison, { data: q, proposal, kind: "CHANGE" }),
   );
   try {
     for (const [label, before, after] of [
@@ -513,5 +514,45 @@ test("organizer proposal preview shows all applied limits, fees and deadlines be
     }
   } finally {
     await view.unmount();
+  }
+});
+
+test("merchant CHANGE proposals expose no refund plan; only cancellation proposals request it", async () => {
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "owner",
+    request: async <T>() => fixture() as T,
+  };
+  for (const kind of ["CHANGE", "CANCEL"] as const) {
+    const data = {
+      ...fixture(),
+      agreement: {
+        ...fixture().agreement,
+        startsAt: "2099-01-01T09:00:00Z",
+        expectedGuests: 20,
+        menuDeadlineAt: null,
+      },
+      changes: [
+        {
+          id: "change",
+          kind,
+          status: "REQUESTED" as const,
+          subject: "OTHER",
+          reason: "문의",
+          createdAt: "2098-01-01T00:00:00Z",
+          resolvedAt: null,
+          proposal: null,
+        },
+      ],
+    };
+    const view = await render(createElement(ChangeForms, { data, access }));
+    try {
+      assert.equal(
+        view.container.querySelectorAll('[name="refundExpected"]').length,
+        kind === "CANCEL" ? 1 : 0,
+      );
+    } finally {
+      await view.unmount();
+    }
   }
 });

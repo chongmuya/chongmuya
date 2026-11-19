@@ -29,7 +29,11 @@ export function ChangeForms({
           <p className="whitespace-pre-wrap">{pending.reason}</p>
           <p>문의만으로 예약 조건이나 환불이 바뀌지 않아요.</p>
           {pending.proposal && (
-            <ProposalComparison data={q} proposal={pending.proposal} />
+            <ProposalComparison
+              data={q}
+              proposal={pending.proposal}
+              kind={pending.kind}
+            />
           )}
         </div>
       )}
@@ -73,23 +77,29 @@ export function ChangeForms({
           })}
         />
       )}
-      {pending?.status === "PROPOSED" && organizer && (
-        <CommandForm
-          {...props}
-          action="change-accept"
-          title={
-            pending.kind === "CANCEL" ? "취소 처리 내용 수락" : "변경 내용 수락"
-          }
-          fields={[
-            {
-              name: "confirmed",
-              label: "위 처리 내용과 금액·메뉴·조건을 확인했고 동의해요",
-              type: "checkbox",
-            },
-          ]}
-          build={() => ({ changeId: pending.id, confirmed: true })}
-        />
-      )}
+      {pending?.status === "PROPOSED" &&
+        organizer &&
+        !(
+          pending.kind === "CHANGE" && pending.proposal?.refundExpected !== null
+        ) && (
+          <CommandForm
+            {...props}
+            action="change-accept"
+            title={
+              pending.kind === "CANCEL"
+                ? "취소 처리 내용 수락"
+                : "변경 내용 수락"
+            }
+            fields={[
+              {
+                name: "confirmed",
+                label: "위 처리 내용과 금액·메뉴·조건을 확인했고 동의해요",
+                type: "checkbox",
+              },
+            ]}
+            build={() => ({ changeId: pending.id, confirmed: true })}
+          />
+        )}
       {pending && !organizer && (
         <>
           {pending.status === "REQUESTED" && (
@@ -208,13 +218,14 @@ function ProposalForm({
 }) {
   const fields: Field[] = [
     { name: "reason", label: "합의할 처리 내용", type: "textarea", max: 500 },
-    {
+  ];
+  if (cancel)
+    fields.push({
       name: "refundExpected",
       label: "환불 예정 총액 (미확인은 빈칸, 없음은 0)",
       type: "number",
       optional: true,
-    },
-  ];
+    });
   if (!cancel)
     fields.push(
       {
@@ -298,7 +309,8 @@ function ProposalForm({
       build={(v, b) => ({
         changeId,
         reason: v.reason,
-        refundExpected: v.refundExpected ? Number(v.refundExpected) : null,
+        refundExpected:
+          cancel && v.refundExpected ? Number(v.refundExpected) : null,
         ...(!cancel
           ? {
               agreement: {

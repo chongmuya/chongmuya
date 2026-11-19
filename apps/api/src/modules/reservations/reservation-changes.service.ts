@@ -17,7 +17,7 @@ import {
   money,
   type ReservationPrincipal,
 } from "./types/reservation-completion.js";
-import { proposalSchema } from "./types/merchant-reply.js";
+import { proposalSchema, type Proposal } from "./types/merchant-reply.js";
 import { calculateOrder } from "./lib/reservation-completion.js";
 const resultCommand = commandSchema
   .extend({
@@ -51,6 +51,19 @@ export class ReservationChangesService {
     private readonly restaurants: RestaurantsService,
     private readonly events: EventsService,
   ) {}
+  private validateAgreement(agreement: Proposal) {
+    if (Date.parse(agreement.startsAt) <= Date.now())
+      throw new DomainHttpException("VALIDATION_FAILED", [
+        { field: "startsAt", code: "INVALID_VALUE" },
+      ]);
+    if (
+      agreement.menuDeadlineAt &&
+      Date.parse(agreement.menuDeadlineAt) > Date.parse(agreement.startsAt)
+    )
+      throw new DomainHttpException("VALIDATION_FAILED", [
+        { field: "menuDeadlineAt", code: "INVALID_VALUE" },
+      ]);
+  }
   request(id: string, p: ReservationPrincipal, raw: unknown) {
     return this.completion.write(
       id,
@@ -104,14 +117,13 @@ export class ReservationChangesService {
         if (!change)
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
         const agreement = input.agreement ?? c.state.agreement;
-        if (
-          change.kind === "CHANGE" &&
-          (Date.parse(agreement.startsAt) <= Date.now() ||
-            (agreement.menuDeadlineAt &&
-              Date.parse(agreement.menuDeadlineAt) >
-                Date.parse(agreement.startsAt)))
-        )
-          throw new DomainHttpException("VALIDATION_FAILED");
+        if (change.kind === "CHANGE") {
+          if (input.refundExpected !== null)
+            throw new DomainHttpException("VALIDATION_FAILED", [
+              { field: "refundExpected", code: "INVALID_VALUE" },
+            ]);
+          this.validateAgreement(agreement);
+        }
         const guidance = input.guidance
           ? this.payments.validateGuidance(
               { ...c, state: { ...c.state, agreement } },
@@ -230,6 +242,9 @@ export class ReservationChangesService {
             c.m,
           );
         } else {
+          if (proposal.refundExpected !== null)
+            throw new DomainHttpException("VALIDATION_FAILED");
+          this.validateAgreement(proposal.agreement);
           s.agreement = proposal.agreement;
           s.agreementRevision++;
           s.guidance = proposal.guidance;

@@ -35,8 +35,10 @@ const channel = (g: Guidance) =>
 export function ProposalComparison({
   data: q,
   proposal: p,
+  kind,
 }: {
   data: Completion;
+  kind: Change["kind"];
   proposal: NonNullable<Change["proposal"]>;
 }) {
   const a = q.agreement,
@@ -79,11 +81,18 @@ export function ProposalComparison({
       b.changeCancellationPolicy ?? "미확인",
     ],
     ["매장 추가 안내", a.note || "없음", b.note || "없음"],
-    ["환불 예정 총액", won(q.refundExpected), won(p.refundExpected)],
   ];
+  if (kind === "CANCEL")
+    rows.push(["환불 예정 총액", won(q.refundExpected), won(p.refundExpected)]);
   return (
     <div className="space-y-4">
       <p className="whitespace-pre-wrap">처리 제안: {p.reason}</p>
+      {kind === "CHANGE" && p.refundExpected !== null && (
+        <p role="alert">
+          변경 제안에는 환불 예정액을 적용할 수 없어요. 매장에 처리 내용을 다시
+          제안해 달라고 요청해 주세요.
+        </p>
+      )}
       <p>
         수락하면 아래 제안 내용이 적용돼요. 기존 내용과 모든 조건을 비교해
         주세요.
