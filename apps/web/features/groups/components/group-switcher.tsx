@@ -16,13 +16,17 @@ export function GroupSwitcher({
 }: {
   groups: Group[];
   selected?: string;
-  view: "home" | "roster";
+  view: "home" | "roster" | "mypage";
   createPath?: string;
   onClose: () => void;
   children?: ReactNode;
 }) {
   const destination =
-    view === "home" ? "/?group=" : "/mypage?view=groups&group=";
+    view === "home"
+      ? "/?group="
+      : view === "mypage"
+        ? "/mypage?group="
+        : "/mypage?view=groups&group=";
   return (
     <BottomSheet
       title={view === "home" ? "모임·행사 선택" : "모임 전환"}

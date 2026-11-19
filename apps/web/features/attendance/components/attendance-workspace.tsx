@@ -64,9 +64,19 @@ export function AttendanceWorkspace({
         className="min-w-0 space-y-5"
       >
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-xl font-bold">참석 관리</h2>
-          <Button variant="outline" onClick={() => setCreating(true)}>
-            차수 만들기
+          <Link
+            href={`/events?event=${props.eventId}&view=roster`}
+            className="inline-flex min-h-control items-center text-sm text-secondary underline underline-offset-4"
+          >
+            명단 관리
+          </Link>
+          <Button
+            variant="outline"
+            onClick={() => setCreating(true)}
+            className="size-11 p-0 text-xl"
+            aria-label="차수 만들기"
+          >
+            <span aria-hidden="true">＋</span>
           </Button>
         </div>
         {roundId && (
@@ -131,8 +141,17 @@ export function AttendanceWorkspace({
 }
 function Counts({ counts }: { counts: AttendanceCounts }) {
   return (
-    <div className="grid grid-cols-2 gap-2 text-sm" aria-label="최종 참석 집계">
-      <span>참석 {counts.attending}명</span>
+    <div
+      className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"
+      aria-label="최종 참석 집계"
+    >
+      <span>
+        참석{" "}
+        <strong className="ml-1 text-lg text-brand-action">
+          {counts.attending}
+        </strong>
+        명
+      </span>
       <span>불참 {counts.absent}명</span>
       <span>미응답 {counts.unanswered}명</span>
       {counts.pending > 0 && <span>연결할 응답 {counts.pending}건</span>}

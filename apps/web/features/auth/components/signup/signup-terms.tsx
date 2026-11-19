@@ -29,8 +29,8 @@ export function SignupTerms({
         <Image
           src="/images/auth/brand-wordmark-orange.svg"
           alt="총무야"
-          width={131.2}
-          height={47.2}
+          width={131}
+          height={47}
           priority
         />
         <h1

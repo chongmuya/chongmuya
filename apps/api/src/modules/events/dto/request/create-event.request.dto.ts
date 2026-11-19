@@ -1,5 +1,6 @@
 import { Transform } from "class-transformer";
 import {
+  IsBoolean,
   IsString,
   Length,
   IsOptional,
@@ -27,4 +28,9 @@ export class EventInput {
   @IsOptional()
   @IsUUID()
   groupId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  importGroupRoster?: boolean;
 }

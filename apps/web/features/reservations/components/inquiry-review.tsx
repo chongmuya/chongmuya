@@ -7,6 +7,7 @@ import {
   inquiryConditions,
   type ConditionsValues,
 } from "../schemas/conditions.schema";
+import { ConditionSummary } from "./condition-summary";
 import { InquiryDetails } from "./reservation-progress";
 
 export function InquiryReview({
@@ -28,11 +29,10 @@ export function InquiryReview({
   onSubmit: () => void;
   error?: string;
 }) {
+  const conditions = inquiryConditions(values);
   return (
     <div className="space-y-6">
-      <p className="text-sm">
-        {values.date} {values.time} · {values.expectedGuests}명
-      </p>
+      <ConditionSummary conditions={conditions} />
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold">보낼 매장</h2>
@@ -83,7 +83,7 @@ export function InquiryReview({
         </p>
       )}
       <InquiryDetails
-        conditions={inquiryConditions(values)}
+        conditions={conditions}
         contact={{ name: values.contactName, phone: values.contactPhone }}
       />
       <Button

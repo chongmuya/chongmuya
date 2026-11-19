@@ -134,8 +134,8 @@ function SignupComplete({ onContinue }: { onContinue: () => void }) {
               <Image
                 src="/images/auth/celebration.svg"
                 alt=""
-                width={82.649}
-                height={68.8633}
+                width={83}
+                height={69}
                 className="absolute -top-[1.324px] left-0"
               />
             </div>

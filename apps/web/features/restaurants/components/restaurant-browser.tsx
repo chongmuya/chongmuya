@@ -1,13 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
-import { FormField } from "@/shared/ui/form-field";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import {
   restaurantsQuery,
@@ -19,14 +14,11 @@ import { RestaurantPhoto } from "./restaurant-photo";
 import { RestaurantDetail } from "./restaurant-detail";
 import { RestaurantMap, type MapViewport } from "./restaurant-map";
 
-const searchSchema = z.object({
-  region: z.string().trim().max(80, "지역은 80자 이내로 입력해 주세요."),
-});
+import { serviceArea } from "@/shared/lib/service-area";
 export function RestaurantBrowser({
   selected,
   restaurantId,
   view,
-  region,
   page,
   expectedGuests,
   onSelect,
@@ -41,17 +33,14 @@ export function RestaurantBrowser({
   const [sheet, setSheet] = useState(false);
   const scroll = useRef(0);
   const viewport = useRef<MapViewport | null>(null);
-  const form = useForm({
-    resolver: zodResolver(searchSchema),
-    defaultValues: { region },
-  });
+  const focusedViewport = useRef<MapViewport | null>(null);
   const list = useQuery({
-    ...restaurantsQuery(region, page, expectedGuests),
+    ...restaurantsQuery(serviceArea.search, page, expectedGuests),
     enabled: view === "list",
   });
   const map = useQuery({
-    ...restaurantMapQuery(region, expectedGuests),
-    enabled: view === "map",
+    ...restaurantMapQuery(serviceArea.search, expectedGuests),
+    enabled: view === "map" && !restaurantId,
   });
   const focus = useQuery({
     ...restaurantQuery(restaurantId ?? ""),
@@ -70,9 +59,6 @@ export function RestaurantBrowser({
           : selected,
     );
   useEffect(() => {
-    form.setValue("region", region);
-  }, [region, form]);
-  useEffect(() => {
     if (view !== "list") return;
     const frame = requestAnimationFrame(() =>
       window.scrollTo(0, scroll.current),
@@ -87,11 +73,12 @@ export function RestaurantBrowser({
     };
   }, [view]);
   const open = (id: string) => onNavigate({ view: "detail", restaurant: id });
-  const mapItems = map.data ?? [];
-  const points =
-    focus.data && !mapItems.some((r) => r.id === focus.data.id)
-      ? [...mapItems, focus.data]
-      : mapItems;
+  const locationQuery = restaurantId ? focus : map;
+  const points = restaurantId
+    ? focus.data
+      ? [focus.data]
+      : []
+    : (map.data ?? []);
   return (
     <>
       {view === "detail" && restaurantId ? (
@@ -107,7 +94,7 @@ export function RestaurantBrowser({
           }
           onSelect={() => toggle(restaurantId)}
           onMap={(r) => {
-            viewport.current = null;
+            focusedViewport.current = null;
             onNavigate({ view: "map", restaurant: r.id });
           }}
           onInquiry={() =>
@@ -120,73 +107,35 @@ export function RestaurantBrowser({
         />
       ) : view === "map" ? (
         <>
-          {map.isError && (
-            <ErrorState retry={() => void map.refetch()}>
+          {locationQuery.isError && (
+            <ErrorState retry={() => void locationQuery.refetch()}>
               지도를 다시 불러와 주세요.
             </ErrorState>
           )}
-          {!map.data ? (
-            !map.isError && <LoadingState>매장 위치 불러오는 중…</LoadingState>
+          {!locationQuery.data ? (
+            !locationQuery.isError && (
+              <LoadingState>매장 위치 불러오는 중…</LoadingState>
+            )
           ) : (
             <RestaurantMap
+              key={restaurantId ?? "area"}
               restaurants={points}
               focusId={restaurantId}
-              viewport={viewport}
+              viewport={restaurantId ? focusedViewport : viewport}
               onOpen={open}
             />
           )}
-          <Button
-            variant="outline"
-            className="my-4 w-full"
-            onClick={() => onNavigate({ view: "list", restaurant: null })}
-          >
-            이 지역 매장 목록 보기
-          </Button>
+          {restaurantId && (
+            <Button
+              className="my-4 w-full"
+              onClick={() => onNavigate({ view: "map", restaurant: null })}
+            >
+              이 지역 매장 보기
+            </Button>
+          )}
         </>
       ) : (
         <>
-          <form
-            className="mb-5 flex items-end gap-2"
-            onSubmit={(event) =>
-              void form.handleSubmit(({ region: next }) => {
-                scroll.current = 0;
-                viewport.current = null;
-                onNavigate({ region: next, page: "1" });
-              })(event)
-            }
-          >
-            <FormField
-              id="restaurant-region"
-              label="검색 지역"
-              className="min-w-0 flex-1 text-xs"
-              error={form.formState.errors.region?.message}
-            >
-              {(attributes) => (
-                <Input
-                  {...attributes}
-                  {...form.register("region")}
-                  placeholder="지역을 입력해 주세요"
-                  variant="form"
-                />
-              )}
-            </FormField>
-            <Button type="submit" variant="brand-outline">
-              검색
-            </Button>
-          </form>
-          <div className="mb-5 flex justify-between gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onNavigate({ view: "map", restaurant: null })}
-            >
-              지도로 보기
-            </Button>
-            {onEditConditions && (
-              <Button variant="brand-outline" onClick={onEditConditions}>
-                문의 조건 수정
-              </Button>
-            )}
-          </div>
           {list.isError && (
             <ErrorState retry={() => void list.refetch()}>
               매장을 불러오지 못했어요.
@@ -203,12 +152,11 @@ export function RestaurantBrowser({
                       ? `이 지역에 ${expectedGuests}명 규모의 매장이 없어요`
                       : "이 지역에 등록된 매장이 없어요"}
                   </h2>
-                  <Button
-                    className="mt-6 w-full"
-                    onClick={() => onNavigate({ region: null, page: "1" })}
-                  >
-                    전체 매장 보기
-                  </Button>
+                  {onEditConditions && (
+                    <Button className="mt-6 w-full" onClick={onEditConditions}>
+                      문의 조건 수정
+                    </Button>
+                  )}
                 </section>
               ) : (
                 <div className="space-y-5 pb-28">
@@ -262,9 +210,6 @@ export function RestaurantBrowser({
                                   {facts.join(" · ")}
                                 </p>
                               )}
-                              <p className="mt-2 text-xs text-muted">
-                                {r.region}
-                              </p>
                             </div>
                             <Button
                               variant={added ? "brand-outline" : "outline"}
@@ -279,7 +224,7 @@ export function RestaurantBrowser({
                               {added
                                 ? "담기 취소"
                                 : r.inquiryAvailable
-                                  ? "담기"
+                                  ? "문의 담기"
                                   : "문의 불가"}
                             </Button>
                           </div>
@@ -315,7 +260,7 @@ export function RestaurantBrowser({
           )}
         </>
       )}
-      {view !== "detail" && selected.length > 0 && (
+      {view === "list" && selected.length > 0 && (
         <aside
           aria-label="선택한 매장"
           className="fixed bottom-0 left-1/2 z-20 flex w-full max-w-[402px] -translate-x-1/2 items-center gap-3 border-t border-border bg-surface px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] shadow-card"

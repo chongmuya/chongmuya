@@ -213,9 +213,7 @@ export function RestaurantMap({
               ))}
             </ul>
           ) : (
-            <p className="text-sm">
-              표시할 매장이 없어요. 지역 조건을 바꿔 주세요.
-            </p>
+            <p className="text-sm">표시할 매장이 없어요.</p>
           )}
         </div>
       ) : (

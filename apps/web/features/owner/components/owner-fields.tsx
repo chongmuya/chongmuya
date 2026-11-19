@@ -1,6 +1,7 @@
 "use client";
 import { Controller, useFormContext, type FieldPath } from "react-hook-form";
 import { useId, type ComponentProps, type ReactNode } from "react";
+import { IconButton } from "@/shared/ui/icon-button";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { Checkbox } from "@/shared/ui/checkbox";
@@ -35,40 +36,55 @@ export function OwnerField({
           error={fieldState.error?.message}
         >
           {(attributes) => (
-            <Input
-              variant="pill"
-              className="shadow-control"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && onEnter) {
-                  e.preventDefault();
-                  onEnter();
+            <div className="relative">
+              <Input
+                variant="pill"
+                className={onEnter ? "pr-14 shadow-control" : "shadow-control"}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && onEnter) {
+                    e.preventDefault();
+                    onEnter();
+                  }
+                }}
+                name={field.name}
+                ref={field.ref}
+                onBlur={field.onBlur}
+                value={
+                  typeof field.value === "number" ||
+                  typeof field.value === "string"
+                    ? field.value
+                    : ""
                 }
-              }}
-              name={field.name}
-              ref={field.ref}
-              onBlur={field.onBlur}
-              value={
-                typeof field.value === "number" ||
-                typeof field.value === "string"
-                  ? field.value
-                  : ""
-              }
-              type={numeric ? "number" : "text"}
-              min={numeric ? 0 : undefined}
-              inputMode={numeric ? "numeric" : undefined}
-              placeholder={placeholder ?? (numeric ? "미확인" : undefined)}
-              onChange={(e) => {
-                field.onChange(
-                  numeric
-                    ? e.target.value === ""
-                      ? null
-                      : Number(e.target.value)
-                    : e.target.value,
-                );
-                changed?.();
-              }}
-              {...attributes}
-            />
+                type={numeric ? "number" : "text"}
+                min={numeric ? 0 : undefined}
+                inputMode={numeric ? "numeric" : undefined}
+                placeholder={placeholder ?? (numeric ? "미확인" : undefined)}
+                onChange={(e) => {
+                  field.onChange(
+                    numeric
+                      ? e.target.value === ""
+                        ? null
+                        : Number(e.target.value)
+                      : e.target.value,
+                  );
+                  changed?.();
+                }}
+                {...attributes}
+              />
+              {onEnter && (
+                <IconButton
+                  aria-label="주소 검색"
+                  className="absolute right-1 top-1/2 -translate-y-1/2"
+                  onClick={onEnter}
+                >
+                  <span
+                    aria-hidden
+                    className="relative block size-4 rounded-full border-2 border-secondary after:absolute after:top-full after:left-full after:h-1.5 after:w-0.5 after:-translate-x-px after:-translate-y-px after:-rotate-45 after:bg-secondary"
+                  />
+                  <span className="sr-only">주소 검색</span>
+                </IconButton>
+              )}
+            </div>
           )}
         </FormField>
       )}

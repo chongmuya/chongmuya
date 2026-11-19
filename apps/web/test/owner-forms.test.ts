@@ -173,10 +173,8 @@ test("draft autosave recovers a lost success response and uses the saved version
   );
   try {
     await fill(view.container, "name", "응답 유실 후 유지");
-    await click(view.container, "초안 저장");
     await until(() => assert.equal(stored.version, 2));
     await fill(view.container, "name", "이어서 수정");
-    await click(view.container, "초안 저장");
     await until(() => assert.equal(stored.data.name, "이어서 수정"));
     assert.deepEqual(versions, [1, 2]);
     assert.doesNotMatch(
@@ -239,7 +237,6 @@ test("draft conflicts preserve local input and require review before adopting cu
   );
   try {
     await fill(view.container, "name", "작성 중인 내 입력");
-    await click(view.container, "초안 저장");
     await until(() =>
       assert.match(view.container.textContent!, /최신 정보 확인이 필요/),
     );

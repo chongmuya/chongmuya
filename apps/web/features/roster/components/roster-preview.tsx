@@ -61,8 +61,8 @@ export function RosterPreview({
             <Image
               src="/images/groups/info.svg"
               alt=""
-              width={19.5}
-              height={19.5}
+              width={20}
+              height={20}
             />
             <p className="text-xs">
               같은 이름이 {duplicates.length}종류 있어요. 같은 사람을 중복
@@ -163,8 +163,8 @@ export function RosterPreview({
                   <Image
                     src="/images/groups/edit.svg"
                     alt=""
-                    width={17.0888}
-                    height={17.088}
+                    width={17}
+                    height={17}
                   />
                 </IconButton>
               </div>

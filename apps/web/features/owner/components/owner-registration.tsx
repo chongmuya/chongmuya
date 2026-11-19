@@ -197,21 +197,47 @@ export function OwnerRegistration({
       if (active.current) setAdvancing(false);
     }
   };
-  if (complete)
+  if (complete) {
+    const submitted = form.getValues();
+    const savedRestaurant = context.data?.restaurants.find(
+      (r) => r.id === complete,
+    );
     return (
       <StepLayout title="등록 완료" onBack={() => onNavigate("/owner")}>
         <div className="py-12 text-center">
           <div className="mx-auto mb-8 flex size-12 items-center justify-center rounded-full bg-brand text-3xl text-white">
             ✓
           </div>
-          <h1 className="text-2xl font-bold">매장 정보가 저장되었어요</h1>
+          <h1 className="text-2xl font-bold">
+            {draft.restaurantId
+              ? "매장 정보를 수정했어요"
+              : "매장 등록이 완료되었어요"}
+          </h1>
           <p className="mt-3 text-muted">
-            {context.data?.restaurants.find((r) => r.id === complete)?.published
-              ? "공개 중"
-              : "공개 대기"}
+            {savedRestaurant
+              ? savedRestaurant.published
+                ? "공개 중"
+                : "공개 대기"
+              : context.isError
+                ? "공개 상태를 확인하지 못했어요"
+                : "공개 상태 확인 중"}
           </p>
         </div>
-        <OwnerSummary data={form.getValues()} />
+        <section className="space-y-3">
+          <h2 className="font-semibold">등록 요약</h2>
+          <details className="rounded-control bg-surface p-5 shadow-card">
+            <summary className="cursor-pointer text-sm">
+              <strong>
+                {submitted.name}
+                {submitted.branchName ? ` (${submitted.branchName})` : ""}
+              </strong>{" "}
+              · 자세히 보기
+            </summary>
+            <div className="mt-5">
+              <OwnerSummary data={submitted} />
+            </div>
+          </details>
+        </section>
         <div className="mt-8 space-y-3">
           <Link
             className={buttonStyles({ className: "w-full" })}
@@ -231,10 +257,11 @@ export function OwnerRegistration({
         </div>
       </StepLayout>
     );
+  }
   return (
     <FormProvider {...form}>
       <StepLayout
-        title="매장 등록"
+        title={draft.restaurantId ? "매장 정보 수정" : "매장 등록"}
         progress={{ value: step + 1, max: 5 }}
         onBack={() => {
           if (step) void persist(step - 1).catch(() => undefined);
@@ -314,7 +341,11 @@ export function OwnerRegistration({
                   label="매장명 *"
                   placeholder="매장명을 입력해 주세요"
                 />
-                <OwnerField path="branchName" label="지점명 (선택)" />
+                <OwnerField
+                  path="branchName"
+                  label="지점명 (선택)"
+                  placeholder="예) 건대점"
+                />
                 <div className="space-y-3">
                   <OwnerField
                     path="addressQuery"
@@ -326,13 +357,6 @@ export function OwnerRegistration({
                     label="매장 주소 *"
                     placeholder="도로명·지번 주소를 검색해 주세요"
                   />
-                  <Button
-                    variant="brand-outline"
-                    className="w-full"
-                    onClick={searchAddress}
-                  >
-                    주소 검색
-                  </Button>
                   {searchNotice && (
                     <p role="status" className="text-sm text-muted">
                       {searchNotice}
@@ -352,9 +376,7 @@ export function OwnerRegistration({
                               onClick={() => {
                                 form.setValue("addressQuery", a.baseAddress);
                                 setAddressId(a.id);
-                                setSearchNotice(
-                                  `선택한 주소: ${a.baseAddress}`,
-                                );
+                                setSearchNotice("");
                                 setAddresses([]);
                               }}
                             >
@@ -567,13 +589,11 @@ export function OwnerRegistration({
             )}
           </fieldset>
           <div className="mt-auto space-y-3 pt-10">
-            <p className="text-center text-xs text-muted" role="status">
-              {save.pending
-                ? "초안을 저장하고 있어요…"
-                : save.error
-                  ? "초안을 저장하지 못했어요. 입력을 유지했으니 다시 저장해 주세요."
-                  : "입력한 내용은 계정의 초안으로 저장돼요."}
-            </p>
+            {save.pending && (
+              <p className="text-center text-xs text-muted" role="status">
+                초안 저장 중…
+              </p>
+            )}
             <FormError
               message={
                 error
@@ -597,18 +617,23 @@ export function OwnerRegistration({
               loading={busy}
               disabled={!!save.conflict}
             >
-              {step === 4 ? "등록 완료하기" : "다음"}
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => void persist(step).catch(() => undefined)}
-            >
-              초안 저장
+              {step === 4
+                ? draft.restaurantId
+                  ? "수정 완료하기"
+                  : "등록 완료하기"
+                : "다음"}
             </Button>
             {!!save.error && !save.conflict && (
               <Button variant="outline" onClick={() => void save.recover()}>
                 최신 저장 상태 확인
+              </Button>
+            )}
+            {!!save.error && !save.conflict && (
+              <Button
+                variant="outline"
+                onClick={() => void persist(step).catch(() => undefined)}
+              >
+                초안 다시 저장
               </Button>
             )}
           </div>

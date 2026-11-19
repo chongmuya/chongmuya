@@ -10,4 +10,5 @@ export type EventInput = {
   name: string;
   scheduledAt?: string;
   groupId?: string;
+  importGroupRoster?: boolean;
 };

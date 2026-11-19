@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { GroupsService } from "../groups/groups.service.js";
+import { copyGroupRoster } from "./lib/copy-group-roster.js";
 import { Event } from "./entities/event.entity.js";
 import type { EventInput } from "./dto/request/create-event.request.dto.js";
 import type { UpdateEventInput } from "./dto/request/update-event.request.dto.js";
@@ -53,19 +54,30 @@ export class EventsService {
   async create(ownerId: string, input: EventInput): Promise<EventDto> {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
-      if (input.groupId)
+      if (input.importGroupRoster && !input.groupId)
+        throw new DomainHttpException("EVENT_GROUP_REQUIRED");
+      const members =
+        input.importGroupRoster && input.groupId
+          ? await this.groups.membersInTransaction(
+              ownerId,
+              input.groupId,
+              manager,
+              true,
+            )
+          : null;
+      if (input.groupId && !members)
         await this.groups.assertOwned(ownerId, input.groupId, manager);
-      return eventDto(
-        await manager.getRepository(Event).save({
-          id: randomUUID(),
-          ownerId,
-          groupId: input.groupId ?? null,
-          version: 1,
-          name: input.name,
-          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
-          createdAt: new Date(),
-        }),
-      );
+      const event = await manager.getRepository(Event).save({
+        id: randomUUID(),
+        ownerId,
+        groupId: input.groupId ?? null,
+        version: 1,
+        name: input.name,
+        scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
+        createdAt: new Date(),
+      });
+      if (members?.length) await copyGroupRoster(manager, event.id, members);
+      return eventDto(event);
     });
   }
 

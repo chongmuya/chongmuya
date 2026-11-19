@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { serviceArea } from "@/shared/lib/service-area";
 import { Input } from "@/shared/ui/input";
 import { Select } from "@/shared/ui/select";
 import { Button } from "@/shared/ui/button";
@@ -14,13 +15,11 @@ import {
 export function ConditionsForm({
   initial,
   onContinue,
-  suggestedRegion,
   nextLabel = "매장 선택하기",
   onChange,
 }: {
   initial: ConditionsValues;
   onContinue: (values: ConditionsValues) => void;
-  suggestedRegion?: string;
   nextLabel?: string;
   onChange?: (values: ConditionsValues) => void;
 }) {
@@ -29,9 +28,7 @@ export function ConditionsForm({
     subscribe,
     control,
     handleSubmit,
-    getValues,
-    setValue,
-    formState: { errors, dirtyFields },
+    formState: { errors },
   } = useForm({
     resolver: zodResolver(conditionsSchema),
     defaultValues: initial,
@@ -42,10 +39,6 @@ export function ConditionsForm({
       callback: ({ values }) => onChange?.(values),
     });
   }, [subscribe, onChange]);
-  useEffect(() => {
-    if (suggestedRegion && !dirtyFields.region && !getValues("region"))
-      setValue("region", suggestedRegion);
-  }, [suggestedRegion, dirtyFields.region, getValues, setValue]);
   const [seating, space] = useWatch({ control, name: ["seating", "space"] });
   const input = (
     name: keyof ConditionsValues,
@@ -121,7 +114,10 @@ export function ConditionsForm({
           true,
           "명단 없이 예상 인원만으로 문의할 수 있어요.",
         )}
-        {input("region", "희망 지역")}
+        <dl className="space-y-2 text-sm">
+          <dt className="text-secondary">희망 지역</dt>
+          <dd className="font-semibold">{serviceArea.label}</dd>
+        </dl>
       </fieldset>
       <fieldset className="space-y-4">
         <legend className="mb-4 text-sm font-semibold">

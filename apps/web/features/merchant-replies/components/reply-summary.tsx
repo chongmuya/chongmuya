@@ -20,7 +20,7 @@ export const money = (n: number | null) =>
       : `${n.toLocaleString("ko-KR")}원`;
 export function RequestSummary({ snapshot: s }: { snapshot: RequestSnapshot }) {
   return (
-    <dl className="space-y-2 text-sm">
+    <dl className="space-y-3 text-sm [&>div]:grid [&>div]:grid-cols-[5rem_minmax(0,1fr)] [&>div]:gap-3">
       <div>
         <dt className="text-muted">행사</dt>
         <dd>
@@ -51,26 +51,31 @@ export function RequestSummary({ snapshot: s }: { snapshot: RequestSnapshot }) {
             : ""}
         </dd>
       </div>
-      <div>
-        <dt className="text-muted">예산·주류</dt>
-        <dd>
-          {s.budgetAmount === null
-            ? "미입력"
-            : `${s.budgetBasis === "PER_PERSON" ? "1인당" : "전체"} ${money(s.budgetAmount)}`}{" "}
-          · 주류{" "}
-          {s.alcohol === "INCLUDED"
-            ? "포함"
-            : s.alcohol === "EXCLUDED"
-              ? "별도"
-              : "미정"}
-        </dd>
-      </div>
-      <div>
-        <dt className="text-muted">추가 요청</dt>
-        <dd className="whitespace-pre-wrap break-words">
-          {s.additionalRequests || "미입력"}
-        </dd>
-      </div>
+      {(s.budgetAmount !== null ||
+        s.alcohol === "INCLUDED" ||
+        s.alcohol === "EXCLUDED") && (
+        <div>
+          <dt className="text-muted">예산·주류</dt>
+          <dd>
+            {s.budgetAmount !== null &&
+              `${s.budgetBasis === "PER_PERSON" ? "1인당" : "전체"} ${money(s.budgetAmount)} · `}
+            주류{" "}
+            {s.alcohol === "INCLUDED"
+              ? "포함"
+              : s.alcohol === "EXCLUDED"
+                ? "별도"
+                : "미정"}
+          </dd>
+        </div>
+      )}
+      {s.additionalRequests && (
+        <div>
+          <dt className="text-muted">추가 요청</dt>
+          <dd className="whitespace-pre-wrap break-words">
+            {s.additionalRequests}
+          </dd>
+        </div>
+      )}
     </dl>
   );
 }

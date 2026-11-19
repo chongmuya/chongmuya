@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -68,7 +69,7 @@ export function OwnerScreen({
       <main className="app-page">
         <h1>사장님 계정으로 이용해 주세요</h1>
         <p>현재 총무 계정의 유형은 변경되지 않습니다.</p>
-        <Link href="/events">내 행사로 가기</Link>
+        <Link href="/">내 홈으로 가기</Link>
       </main>
     );
   const navigate = (path: string) => {
@@ -104,7 +105,6 @@ export function OwnerScreen({
 function OwnerHome({
   account,
   request,
-  onNavigate,
 }: {
   account: Account;
   request: SessionRequest;
@@ -112,14 +112,23 @@ function OwnerHome({
 }) {
   const context = useQuery(contextQuery(account.id, request));
   return (
-    <StepLayout title="사장님 홈" onBack={() => onNavigate("/")}>
-      <h1 className="mb-6 text-2xl font-bold">내 매장</h1>
+    <main className="mx-auto flex min-h-svh max-w-[402px] flex-col px-5 pt-[clamp(24px,8.77svh,83px)] pb-[max(40px,env(safe-area-inset-bottom))]">
+      <header className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">내 매장</h1>
+        <Link
+          href="/mypage"
+          aria-label="마이페이지"
+          className="flex size-11 items-center justify-center"
+        >
+          <Image src="/images/home/profile.svg" alt="" width={36} height={36} />
+        </Link>
+      </header>
       {context.isError ? (
         <ErrorState retry={() => void context.refetch()} />
       ) : !context.data ? (
         <LoadingState>매장 확인 중…</LoadingState>
       ) : (
-        <div className="space-y-5">
+        <div className="flex flex-1 flex-col gap-5">
           {context.data.restaurants.map((r) => (
             <section
               key={r.id}
@@ -150,38 +159,43 @@ function OwnerHome({
               </div>
             </section>
           ))}
-          {!context.data.restaurants.length && (
-            <>
-              <p className="text-muted">
+          {!context.data.restaurants.length ? (
+            <section className="flex flex-1 flex-col px-[14px]">
+              <Image
+                src="/images/auth/brand-symbol.svg"
+                alt=""
+                width={84}
+                height={74}
+                className="mb-5 rounded-full bg-brand p-3"
+              />
+              <h2 className="text-2xl font-bold text-brand-ink">
+                총무야에 오신 걸 환영해요!
+              </h2>
+              <p className="mt-2 max-w-64 text-control leading-normal text-secondary">
                 {context.data.drafts.length
-                  ? "작성 중인 매장 정보가 있어요. 이어서 등록해 주세요."
+                  ? "작성 중인 매장 정보를 이어서 등록해 주세요."
                   : "매장을 등록해 총무들이 단체 예약을 문의할 수 있게 해주세요."}
               </p>
               <Link
-                className={buttonStyles({ className: "w-full" })}
+                className={buttonStyles({ className: "mt-auto w-full" })}
                 href="/owner/register"
               >
                 {context.data.drafts.length
                   ? "매장 등록 이어쓰기"
                   : "매장 등록하기"}
               </Link>
-            </>
+            </section>
+          ) : (
+            <Link
+              className={buttonStyles({ className: "w-full" })}
+              href="/owner/inquiries"
+            >
+              받은 문의
+            </Link>
           )}
-          <Link
-            className={buttonStyles({
-              variant: "brand-outline",
-              className: "w-full",
-            })}
-            href="/owner/inquiries"
-          >
-            받은 문의
-          </Link>
-          <Link className="block text-center text-sm underline" href="/mypage">
-            계정 관리
-          </Link>
         </div>
       )}
-    </StepLayout>
+    </main>
   );
 }
 function RegistrationLoader({

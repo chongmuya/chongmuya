@@ -63,12 +63,7 @@ export function Dialog({
             disabled={busy}
             onClick={onClose}
           >
-            <Image
-              src="/images/ui/close.svg"
-              alt=""
-              width={14.7749}
-              height={14.9156}
-            />
+            <Image src="/images/ui/close.svg" alt="" width={15} height={15} />
           </IconButton>
         </div>
       )}

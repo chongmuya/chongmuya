@@ -1,3 +1,4 @@
+import { copyGroupRoster } from "./lib/copy-group-roster.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID, createHash } from "node:crypto";
 import type { EntityManager } from "typeorm";
@@ -104,32 +105,7 @@ export class EventRosterService {
         manager,
         true,
       );
-      const existing = await this.rows(eventId, manager);
-      const imported = new Set(existing.map((p) => p.groupMemberId));
-      const fresh = members.filter((m) => !imported.has(m.id));
-      if (existing.length + fresh.length > 500)
-        throw new DomainHttpException("ROSTER_LIMIT");
-      const position = existing.reduce(
-        (max, p) => Math.max(max, p.position + 1),
-        0,
-      );
-      if (fresh.length)
-        await manager.insert(
-          EventParticipant,
-          fresh.map((p, i) => ({
-            id: randomUUID(),
-            eventId,
-            groupMemberId: p.id,
-            name: normalizePersonName(p.name),
-            phoneLast4: p.phoneLast4,
-            label: p.label,
-            position: position + i,
-            version: 1,
-            identityVersion: 1,
-            createdAt: new Date(),
-          })),
-        );
-      return { addedCount: fresh.length };
+      return copyGroupRoster(manager, eventId, members);
     });
   }
   async update(

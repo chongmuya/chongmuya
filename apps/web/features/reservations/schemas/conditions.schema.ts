@@ -1,3 +1,4 @@
+import { serviceArea } from "@/shared/lib/service-area";
 import { z } from "zod";
 import type { Account } from "@/features/auth/types";
 import type { InquiryConditions } from "../types/inquiry.types";
@@ -12,7 +13,6 @@ export const conditionsSchema = z
       .string()
       .regex(/^[1-9]\d{0,5}$/, "1명 이상의 정수로 입력해 주세요.")
       .refine((v) => Number(v) <= 100000, "100,000명 이하로 입력해 주세요."),
-    region: z.string().trim().min(1, "희망 지역을 입력해 주세요.").max(80),
     seating: z.enum(["CLOSE", "SEPARATED", "ANY"]),
     space: z.enum(["HALL", "ROOM", "FLOOR", "WHOLE", "ANY"]),
     seatingImportance: z.enum(["REQUIRED", "PREFERRED"]),
@@ -60,7 +60,6 @@ export function initialConditions(
     date: local.slice(0, 10),
     time: local.slice(11, 16),
     expectedGuests: "",
-    region: "",
     seating: "ANY",
     space: "ANY",
     seatingImportance: "PREFERRED",
@@ -77,7 +76,7 @@ export function inquiryConditions(v: ConditionsValues): InquiryConditions {
   return {
     startsAt: new Date(`${v.date}T${v.time}:00+09:00`).toISOString(),
     expectedGuests: Number(v.expectedGuests),
-    region: v.region,
+    region: serviceArea.label,
     seating: v.seating,
     space: v.space,
     seatingImportance: v.seating === "ANY" ? null : v.seatingImportance,

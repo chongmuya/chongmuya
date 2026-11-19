@@ -36,31 +36,38 @@ test("merchant reply keeps unsaved input through failed refetch and recovery", a
     }),
   );
   try {
-    await until(() => assert(view.container.querySelector("form")));
+    await until(() =>
+      assert.match(view.container.textContent!, /요청 조건으로 가능/),
+    );
+    assert.equal(view.container.querySelector("form"), null);
+    await click(view.container, "요청 조건으로 가능");
     const choose = async (select: HTMLSelectElement, value: string) => {
       await act(async () => {
         select.value = value;
         select.dispatchEvent(new window.Event("change", { bubbles: true }));
       });
     };
-    const replyKind = view.container.querySelector("select")!;
+    const chooseKind = async (label: string) => {
+      await click(view.container, "답변 종류 다시 선택");
+      await click(view.container, label);
+    };
     await choose(
       view.container.querySelector('option[value="FIXED"]')!
         .parentElement as HTMLSelectElement,
       "FIXED",
     );
     await fill(view.container, "proposal.deposit.amount", "15000");
-    await choose(replyKind, "CHANGE");
+    await chooseKind("조건 변경 제안");
     await fill(view.container, "proposal.expectedGuests", "18");
-    await choose(replyKind, "DECLINE");
-    await choose(replyKind, "AVAILABLE");
+    await chooseKind("이 문의는 어려워요");
+    await chooseKind("요청 조건으로 가능");
     assert.equal(
       view.container.querySelector<HTMLInputElement>(
         '[name="proposal.deposit.amount"]',
       )!.value,
       "15000",
     );
-    await choose(replyKind, "CHANGE");
+    await chooseKind("조건 변경 제안");
     assert.equal(
       view.container.querySelector<HTMLInputElement>(
         '[name="proposal.expectedGuests"]',
@@ -68,11 +75,7 @@ test("merchant reply keeps unsaved input through failed refetch and recovery", a
       "18",
     );
 
-    await act(async () => {
-      const select = view.container.querySelector("select")!;
-      select.value = "DECLINE";
-      select.dispatchEvent(new window.Event("change", { bubbles: true }));
-    });
+    await chooseKind("이 문의는 어려워요");
     const textarea = view.container.querySelector<HTMLTextAreaElement>(
       'textarea[name="reason"]',
     )!;
@@ -211,12 +214,10 @@ test("merchant access expiration keeps current-tab input and stops writes and fo
     }),
   );
   try {
-    await until(() => assert(view.container.querySelector("form")));
-    await act(async () => {
-      const select = view.container.querySelector("select")!;
-      select.value = "DECLINE";
-      select.dispatchEvent(new window.Event("change", { bubbles: true }));
-    });
+    await until(() =>
+      assert.match(view.container.textContent!, /이 문의는 어려워요/),
+    );
+    await click(view.container, "이 문의는 어려워요");
     const field = view.container.querySelector<HTMLTextAreaElement>(
       'textarea[name="reason"]',
     )!;

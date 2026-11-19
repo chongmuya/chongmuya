@@ -2,7 +2,7 @@ import "./support/dom";
 import { act, createElement } from "react";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { render, until, fill, click } from "./support/form-dom";
+import { render, until, fill } from "./support/form-dom";
 import { AttendanceWorkspace } from "../features/attendance/components/attendance-workspace";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
@@ -27,8 +27,14 @@ test("attendance background errors preserve the open editor and revoke writes af
     }),
   );
   try {
-    await until(() => assert.match(view.container.textContent!, /차수 만들기/));
-    await click(view.container, "차수 만들기");
+    await until(() =>
+      assert(view.container.querySelector('[aria-label="차수 만들기"]')),
+    );
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>('[aria-label="차수 만들기"]')!
+        .click(),
+    );
     await fill(view.container, "title", "작성 중인 차수");
     const input = view.container.querySelector<HTMLInputElement>(
       'input[name="title"]',

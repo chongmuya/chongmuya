@@ -81,7 +81,6 @@ export type BrowseNavigation = {
   selected: string[];
   restaurantId: string | null;
   view: "list" | "map" | "detail";
-  region: string;
   page: number;
   onSelect: (ids: string[]) => void;
   onNavigate: (changes: Record<string, string | null>) => void;

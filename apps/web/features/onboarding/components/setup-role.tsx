@@ -32,7 +32,7 @@ export function SetupRole() {
           <Image
             src="/images/enrollment/owner.svg"
             alt=""
-            width={48.0882}
+            width={48}
             height={43}
           />
           <span className="text-label">
@@ -49,8 +49,8 @@ export function SetupRole() {
           <Image
             src="/images/enrollment/organizer.svg"
             alt=""
-            width={48.2866}
-            height={42.9717}
+            width={48}
+            height={43}
           />
           <span className="text-label">
             모임을 준비하는

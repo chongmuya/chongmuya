@@ -92,121 +92,119 @@ export function RestaurantDetail({
                 </Button>
               ))}
             </div>
-            {section && (
-              <section className="mt-6" aria-label="매장 상세 정보">
-                <h3
-                  id="restaurant-info-title"
-                  className="mb-5 text-lg font-semibold"
-                >
+            <section className="mt-6" aria-label="매장 상세 정보">
+              <h3
+                id="restaurant-info-title"
+                className="mb-5 text-lg font-semibold"
+              >
+                {
                   {
-                    {
-                      booking: "예약 정보",
-                      spaces: "공간 정보",
-                      menus: "메뉴판",
-                    }[section]
-                  }
-                </h3>
-                <section className="space-y-4 text-xs">
-                  {section === "spaces" && !!r.spacePhotos.length && (
-                    <section aria-label="공간 사진" className="space-y-4">
-                      {r.spacePhotos.map((photo, index) => (
-                        <figure key={`${photo.path}:${index}`}>
-                          <RestaurantPhoto
-                            src={photo.path}
-                            alt={photo.description}
-                          />
-                          <figcaption className="mt-2 text-xs text-muted">
-                            {photo.description}
-                          </figcaption>
-                        </figure>
-                      ))}
-                    </section>
-                  )}
+                    booking: "예약 정보",
+                    spaces: "공간 정보",
+                    menus: "메뉴판",
+                  }[section]
+                }
+              </h3>
+              <section className="space-y-4 text-xs">
+                {section === "spaces" && !!r.spacePhotos.length && (
+                  <section aria-label="공간 사진" className="space-y-4">
+                    {r.spacePhotos.map((photo, index) => (
+                      <figure key={`${photo.path}:${index}`}>
+                        <RestaurantPhoto
+                          src={photo.path}
+                          alt={photo.description}
+                        />
+                        <figcaption className="mt-2 text-xs text-muted">
+                          {photo.description}
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </section>
+                )}
 
-                  {section === "booking" ? (
-                    <dl className="space-y-3">
-                      {[
-                        ["예약 기준", r.bookingPolicy],
-                        ["예약금", r.depositPolicy],
-                        ["메뉴 주문", r.menuPolicy],
-                        ["변경·취소", r.cancellationPolicy],
-                      ].map(([label, value]) => (
-                        <div key={label}>
-                          <dt className="font-semibold">{label}</dt>
-                          <dd>{value ?? "확인 필요"}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : section === "menus" ? (
-                    r.menus.length ? (
-                      r.menus.map((m) => (
-                        <div className="flex justify-between gap-2" key={m.id}>
-                          <span>
-                            {m.name} · {m.unit}
-                          </span>
-                          <span>
-                            {m.price === null
-                              ? "가격 확인 필요"
-                              : `${m.price.toLocaleString()}원`}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <p>메뉴 정보 확인이 필요해요.</p>
-                    )
-                  ) : (
-                    r.spaces.map((s) => (
-                      <article
-                        key={s.id}
-                        className="rounded-control border border-border p-3"
-                      >
-                        <h3 className="font-semibold">
-                          {s.label} ·{" "}
-                          {
-                            {
-                              AVAILABLE: "이용 방식 제공",
-                              UNAVAILABLE: "불가",
-                              UNKNOWN: "확인 필요",
-                            }[s.availability]
-                          }
-                        </h3>
-                        <p>
-                          {s.kind === "HALL"
-                            ? "일반 홀 · 단독 사용 아님"
-                            : s.kind === "ROOM"
-                              ? "별도 룸 · 다른 손님 없이 단독 사용"
-                              : "다른 손님 없이 단독 사용"}
-                        </p>
-                        <p>
-                          수용 인원 {s.capacity ?? "미확인"} · 함께 착석{" "}
-                          {
-                            { YES: "가능", NO: "불가", UNKNOWN: "미확인" }[
-                              s.togetherSeating
-                            ]
-                          }
-                        </p>
-                        <p>
-                          최소 인원{" "}
-                          {s.minGuests === 0
-                            ? "제한 없음"
-                            : s.minGuests === null
-                              ? "미확인"
-                              : `${s.minGuests}명`}
-                        </p>
-                        <p>
-                          {spaceCost("최소 이용금액", s.minSpend)} ·{" "}
-                          {spaceCost("별도 대관료", s.separateFee)}
-                        </p>
-                        {s.conditions && <p>{s.conditions}</p>}
-                      </article>
+                {section === "booking" ? (
+                  <dl className="space-y-3">
+                    {[
+                      ["예약 기준", r.bookingPolicy],
+                      ["예약금", r.depositPolicy],
+                      ["메뉴 주문", r.menuPolicy],
+                      ["변경·취소", r.cancellationPolicy],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt className="font-semibold">{label}</dt>
+                        <dd>{value ?? "확인 필요"}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : section === "menus" ? (
+                  r.menus.length ? (
+                    r.menus.map((m) => (
+                      <div className="flex justify-between gap-2" key={m.id}>
+                        <span>
+                          {m.name} · {m.unit}
+                        </span>
+                        <span>
+                          {m.price === null
+                            ? "가격 확인 필요"
+                            : `${m.price.toLocaleString()}원`}
+                        </span>
+                      </div>
                     ))
-                  )}
-                </section>
+                  ) : (
+                    <p>메뉴 정보 확인이 필요해요.</p>
+                  )
+                ) : (
+                  r.spaces.map((s) => (
+                    <article
+                      key={s.id}
+                      className="rounded-control border border-border p-3"
+                    >
+                      <h3 className="font-semibold">
+                        {s.label} ·{" "}
+                        {
+                          {
+                            AVAILABLE: "이용 방식 제공",
+                            UNAVAILABLE: "불가",
+                            UNKNOWN: "확인 필요",
+                          }[s.availability]
+                        }
+                      </h3>
+                      <p>
+                        {s.kind === "HALL"
+                          ? "일반 홀 · 단독 사용 아님"
+                          : s.kind === "ROOM"
+                            ? "별도 룸 · 다른 손님 없이 단독 사용"
+                            : "다른 손님 없이 단독 사용"}
+                      </p>
+                      <p>
+                        수용 인원 {s.capacity ?? "미확인"} · 함께 착석{" "}
+                        {
+                          { YES: "가능", NO: "불가", UNKNOWN: "미확인" }[
+                            s.togetherSeating
+                          ]
+                        }
+                      </p>
+                      <p>
+                        최소 인원{" "}
+                        {s.minGuests === 0
+                          ? "제한 없음"
+                          : s.minGuests === null
+                            ? "미확인"
+                            : `${s.minGuests}명`}
+                      </p>
+                      <p>
+                        {spaceCost("최소 이용금액", s.minSpend)} ·{" "}
+                        {spaceCost("별도 대관료", s.separateFee)}
+                      </p>
+                      {s.conditions && <p>{s.conditions}</p>}
+                    </article>
+                  ))
+                )}
               </section>
-            )}
+            </section>
             <section>
               <h3 className="mb-2 text-sm font-semibold">위치 정보</h3>
-              <p className="mb-4 text-xs">{r.address}</p>
+
               <Button
                 variant="outline"
                 className="min-h-[72px] w-full rounded-control border-field bg-soft text-sm font-normal"

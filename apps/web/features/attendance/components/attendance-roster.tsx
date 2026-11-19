@@ -27,7 +27,6 @@ export function AttendanceRoster({
   const [attendingOnly, setAttendingOnly] = useState(false);
   return (
     <>
-      {" "}
       <label className="block text-sm">
         명단 검색
         <Input
@@ -38,11 +37,17 @@ export function AttendanceRoster({
           placeholder="이름, 전화번호 뒤 4자리 또는 메모"
         />
       </label>
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex min-h-control w-fit cursor-pointer items-center gap-2 text-sm">
         <input
           type="checkbox"
+          role="switch"
+          className="peer sr-only"
           checked={attendingOnly}
           onChange={(e) => setAttendingOnly(e.target.checked)}
+        />
+        <span
+          aria-hidden="true"
+          className="relative h-5 w-9 rounded-pill bg-secondary/30 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-brand-action peer-checked:after:translate-x-4 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-3 peer-focus-visible:outline-focus"
         />
         참석만 보기
       </label>
@@ -85,7 +90,7 @@ export function AttendanceRoster({
                         disabled={saving}
                         onClick={() => onCorrect(person, value)}
                         className={cn(
-                          "min-h-8 rounded-pill px-3 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-[-2px]",
+                          "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-[-2px]",
                           person.response.finalState === value
                             ? "bg-brand-action text-white"
                             : "text-secondary",

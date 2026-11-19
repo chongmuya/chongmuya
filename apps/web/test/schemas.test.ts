@@ -39,13 +39,25 @@ test("form schemas preserve name, optional schedule and credential constraints",
   assert.equal(groupSchema.safeParse({ name: "  " }).success, false);
   assert.equal(groupSchema.safeParse({ name: "x".repeat(101) }).success, false);
   assert.deepEqual(groupSchema.parse({ name: " 모임 " }), { name: "모임" });
-  assert.deepEqual(eventInput(eventSchema.parse({ name: "행사", date: "" })), {
-    name: "행사",
-    groupId: undefined,
-    scheduledAt: undefined,
-  });
-  for (const date of ["2026-02-30T10:00", "2026-11-14T25:00", "not-a-date"])
-    assert.equal(eventSchema.safeParse({ name: "행사", date }).success, false);
+  assert.deepEqual(
+    eventInput(eventSchema.parse({ name: "행사", date: "", time: "" })),
+    {
+      name: "행사",
+      groupId: undefined,
+      scheduledAt: undefined,
+    },
+  );
+  for (const [date, time] of [
+    ["2026-02-30", "10:00"],
+    ["2026-11-14", "25:00"],
+    ["not-a-date", "10:00"],
+    ["2026-11-14", ""],
+    ["", "18:30"],
+  ])
+    assert.equal(
+      eventSchema.safeParse({ name: "행사", date, time }).success,
+      false,
+    );
   assert.equal(
     credentialsSchema.safeParse({
       email: "not-email",

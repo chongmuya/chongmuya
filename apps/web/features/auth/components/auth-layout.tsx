@@ -43,15 +43,15 @@ export function AuthLayout({
           <Image
             src="/images/auth/brand-symbol.svg"
             alt=""
-            width={67.1996}
-            height={59.4287}
+            width={67}
+            height={59}
             priority
           />
           <Image
             src="/images/auth/brand-wordmark.svg"
             alt="총무야"
-            width={96.8}
-            height={34.8244}
+            width={97}
+            height={35}
             priority
           />
         </div>

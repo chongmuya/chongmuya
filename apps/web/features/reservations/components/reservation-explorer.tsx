@@ -14,11 +14,10 @@ import type { Account, SessionRequest } from "@/features/auth/types";
 import { EventPicker, useEvent } from "@/features/events/client";
 import {
   RestaurantBrowser,
-  useRestaurant,
   useSelectedRestaurants,
 } from "@/features/restaurants/client";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
-import { Button, buttonStyles } from "@/shared/ui/button";
+import { buttonStyles } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
@@ -33,6 +32,7 @@ import { ConditionsForm } from "./conditions-form";
 import { ConditionSummary } from "./condition-summary";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import type { BrowseNavigation } from "@/features/restaurants/types";
+import { serviceArea } from "@/shared/lib/service-area";
 import { ApiError } from "@/shared/http/api-error";
 import { InquiryReview } from "./inquiry-review";
 import { InquiryReceipt } from "./reservation-progress";
@@ -55,6 +55,7 @@ export function ReservationExplorer() {
     const value = selected.join(",");
     if ((params.get("selected") ?? "") === value) return;
     const next = new URLSearchParams(params);
+    next.delete("region");
     if (value) next.set("selected", value);
     else next.delete("selected");
     window.history.replaceState(
@@ -71,6 +72,7 @@ export function ReservationExplorer() {
   const inquiry = params.get("inquiry") === "1";
   const href = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
+    next.delete("region");
     if (selected.length) next.set("selected", selected.join(","));
     else next.delete("selected");
     for (const [key, value] of Object.entries(changes)) {
@@ -101,7 +103,6 @@ export function ReservationExplorer() {
     restaurantId: restaurantId && uuid.test(restaurantId) ? restaurantId : null,
     view:
       params.get("view") === "map" ? "map" : restaurantId ? "detail" : "list",
-    region: params.get("region") ?? "",
     page: Math.max(1, Math.min(9999, Number(params.get("page")) || 1)),
     onSelect: setSelected,
     onNavigate: navigate,
@@ -190,12 +191,16 @@ export function ReservationExplorer() {
           ? "매장 지도"
           : browse.view === "detail"
             ? "매장 상세"
-            : "매장 찾기"
+            : ""
       }
       onBack={back}
     >
       {browse.view === "list" && (
-        <StepHeading title="우리 모임에 맞는 매장을 찾아요" className="mb-7" />
+        <StepHeading
+          title="매장 찾기"
+          description={serviceArea.label}
+          className="mb-7"
+        />
       )}
       <RestaurantBrowser {...browse} onInquiry={start} />
     </StepLayout>
@@ -240,7 +245,7 @@ function InquiryFlow({
           행사와 문의 상태를 확인하지 못했어요. 본인 행사인지 확인하거나 다시
           시도해 주세요.
         </ErrorState>
-        <Link className="mt-5 text-link underline" href="/events">
+        <Link className="mt-5 text-link underline" href="/">
           내 행사로 돌아가기
         </Link>
       </StepLayout>
@@ -263,14 +268,7 @@ function InquiryFlow({
             최신 상태를 확인하지 못했어요. 마지막 접수 내역입니다.
           </ErrorState>
         )}
-        <InquiryReceipt inquiry={existing.data} />
-        <Button
-          variant="outline"
-          disabled={existing.isFetching}
-          onClick={() => void existing.refetch()}
-        >
-          진행 상태 새로 확인
-        </Button>
+        <InquiryReceipt inquiry={existing.data} showEventLink />
       </StepLayout>
     );
   return (
@@ -330,10 +328,6 @@ function InquiryDraft({
   const requestIdentity = useRef<{ fingerprint: string; key: string } | null>(
     null,
   );
-  const [initialRestaurantId] = useState(() =>
-    browse.selected.length === 1 ? browse.selected[0] : undefined,
-  );
-  const initialRestaurant = useRestaurant(initialRestaurantId);
   const targets = useSelectedRestaurants(browse.selected);
   const targetState = targets.some((target) => target.isError)
     ? "error"
@@ -440,7 +434,7 @@ function InquiryDraft({
           className="mb-7"
           title={
             step === "conditions"
-              ? "어떤 조건으로 문의할까요?"
+              ? "매장에 어떤 조건을 전달할까요?"
               : step === "review"
                 ? `${browse.selected.length}곳에 문의를 보낼까요?`
                 : "우리 모임에 맞는 매장을 찾아요"
@@ -457,7 +451,6 @@ function InquiryDraft({
         <ConditionsForm
           initial={values}
           onChange={setValues}
-          suggestedRegion={initialRestaurant.data?.region}
           nextLabel={
             browse.selected.length ? "보낼 내용 확인하기" : "매장 선택하기"
           }
@@ -469,7 +462,6 @@ function InquiryDraft({
               browse.onNavigate({
                 view: "list",
                 restaurant: null,
-                region: browse.region || next.region,
               });
           }}
         />

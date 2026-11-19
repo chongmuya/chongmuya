@@ -36,7 +36,7 @@ export function AuthScreen() {
     return <LoadingState>로그인 상태 확인 중…</LoadingState>;
   return (
     <section aria-label="계정">
-      <h2>계정</h2>
+      <h2 className="text-xl font-semibold">계정 정보</h2>
       <FormError message={error ? authErrorMessage(error) : undefined} />
       {status === "unavailable" ||
       status === "logging-out" ||
@@ -59,7 +59,12 @@ export function AuthScreen() {
               {profile.data?.email ?? account?.email}
             </p>
           )}
-          <Button disabled={pending} onClick={() => logout.mutate()}>
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={pending}
+            onClick={() => logout.mutate()}
+          >
             로그아웃
           </Button>
         </div>

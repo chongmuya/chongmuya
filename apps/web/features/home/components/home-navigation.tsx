@@ -25,17 +25,12 @@ export function HomeNavigation({
         className="flex flex-col items-center gap-1 text-[10px] text-brand-action"
       >
         <span className="relative flex size-[22px] items-center justify-center">
-          <Image
-            src="/images/home/home.svg"
-            alt=""
-            width={19.35}
-            height={20.75}
-          />
+          <Image src="/images/home/home.svg" alt="" width={19} height={21} />
           <Image
             src="/images/home/home-door.svg"
             alt=""
-            width={7.75}
-            height={10.75}
+            width={8}
+            height={11}
             className="absolute bottom-0"
           />
         </span>
@@ -52,8 +47,8 @@ export function HomeNavigation({
         <Image
           src="/images/home/members.svg"
           alt=""
-          width={20.8698}
-          height={18.2955}
+          width={21}
+          height={18}
           className="my-[1.85px]"
         />
         모임 명단
