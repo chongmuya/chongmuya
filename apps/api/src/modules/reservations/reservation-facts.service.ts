@@ -1,3 +1,4 @@
+import { candidateState } from "./lib/candidate-state.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
@@ -58,31 +59,37 @@ export class ReservationFactsService {
         id: string;
         reservation_id: string | null;
         status: string | null;
-        candidate_state: string;
+        candidate_state: RequestTarget["candidateState"];
         expires_at: Date | null;
-        reply_kind: string | null;
+        reply_kind: MerchantReplyRevision["kind"] | null;
         title: string;
         starts_at: string;
       }>();
-    return rows.map((r) => ({
-      id: r.id,
-      reservationId: r.reservation_id,
-      title: r.title,
-      startsAt: r.starts_at,
-      status:
-        r.status ??
-        (r.candidate_state !== "OPEN"
-          ? r.candidate_state
-          : r.expires_at && r.expires_at <= new Date()
-            ? "EXPIRED"
-            : ["AVAILABLE", "CHANGE"].includes(r.reply_kind ?? "")
-              ? "OFFERED"
-              : "INQUIRY"),
-      destination: r.reservation_id
-        ? `/owner/reservations?reservation=${r.reservation_id}`
-        : `/owner/inquiries?target=${r.id}`,
-    }));
+    return rows.map((r) => {
+      const lifecycle = candidateState(
+        { candidateState: r.candidate_state },
+        r.reply_kind ? { kind: r.reply_kind, expiresAt: r.expires_at } : null,
+        new Date(),
+      );
+      return {
+        id: r.id,
+        reservationId: r.reservation_id,
+        title: r.title,
+        startsAt: r.starts_at,
+        status:
+          r.status ??
+          (lifecycle === "PROPOSED"
+            ? "OFFERED"
+            : lifecycle === "AWAITING_REPLY"
+              ? "INQUIRY"
+              : lifecycle),
+        destination: r.reservation_id
+          ? `/owner/reservations?reservation=${r.reservation_id}`
+          : `/owner/inquiries?target=${r.id}`,
+      };
+    });
   }
+
   async forEvent(ownerId: string, eventId: string, m: EntityManager) {
     await this.events.assertOwned(ownerId, eventId, m);
     const rows = await m.find(SelectedReservation, {

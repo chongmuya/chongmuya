@@ -96,17 +96,25 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
                     : null;
               if (!date) return;
               const due = reminderAt(date);
-              if (due > now || row.updatedAt > due || date <= koreanDate(now))
+              const changedAt =
+                row instanceof CalendarSchedule
+                  ? row.scheduleUpdatedAt
+                  : row.updatedAt;
+              const revision =
+                row instanceof CalendarSchedule
+                  ? row.scheduleRevision
+                  : row.version;
+              if (due > now || changedAt > due || date <= koreanDate(now))
                 return;
               // Resource lock + unique fact are the durable processing receipt. Crash before
               // commit rolls back both; crash after commit is a no-op on the next runner.
               await this.notifications.record(m, {
-                eventKey: `reminder:${kind}:${id}:${row.version}`,
+                eventKey: `reminder:${kind}:${id}:${revision}`,
                 kind: "SCHEDULE_REMINDER",
                 category: "EVENT",
                 eventId: id,
                 requestId: id,
-                revision: row.version,
+                revision,
                 accounts: [
                   {
                     id: row.ownerId,

@@ -54,7 +54,7 @@ export class EventsService {
           id: e.id,
           ownerId: e.ownerId,
           title: e.name,
-          version: e.version,
+          version: e.scheduleRevision,
           startsAt: e.scheduledAt,
           updatedAt: e.scheduleUpdatedAt,
         }
@@ -206,10 +206,13 @@ export class EventsService {
       event.scheduledAt?.getTime() !== date.getTime() ||
       event.reservationScheduleLocked !== locked
     ) {
+      if (event.scheduledAt?.getTime() !== date.getTime()) {
+        event.scheduleUpdatedAt = new Date();
+        event.scheduleRevision++;
+      }
       event.scheduledAt = date;
       event.reservationScheduleLocked = locked;
       event.version++;
-      event.scheduleUpdatedAt = new Date();
       await manager.save(event);
     }
   }
@@ -275,6 +278,8 @@ export class EventsService {
         name: input.name,
         scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
         createdAt: new Date(),
+        scheduleUpdatedAt: new Date(),
+        scheduleRevision: 1,
       });
       const inserted = await manager
         .createQueryBuilder()
@@ -328,11 +333,18 @@ export class EventsService {
       )
         throw new DomainHttpException("EVENT_SCHEDULE_LOCKED");
       if (input.name !== undefined) event.name = input.name;
-      if (input.scheduledAt !== undefined)
-        event.scheduledAt =
+      if (input.scheduledAt !== undefined) {
+        const next =
           input.scheduledAt === null ? null : new Date(input.scheduledAt);
+        if (
+          (event.scheduledAt?.getTime() ?? null) !== (next?.getTime() ?? null)
+        ) {
+          event.scheduleUpdatedAt = new Date();
+          event.scheduleRevision++;
+        }
+        event.scheduledAt = next;
+      }
       event.version += 1;
-      event.scheduleUpdatedAt = new Date();
       return eventDto(await repository.save(event));
     });
   }

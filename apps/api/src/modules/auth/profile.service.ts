@@ -92,15 +92,13 @@ export class ProfileService {
         consumedAt: null,
       });
     });
-    const message = this.message(p),
-      qrCode = await this.octomo.qrCode(message);
+    const message = this.message(p);
     return db.transaction(async (m) => {
       await this.account(m, u);
       const current = await this.current(m, u, p.id, phone);
       return {
         ...this.view(current),
         message,
-        qrCode,
         receiver: OCTOMO_RECEIVER,
       };
     });

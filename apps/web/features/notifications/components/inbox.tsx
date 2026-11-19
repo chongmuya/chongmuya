@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth, AuthScreen } from "@/features/auth/client";
 import type { SessionRequest } from "@/features/auth/types";
 import { Button } from "@/shared/ui/button";
@@ -10,7 +10,7 @@ import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { StepLayout } from "@/shared/ui/step-layout";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { isAccessError } from "@/shared/http/access-error";
-import { inboxKey, readInbox } from "../api/notifications.api";
+import { inboxKey, readInbox, unreadQuery } from "../api/notifications.api";
 import { useInbox } from "../hooks/use-inbox";
 import { notificationDestination } from "../lib/destination";
 export function NotificationBadge({
@@ -20,7 +20,7 @@ export function NotificationBadge({
   accountId: string;
   request: SessionRequest;
 }) {
-  const q = useInbox(accountId, request, undefined, true);
+  const q = useQuery({ ...unreadQuery(accountId, request), enabled: false });
   return (
     <Link
       href="/notifications"
@@ -51,8 +51,9 @@ function InboxContent({
   request: SessionRequest;
 }) {
   const [before, setBefore] = useState<string>();
-  const q = useInbox(accountId, request, before),
-    latest = useInbox(accountId, request);
+  const latest = useInbox(accountId, request);
+  const history = useInbox(accountId, request, before, false, !!before, false);
+  const q = before ? history : latest;
   const cache = useQueryClient(),
     active = useActiveScreen(),
     router = useRouter();
@@ -166,4 +167,23 @@ function InboxContent({
       </div>
     </StepLayout>
   );
+}
+
+// One account-scoped observer survives route changes; badges only subscribe to its cache.
+export function NotificationObserver() {
+  const { account, status, client } = useAuth();
+  const request = useMemo(() => client.request.bind(client), [client]);
+  return status === "authenticated" && account ? (
+    <UnreadObserver key={account.id} id={account.id} request={request} />
+  ) : null;
+}
+function UnreadObserver({
+  id,
+  request,
+}: {
+  id: string;
+  request: SessionRequest;
+}) {
+  useInbox(id, request, undefined, true);
+  return null;
 }

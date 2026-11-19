@@ -556,3 +556,40 @@ test("profile saves do not hide session revocation, another account or newer pro
     assert.equal(clears, result === "fresh" ? 0 : 1);
   }
 });
+
+test("profile and verified phone responses merge only their own fields in either completion order", async () => {
+  for (const order of [
+    ["phone", "profile"],
+    ["profile", "phone"],
+  ] as const) {
+    const client = new SessionClient(
+      () => {},
+      transport(async () => session),
+    );
+    await client.restore();
+    const profile = {
+      ...session.account!,
+      name: "바뀐 이름",
+      nickname: "바뀐 닉네임",
+    };
+    const phone = {
+      ...session.account!,
+      phone: "01000009991",
+      phoneVerifiedAt: "2030-01-01T00:00:00Z",
+    };
+    for (const endpoint of order)
+      client.applyProfile(endpoint === "profile" ? profile : phone, endpoint);
+    assert.equal(client.getSnapshot().account?.name, profile.name);
+    assert.equal(client.getSnapshot().account?.nickname, profile.nickname);
+    assert.equal(client.getSnapshot().account?.phone, phone.phone);
+    assert.equal(
+      client.getSnapshot().account?.phoneVerifiedAt,
+      phone.phoneVerifiedAt,
+    );
+    client.applyProfile({ ...profile, id: "another-account" }, "profile");
+    assert.equal(client.getSnapshot().account?.id, "a");
+    await client.logout();
+    client.applyProfile(profile, "profile");
+    assert.equal(client.getSnapshot().account, null);
+  }
+});

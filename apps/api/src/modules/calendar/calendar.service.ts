@@ -130,6 +130,8 @@ export class CalendarService {
           creationKey: input.requestKey,
           creationDigest: digest,
           version: 1,
+          scheduleRevision: 1,
+          scheduleUpdatedAt: new Date(),
           updatedAt: new Date(),
           deletedAt: null,
         });
@@ -156,6 +158,13 @@ export class CalendarService {
         row.groupId !== data.groupId
       )
         throw new DomainHttpException("WORKSPACE_VERSION_CONFLICT");
+      if (
+        row.date !== data.date ||
+        (row.startsAt?.getTime() ?? null) !== (data.startsAt?.getTime() ?? null)
+      ) {
+        row.scheduleRevision++;
+        row.scheduleUpdatedAt = new Date();
+      }
       Object.assign(row, data, {
         version: row.version + 1,
         updatedAt: new Date(),

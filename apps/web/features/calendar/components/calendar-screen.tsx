@@ -134,7 +134,9 @@ function CalendarContent({
           a.id.localeCompare(b.id),
       )
     : [];
-  const root = `/calendar${groupId ? `?group=${groupId}` : owner && restaurant ? `?restaurant=${restaurant}` : ""}`;
+  const returnGroup =
+    detail.data && !isAccessError(detail.error) ? detail.data.groupId : groupId;
+  const root = `/calendar${returnGroup ? `?group=${returnGroup}` : owner && restaurant ? `?restaurant=${restaurant}` : ""}`;
   return (
     <main className="mx-auto flex min-h-svh max-w-[402px] flex-col px-5 pt-12">
       <header className="mb-8 flex items-center justify-between gap-2">
@@ -142,7 +144,7 @@ function CalendarContent({
           <span className="sr-only">{owner ? "매장" : "일정 범위"}</span>
           <select
             className="w-full rounded-control bg-surface p-3"
-            value={owner ? (restaurant ?? "") : (groupId ?? "")}
+            value={owner ? (restaurant ?? "") : (returnGroup ?? "")}
             onChange={(e) =>
               router.push(
                 `/calendar${e.target.value ? `?${owner ? "restaurant" : "group"}=${e.target.value}` : ""}`,

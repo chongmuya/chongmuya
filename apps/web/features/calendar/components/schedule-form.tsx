@@ -30,7 +30,9 @@ export function ScheduleForm({
 }) {
   const [base, setBase] = useState(initial),
     [conflict, setConflict] = useState(false),
-    [uncertain, setUncertain] = useState(false);
+    [uncertain, setUncertain] = useState(false),
+    [deleteUncertain, setDeleteUncertain] = useState(false),
+    [conflictAction, setConflictAction] = useState<"save" | "delete">("save");
   const pending = useRef<ScheduleInput | null>(null),
     active = useActiveScreen(),
     cache = useQueryClient();
@@ -65,6 +67,7 @@ export function ScheduleForm({
         error.status >= 400 &&
         error.status < 500 &&
         error.status !== 408;
+      setConflictAction("save");
       setConflict(known && error.status === 409);
       if (known && error.status !== 409) pending.current = null;
       setUncertain(!known);
@@ -78,6 +81,20 @@ export function ScheduleForm({
       onDone();
       void cache.invalidateQueries({ queryKey: calendarKey(accountId) });
     },
+    onError: (error) => {
+      if (!active.current) return;
+      const known =
+        error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408;
+      setDeleteUncertain(!known);
+      if (known && error.status === 409) {
+        setConflictAction("delete");
+        setConflict(true);
+        onRefresh();
+      }
+    },
     retry: false,
   });
   const allDay = useWatch({ control: form.control, name: "allDay" });
@@ -88,7 +105,7 @@ export function ScheduleForm({
       className="space-y-5"
       onSubmit={(event) =>
         void form.handleSubmit((v) => {
-          if (conflict || busy) return;
+          if (conflict || busy || deleteUncertain) return;
           if (!pending.current)
             pending.current = {
               requestKey: crypto.randomUUID(),
@@ -114,7 +131,7 @@ export function ScheduleForm({
         {base ? "기타 일정 수정" : "기타 일정 추가"}
       </h2>
       <fieldset
-        disabled={busy || uncertain || conflict}
+        disabled={busy || uncertain || conflict || deleteUncertain}
         className="grid grid-cols-2 gap-4"
       >
         {(["title", "date", "time", "memo"] as const).map((field) => (
@@ -178,7 +195,9 @@ export function ScheduleForm({
         <p role="alert">
           {conflict
             ? "일정이 변경됐어요. 입력을 보존했어요. 최신 내용을 확인해 주세요."
-            : "저장 결과를 확인하지 못했어요. 같은 요청으로 다시 확인할 수 있어요."}
+            : uncertain
+              ? "저장 결과를 확인하지 못했어요. 같은 요청으로 다시 확인할 수 있어요."
+              : "입력값을 확인해 수정한 뒤 다시 저장해 주세요."}
         </p>
       )}
       {conflict && (
@@ -193,20 +212,28 @@ export function ScheduleForm({
                 {initial.startsAt ?? "종일"} · {initial.memo}
               </p>
               <Button
+                disabled={!base || initial.version <= base.version}
                 onClick={() => {
                   setBase(initial);
                   pending.current = null;
                   setConflict(false);
                   setUncertain(false);
+                  setDeleteUncertain(false);
                 }}
               >
-                최신 내용 위에 내 입력 명시적으로 재적용
+                {conflictAction === "delete"
+                  ? "최신 일정 확인 후 삭제 다시 시도"
+                  : "최신 내용 위에 내 입력 명시적으로 재적용"}
               </Button>
             </div>
           )}
         </>
       )}
-      <Button type="submit" className="w-full" disabled={busy || conflict}>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={busy || conflict || deleteUncertain}
+      >
         {uncertain ? "같은 요청으로 결과 재확인" : "저장"}
       </Button>
       {base && (
@@ -218,13 +245,16 @@ export function ScheduleForm({
               remove.mutate();
           }}
         >
-          일정 삭제
+          {deleteUncertain ? "같은 삭제 요청으로 결과 재확인" : "일정 삭제"}
         </Button>
       )}
       {remove.isError && (
         <p role="alert">
-          삭제 결과를 확인하지 못했어요. 최신 내용을 확인하거나 같은 삭제를 다시
-          요청해 주세요.
+          {conflict && conflictAction === "delete"
+            ? "일정이 변경되어 삭제하지 않았어요. 최신 내용을 확인하고 삭제를 다시 결정해 주세요."
+            : deleteUncertain
+              ? "삭제 결과를 확인하지 못했어요. 원래 버전의 같은 삭제 요청으로 확인해 주세요."
+              : "삭제 요청을 처리할 수 없어요. 입력과 현재 권한을 확인해 주세요."}
         </p>
       )}
       <Button variant="outline" onClick={onDone}>

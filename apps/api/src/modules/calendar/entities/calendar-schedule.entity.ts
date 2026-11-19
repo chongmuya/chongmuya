@@ -21,6 +21,10 @@ export class CalendarSchedule {
   startsAt!: Date | null;
   @Column({ type: "varchar", length: 100 }) memo!: string;
   @Column({ type: "integer", default: 1 }) version!: number;
+  @Column({ type: "integer", name: "schedule_revision", default: 1 })
+  scheduleRevision!: number;
+  @Column({ type: "timestamptz", name: "schedule_updated_at" })
+  scheduleUpdatedAt!: Date;
   @Column({ type: "timestamptz", name: "updated_at" }) updatedAt!: Date;
   @Column({ type: "timestamptz", name: "deleted_at", nullable: true })
   deletedAt!: Date | null;

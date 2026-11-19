@@ -12,31 +12,37 @@ export function useInbox(
   request: SessionRequest,
   before?: string,
   countOnly = false,
+  active = true,
+  poll = true,
 ) {
   const visible = useSyncExternalStore(
     subscribe,
     () => document.visibilityState !== "hidden",
     () => false,
   );
+  const enabled = active && !!id && visible;
   const query = useQuery({
     ...(countOnly ? unreadQuery(id, request) : inboxQuery(id, request, before)),
-    refetchInterval: visible ? 30000 : false,
+    enabled,
+    networkMode: "always",
+    refetchInterval: enabled && poll ? 30000 : false,
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: "always",
-    refetchOnReconnect: "always",
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const { refetch } = query;
   useEffect(() => {
+    if (!enabled) return;
     const refresh = () => {
-      if (document.visibilityState !== "hidden") void refetch();
+      if (document.visibilityState !== "hidden")
+        void refetch({ cancelRefetch: false });
     };
-    if (visible) refresh();
     window.addEventListener("focus", refresh);
     window.addEventListener("online", refresh);
     return () => {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("online", refresh);
     };
-  }, [visible, refetch]);
+  }, [enabled, refetch]);
   return query;
 }

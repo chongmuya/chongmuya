@@ -4,7 +4,6 @@ export type PhoneChange = {
   phone: string;
   message: string;
   receiver: string;
-  qrCode: unknown;
   expiresAt: string;
   retryAt: string;
   nextCheckAt: string;

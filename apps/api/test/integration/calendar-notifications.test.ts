@@ -78,7 +78,7 @@ test("calendar ownership, retry, reminder concurrency/restart, settings and inbo
   await db.manager.update(
     CalendarSchedule,
     { id: s.id },
-    { updatedAt: new Date("2029-02-27T00:00:00Z") },
+    { scheduleUpdatedAt: new Date("2029-02-27T00:00:00Z") },
   );
   await Promise.all([reminders.run(now), reminders.run(now)]);
   await reminders.run(now);
@@ -185,7 +185,7 @@ test("calendar ownership, retry, reminder concurrency/restart, settings and inbo
   await db.manager.update(
     CalendarSchedule,
     { id: late.id },
-    { updatedAt: now },
+    { scheduleUpdatedAt: now },
   );
   await reminders.run(now);
   assert.equal((await notifications.inbox(me.id)).items.length, 2);
@@ -203,7 +203,9 @@ test("phone change proofs bind purpose/account/session/number, atomic consume an
     a = await signup(),
     b = await signup();
   const octomo = app.get(OctomoService);
-  octomo.qrCode = async () => "synthetic-qr";
+  octomo.qrCode = async () => {
+    throw new Error("unused QR service unavailable");
+  };
   octomo.exists = async () => true;
   const p = await json<{ id: string }>(
     await call("auth/profile/phone", a, "POST", { phone: "01000009991" }),
@@ -289,6 +291,7 @@ test("store hours preserve defaults and historical conditions, merchant range is
     policies = catalogPolicies();
   policies.hours = { start: "10:00", end: "22:00", endDayOffset: 0 };
   policies.descriptionOverrides = ["operatingHours"];
+  policies.holidays = { kind: "WEEKLY", weekdays: [1, 3], note: "" };
   await db.manager.save(Restaurant, {
     id,
     ownerAccountId: me.id,
@@ -336,7 +339,12 @@ test("store hours preserve defaults and historical conditions, merchant range is
   const publicDetail = await json<{ operatingHours: string }>(
     await call(`restaurants/${id}`),
   );
-  assert.match(publicDetail.operatingHours, /익일 02:00/);
+  assert.match(publicDetail.operatingHours, /월: 18:00~익일 02:00/);
+  assert.match(publicDetail.operatingHours, /수: 휴무 \(대표 설정\)/);
+  assert.doesNotMatch(
+    publicDetail.operatingHours,
+    /월요일 휴무|월·수요일 휴무/,
+  );
   assert.match(publicDetail.operatingHours, /비정기 휴무 안내/);
   const stored = await db.manager.findOneByOrFail(Restaurant, { id });
   assert.deepEqual(stored.policies.hours, policies.hours);
@@ -376,7 +384,7 @@ test("reminder batch isolates a failed commit and settings serialize against del
     await db.manager.update(
       CalendarSchedule,
       { id: row.id },
-      { updatedAt: new Date("2030-03-30T00:00:00Z") },
+      { scheduleUpdatedAt: new Date("2030-03-30T00:00:00Z") },
     );
   }
   const record = notifications.record.bind(notifications);
@@ -464,4 +472,222 @@ test("reminder batch isolates a failed commit and settings serialize against del
     (await call("notifications?before=9999999999999999999", session)).status,
     400,
   );
+});
+
+test("title and memo edits preserve event and other-schedule reminder recovery generations", async (t) => {
+  const { app, db, call, signup } = await startResourceApplication(t);
+  const a = await signup(),
+    me = await json<{ id: string }>(await call("auth/me", a));
+  const { EventsService } =
+    await import("../../src/modules/events/events.service.js");
+  const events = app.get(EventsService),
+    calendar = app.get(CalendarService),
+    reminders = app.get(RemindersService),
+    notifications = app.get(NotificationsService);
+  const input = {
+    requestKey: randomUUID(),
+    expectedVersion: 0,
+    title: "원본 일정",
+    date: "2031-04-02",
+    allDay: true,
+    memo: "",
+  };
+  let schedule = await calendar.save(me.id, input);
+  let event = await events.create(me.id, {
+    creationKey: randomUUID(),
+    name: "원본 행사",
+    scheduledAt: "2031-04-02T03:00:00Z",
+  });
+  const original = schedule.scheduleUpdatedAt.getTime();
+  t.mock.timers.enable({
+    apis: ["Date"],
+    now: new Date("2031-04-01T00:01:00Z"),
+  });
+  try {
+    schedule = await calendar.save(
+      me.id,
+      {
+        ...input,
+        requestKey: randomUUID(),
+        expectedVersion: 1,
+        title: "수정한 일정",
+        memo: "메모만 수정",
+      },
+      schedule.id,
+    );
+    event = await events.update(me.id, event.id, {
+      expectedVersion: event.version,
+      name: "수정한 행사",
+    });
+    assert.equal(schedule.scheduleUpdatedAt.getTime(), original);
+    assert.equal(schedule.scheduleRevision, 1);
+    await reminders.run();
+    assert.equal((await notifications.inbox(me.id)).items.length, 2);
+    await calendar.save(
+      me.id,
+      {
+        ...input,
+        requestKey: randomUUID(),
+        expectedVersion: 2,
+        title: "다시 수정한 일정",
+      },
+      schedule.id,
+    );
+    event = await events.update(me.id, event.id, {
+      expectedVersion: event.version,
+      name: "다시 수정한 행사",
+    });
+    await reminders.run();
+    assert.equal(
+      (await notifications.inbox(me.id)).items.length,
+      2,
+      "metadata edits cannot duplicate an already committed reminder",
+    );
+    await calendar.save(
+      me.id,
+      {
+        ...input,
+        requestKey: randomUUID(),
+        expectedVersion: 3,
+        date: "2031-04-03",
+      },
+      schedule.id,
+    );
+    await events.update(me.id, event.id, {
+      expectedVersion: event.version,
+      scheduledAt: "2031-04-03T03:00:00Z",
+    });
+    await reminders.run();
+    assert.equal(
+      (await notifications.inbox(me.id)).items.length,
+      2,
+      "moved schedules do not replay the old due time",
+    );
+    await calendar.save(me.id, { ...input, requestKey: randomUUID() });
+    await events.create(me.id, {
+      creationKey: randomUUID(),
+      name: "늦은 행사",
+      scheduledAt: "2031-04-02T03:00:00Z",
+    });
+    await reminders.run();
+    assert.equal(
+      (await notifications.inbox(me.id)).items.length,
+      2,
+      "late creation does not backfill past reminders",
+    );
+    await calendar.remove(me.id, schedule.id, 4);
+    await reminders.run(new Date("2031-04-02T00:01:00Z"));
+    assert.equal(
+      (await notifications.inbox(me.id)).items.length,
+      3,
+      "only the surviving rescheduled event gets its new reminder",
+    );
+  } finally {
+    t.mock.timers.reset();
+  }
+  assert(await db.manager.existsBy(CalendarSchedule, { id: schedule.id }));
+});
+
+test("merchant calendar uses the same decline lifecycle as inquiry detail", async (t) => {
+  const { app, db, call, signup } = await startResourceApplication(t);
+  const organizer = await signup(),
+    owner = await signup();
+  await json(
+    await call("auth/first-setup", owner, "PATCH", { accountType: "owner" }),
+  );
+  const me = await json<{ id: string }>(await call("auth/me", owner));
+  const { Restaurant } =
+    await import("../../src/modules/restaurants/entities/restaurant.entity.js");
+  const { MerchantRepliesService } =
+    await import("../../src/modules/reservations/merchant-replies.service.js");
+  const { seedDemoRestaurants } =
+    await import("../../src/database/seeds/restaurants-demo.seed.js");
+  await seedDemoRestaurants(db);
+  const restaurantId = "c0210000-0000-4000-8000-000000000001";
+  const restaurant = await db.manager.findOneByOrFail(Restaurant, {
+    id: restaurantId,
+  });
+  await db.manager.update(
+    Restaurant,
+    { id: restaurantId },
+    { ownerAccountId: me.id },
+  );
+  try {
+    const event = await json<{ id: string; version: number }>(
+      await call("events", organizer, "POST", {
+        creationKey: randomUUID(),
+        name: "합성 불가 달력",
+      }),
+      201,
+    );
+    const startsAt = new Date(Date.now() + 3 * 86400000).toISOString();
+    const inquiry = await json<{ id: string; targets: { id: string }[] }>(
+      await call(`events/${event.id}/reservation-requests`, organizer, "POST", {
+        requestKey: randomUUID(),
+        mode: "DIRECT",
+        expectedEventVersion: event.version,
+        restaurantIds: [restaurantId],
+        conditions: {
+          startsAt,
+          expectedGuests: 20,
+          region: "건대입구",
+          seating: "ANY",
+          space: "ANY",
+        },
+        contact: { name: "합성 총무", phone: "01000001234" },
+      }),
+      201,
+    );
+    await app.get(MerchantRepliesService).save(
+      inquiry.targets[0].id,
+      {
+        kind: "operator",
+        actor: "integration",
+        method: "PHONE",
+        confirmedAt: new Date().toISOString(),
+        reason: "합성 불가 답변",
+      },
+      {
+        requestKey: randomUUID(),
+        expectedVersion: 0,
+        kind: "DECLINE",
+        proposal: null,
+        expiresAt: null,
+        reason: "합성 불가",
+        holdConfirmed: false,
+      },
+      "pr4-calendar",
+    );
+    const from = startsAt.slice(0, 7) + "-01";
+    const d = new Date(from);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    const calendar = await json<{
+      reservations: { id: string; status: string }[];
+    }>(
+      await call(
+        `calendar?restaurantId=${restaurantId}&from=${from}&to=${d.toISOString().slice(0, 10)}`,
+        owner,
+      ),
+    );
+    assert.equal(
+      calendar.reservations.find((r) => r.id === inquiry.targets[0].id)?.status,
+      "MERCHANT_DECLINED",
+    );
+    const other = await signup();
+    assert.equal(
+      (
+        await call(
+          `calendar?restaurantId=${restaurantId}&from=${from}&to=${d.toISOString().slice(0, 10)}`,
+          other,
+        )
+      ).status,
+      404,
+    );
+  } finally {
+    await db.manager.update(
+      Restaurant,
+      { id: restaurantId },
+      { ownerAccountId: restaurant.ownerAccountId },
+    );
+  }
 });

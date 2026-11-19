@@ -169,7 +169,7 @@ export class SessionClient {
     }
     return this.preparingSignup;
   };
-  applyProfile(account: Account) {
+  applyProfile(account: Account, changed: "profile" | "phone") {
     if (
       this.ending ||
       this.state.status !== "authenticated" ||
@@ -177,7 +177,12 @@ export class SessionClient {
     )
       return;
     this.profileRevision++;
-    this.apply({ authenticated: true, account });
+    const current = this.state.account!;
+    const patch =
+      changed === "profile"
+        ? { name: account.name, nickname: account.nickname }
+        : { phone: account.phone, phoneVerifiedAt: account.phoneVerifiedAt };
+    this.apply({ authenticated: true, account: { ...current, ...patch } });
   }
   async saveFirstSetup(input: FirstSetupInput, signal: AbortSignal) {
     const generation = this.generation,

@@ -37,12 +37,12 @@ export function AccountSettings() {
     mutationFn: (v: { name: string; nickname: string }) =>
       saveProfile(request, {
         name: v.name,
-        ...(account?.accountType === "organizer"
+        ...(account?.accountType === "organizer" && v.nickname.trim()
           ? { nickname: v.nickname }
           : {}),
       }),
     onSuccess: (a) => {
-      if (active.current) client.applyProfile(a);
+      if (active.current) client.applyProfile(a, "profile");
     },
     retry: false,
   });
@@ -80,7 +80,7 @@ export function AccountSettings() {
       const r = await verifyPhone(request, proof);
       if (active.current) {
         if (r.account) {
-          client.applyProfile(r.account);
+          client.applyProfile(r.account, "phone");
           setDone(true);
           setProof(undefined);
         } else setWaiting(true);
@@ -127,6 +127,11 @@ export function AccountSettings() {
               aria-invalid={!!profile.formState.errors[field]}
               aria-describedby={`${field}-error`}
             />
+            {field === "nickname" && (
+              <p className="text-xs text-muted">
+                비워두면 기존 닉네임을 유지해요.
+              </p>
+            )}
             <p id={`${field}-error`} role="alert">
               {profile.formState.errors[field]?.message}
             </p>
