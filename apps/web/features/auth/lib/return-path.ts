@@ -94,7 +94,14 @@ export function safeReturnPath(
   if (
     url.pathname === "/events" &&
     view &&
-    ["reservation", "attendance", "roster"].includes(view)
+    [
+      "reservation",
+      "attendance",
+      "roster",
+      "settlement",
+      "record",
+      "records",
+    ].includes(view)
   )
     params.set("view", view);
   return `${url.pathname}${params.size ? `?${params}` : ""}`;

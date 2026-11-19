@@ -1669,7 +1669,19 @@ test("home preserves the selected group and never falls back to personal creatio
         await until(() =>
           assert.match(view.container.textContent!, /모임 불러오는 중/),
         );
-        assert(!view.container.querySelector('a[href^="/events"]'));
+        assert(
+          !view.container.querySelector(
+            'a[href^="/events"]:not([href*="view=records"])',
+          ),
+        );
+        const recordsLink = view.container.querySelector(
+          'a[href*="view=records"]',
+        );
+        if (recordsLink)
+          assert.equal(
+            recordsLink.getAttribute("href"),
+            `/events?view=records&group=${scenario === "inaccessible" ? "missing" : "second"}`,
+          );
         assert.equal(eventReads, 0);
         await act(async () =>
           pending.resolve(
@@ -1728,7 +1740,19 @@ test("home preserves the selected group and never falls back to personal creatio
           await until(() =>
             assert(view.container.querySelector('[role="alert"]')),
           );
-          assert(!view.container.querySelector('a[href^="/events"]'));
+          assert(
+            !view.container.querySelector(
+              'a[href^="/events"]:not([href*="view=records"])',
+            ),
+          );
+          const recordsLink = view.container.querySelector(
+            'a[href*="view=records"]',
+          );
+          if (recordsLink)
+            assert.equal(
+              recordsLink.getAttribute("href"),
+              `/events?view=records&group=${scenario === "inaccessible" ? "missing" : "second"}`,
+            );
           assert.equal(eventReads, 0);
           if (scenario === "failed")
             assert(

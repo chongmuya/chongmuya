@@ -12,12 +12,18 @@ export function EventNavigation({
   return (
     <nav
       aria-label="행사 관리"
-      className="mb-7 flex gap-6 border-b border-field"
+      className="mb-7 flex gap-2 border-b border-field"
     >
       {(
         [
-          ["reservation", "예약", !attendance],
+          [
+            "reservation",
+            "예약",
+            !attendance && view !== "settlement" && view !== "record",
+          ],
           ["attendance", "참석", attendance],
+          ["settlement", "정산", view === "settlement"],
+          ["record", "기록", view === "record"],
         ] as const
       ).map(([value, label, active]) => (
         <Link

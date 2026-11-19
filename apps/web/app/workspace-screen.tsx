@@ -20,6 +20,10 @@ import {
   eventKeys,
 } from "@/features/events/client";
 
+import {
+  SettlementWorkspace,
+  RecordsList,
+} from "@/features/settlements/client";
 import { AccountNavigation } from "@/features/home/client";
 import { buttonStyles } from "@/shared/ui/button";
 import { StepLayout } from "@/shared/ui/step-layout";
@@ -189,7 +193,14 @@ export function WorkspaceContent({
               <EventNavigation eventId={eventId} view={view} />
             </>
           )}
-          {view === "attendance" ? (
+          {view === "settlement" || view === "record" ? (
+            <SettlementWorkspace
+              accountId={accountId}
+              eventId={eventId}
+              request={request}
+              record={view === "record"}
+            />
+          ) : view === "attendance" ? (
             <AttendanceWorkspace
               accountId={accountId}
               eventId={eventId}
@@ -210,6 +221,12 @@ export function WorkspaceContent({
             />
           )}
         </>
+      ) : view === "records" ? (
+        <RecordsList
+          accountId={accountId}
+          request={request}
+          groupId={groupId}
+        />
       ) : (
         <EventForm
           accountId={accountId}
