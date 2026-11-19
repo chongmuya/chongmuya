@@ -57,6 +57,9 @@ test("configuration rejects missing/invalid required values without exposing val
     { DATABASE_URL: databaseUrl, OCTOMO_API_KEY: "private-password bad" },
     { DATABASE_URL: databaseUrl, SIGNUP_TERMS_JSON: "private-password" },
     { DATABASE_URL: databaseUrl, SIGNUP_TERMS_JSON: "[]" },
+    { DATABASE_URL: databaseUrl, FILES_MAX_BYTES: "1" },
+    { DATABASE_URL: databaseUrl, FILES_MAX_COUNT: "0" },
+    { DATABASE_URL: databaseUrl, FILES_S3_BUCKET: "private-password invalid" },
   ]) {
     assert.throws(
       () => parseEnvironment(env),
@@ -81,6 +84,10 @@ test("configuration rejects missing/invalid required values without exposing val
       UNRELATED_VARIABLE: "allowed",
     }),
     {
+      filesBucket: undefined,
+      filesRegion: "ap-northeast-2",
+      filesMaxCount: 100,
+      filesMaxBytes: 524288000,
       trustProxyHops: 0,
       messageProvider: "fake",
       solapiApiKey: undefined,

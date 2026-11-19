@@ -3,6 +3,21 @@ import { linkEnvironmentFields } from "./link-environment.js";
 import { databaseEnvironmentSchema } from "./database-environment.js";
 
 const environmentInputSchema = z.object({
+  FILES_S3_BUCKET: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
+    .optional(),
+  FILES_S3_REGION: z
+    .string()
+    .regex(/^[a-z]{2}-[a-z]+-\d$/)
+    .default("ap-northeast-2"),
+  FILES_MAX_COUNT: z.coerce.number().int().min(1).max(1000).default(100),
+  FILES_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(10485760)
+    .max(10737418240)
+    .default(524288000),
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
@@ -199,6 +214,10 @@ const environmentSchema = environmentInputSchema
   .transform((env) => ({
     trustProxyHops: env.TRUST_PROXY_HOPS,
     messageProvider: env.MESSAGE_PROVIDER,
+    filesBucket: env.FILES_S3_BUCKET,
+    filesRegion: env.FILES_S3_REGION,
+    filesMaxCount: env.FILES_MAX_COUNT,
+    filesMaxBytes: env.FILES_MAX_BYTES,
     solapiApiKey: env.SOLAPI_API_KEY,
     solapiApiSecret: env.SOLAPI_API_SECRET,
     solapiSenderNumber: env.SOLAPI_SENDER_NUMBER,

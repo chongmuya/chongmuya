@@ -1,3 +1,4 @@
+import { SettlementsModule } from "./modules/settlements/settlements.module.js";
 import { RestaurantsModule } from "./modules/restaurants/restaurants.module.js";
 import { ReservationsModule } from "./modules/reservations/reservations.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
@@ -17,6 +18,7 @@ import { AuthModule } from "./modules/auth/auth.module.js";
     EventsModule,
     RestaurantsModule,
     ReservationsModule,
+    SettlementsModule,
   ],
 })
 export class AppModule {}

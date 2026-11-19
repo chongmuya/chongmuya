@@ -17,6 +17,11 @@ export function configureHttp(
   app.disable("x-powered-by");
   app.set("trust proxy", environment.trustProxyHops === 1 ? 1 : false);
   app.use(requestContext(log));
+  app.use((req: Request, _res: Response, next: () => void) => {
+    if (/^\/api\/v1\/events\/[^/]+\/files\/[^/]+\/upload$/.test(req.path))
+      req.setTimeout(30_000);
+    next();
+  });
   app.enableCors({
     origin: (origin, callback) =>
       callback(null, origin === environment.webOrigin),
