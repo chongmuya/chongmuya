@@ -109,14 +109,95 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "mkdir /tmp/tls && cp /certs/server.* /tmp/tls/ && chown postgres:postgres /tmp/tls/* && chmod 600 /tmp/tls/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/tls/server.crt -c ssl_key_file=/tmp/tls/server.key",
     ]),
   );
+  let databaseReady = false;
   for (let i = 0; i < 60; i++) {
     if (
-      run("docker", ["exec", name, "pg_isready", "-U", "postgres"]).status === 0
-    )
+      // The image's temporary init server accepts Unix sockets before creating
+      // POSTGRES_DB. Only the final server listens on TCP.
+      run("docker", [
+        "exec",
+        name,
+        "pg_isready",
+        "-h",
+        "127.0.0.1",
+        "-U",
+        "postgres",
+        "-d",
+        "chongmuya",
+      ]).status === 0
+    ) {
+      databaseReady = true;
       break;
+    }
     await new Promise((r) => setTimeout(r, 500));
   }
-  const databaseUrl = `postgresql://postgres:local-test-only@${host}:5432/chongmuya?sslmode=verify-full&sslrootcert=/run/certs/rds-global-bundle.pem`;
+  assert(
+    databaseReady,
+    "PostgreSQL initialization must finish before bootstrap",
+  );
+  const sql = (query, user = "postgres") =>
+    ok(
+      run(
+        "docker",
+        [
+          "exec",
+          "-i",
+          name,
+          "psql",
+          "-v",
+          "ON_ERROR_STOP=1",
+          "-U",
+          user,
+          "-d",
+          "chongmuya",
+          "-At",
+        ],
+        { input: query },
+      ),
+    ).trim();
+  // Model the existing-role setup with an ordinary DB owner, not PostgreSQL's
+  // superuser. This verifies PostgreSQL grants, not the live RDS administrator.
+  sql(
+    "CREATE ROLE deployment_admin LOGIN CREATEROLE; CREATE ROLE chongmuya_app LOGIN; CREATE ROLE chongmuya_migrator LOGIN; ALTER DATABASE chongmuya OWNER TO deployment_admin; GRANT chongmuya_migrator TO deployment_admin WITH ADMIN TRUE, SET FALSE, INHERIT FALSE",
+  );
+  const bootstrap = readFileSync(
+    resolve("infra/database-bootstrap.sql"),
+    "utf8",
+  );
+  const missingMembership = run(
+    "docker",
+    ["exec", "-i", name, "psql", "-U", "deployment_admin", "-d", "chongmuya"],
+    { input: bootstrap },
+  );
+  assert.notEqual(
+    missingMembership.status,
+    0,
+    "CREATEROLE alone cannot set migrator defaults",
+  );
+  assert.match(missingMembership.stderr, /permission denied to set role/);
+  sql(
+    "GRANT chongmuya_migrator TO deployment_admin WITH SET TRUE, INHERIT FALSE",
+    "deployment_admin",
+  );
+  sql(bootstrap, "deployment_admin");
+  sql(
+    "ALTER ROLE chongmuya_app PASSWORD 'app-test-only'; ALTER ROLE chongmuya_migrator PASSWORD 'migrator-test-only'",
+  );
+  const databaseUrl = `postgresql://chongmuya_app:app-test-only@${host}:5432/chongmuya?sslmode=verify-full&sslrootcert=/run/certs/rds-global-bundle.pem`;
+  const migrationUrl = databaseUrl.replace(
+    "chongmuya_app:app-test-only",
+    "chongmuya_migrator:migrator-test-only",
+  );
+  const migrationPayload = {
+    Parameter: {
+      Name: "/chongmuya/deploy/prod/DATABASE_URL",
+      Value: migrationUrl,
+    },
+  };
+  writeFileSync(
+    join(directory, "migration.json"),
+    JSON.stringify(migrationPayload),
+  );
   const env = {
     DATABASE_URL: databaseUrl,
     NODE_ENV: "production",
@@ -161,7 +242,7 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "--platform",
     "linux/amd64",
     "--user",
-    "0",
+    `${process.getuid()}:${process.getgid()}`,
     "-v",
     `${directory}:/release`,
     "-v",
@@ -171,6 +252,7 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "scripts/deployment-config.mjs",
     "prepare",
     "/release",
+    "/release/migration.json",
   ];
   const invalidPayload = structuredClone(payload);
   invalidPayload.Parameters.find((p) => p.Name.endsWith("/AUTH_SECRET")).Value =
@@ -187,11 +269,11 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
   ok(run("docker", prepare, { input: JSON.stringify(payload) }));
   assert.equal(
     readFileSync(join(directory, "db.env"), "utf8"),
-    `DATABASE_URL=${databaseUrl}\n`,
+    `DATABASE_URL=${migrationUrl}\n`,
   );
   writeFileSync(
     join(directory, "compose.env"),
-    `API_IMAGE=${image}\nRELEASE_DIR=${directory}\nRDS_CA_FILE=${certificate}\n`,
+    `API_IMAGE=${image}\nAPI_ENV_FILE=${directory}/api.env\nTOOLS_ENV_FILE=${directory}/db.env\nRDS_CA_FILE=${certificate}\n`,
   );
   writeFileSync(
     join(directory, "override.yml"),
@@ -227,23 +309,24 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "import fs from 'node:fs';import assert from 'node:assert/strict';for(const [k,v] of Object.entries(JSON.parse(fs.readFileSync('/expected.json'))))assert.equal(process.env[k],v,k);assert.notEqual(process.getuid(),0)",
     ]),
   );
-  const sql = (query) =>
-    ok(
-      run("docker", [
-        "exec",
-        name,
-        "psql",
-        "-U",
-        "postgres",
-        "-d",
-        "chongmuya",
-        "-Atc",
-        query,
-      ]),
-    ).trim();
+  const toolCompose = [
+    "compose",
+    "-p",
+    name,
+    "--env-file",
+    join(directory, "compose.env"),
+    "-f",
+    resolve("infra/compose.tools.yml"),
+    "-f",
+    join(directory, "tools-override.yml"),
+  ];
+  writeFileSync(
+    join(directory, "tools-override.yml"),
+    `networks:\n  default:\n    external: true\n    name: ${name}\n`,
+  );
   const seed = (...args) =>
     run("docker", [
-      ...compose,
+      ...toolCompose,
       "run",
       "--rm",
       "--no-deps",
@@ -258,11 +341,67 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "0",
     "pending check must not create migration history",
   );
-  ok(run("docker", [...compose, "run", "--rm", "--no-deps", "migrate"]));
+  ok(run("docker", [...toolCompose, "run", "--rm", "--no-deps", "migrate"]));
   assert.match(
-    ok(run("docker", [...compose, "run", "--rm", "--no-deps", "migrate"])),
+    ok(run("docker", [...toolCompose, "run", "--rm", "--no-deps", "migrate"])),
     /"appliedCount":0/,
   );
+  assert.equal(
+    sql("SELECT DISTINCT tableowner FROM pg_tables WHERE schemaname='public'"),
+    "chongmuya_migrator",
+  );
+  assert.notEqual(
+    run("docker", [
+      "exec",
+      name,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "chongmuya_app",
+      "-d",
+      "chongmuya",
+      "-c",
+      "CREATE TABLE forbidden(id int)",
+    ]).status,
+    0,
+  );
+  assert.notEqual(
+    run("docker", [
+      "exec",
+      name,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "chongmuya_app",
+      "-d",
+      "chongmuya",
+      "-c",
+      "ALTER TABLE accounts ADD COLUMN forbidden int",
+    ]).status,
+    0,
+  );
+  sql(
+    "CREATE TABLE default_grant_probe (id serial primary key, value text)",
+    "chongmuya_migrator",
+  );
+  assert.equal(
+    sql(
+      "INSERT INTO default_grant_probe(value) VALUES ('ok') RETURNING id",
+      "chongmuya_app",
+    ).split("\n")[0],
+    "1",
+  );
+  sql(
+    "UPDATE default_grant_probe SET value='updated'; DELETE FROM default_grant_probe",
+    "chongmuya_app",
+  );
+  sql("DROP TABLE default_grant_probe", "chongmuya_migrator");
+  // Production seed needs DML only and uses a freshly loaded app URL, never master.
+  writeFileSync(join(directory, "db.env"), `DATABASE_URL=${databaseUrl}\n`, {
+    mode: 0o600,
+  });
   const fixture = JSON.parse(
     readFileSync(
       resolve("apps/api/src/database/seeds/data/restaurants.json"),
@@ -349,6 +488,8 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     ]);
     assert.equal(result.status, 1, "wrong host/CA must reject TLS");
   }
+  rmSync(join(directory, "db.env"));
+  ok(run("docker", [...compose, "config", "--quiet"])); // No absent migration env dependency.
   ok(
     run("docker", [
       ...compose,
@@ -366,6 +507,9 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     ok(run("docker", ["inspect", "-f", "{{.State.ExitCode}}", apiId])).trim(),
     "0",
   );
+  // This is a fresh-start TLS failure case, separate from replacement/rollback
+  // below. Remove the stopped healthy container and its prior health history.
+  ok(run("docker", ["rm", apiId]));
   // A wrong DB hostname makes the real readiness check fail with a nonzero Compose result.
   writeFileSync(
     join(directory, "api.env"),
@@ -374,18 +518,34 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "wrong.test",
     ),
   );
+  const badReady = run("docker", [
+    ...compose,
+    "up",
+    "-d",
+    "--wait",
+    "--wait-timeout",
+    "12",
+    "api",
+  ]);
+  if (badReady.status === 0) {
+    const running = ok(run("docker", [...compose, "ps", "-q", "api"])).trim();
+    console.log(
+      ok(
+        run("docker", [
+          "exec",
+          running,
+          "node",
+          "--input-type=module",
+          "-e",
+          "console.log(new URL(process.env.DATABASE_URL).hostname);console.log((await fetch('http://127.0.0.1:3001/ready')).status)",
+        ]),
+      ),
+    );
+  }
   assert.notEqual(
-    run("docker", [
-      ...compose,
-      "up",
-      "-d",
-      "--force-recreate",
-      "--wait",
-      "--wait-timeout",
-      "12",
-      "api",
-    ]).status,
+    badReady.status,
     0,
+    "bad TLS hostname must fail API readiness",
   );
   ok(run("docker", [...compose, "down", "--remove-orphans"]));
   await verifyDeploymentFlow({
@@ -394,10 +554,17 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     certificate,
     image,
     payload,
+    migrationPayload,
+    restaurantId: sql("SELECT id FROM restaurants ORDER BY id LIMIT 1"),
     run,
     ok,
     t,
   });
+  assert.equal(
+    sql("SELECT count(*) FROM restaurant_contacts"),
+    "0",
+    "record-contact dry-run must not insert contacts",
+  );
 });
 
 test("Nginx bootstrap and HTTPS configs load without logging callback query secrets", async (t) => {
@@ -431,11 +598,19 @@ test("Nginx bootstrap and HTTPS configs load without logging callback query secr
       "run",
       "--rm",
       "-v",
-      `${resolve("infra/nginx/api.http.conf")}:/etc/nginx/conf.d/default.conf:ro`,
+      `${resolve("infra/nginx/api.conf")}:/etc/nginx/conf.d/default.conf:ro`,
       "nginx:stable-alpine",
       "nginx",
       "-t",
     ]),
+  );
+  // Simulate Certbot's host-owned TLS additions; Git supplies HTTP/proxy only.
+  writeFileSync(
+    join(directory, "https.conf"),
+    readFileSync(resolve("infra/nginx/api.conf"), "utf8").replace(
+      "listen 80;",
+      "listen 443 ssl;\n    ssl_certificate /etc/letsencrypt/live/api.chongmuya.com/fullchain.pem;\n    ssl_certificate_key /etc/letsencrypt/live/api.chongmuya.com/privkey.pem;",
+    ),
   );
   ok(
     run("docker", [
@@ -446,7 +621,7 @@ test("Nginx bootstrap and HTTPS configs load without logging callback query secr
       "-p",
       "127.0.0.1::443",
       "-v",
-      `${resolve("infra/nginx/api.conf")}:/etc/nginx/conf.d/default.conf:ro`,
+      `${join(directory, "https.conf")}:/etc/nginx/conf.d/default.conf:ro`,
       "-v",
       `${certificate}:/etc/letsencrypt/live/api.chongmuya.com/fullchain.pem:ro`,
       "-v",
@@ -478,13 +653,48 @@ test("Nginx bootstrap and HTTPS configs load without logging callback query secr
     await new Promise((r) => setTimeout(r, 200));
   }
   assert.equal(ok(response), "502"); // No upstream; exercise Nginx's error path.
+  // Express also accepts this spelling; it must use the protected location.
+  const request = (path) =>
+    run("curl", [
+      "--silent",
+      "--insecure",
+      "--noproxy",
+      "*",
+      "--resolve",
+      `api.chongmuya.com:${port}:127.0.0.1`,
+      "--output",
+      "/dev/null",
+      "--write-out",
+      "%{http_code}",
+      "--header",
+      "Authorization: Bearer NEVER_LOG_AUTH",
+      "--header",
+      "Cookie: session=NEVER_LOG_COOKIE",
+      `https://api.chongmuya.com:${port}${path}`,
+    ]);
+  assert.equal(
+    ok(
+      request(
+        "/api/v1/auth/kakao/CALLBACK/?code=NEVER_LOG_CODE&state=NEVER_LOG_STATE",
+      ),
+    ),
+    "502",
+  );
+  assert.equal(ok(request("/ready")), "502");
   const log = ok(
     run("docker", ["exec", name, "cat", "/var/log/nginx/api-access.log"]),
   );
   assert.match(log, /\/api\/v1\/auth\/kakao\/callback 502/);
   const containerLog = run("docker", ["logs", name]);
+  const errorLog = ok(
+    run("docker", ["exec", name, "cat", "/var/log/nginx/api-error.log"]),
+  );
+  assert.match(
+    errorLog,
+    /connect\(\) failed.*while connecting to upstream.*GET \/ready/,
+  );
   assert.doesNotMatch(
-    log + containerLog.stdout + containerLog.stderr,
-    /NEVER_LOG_CODE|NEVER_LOG_STATE/,
+    log + errorLog + containerLog.stdout + containerLog.stderr,
+    /NEVER_LOG_CODE|NEVER_LOG_STATE|NEVER_LOG_AUTH|NEVER_LOG_COOKIE/,
   );
 });

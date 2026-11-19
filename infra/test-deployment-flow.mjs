@@ -17,6 +17,8 @@ export async function verifyDeploymentFlow({
   certificate,
   image,
   payload,
+  migrationPayload,
+  restaurantId,
   run,
   ok,
   t,
@@ -83,28 +85,19 @@ export async function verifyDeploymentFlow({
       ]),
     );
   }
-  const issuedReleases = new Set();
   t.after(() => {
-    run("docker", [
-      "rm",
-      "-f",
-      ...ok(
-        run("docker", [
-          "ps",
-          "-aq",
-          "--filter",
-          `label=com.docker.compose.project=${name}`,
-        ]),
-      )
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean),
-    ]);
-    if (existsSync(join(root, "releases")))
-      for (const id of readdirSync(join(root, "releases")))
-        issuedReleases.add(id);
-    for (const release of issuedReleases)
-      run("docker", ["image", "rm", `chongmuya-api-release:${release}`]);
+    const ids = ok(
+      run("docker", [
+        "ps",
+        "-aq",
+        "--filter",
+        `label=com.docker.compose.project=${name}`,
+      ]),
+    )
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (ids.length) run("docker", ["rm", "-f", ...ids]);
     run("docker", ["image", "rm", runner, second, broken]);
   });
   copyFileSync(resolve("infra/deploy.sh"), join(bundle, "deploy.sh"));
@@ -114,7 +107,16 @@ export async function verifyDeploymentFlow({
       "ports: []",
     ) + `\nnetworks:\n  default:\n    external: true\n    name: ${name}\n`;
   writeFileSync(join(bundle, "compose.prod.yml"), configuration);
+  writeFileSync(
+    join(bundle, "compose.tools.yml"),
+    readFileSync(resolve("infra/compose.tools.yml"), "utf8") +
+      `\nnetworks:\n  default:\n    external: true\n    name: ${name}\n`,
+  );
   writeFileSync(join(directory, "parameters.json"), JSON.stringify(payload));
+  writeFileSync(
+    join(directory, "migration.json"),
+    JSON.stringify(migrationPayload),
+  );
   writeFileSync(join(directory, "policy.json"), "{}");
   writeFileSync(
     join(bin, "aws"),
@@ -122,6 +124,8 @@ export async function verifyDeploymentFlow({
 const fs=require('node:fs');
 const dir=${JSON.stringify(directory)};
 if(process.argv.includes('ecr')) process.stdout.write('test-login');
+else if(process.argv.includes('/chongmuya/deploy/prod/DATABASE_URL')) process.stdout.write(fs.readFileSync(dir+'/migration.json'));
+else if(process.argv.includes('get-parameter')) process.stdout.write(JSON.stringify({Parameter:JSON.parse(fs.readFileSync(dir+'/parameters.json')).Parameters.find(p=>p.Name.endsWith('/DATABASE_URL'))}));
 else process.stdout.write(fs.readFileSync(dir+'/parameters.json'));
 `,
     { mode: 0o755 },
@@ -141,19 +145,12 @@ if(args[0]==='pull'){
 }
 const env={...process.env};
 if(args[0]==='compose'){
- const envFile=args[args.indexOf('--env-file')+1];
- if(args.includes('--env-file')){
-   const reference=fs.readFileSync(envFile,'utf8').match(/^API_IMAGE=(.+)$/m)[1];
-   env.API_IMAGE=mappings[reference];
- }
+ if(env.API_IMAGE)env.API_IMAGE=mappings[env.API_IMAGE];
  if(args.includes('up')){
    rules.upCount=(rules.upCount??0)+1;fs.writeFileSync(dir+'/policy.json',JSON.stringify(rules));
-   if(rules.failRecovery && rules.upCount===2)process.exit(32);
    args[args.indexOf('--wait-timeout')+1]='12';
  }
- if(args.includes('migrate') && rules.newMigration){
-   process.stdout.write(JSON.stringify({phase:'after',appliedCount:1})+'\\n');process.exit(0);
- }
+
 }
 const mapped=args.map(arg=>mappings[arg]??(arg==='chongmuya'?${JSON.stringify(name)}:arg.replace('label=com.docker.compose.project=chongmuya','label=com.docker.compose.project='+${JSON.stringify(name)})));
 const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inherit'});process.exit(result.status??1);
@@ -181,15 +178,27 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       `RDS_CA_FILE=${certificate}`,
       runner,
       "bash",
+      "-c",
+      // SSM runs as root. Keep that behavior inside the runner, then return
+      // only this test's files to the host account without relaxing 0600.
+      'test_owner=$1; test_root=$2; shift 2; trap \'chown -R "$test_owner" "$test_root"\' EXIT; bash "$@"',
+      "deployment-test",
+      `${process.getuid()}:${process.getgid()}`,
+      directory,
       ...extra,
       ...(extra.length ? [] : [join(bundle, "deploy.sh"), ...args]),
     ]);
-    if (existsSync(join(root, "releases")))
-      for (const id of readdirSync(join(root, "releases")))
-        issuedReleases.add(id);
+    const state = join(root, "deployment");
+    if (existsSync(state)) {
+      assert(
+        !readdirSync(state).some((p) => p.startsWith(".work-")),
+        "temporary secrets cleaned after every command",
+      );
+      assert(readdirSync(join(state, "releases")).length <= 3);
+    }
     return result;
   };
-  const current = () => readlinkSync(join(root, "current"));
+  const current = () => readlinkSync(join(root, "deployment/current"));
   const commands = () =>
     readFileSync(join(directory, "commands.log"), "utf8")
       .trim()
@@ -207,87 +216,94 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
     writeFileSync(join(bundle, "source-sha"), revision);
     return invoke(["deploy", reference]);
   };
-  const journal = () =>
-    readdirSync(join(root, "releases"))
-      .map((id) => readFileSync(join(root, "releases", id, "journal"), "utf8"))
-      .join("\n");
-
+  // #32 legacy data remains untouched by the new bounded record format.
+  mkdirSync(join(root, "releases/legacy"), { recursive: true });
+  writeFileSync(join(root, "releases/legacy/api.env"), "legacy-value");
   assert.notEqual(
     invoke(["rollback", "missing", "--confirm-compatibility"]).status,
     0,
   );
   ok(publish(sha, digest("a")));
   const first = current();
-  assert.match(readFileSync(join(first, "journal"), "utf8"), /BEFORE absent/);
   const firstId = first.split("/").at(-1);
   ok(publish(sha2, digest("b")));
   const secondRelease = current();
-  assert.notEqual(
-    readFileSync(join(first, "image-id"), "utf8"),
-    readFileSync(join(secondRelease, "image-id"), "utf8"),
-  );
-  // Lock is real Linux flock; all three commands must reject concurrent work.
+  const apiId = () =>
+    ok(
+      run("docker", [
+        "ps",
+        "-aq",
+        "--filter",
+        `label=com.docker.compose.project=${name}`,
+        "--filter",
+        "label=com.docker.compose.service=api",
+      ]),
+    ).trim();
+  const stableContainer = apiId();
   ok(
     invoke(
       [],
       [
         "-c",
-        `flock '${root}/deploy.lock' bash -c 'for args in "deploy ${digest("a")}" "rollback ${firstId}" "seed-restaurants"; do if bash ${bundle}/deploy.sh $args; then exit 1; fi; done'`,
+        `flock '${root}/deploy.lock' bash -c 'for args in "deploy ${digest("a")}" "rollback ${firstId} --confirm-compatibility" "seed-restaurants"; do if bash ${bundle}/deploy.sh $args; then exit 1; fi; done'`,
       ],
     ),
   );
   for (const stage of ["pull", "configuration", "migration"]) {
     policy({ pullFailure: stage === "pull" });
     configure(
-      stage === "configuration"
-        ? { AUTH_SECRET: "invalid" }
-        : stage === "migration"
-          ? {
-              DATABASE_URL: payload.Parameters.find((p) =>
-                p.Name.endsWith("/DATABASE_URL"),
-              ).Value.replace("local-test-only", "wrong-password"),
-            }
-          : {},
+      stage === "configuration" ? { AUTH_SECRET: "DO_NOT_LOG_THIS" } : {},
     );
-    assert.notEqual(publish(sha, digest("a")).status, 0);
+    const migration = structuredClone(migrationPayload);
+    if (stage === "migration")
+      migration.Parameter.Value = migration.Parameter.Value.replace(
+        "migrator-test-only",
+        "NEVER_LOG_PASSWORD",
+      );
+    writeFileSync(join(directory, "migration.json"), JSON.stringify(migration));
+    const failure = publish(sha, digest("a"));
+    assert.notEqual(failure.status, 0);
+    assert.doesNotMatch(
+      failure.stdout + failure.stderr,
+      /DO_NOT_LOG_THIS|NEVER_LOG_PASSWORD|postgresql:/,
+    );
+    if (stage === "migration") assert.match(failure.stderr, /28P01/);
+    assert.equal(
+      apiId(),
+      stableContainer,
+      "pre-replacement failure preserves running API",
+    );
     assert.equal(current(), secondRelease);
-    assert.equal(readlinkSync(join(root, "previous")), first);
   }
   configure();
+  writeFileSync(
+    join(directory, "migration.json"),
+    JSON.stringify(migrationPayload),
+  );
   policy();
-  // No new migrations: real unhealthy replacement, exactly one recovery to B.
   assert.notEqual(publish(sha3, digest("c")).status, 0);
-  assert.match(journal(), /RECOVERY_SUCCEEDED/);
   assert.equal(
     JSON.parse(readFileSync(join(directory, "policy.json"))).upCount,
-    2,
+    1,
+    "no automatic rollback",
   );
   assert.equal(current(), secondRelease);
-  // Failure injection in the recovery command leaves an unhealthy API; no loop.
-  policy({ failRecovery: true });
-  assert.notEqual(publish(sha3, digest("c")).status, 0);
-  assert.match(journal(), /RECOVERY_FAILED/);
-  assert.equal(
-    JSON.parse(readFileSync(join(directory, "policy.json"))).upCount,
-    2,
-  );
-  policy();
+  assert.equal(readlinkSync(join(root, "deployment/previous")), first);
   assert.notEqual(
     invoke(["rollback", firstId]).status,
     0,
-    "manual schema/config review is required",
+    "operator confirmation required",
   );
   configure({ AUTH_SECRET: "rotated-current-test-secret-with-32-characters" });
   const start = commands().length;
   ok(invoke(["rollback", firstId, "--confirm-compatibility"]));
-  const rolledBack = current();
-  assert.equal(
-    readFileSync(join(rolledBack, "image-id"), "utf8"),
-    readFileSync(join(first, "image-id"), "utf8"),
-  );
   assert.match(
-    readFileSync(join(rolledBack, "api.env"), "utf8"),
+    readFileSync(join(root, "deployment/runtime/api.env"), "utf8"),
     /rotated-current-test-secret/,
+  );
+  assert.doesNotMatch(
+    readFileSync(join(root, "deployment/runtime/api.env"), "utf8"),
+    /chongmuya_migrator|migrator-test-only/,
   );
   assert(
     !commands()
@@ -299,18 +315,13 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
           args.includes("build"),
       ),
   );
-  // Remove the API, then recover using the known release without a running app.
-  const api = ok(
-    run("docker", [
-      "ps",
-      "-aq",
-      "--filter",
-      `label=com.docker.compose.project=${name}`,
-      "--filter",
-      "label=com.docker.compose.service=api",
-    ]),
-  ).trim();
-  ok(run("docker", ["rm", "-f", api]));
+  assert.equal(
+    ok(
+      run("docker", ["inspect", "-f", "{{.Config.Labels}}", apiId()]),
+    ).includes(sha),
+    true,
+  );
+  ok(run("docker", ["rm", "-f", apiId()]));
   ok(
     invoke([
       "rollback",
@@ -318,24 +329,56 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       "--confirm-compatibility",
     ]),
   );
-  assert.match(
-    readFileSync(join(current(), "journal"), "utf8"),
-    /BEFORE absent/,
-  );
-  // Simulate a successful new migration report: failure must stay manual.
-  policy({ newMigration: true });
-  assert.notEqual(publish(sha3, digest("c")).status, 0);
-  assert.equal(
-    JSON.parse(readFileSync(join(directory, "policy.json"))).upCount,
-    1,
-  );
-  policy();
-  ok(invoke(["rollback", firstId, "--confirm-compatibility"]));
-  const seedStart = commands().length;
   ok(invoke(["seed-restaurants"]));
-  assert(
-    commands()
-      .slice(seedStart)
-      .some((args) => args.includes("seed-restaurants")),
+  ok(invoke(["operations", "--help"]));
+  const contactFile = join(directory, "operator-contact.json");
+  writeFileSync(
+    contactFile,
+    JSON.stringify({
+      id: "00000000-0000-4000-8000-000000000099",
+      name: "테스트 담당자",
+      phone: "01000000001",
+      requestConsentAt: "2026-01-01T00:00:00Z",
+      consentNote: "NEVER_LOG_CONSENT",
+    }),
+    { mode: 0o600 },
   );
+  // The original is root:root/0600 in the Linux runner, just like an SSM file.
+  // Inspect it before the test-only cleanup returns files to the host account.
+  const operatorRun = invoke(
+    [],
+    [
+      "-c",
+      `
+set -euo pipefail
+file=$1; script=$2; restaurant=$3
+chown 0:0 "$file"
+chmod 600 "$file"
+before=$(sha256sum "$file")
+OPERATOR_INPUT_FILE="$file" bash "$script" operations --action record-contact --restaurant "$restaurant" --input /run/input.json --actor deployment-test --reason dry-run-fixture
+[[ $(stat -c '%u:%g:%a' "$file") == 0:0:600 && $(sha256sum "$file") == "$before" ]]
+chmod 644 "$file"
+if OPERATOR_INPUT_FILE="$file" bash "$script" operations --action record-contact --restaurant "$restaurant" --input /run/input.json --actor deployment-test --reason dry-run-fixture; then exit 1; fi
+[[ $(stat -c '%u:%g:%a' "$file") == 0:0:644 && $(sha256sum "$file") == "$before" ]]
+`,
+      "operator-file-test",
+      contactFile,
+      join(bundle, "deploy.sh"),
+      restaurantId,
+    ],
+  );
+  assert.match(ok(operatorRun), /record-contact: 변경 전 확인/);
+  assert.match(operatorRun.stderr, /Private operator input rejected/);
+  assert.doesNotMatch(
+    operatorRun.stdout + operatorRun.stderr,
+    /01000000001|NEVER_LOG_CONSENT/,
+  );
+  assert.equal(
+    readFileSync(join(root, "releases/legacy/api.env"), "utf8"),
+    "legacy-value",
+  );
+  for (const id of readdirSync(join(root, "deployment/releases"))) {
+    assert(!existsSync(join(root, "deployment/releases", id, "api.env")));
+    assert(!existsSync(join(root, "deployment/releases", id, "db.env")));
+  }
 }

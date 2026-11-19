@@ -1,4 +1,8 @@
-import { parseDatabaseEnvironment } from "../src/config/database-environment.js";
+import {
+  parseDatabaseEnvironment,
+  parseDeploymentDatabase,
+  validateDeploymentDatabasePair,
+} from "../src/config/database-environment.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -372,4 +376,22 @@ test("compiled migration DataSource loads with only DATABASE_URL despite invalid
   );
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, "");
+});
+
+test("deployment requires distinct app/migrator users on the same TLS database", () => {
+  const app =
+    "postgresql://chongmuya_app:DO_NOT_LOG@chongmuya-prod.cp6awyiq6zpo.ap-northeast-2.rds.amazonaws.com:5432/chongmuya?sslmode=verify-full&sslrootcert=/run/certs/rds-global-bundle.pem";
+  const migrator = app.replace("chongmuya_app", "chongmuya_migrator");
+  assert.doesNotThrow(() => validateDeploymentDatabasePair(app, migrator));
+  for (const [runtime, migration] of [
+    [app, app],
+    [migrator, app],
+    [app, migrator.replace("chongmuya-prod.", "other.")],
+    [app.replace("verify-full", "require"), migrator],
+    [app.replace("chongmuya_app", "chongmuyaadmin"), migrator],
+  ])
+    assert.throws(() => validateDeploymentDatabasePair(runtime, migration), {
+      message: "Invalid environment variables: DATABASE_URL",
+    });
+  assert.equal(parseDeploymentDatabase(app, "app").database, "chongmuya");
 });

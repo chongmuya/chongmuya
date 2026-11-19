@@ -56,3 +56,42 @@ jobs:
       # pnpm test already compiles API unit and integration sources together.
       - run: node --test --test-concurrency=1 dist-test/test/integration/*.test.js
         working-directory: apps/api
+
+  deployment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Detect deployment-related changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo 'required=true' >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BASE_SHA" "$GITHUB_SHA" | grep -E '^(infra/|apps/api/|\.github/|\.dockerignore$|\.nvmrc$|package.json$|pnpm-[^/]*\.yaml$)' >/dev/null; then
+            echo 'required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'required=false' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.changes.outputs.required == 'true'
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Validate shell, workflows and SSM behavior
+        if: steps.changes.outputs.required == 'true'
+        run: |
+          bash -n infra/deploy.sh infra/verify-main.sh
+          shellcheck infra/deploy.sh infra/verify-main.sh
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          node --test infra/ssm-command.test.mjs
+      - name: Build and exercise isolated production containers
+        if: steps.changes.outputs.required == 'true'
+        run: |
+          docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$GITHUB_SHA" -f apps/api/Dockerfile -t chongmuya-api:deployment-test .
+          node --test infra/deployment.test.mjs
