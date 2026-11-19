@@ -287,7 +287,7 @@ function AccountHome({
               <LoadingState>모임 불러오는 중…</LoadingState>
             </li>
           ) : null}
-          {!events.isError &&
+          {!isAccessError(events.error) &&
             personalEvents?.map((event) => (
               <li key={event.id}>
                 <Link

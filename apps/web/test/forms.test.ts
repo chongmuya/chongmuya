@@ -1604,6 +1604,7 @@ test("home preserves the selected group and never falls back to personal creatio
       const pending = deferred<Response>();
       let eventReads = 0;
       let failPersonalEvents = scenario === "selected";
+      let denyPersonalEvents = false;
       globalThis.fetch = async (path) => {
         const url = String(path);
         if (url.endsWith("restore"))
@@ -1621,6 +1622,11 @@ test("home preserves the selected group and never falls back to personal creatio
         if (url.includes("/events")) {
           eventReads++;
           if (url.endsWith("/events")) {
+            if (denyPersonalEvents)
+              return Response.json(
+                { code: "FORBIDDEN", statusCode: 403 },
+                { status: 403 },
+              );
             if (failPersonalEvents)
               return Response.json(
                 { code: "SERVICE_UNAVAILABLE", statusCode: 503 },
@@ -1645,9 +1651,10 @@ test("home preserves the selected group and never falls back to personal creatio
         }
         throw new Error("unexpected path");
       };
+      const cache = client();
       const view = await render(
         createElement(AuthProvider, null, createElement(HomeScreen)),
-        client(),
+        cache,
         "",
         "",
         scenario === "empty"
@@ -1753,6 +1760,30 @@ test("home preserves the selected group and never falls back to personal creatio
           assert.match(dialog.textContent!, /친구들과 송년 모임/),
         );
         assert.doesNotMatch(dialog.textContent!, /기존 모임의 행사/);
+        if (scenario === "selected") {
+          failPersonalEvents = true;
+          await act(async () => {
+            await cache.refetchQueries({
+              queryKey: ["user", "home-user", "events", "list"],
+            });
+          });
+          await until(() =>
+            assert.match(dialog.textContent!, /단기 행사를 불러오지 못했어요/),
+          );
+          assert.match(dialog.textContent!, /친구들과 송년 모임/);
+
+          denyPersonalEvents = true;
+          await click(dialog, "다시 시도");
+          await until(() =>
+            assert.doesNotMatch(dialog.textContent!, /친구들과 송년 모임/),
+          );
+          denyPersonalEvents = false;
+          failPersonalEvents = false;
+          await click(dialog, "다시 시도");
+          await until(() =>
+            assert.match(dialog.textContent!, /친구들과 송년 모임/),
+          );
+        }
         const eventLink = dialog.querySelector<HTMLAnchorElement>(
           'a[href="/events?event=personal"]',
         )!;
