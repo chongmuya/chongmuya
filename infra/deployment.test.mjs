@@ -483,6 +483,9 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     ok(run("docker", ["inspect", "-f", "{{.State.ExitCode}}", apiId])).trim(),
     "0",
   );
+  // This is a fresh-start TLS failure case, separate from replacement/rollback
+  // below. Remove the stopped healthy container and its prior health history.
+  ok(run("docker", ["rm", apiId]));
   // A wrong DB hostname makes the real readiness check fail with a nonzero Compose result.
   writeFileSync(
     join(directory, "api.env"),
@@ -495,7 +498,6 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     ...compose,
     "up",
     "-d",
-    "--force-recreate",
     "--wait",
     "--wait-timeout",
     "12",
