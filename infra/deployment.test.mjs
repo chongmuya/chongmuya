@@ -109,13 +109,32 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "mkdir /tmp/tls && cp /certs/server.* /tmp/tls/ && chown postgres:postgres /tmp/tls/* && chmod 600 /tmp/tls/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/tls/server.crt -c ssl_key_file=/tmp/tls/server.key",
     ]),
   );
+  let databaseReady = false;
   for (let i = 0; i < 60; i++) {
     if (
-      run("docker", ["exec", name, "pg_isready", "-U", "postgres"]).status === 0
-    )
+      // The image's temporary init server accepts Unix sockets before creating
+      // POSTGRES_DB. Only the final server listens on TCP.
+      run("docker", [
+        "exec",
+        name,
+        "pg_isready",
+        "-h",
+        "127.0.0.1",
+        "-U",
+        "postgres",
+        "-d",
+        "chongmuya",
+      ]).status === 0
+    ) {
+      databaseReady = true;
       break;
+    }
     await new Promise((r) => setTimeout(r, 500));
   }
+  assert(
+    databaseReady,
+    "PostgreSQL initialization must finish before bootstrap",
+  );
   const sql = (query, user = "postgres") =>
     ok(
       run(
