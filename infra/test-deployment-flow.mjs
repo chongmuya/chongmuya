@@ -183,7 +183,7 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       'test_owner=$1; test_root=$2; shift 2; trap \'chown -R "$test_owner" "$test_root"\' EXIT; bash "$@"',
       "deployment-test",
       `${process.getuid()}:${process.getgid()}`,
-      root,
+      directory,
       ...extra,
       ...(extra.length ? [] : [join(bundle, "deploy.sh"), ...args]),
     ]);
