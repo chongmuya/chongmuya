@@ -314,3 +314,7 @@ DB CLI는 `database-environment`만 검증하고 런타임 환경은 그 정의�
 예약 후속 문자는 현재 문의 링크의 수신자 변경 계약으로 연락처 ID·전화번호를 함께 스냅샷에 저장하고, 발송 적격성도 그 스냅샷으로 확인한다. 최초 문의 대상과 과거 발송 이력은 변경하지 않는다. `1795752000000-NotificationRecipientSnapshot`은 nullable 연락처 스냅샷을 추가한다. 과거 문자 수신자를 현재 링크로 추정하지 않으며, 스냅샷이 없는 기존 매장 알림은 발송 시 보류한다. 기존 문자 결과는 보존한다. 스냅샷 기록이 생긴 뒤 down은 거부하며 전진 복구한다. migration → API 순서로 적용하고 구 API의 알림 생성을 종료한 뒤 새 발송을 진행한다. 새 환경변수는 없다.
 
 명백한 SOLAPI 접수 거절(설정 오류·408을 제외한 HTTP 4xx)은 SUBMISSION 실패로 기록하여 원인 해결 후 운영 명시 재시도를 허용한다. 타임아웃·접수 불명 UNKNOWN/PROCESSING과 실제 DELIVERY 실패는 이 경로로 다시 발송하지 않는다. 사장님 문의 조회는 공통 후보 상태 계산으로 제안 만료를 표시하며 조회에서 상태를 저장하지 않는다. 행사 수정의 기준 버전은 최신 내용을 확인한 뒤 명시적 재적용에서만 교체하며, 명단 재검토 시 변경·삭제된 기존 인물 선택도 다시 확인한다.
+
+## 예약 마무리
+
+선택된 예약의 메뉴·예약금·변경취소는 reservations 내부의 Completion(트랜잭션/권한/이력), Menus, Payments, Changes, Access 서비스로 나눈다. 문의 응답 링크와 예약 관리 링크는 서로 다른 권한이다. `ReservationFactsService`의 공개 projection으로 실제 수령·반환·잔여 사실을 전달하며 notifications 기록은 같은 EntityManager를 사용하고 커밋 후 발송한다. 웹 `reservation-completion/client.ts`는 총무와 사장님의 예약 관리 화면을 공개한다. 상세 API·운영·migration·디자인 검증은 [예약 마무리](reservation-completion.md)를 따른다.

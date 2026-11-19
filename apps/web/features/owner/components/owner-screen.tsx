@@ -1,4 +1,5 @@
 "use client";
+import { OwnerReservations } from "@/features/reservation-completion/client";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
@@ -19,15 +20,16 @@ import { OwnerInquiries } from "./owner-inquiries";
 export function OwnerScreen({
   view = "home",
 }: {
-  view?: "home" | "register" | "menus" | "inquiries";
+  view?: "home" | "register" | "menus" | "inquiries" | "reservations";
 }) {
   const { status, account, client } = useAuth(),
     params = useSearchParams(),
     router = useRouter();
   const request = useMemo(() => client.request.bind(client), [client]);
+  const reservationId = params.get("reservation") ?? undefined;
   const restaurantId = params.get("restaurant") ?? undefined,
     targetId = params.get("target") ?? undefined;
-  const destination = `/owner${view === "home" ? "" : `/${view}`}${restaurantId ? `?restaurant=${encodeURIComponent(restaurantId)}` : targetId ? `?target=${encodeURIComponent(targetId)}` : ""}`;
+  const destination = `/owner${view === "home" ? "" : `/${view}`}${restaurantId ? `?restaurant=${encodeURIComponent(restaurantId)}` : targetId ? `?target=${encodeURIComponent(targetId)}` : reservationId ? `?reservation=${encodeURIComponent(reservationId)}` : ""}`;
   if (status === "loading")
     return (
       <main className="app-page">
@@ -80,7 +82,13 @@ export function OwnerScreen({
       router.push(path);
   };
   const props = { account, request, onNavigate: navigate };
-  return view === "register" ? (
+  return view === "reservations" ? (
+    <OwnerReservations
+      key={`${account.id}:${reservationId}`}
+      {...props}
+      reservationId={reservationId}
+    />
+  ) : view === "register" ? (
     <RegistrationLoader
       key={`${account.id}:${restaurantId ?? "new"}`}
       {...props}
@@ -129,6 +137,12 @@ function OwnerHome({
         <LoadingState>매장 확인 중…</LoadingState>
       ) : (
         <div className="flex flex-1 flex-col gap-5">
+          <Link
+            className={buttonStyles({ variant: "outline" })}
+            href="/owner/reservations"
+          >
+            선택된 예약 관리
+          </Link>
           {context.data.restaurants.map((r) => (
             <section
               key={r.id}

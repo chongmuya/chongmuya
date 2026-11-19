@@ -154,12 +154,16 @@ test("selection, reinquiry and durable notifications serialize competing command
       await json(await call(input.url, owner, "POST", input.body), 201);
       await json(await call(input.url, owner, "POST", input.body), 201);
       const notices = app.get(NotificationsService);
-      const rows = (await notices.messages(q.id, db.manager)).filter((r) =>
-        r.recipientKey.startsWith("merchant:"),
+      const rows = (await notices.messages(q.id, db.manager)).filter(
+        (r) =>
+          r.recipientKey.startsWith("merchant:") ||
+          r.recipientKey.startsWith("reservation:"),
       );
       assert.equal(rows.length, 2);
       for (const row of rows) {
-        const id = row.recipientKey.slice(9),
+        const id = row.recipientKey.startsWith("reservation:")
+            ? q.targets[0].id
+            : row.recipientKey.slice(9),
           contact = replacements.get(id)!;
         assert.equal(row.contactIdSnapshot, contact.id);
         assert.equal(row.phoneSnapshot, contact.phone);

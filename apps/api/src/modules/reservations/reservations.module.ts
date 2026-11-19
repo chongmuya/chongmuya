@@ -1,3 +1,15 @@
+import { ReservationFactsService } from "./reservation-facts.service.js";
+import { ReservationAccessService } from "./reservation-access.service.js";
+import { ReservationCompletionService } from "./reservation-completion.service.js";
+import { ReservationMenusService } from "./reservation-menus.service.js";
+import { ReservationPaymentsService } from "./reservation-payments.service.js";
+import { ReservationChangesService } from "./reservation-changes.service.js";
+import {
+  OrganizerReservationsController,
+  OwnerReservationsController,
+  ReservationManagementController,
+  ReservationCommands,
+} from "./reservation-completion.controller.js";
 import { NotificationsModule } from "../notifications/notifications.module.js";
 import { ReservationLocksService } from "./reservation-locks.service.js";
 import { ReservationQueriesService } from "./reservation-queries.service.js";
@@ -37,12 +49,23 @@ import { ReservationsService } from "./reservations.service.js";
     RestaurantsModule,
   ],
   controllers: [
+    OrganizerReservationsController,
+    OwnerReservationsController,
+    ReservationManagementController,
     ReservationsController,
     MerchantRepliesController,
     OwnerInquiriesController,
     SolapiWebhookController,
   ],
+  exports: [ReservationFactsService],
   providers: [
+    ReservationFactsService,
+    ReservationCommands,
+    ReservationAccessService,
+    ReservationCompletionService,
+    ReservationMenusService,
+    ReservationPaymentsService,
+    ReservationChangesService,
     ReservationsService,
     ReservationLocksService,
     ReservationQueriesService,

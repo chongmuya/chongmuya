@@ -1,4 +1,5 @@
 "use client";
+import { CompletionWorkspace } from "@/features/reservation-completion/client";
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -67,9 +68,7 @@ export function InquiryReceipt({
       </ol>
       {q.selection ? (
         <div className="space-y-4 rounded-card bg-surface p-6 shadow-card">
-          <p className="text-xs text-brand-action">
-            매장 선택 완료 · 예약 마무리 준비
-          </p>
+          <p className="text-xs text-brand-action">매장 선택 당시 응답</p>
           <h2 className="text-xl font-bold">{selected?.restaurantName}</h2>
           {q.selection.snapshot.offered && (
             <ConditionSummary
@@ -77,12 +76,12 @@ export function InquiryReceipt({
             />
           )}
           <p className="text-sm">
-            아직 예약 확정이 아니에요. 메뉴·수량 전달이 필요하고, 예약금이
-            있으면 매장의 실제 입금 확인도 필요해요.
+            선택 당시 조건을 보존한 이력이에요. 현재 메뉴·입금·확정 상태는 예약
+            관리에서 확인해 주세요.
           </p>
           <p className="text-xs text-muted">
-            메뉴 전달·예약금 진행 기능은 준비 중이에요. 선택한 조건과 답변은 이
-            화면에서 확인할 수 있어요.
+            선택 당시 조건과 답변은 이력으로 보존돼요. 최신 예약 진행은 위 예약
+            관리에서 확인해 주세요.
           </p>
         </div>
       ) : q.canReinquire ? (
@@ -255,19 +254,32 @@ function DecisionReceipt({
       <FormError
         message={action.error ? safeErrorMessage(action.error) : undefined}
       />
-      <InquiryReceipt
-        inquiry={inquiry}
-        busy={action.isPending}
-        onDecide={(kind, target) => {
-          action.reset();
-          setDecision({
-            action: kind,
-            target,
-            requestKey: crypto.randomUUID(),
-            expectedVersion: inquiry.version!,
-          });
-        }}
-      />
+      {inquiry.selection && (
+        <CompletionWorkspace
+          id={inquiry.selection.id}
+          access={{ kind: "organizer", accountId, request }}
+        />
+      )}
+      {inquiry.selection ? (
+        <details className="my-6 rounded-control bg-surface p-5 text-sm shadow-card">
+          <summary>매장 선택 당시 문의·답변</summary>
+          <InquiryReceipt inquiry={inquiry} />
+        </details>
+      ) : (
+        <InquiryReceipt
+          inquiry={inquiry}
+          busy={action.isPending}
+          onDecide={(kind, target) => {
+            action.reset();
+            setDecision({
+              action: kind,
+              target,
+              requestKey: crypto.randomUUID(),
+              expectedVersion: inquiry.version!,
+            });
+          }}
+        />
+      )}
       {decision && inquiry.lifecycle !== "SELECTED" && (
         <Dialog
           labelledBy="reservation-decision"

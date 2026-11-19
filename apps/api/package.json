@@ -23,7 +23,8 @@
     "reservation:operations": "node scripts/reservation-operations.mjs",
     "merchant:operations": "node scripts/merchant-operations.mjs",
     "db:seed:demo": "node dist/database/seeds/run-demo.js seed",
-    "db:demo:links": "node dist/database/seeds/run-demo.js links"
+    "db:demo:links": "node dist/database/seeds/run-demo.js links",
+    "reservation:completion": "node scripts/reservation-completion.mjs"
   },
   "dependencies": {
     "@nestjs/common": "12.2.0",

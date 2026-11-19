@@ -27,7 +27,7 @@ export class SelectedReservation {
   @Column({ type: "integer" }) revision!: number;
   @Column({ type: "integer", default: 1 }) version!: number;
   @Column({ type: "varchar", length: 24, default: "PREPARING" })
-  status!: "PREPARING";
+  status!: "PREPARING" | "CONFIRMED" | "CHECK_REQUIRED" | "CANCELLED";
   @Column({ type: "jsonb" }) snapshot!: ReplySnapshot;
   @Column({ type: "uuid", name: "selected_by" }) selectedBy!: string;
   @Column({ type: "timestamptz", name: "selected_at" }) selectedAt!: Date;

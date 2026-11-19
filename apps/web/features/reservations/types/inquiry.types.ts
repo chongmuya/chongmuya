@@ -35,7 +35,7 @@ export type ReservationRequest = {
     targetId: string;
     revision: number;
     version: number;
-    status: "PREPARING";
+    status: "PREPARING" | "CONFIRMED" | "CHECK_REQUIRED" | "CANCELLED";
     snapshot: {
       offered: NonNullable<
         import("@/features/merchant-replies/types").Reply["snapshot"]["offered"]

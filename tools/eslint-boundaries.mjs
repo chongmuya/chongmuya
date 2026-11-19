@@ -95,6 +95,7 @@ function isPublicEntry(file) {
 // Providers must also be exported by the owning Nest module. Types/decorators
 // are source imports and do not require a DI registration.
 const apiPublicImports = {
+  "reservations/reservation-facts.service": ["ReservationFactsService"],
   "notifications/notifications.service": ["NotificationsService"],
   "notifications/types/notification": [
     "NotificationInput",
