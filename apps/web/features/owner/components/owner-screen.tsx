@@ -1,4 +1,7 @@
 "use client";
+import { MerchantSummary } from "@/features/calendar/client";
+import { NotificationBadge } from "@/features/notifications/client";
+import { OwnerHours } from "./owner-hours";
 import { OwnerReservations } from "@/features/reservation-completion/client";
 import Link from "next/link";
 import Image from "next/image";
@@ -20,7 +23,7 @@ import { OwnerInquiries } from "./owner-inquiries";
 export function OwnerScreen({
   view = "home",
 }: {
-  view?: "home" | "register" | "menus" | "inquiries" | "reservations";
+  view?: "home" | "register" | "menus" | "inquiries" | "reservations" | "hours";
 }) {
   const { status, account, client } = useAuth(),
     params = useSearchParams(),
@@ -82,7 +85,17 @@ export function OwnerScreen({
       router.push(path);
   };
   const props = { account, request, onNavigate: navigate };
-  return view === "reservations" ? (
+  return view === "hours" && restaurantId ? (
+    <main className="app-page">
+      <OwnerHours
+        key={`${account.id}:${restaurantId}`}
+        accountId={account.id}
+        restaurantId={restaurantId}
+        request={request}
+      />
+      <Link href="/owner">매장관리로 돌아가기</Link>
+    </main>
+  ) : view === "reservations" ? (
     <OwnerReservations
       key={`${account.id}:${reservationId}`}
       {...props}
@@ -123,6 +136,7 @@ function OwnerHome({
     <main className="mx-auto flex min-h-svh max-w-[402px] flex-col px-5 pt-[clamp(24px,8.77svh,83px)] pb-[max(40px,env(safe-area-inset-bottom))]">
       <header className="mb-8 flex items-center justify-between">
         <h1 className="text-2xl font-bold">내 매장</h1>
+        <NotificationBadge accountId={account.id} request={request} />
         <Link
           href="/mypage"
           aria-label="마이페이지"
@@ -157,7 +171,24 @@ function OwnerHome({
                   등록 완료 · {r.published ? "공개 중" : "공개 대기"}
                 </p>
               </div>
+              <MerchantSummary
+                accountId={account.id}
+                restaurantId={r.id}
+                request={request}
+              />
               <div className="flex flex-wrap gap-3">
+                <Link
+                  className={buttonStyles({ variant: "outline" })}
+                  href={`/calendar?restaurant=${r.id}`}
+                >
+                  예약관리 캘린더
+                </Link>
+                <Link
+                  className={buttonStyles({ variant: "outline" })}
+                  href={`/owner/hours?restaurant=${r.id}`}
+                >
+                  영업시간
+                </Link>
                 <Link
                   className={buttonStyles({ variant: "outline" })}
                   href={`/owner/register?restaurant=${r.id}`}

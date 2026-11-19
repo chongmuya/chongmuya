@@ -169,6 +169,16 @@ export class SessionClient {
     }
     return this.preparingSignup;
   };
+  applyProfile(account: Account) {
+    if (
+      this.ending ||
+      this.state.status !== "authenticated" ||
+      this.state.account?.id !== account.id
+    )
+      return;
+    this.profileRevision++;
+    this.apply({ authenticated: true, account });
+  }
   async saveFirstSetup(input: FirstSetupInput, signal: AbortSignal) {
     const generation = this.generation,
       accountId = this.state.account?.id;

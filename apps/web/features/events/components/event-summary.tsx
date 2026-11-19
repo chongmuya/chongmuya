@@ -1,4 +1,5 @@
 "use client";
+import { HomeProgress } from "@/features/settlements/client";
 import { isAccessError } from "@/shared/http/access-error";
 import Link from "next/link";
 import { EventBanner } from "./event-banner";
@@ -68,7 +69,7 @@ export function EventSummary({
         )
       ) : shown.length ? (
         <ul className="space-y-3">
-          {shown.map((event) => (
+          {shown.map((event, index) => (
             <li key={event.id}>
               <Link
                 className="block rounded-control bg-surface px-5 py-4 shadow-card"
@@ -81,6 +82,13 @@ export function EventSummary({
                   {dateLabel(event.scheduledAt)}
                 </span>
               </Link>
+              {index < 10 && (
+                <HomeProgress
+                  accountId={accountId}
+                  eventId={event.id}
+                  request={request}
+                />
+              )}
             </li>
           ))}
         </ul>

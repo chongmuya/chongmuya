@@ -11,7 +11,7 @@ export function HomeNavigation({
   return (
     <nav
       aria-label="주요 메뉴"
-      className="sticky bottom-0 z-10 mt-auto grid grid-cols-3 bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] text-center shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
+      className="sticky bottom-0 z-10 mt-auto grid grid-cols-4 bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] text-center shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
     >
       <Link
         href={
@@ -35,6 +35,12 @@ export function HomeNavigation({
           />
         </span>
         홈
+      </Link>
+      <Link
+        href={`/calendar${groupId ? `?group=${groupId}` : ""}`}
+        className="flex flex-col items-center justify-center text-[10px] text-muted"
+      >
+        캘린더
       </Link>
       <Link
         href={

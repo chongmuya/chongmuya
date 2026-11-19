@@ -1,4 +1,5 @@
 "use client";
+import { NotificationSettings } from "@/features/notifications/client";
 import { useState } from "react";
 import { useGroups, GroupSwitcher } from "@/features/groups/client";
 import type { SessionRequest } from "@/features/auth/types";
@@ -53,6 +54,13 @@ export function AccountNavigation({
       ) : (
         <MyGroups groupId={groupId} accountId={accountId} request={request} />
       )}
+      <NotificationSettings accountId={accountId} request={request} />
+      <Link href="/mypage?view=account" className="my-4 block">
+        연락처 인증 및 변경 · 약관 및 개인정보 처리방침
+      </Link>
+      <Link href="/mypage?view=account" className="my-4 block">
+        로그아웃 및 계정 연결
+      </Link>
     </>
   );
 }

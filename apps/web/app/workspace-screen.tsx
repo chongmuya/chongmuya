@@ -1,4 +1,5 @@
 "use client";
+import { AccountSettings } from "@/features/account/client";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
@@ -127,6 +128,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
     >
       {mode === "mypage" && params.get("view") === "account" ? (
         <div className="space-y-8">
+          <AccountSettings key={account.id} />
           <AuthScreen />
           <KakaoConnection key={account.id} accountId={account.id} />
         </div>
