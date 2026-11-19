@@ -132,7 +132,7 @@ test("migration diagnostics are allowlisted and HTTPS failure preserves internal
   assert.equal(external.calls.filter((a) => a[1] === "send-command").length, 1);
 });
 
-test("deployment gate admits only the verified main SHA, including workflow_run", async () => {
+test("deployment requires successful SHA CI; rollback requires authorization instead", async () => {
   const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join, resolve } = await import("node:path");
@@ -144,43 +144,55 @@ test("deployment gate admits only the verified main SHA, including workflow_run"
       '#!/bin/sh\ncase "$*" in *compare*) echo "${TEST_RELATION:-ahead}";; *) echo "${TEST_CI:-success}";; esac\n',
       { mode: 0o755 },
     );
-    const event = {
-      workflow_run: {
-        head_sha: input.sha,
-        head_branch: "main",
-        event: "push",
-        conclusion: "success",
-        head_repository: { full_name: "chongmuya/chongmuya" },
-      },
-    };
-    const eventPath = join(dir, "event.json");
-    await writeFile(eventPath, JSON.stringify(event));
-    const gate = (extra = {}) =>
-      spawnSync("bash", [resolve("infra/verify-main.sh")], {
-        env: {
-          ...process.env,
-          PATH: `${dir}:${process.env.PATH}`,
-          GITHUB_REPOSITORY: "chongmuya/chongmuya",
-          GITHUB_REF: "refs/heads/main",
-          TARGET_SHA: input.sha,
-          GITHUB_EVENT_NAME: "workflow_dispatch",
-          GITHUB_EVENT_PATH: eventPath,
-          ...extra,
+    const rollbackWorkflow = await readFile(
+      resolve(".github/workflows/rollback-api.yml"),
+      "utf8",
+    );
+    const rollbackCheck = rollbackWorkflow
+      .match(
+        /name: Verify rollback authorization[\s\S]*?run: \|\n((?: {10}[^\n]*\n)+)/,
+      )?.[1]
+      ?.replace(/^ {10}/gm, "");
+    assert(rollbackCheck, "exercise the workflow's actual authorization block");
+    const gate = (extra = {}, rollback = false) =>
+      spawnSync(
+        "bash",
+        rollback ? ["-c", rollbackCheck] : [resolve("infra/verify-main.sh")],
+        {
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH}`,
+            GITHUB_REPOSITORY: "chongmuya/chongmuya",
+            GITHUB_REF: "refs/heads/main",
+            TARGET_SHA: input.sha,
+            GITHUB_EVENT_NAME: "workflow_dispatch",
+            CONFIRMED: "true",
+            RELEASE: "20261119-test",
+            ...extra,
+          },
         },
-      }).status;
+      ).status;
     assert.equal(gate(), 0);
-    assert.equal(gate({ GITHUB_EVENT_NAME: "workflow_run" }), 0);
+    for (const status of ["failure", "null"]) {
+      assert.notEqual(gate({ TEST_CI: status }), 0);
+      assert.equal(gate({ TEST_CI: status }, true), 0);
+    }
+    for (const extra of [
+      { CONFIRMED: "false" },
+      { RELEASE: "../current" },
+      { GITHUB_REPOSITORY: "another/repository" },
+      { GITHUB_REF: "refs/heads/feature" },
+    ])
+      assert.notEqual(gate(extra, true), 0);
     for (const extra of [
       { GITHUB_REF: "refs/pull/1/merge" },
       { GITHUB_EVENT_NAME: "pull_request" },
-      { TEST_CI: "failure" },
+      { GITHUB_EVENT_NAME: "workflow_run" },
+      { GITHUB_REPOSITORY: "another/repository" },
       { TEST_RELATION: "diverged" },
-      { TARGET_SHA: "b".repeat(40), GITHUB_EVENT_NAME: "workflow_run" },
+      { TARGET_SHA: "main" },
     ])
       assert.notEqual(gate(extra), 0);
-    event.workflow_run.event = "pull_request";
-    await writeFile(eventPath, JSON.stringify(event));
-    assert.notEqual(gate({ GITHUB_EVENT_NAME: "workflow_run" }), 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

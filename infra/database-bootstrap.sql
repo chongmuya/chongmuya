@@ -1,5 +1,11 @@
 -- One-time operator bootstrap in database chongmuya, NOT part of deployment.
--- Run as the existing DB administrator; existing passwords are never changed.
+-- Connect as chongmuyaadmin, with DB/public-schema grant authority. Existing
+-- passwords/owners are unchanged. This administrator also needs SET membership:
+--   SELECT pg_has_role(current_user, 'chongmuya_migrator', 'SET');
+-- Only if false, a role administrator with ADMIN OPTION (RDS: rds_superuser)
+-- grants once: GRANT chongmuya_migrator TO chongmuyaadmin WITH SET TRUE;
+-- CREATEROLE alone is not enough. Missing roles require separate membership
+-- preparation; this transaction fails closed rather than escalating its caller.
 \set ON_ERROR_STOP on
 BEGIN;
 DO $$
@@ -22,6 +28,8 @@ GRANT USAGE ON SCHEMA public TO chongmuya_app;
 GRANT USAGE, CREATE ON SCHEMA public TO chongmuya_migrator;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO chongmuya_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO chongmuya_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE chongmuya_migrator IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO chongmuya_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE chongmuya_migrator IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO chongmuya_app;
+SET LOCAL ROLE chongmuya_migrator;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO chongmuya_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO chongmuya_app;
+RESET ROLE;
 COMMIT;

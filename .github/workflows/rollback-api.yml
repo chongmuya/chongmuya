@@ -13,14 +13,13 @@ on:
         default: false
 permissions:
   contents: read
-  actions: read
   id-token: write
 concurrency:
   group: production-api
   cancel-in-progress: false
 jobs:
   rollback:
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'chongmuya/chongmuya' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     environment: production
@@ -28,20 +27,18 @@ jobs:
       AWS_REGION: ap-northeast-2
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-      TARGET_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Verify main and operator confirmation
+      - name: Verify rollback authorization
         env:
-          GH_TOKEN: ${{ github.token }}
           CONFIRMED: ${{ inputs.schema_compatible }}
           RELEASE: ${{ inputs.release_id }}
         run: |
           set -euo pipefail
-          bash infra/verify-main.sh
+          [[ $GITHUB_REPOSITORY == chongmuya/chongmuya && $GITHUB_REF == refs/heads/main && $GITHUB_EVENT_NAME == workflow_dispatch ]] || exit 1
           test "$CONFIRMED" = true || { echo 'DB schema/settings compatibility confirmation is required.'; exit 1; }
           [[ $RELEASE =~ ^[a-zA-Z0-9_-]+$ ]]
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
@@ -53,7 +50,7 @@ jobs:
       - name: Roll back on EC2 and verify HTTPS
         env:
           OPERATION: rollback
-          SOURCE_SHA: ${{ env.TARGET_SHA }}
+          SOURCE_SHA: ${{ github.sha }}
           RELEASE_ID: ${{ inputs.release_id }}
           EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
         run: node infra/ssm-command.mjs

@@ -117,7 +117,13 @@ if [[ $action == operations ]]; then
   mounts=()
   if [[ -n ${OPERATOR_INPUT_FILE:-} ]]; then
     [[ $OPERATOR_INPUT_FILE == /* && $OPERATOR_INPUT_FILE != *:* && -f $OPERATOR_INPUT_FILE ]] || die 'Use an existing absolute OPERATOR_INPUT_FILE path.'
-    mounts=(--volume "$OPERATOR_INPUT_FILE:/run/input.json:ro")
+    # Only this file-copy helper runs as root. The operation still uses USER node.
+    docker run --rm --platform linux/amd64 --user 0 \
+      --mount "type=bind,src=$OPERATOR_INPUT_FILE,dst=/run/source.json,readonly" \
+      --mount "type=bind,src=$work,dst=/work" "$image" sh -ec \
+      'node --input-type=module -e '\''import { copyPrivateInput } from "./scripts/merchant-cli.mjs"; await copyPrivateInput("/run/source.json", "/work/input.json").catch(() => { console.error("Private operator input rejected."); process.exitCode = 1; });'\''
+       chown node:node /work/input.json'
+    mounts=(--volume "$work/input.json:/run/input.json:ro")
   fi
   compose run --rm --no-deps -T "${mounts[@]}" api node scripts/merchant-operations.mjs "${operation_args[@]}"
   report 'RESULT=SUCCESS'

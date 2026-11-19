@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { open, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 
 export function operationId(value) {
   if (
@@ -20,12 +21,32 @@ export function requireOperator(v) {
     throw new Error("INVALID_OPERATOR");
 }
 
-export async function privateInput(file) {
+async function privateInputBytes(file) {
   if (!file) throw new Error("INPUT_REQUIRED");
-  const info = await stat(file);
-  if (!info.isFile() || info.size > 32768 || info.mode & 0o077)
-    throw new Error("PRIVATE_INPUT_REQUIRED");
-  return JSON.parse(await readFile(file, "utf8"));
+  const handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > 32768 || info.mode & 0o077)
+      throw new Error("PRIVATE_INPUT_REQUIRED");
+    const bytes = await handle.readFile();
+    if (bytes.length > 32768) throw new Error("PRIVATE_INPUT_REQUIRED");
+    return bytes;
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function privateInput(file) {
+  return JSON.parse((await privateInputBytes(file)).toString("utf8"));
+}
+
+// Validate the source before copying; a public source must never become valid
+// merely because the container's copy has private permissions.
+export async function copyPrivateInput(source, destination) {
+  await writeFile(destination, await privateInputBytes(source), {
+    mode: 0o600,
+    flag: "wx",
+  });
 }
 
 const display = (value) => String(value ?? "-").replace(/\p{Cc}/gu, " ");

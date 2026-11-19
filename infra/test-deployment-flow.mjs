@@ -18,6 +18,7 @@ export async function verifyDeploymentFlow({
   image,
   payload,
   migrationPayload,
+  restaurantId,
   run,
   ok,
   t,
@@ -330,6 +331,48 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
   );
   ok(invoke(["seed-restaurants"]));
   ok(invoke(["operations", "--help"]));
+  const contactFile = join(directory, "operator-contact.json");
+  writeFileSync(
+    contactFile,
+    JSON.stringify({
+      id: "00000000-0000-4000-8000-000000000099",
+      name: "테스트 담당자",
+      phone: "01000000001",
+      requestConsentAt: "2026-01-01T00:00:00Z",
+      consentNote: "NEVER_LOG_CONSENT",
+    }),
+    { mode: 0o600 },
+  );
+  // The original is root:root/0600 in the Linux runner, just like an SSM file.
+  // Inspect it before the test-only cleanup returns files to the host account.
+  const operatorRun = invoke(
+    [],
+    [
+      "-c",
+      `
+set -euo pipefail
+file=$1; script=$2; restaurant=$3
+chown 0:0 "$file"
+chmod 600 "$file"
+before=$(sha256sum "$file")
+OPERATOR_INPUT_FILE="$file" bash "$script" operations --action record-contact --restaurant "$restaurant" --input /run/input.json --actor deployment-test --reason dry-run-fixture
+[[ $(stat -c '%u:%g:%a' "$file") == 0:0:600 && $(sha256sum "$file") == "$before" ]]
+chmod 644 "$file"
+if OPERATOR_INPUT_FILE="$file" bash "$script" operations --action record-contact --restaurant "$restaurant" --input /run/input.json --actor deployment-test --reason dry-run-fixture; then exit 1; fi
+[[ $(stat -c '%u:%g:%a' "$file") == 0:0:644 && $(sha256sum "$file") == "$before" ]]
+`,
+      "operator-file-test",
+      contactFile,
+      join(bundle, "deploy.sh"),
+      restaurantId,
+    ],
+  );
+  assert.match(ok(operatorRun), /record-contact: 변경 전 확인/);
+  assert.match(operatorRun.stderr, /Private operator input rejected/);
+  assert.doesNotMatch(
+    operatorRun.stdout + operatorRun.stderr,
+    /01000000001|NEVER_LOG_CONSENT/,
+  );
   assert.equal(
     readFileSync(join(root, "releases/legacy/api.env"), "utf8"),
     "legacy-value",

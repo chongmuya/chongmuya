@@ -155,7 +155,31 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
         { input: query },
       ),
     ).trim();
-  sql(readFileSync(resolve("infra/database-bootstrap.sql"), "utf8"));
+  // Model the existing-role setup with an ordinary DB owner, not PostgreSQL's
+  // superuser. This verifies PostgreSQL grants, not the live RDS administrator.
+  sql(
+    "CREATE ROLE deployment_admin LOGIN CREATEROLE; CREATE ROLE chongmuya_app LOGIN; CREATE ROLE chongmuya_migrator LOGIN; ALTER DATABASE chongmuya OWNER TO deployment_admin; GRANT chongmuya_migrator TO deployment_admin WITH ADMIN TRUE, SET FALSE, INHERIT FALSE",
+  );
+  const bootstrap = readFileSync(
+    resolve("infra/database-bootstrap.sql"),
+    "utf8",
+  );
+  const missingMembership = run(
+    "docker",
+    ["exec", "-i", name, "psql", "-U", "deployment_admin", "-d", "chongmuya"],
+    { input: bootstrap },
+  );
+  assert.notEqual(
+    missingMembership.status,
+    0,
+    "CREATEROLE alone cannot set migrator defaults",
+  );
+  assert.match(missingMembership.stderr, /permission denied to set role/);
+  sql(
+    "GRANT chongmuya_migrator TO deployment_admin WITH SET TRUE, INHERIT FALSE",
+    "deployment_admin",
+  );
+  sql(bootstrap, "deployment_admin");
   sql(
     "ALTER ROLE chongmuya_app PASSWORD 'app-test-only'; ALTER ROLE chongmuya_migrator PASSWORD 'migrator-test-only'",
   );
@@ -531,10 +555,16 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     image,
     payload,
     migrationPayload,
+    restaurantId: sql("SELECT id FROM restaurants ORDER BY id LIMIT 1"),
     run,
     ok,
     t,
   });
+  assert.equal(
+    sql("SELECT count(*) FROM restaurant_contacts"),
+    "0",
+    "record-contact dry-run must not insert contacts",
+  );
 });
 
 test("Nginx bootstrap and HTTPS configs load without logging callback query secrets", async (t) => {
@@ -623,13 +653,48 @@ test("Nginx bootstrap and HTTPS configs load without logging callback query secr
     await new Promise((r) => setTimeout(r, 200));
   }
   assert.equal(ok(response), "502"); // No upstream; exercise Nginx's error path.
+  // Express also accepts this spelling; it must use the protected location.
+  const request = (path) =>
+    run("curl", [
+      "--silent",
+      "--insecure",
+      "--noproxy",
+      "*",
+      "--resolve",
+      `api.chongmuya.com:${port}:127.0.0.1`,
+      "--output",
+      "/dev/null",
+      "--write-out",
+      "%{http_code}",
+      "--header",
+      "Authorization: Bearer NEVER_LOG_AUTH",
+      "--header",
+      "Cookie: session=NEVER_LOG_COOKIE",
+      `https://api.chongmuya.com:${port}${path}`,
+    ]);
+  assert.equal(
+    ok(
+      request(
+        "/api/v1/auth/kakao/CALLBACK/?code=NEVER_LOG_CODE&state=NEVER_LOG_STATE",
+      ),
+    ),
+    "502",
+  );
+  assert.equal(ok(request("/ready")), "502");
   const log = ok(
     run("docker", ["exec", name, "cat", "/var/log/nginx/api-access.log"]),
   );
   assert.match(log, /\/api\/v1\/auth\/kakao\/callback 502/);
   const containerLog = run("docker", ["logs", name]);
+  const errorLog = ok(
+    run("docker", ["exec", name, "cat", "/var/log/nginx/api-error.log"]),
+  );
+  assert.match(
+    errorLog,
+    /connect\(\) failed.*while connecting to upstream.*GET \/ready/,
+  );
   assert.doesNotMatch(
-    log + containerLog.stdout + containerLog.stderr,
-    /NEVER_LOG_CODE|NEVER_LOG_STATE/,
+    log + errorLog + containerLog.stdout + containerLog.stderr,
+    /NEVER_LOG_CODE|NEVER_LOG_STATE|NEVER_LOG_AUTH|NEVER_LOG_COOKIE/,
   );
 });
