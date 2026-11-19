@@ -72,6 +72,7 @@ export class SolapiMessageGateway extends MessageGateway {
       return {
         status: "FAILED",
         errorCode: "CONFIGURATION",
+        failureStage: "SUBMISSION",
         provider: "solapi",
       };
     let response: Response;
@@ -113,6 +114,12 @@ export class SolapiMessageGateway extends MessageGateway {
           response.status !== 408
             ? "FAILED"
             : "UNKNOWN",
+        failureStage:
+          response.status >= 400 &&
+          response.status < 500 &&
+          response.status !== 408
+            ? "SUBMISSION"
+            : undefined,
         errorCode: [401, 403].includes(response.status)
           ? "CONFIGURATION"
           : `HTTP_${response.status}`,

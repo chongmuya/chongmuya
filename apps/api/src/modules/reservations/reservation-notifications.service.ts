@@ -4,6 +4,7 @@ import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
+import { MerchantLinksService } from "./merchant-links.service.js";
 import { MessageGateway } from "./providers/message.gateway.js";
 import type { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
@@ -15,6 +16,7 @@ export class ReservationNotificationsService {
     private readonly gateway: MessageGateway,
     private readonly config: ConfigService,
     private readonly restaurants: RestaurantsService,
+    private readonly links: MerchantLinksService,
   ) {}
   async organizer(
     m: EntityManager,
@@ -61,6 +63,7 @@ export class ReservationNotificationsService {
     kind: "STORE_SELECTED" | "CANDIDATE_CLOSED" | "PROPOSAL_EXPIRED",
     reservationId?: string,
   ) {
+    const { link } = await this.links.context(target.id, m);
     const owner = await this.restaurants.notificationAccount(
       target.restaurantId,
       m,
@@ -85,14 +88,17 @@ export class ReservationNotificationsService {
       reservationId,
       revision: target.replyVersion,
       accounts: owner ? [{ id: owner, title, summary, destination }] : [],
-      messages: [
-        {
-          recipientKey: `merchant:${target.id}`,
-          phone: target.contactPhone,
-          isDemo: target.isDemo,
-          text: `[총무야] ${request.snapshot.eventName} · ${target.restaurantName}\n${title}\n${summary}`,
-        },
-      ],
+      messages: link
+        ? [
+            {
+              recipientKey: `merchant:${target.id}`,
+              phone: link.phoneSnapshot,
+              contactId: link.contactId,
+              isDemo: target.isDemo,
+              text: `[총무야] ${request.snapshot.eventName} · ${target.restaurantName}\n${title}\n${summary}`,
+            },
+          ]
+        : [],
     });
   }
   async dispatchRequest(requestId: string) {
@@ -112,21 +118,22 @@ export class ReservationNotificationsService {
       const target = await db.manager.findOneBy(RequestTarget, {
         id: row.recipientKey.slice(9),
       });
-      const reasons = target
-        ? (
-            await this.restaurants.deliveryEligibility(
-              [
-                {
-                  contactId: target.contactId,
-                  restaurantId: target.restaurantId,
-                  contactPhone: row.phoneSnapshot,
-                },
-              ],
-              db.manager,
-              this.gateway.requiresRealRecipient,
-            )
-          )[0]
-        : ["CONTACT_DELETED"];
+      const reasons =
+        target && row.contactIdSnapshot
+          ? (
+              await this.restaurants.deliveryEligibility(
+                [
+                  {
+                    contactId: row.contactIdSnapshot,
+                    restaurantId: target.restaurantId,
+                    contactPhone: row.phoneSnapshot,
+                  },
+                ],
+                db.manager,
+                this.gateway.requiresRealRecipient,
+              )
+            )[0]
+          : ["CONTACT_DELETED"];
       if (reasons?.length) {
         await this.notices.hold(row.id, reasons[0]!);
         return;

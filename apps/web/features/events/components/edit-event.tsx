@@ -25,7 +25,7 @@ export function EditEvent({
   request: SessionRequest;
   onClose: () => void;
 }) {
-  const [base] = useState(event),
+  const [base, setBase] = useState(event),
     active = useActiveScreen();
   const local = base.scheduledAt
     ? new Date(Date.parse(base.scheduledAt) + 9 * 3600_000).toISOString()
@@ -39,12 +39,14 @@ export function EditEvent({
     },
   });
   const save = useUpdateEvent(accountId, event.id, request);
+  const changed = event.version !== base.version;
   return (
     <BottomSheet title="행사 수정" onClose={onClose}>
       <form
         noValidate
         className="space-y-5"
-        onSubmit={form.handleSubmit((values) =>
+        onSubmit={form.handleSubmit((values) => {
+          if (changed) return;
           save.mutate(
             {
               name: values.name,
@@ -58,8 +60,8 @@ export function EditEvent({
                 if (active.current) onClose();
               },
             },
-          ),
-        )}
+          );
+        })}
       >
         {(["name", "date", "time"] as const).map((key) => (
           <FormField
@@ -91,10 +93,43 @@ export function EditEvent({
             기능은 준비 중이에요.
           </p>
         )}
+        {changed && (
+          <div
+            role="alert"
+            className="space-y-3 rounded-control bg-choice p-4 text-sm"
+          >
+            <p>다른 화면에서 행사가 변경됐어요. 작성한 입력은 유지됩니다.</p>
+            <p>
+              최신 행사: {event.name} ·{" "}
+              {event.scheduledAt
+                ? new Date(event.scheduledAt).toLocaleString("ko-KR", {
+                    timeZone: "Asia/Seoul",
+                  })
+                : "일정 미정"}
+            </p>
+            {event.reservationScheduleLocked && (
+              <p>현재 일정은 예약으로 잠겨 있어 이름만 재적용할 수 있어요.</p>
+            )}
+            <Button
+              disabled={save.isPending}
+              onClick={() => {
+                setBase(event);
+                save.reset();
+              }}
+            >
+              최신 내용 확인 후 내 입력 재적용
+            </Button>
+          </div>
+        )}
         <FormError
           message={save.error ? safeErrorMessage(save.error) : undefined}
         />
-        <Button type="submit" className="w-full" loading={save.isPending}>
+        <Button
+          type="submit"
+          className="w-full"
+          loading={save.isPending}
+          disabled={changed}
+        >
           저장
         </Button>
       </form>

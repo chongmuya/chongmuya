@@ -52,6 +52,7 @@ export class NotificationsService {
             eventKey: input.eventKey,
             recipientKey: s.recipientKey,
             phoneSnapshot: s.phone,
+            contactIdSnapshot: s.contactId ?? null,
             text: s.text,
             isDemo: s.isDemo,
             updatedAt: new Date(),

@@ -100,6 +100,38 @@ test("PR1 forward migration retains legacy inquiry/reply/link/delivery bytes and
       )[0].count,
       0,
     );
+    const recipientMigration = migrations.find((m) =>
+      m.constructor.name.startsWith("NotificationRecipientSnapshot"),
+    )!;
+    await recipientMigration.up(q);
+    await recipientMigration.down(q);
+    await recipientMigration.up(q);
+    const fact = randomUUID(),
+      message = randomUUID();
+    await q.query(
+      "INSERT INTO notification_facts(event_key,kind,event_id,request_id,revision,occurred_at) VALUES($1,'STORE_SELECTED',$2,$3,1,now())",
+      [fact, event, request],
+    );
+    await q.query(
+      "INSERT INTO notification_messages(id,event_key,recipient_key,phone_snapshot,text,updated_at) VALUES($1,$2,'merchant:legacy','01000005678','legacy',now())",
+      [message, fact],
+    );
+    assert.equal(
+      (
+        await q.query(
+          "SELECT contact_id_snapshot FROM notification_messages WHERE id=$1",
+          [message],
+        )
+      )[0].contact_id_snapshot,
+      null,
+    );
+    await q.query(
+      "UPDATE notification_messages SET contact_id_snapshot=$1 WHERE id=$2",
+      [contact, message],
+    );
+    await assert.rejects(recipientMigration.down(q), /forward recovery/);
+    await q.query("DELETE FROM notification_messages WHERE id=$1", [message]);
+    await q.query("DELETE FROM notification_facts WHERE event_key=$1", [fact]);
     await selection.down(q);
     await selection.up(q);
     await q.query(

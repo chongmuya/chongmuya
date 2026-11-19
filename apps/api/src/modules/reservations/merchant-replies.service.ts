@@ -1,5 +1,6 @@
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 import { isDeepStrictEqual } from "node:util";
+import { candidateState } from "./lib/candidate-state.js";
 import { replyView } from "./lib/reply-view.js";
 import { Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
@@ -85,6 +86,7 @@ export class MerchantRepliesService {
         targetId,
         revision: c.target.replyVersion,
       });
+      const state = candidateState(c.target, response, new Date());
       const snapshot = c.request.snapshot;
       const { defaults, proposal } = await this.proposal(
         c.target.restaurantId,
@@ -104,9 +106,11 @@ export class MerchantRepliesService {
         closedState:
           c.target.candidateState !== "OPEN"
             ? c.target.candidateState
-            : c.request.closedAt
-              ? "INQUIRY_CLOSED"
-              : null,
+            : state === "EXPIRED"
+              ? "EXPIRED"
+              : c.request.closedAt
+                ? "INQUIRY_CLOSED"
+                : null,
         restaurantName: c.target.restaurantName,
         snapshot,
         organizerName: c.request.contactName,

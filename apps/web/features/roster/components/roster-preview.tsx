@@ -87,11 +87,19 @@ export function RosterPreview({
           const row = rows[index];
           const matches = existing.filter(
             (member) =>
+              member.id === row?.match ||
               normalizeName(member.name) === normalizeName(row?.name ?? ""),
           );
           const selectedExisting = matches.find(
             (member) => member.id === row?.match,
           );
+          const stale =
+            !!row?.match &&
+            row.match !== "new" &&
+            (!selectedExisting ||
+              selectedExisting.name !== row.name ||
+              (selectedExisting.phoneLast4 ?? "") !== row.phoneLast4 ||
+              (selectedExisting.label ?? "") !== row.label);
           const restoreDirect = () => {
             const direct = directValues.current.get(field.id);
             if (direct) {
@@ -168,7 +176,7 @@ export function RosterPreview({
                   />
                 </IconButton>
               </div>
-              {matches.length > 0 && (
+              {(matches.length > 0 || stale) && (
                 <div className="mt-2 space-y-1">
                   <label
                     htmlFor={`${field.id}-match`}
@@ -179,7 +187,7 @@ export function RosterPreview({
                   <select
                     id={`${field.id}-match`}
                     className="min-h-11 w-full rounded-control border border-border bg-surface px-3 text-caption"
-                    value={row.match}
+                    value={stale ? "" : row.match}
                     aria-invalid={!!error?.match}
                     aria-describedby={`${field.id}-error`}
                     onChange={(event) => {
@@ -197,6 +205,7 @@ export function RosterPreview({
                         shouldValidate: true,
                       });
                       if (match) {
+                        setValue(`members.${index}.name`, match.name);
                         setValue(
                           `members.${index}.phoneLast4`,
                           match.phoneLast4 ?? "",
@@ -225,7 +234,13 @@ export function RosterPreview({
                     ))}
                     <option value="new">새 동명이인으로 등록</option>
                   </select>
-                  {selectedExisting && (
+                  {stale && (
+                    <p role="alert" className="text-xs text-danger">
+                      선택한 구성원이 변경되거나 삭제됐어요. 최신 정보를 다시
+                      선택하거나 해당 행을 제외해 주세요.
+                    </p>
+                  )}
+                  {selectedExisting && !stale && (
                     <p className="text-xs text-muted">
                       이미 등록된 사람으로 확인했어요. 기존 정보는 바꾸지 않고
                       새로 추가하지 않아요.

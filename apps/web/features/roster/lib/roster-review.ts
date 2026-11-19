@@ -13,6 +13,23 @@ export function reviewRoster(rows: RosterRow[], existing: ExistingPerson[]) {
     const matches = existing.filter(
       (member) => normalizeName(member.name) === normalizeName(row.name),
     );
+    const selected = existing.find((member) => member.id === row.match);
+    if (
+      row.match &&
+      row.match !== "new" &&
+      (!selected ||
+        selected.name !== row.name ||
+        (selected.phoneLast4 ?? "") !== row.phoneLast4 ||
+        (selected.label ?? "") !== row.label)
+    ) {
+      issues.push({
+        index,
+        field: "match",
+        message:
+          "선택한 구성원이 변경되거나 삭제됐어요. 최신 정보를 다시 선택하거나 해당 행을 제외해 주세요.",
+      });
+      return;
+    }
     if (
       matches.length &&
       (!row.match ||

@@ -19,6 +19,7 @@ export type NotificationInput = {
   messages: {
     recipientKey: string;
     phone: string;
+    contactId?: string;
     text: string;
     isDemo: boolean;
   }[];
