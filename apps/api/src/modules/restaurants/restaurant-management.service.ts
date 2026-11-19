@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   restaurantIdentityKey,
   findDuplicateRestaurant,
@@ -41,6 +42,77 @@ export class RestaurantManagementService {
     private readonly geocoding: Geocoder,
     private readonly phones: PhoneVerificationService,
   ) {}
+  async hours(user: AuthUser, id: string) {
+    this.owner(user);
+    const db = await this.database.connect();
+    const r = await this.restaurants.assertOwned(user.id, id, db.manager);
+    return {
+      version: r.version,
+      representative: r.policies.hours,
+      holidays: r.policies.holidays,
+      hours: r.policies.weeklyHours ?? {
+        days: Array.from({ length: 7 }, () => ({
+          kind: "DEFAULT",
+          start: "09:00",
+          end: "18:00",
+          endDayOffset: 0,
+        })),
+        note: "",
+      },
+    };
+  }
+  async saveHours(
+    user: AuthUser,
+    id: string,
+    expectedVersion: number,
+    raw: unknown,
+  ) {
+    this.owner(user);
+    const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+    const parsed = z
+      .object({
+        days: z
+          .array(
+            z
+              .object({
+                kind: z.enum(["DEFAULT", "CLOSED", "OPEN"]),
+                start: time,
+                end: time,
+                endDayOffset: z.union([z.literal(0), z.literal(1)]),
+              })
+              .strict(),
+          )
+          .length(7),
+        note: z.string().max(500),
+      })
+      .strict()
+      .safeParse(raw);
+    if (
+      !parsed.success ||
+      parsed.data.days.some(
+        (d) =>
+          d.kind === "OPEN" &&
+          ((d.endDayOffset === 0 && d.end <= d.start) ||
+            (d.endDayOffset === 1 && d.end > d.start)),
+      )
+    )
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      const r = await this.restaurants.assertOwned(user.id, id, m, true);
+      if (r.version !== expectedVersion)
+        throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
+      r.policies = { ...r.policies, weeklyHours: parsed.data };
+      r.version++;
+      await m.save(r);
+      return {
+        version: r.version,
+        representative: r.policies.hours,
+        holidays: r.policies.holidays,
+        hours: parsed.data,
+      };
+    });
+  }
   private owner(user: AuthUser) {
     if (user.accountType !== "owner")
       throw new DomainHttpException("OWNER_REQUIRED");

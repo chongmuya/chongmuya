@@ -1,3 +1,4 @@
+import { NotificationsService } from "../notifications/notifications.service.js";
 import type { SettlementDetailDto } from "./dto/response/settlement.response.dto.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
@@ -59,6 +60,7 @@ const depositConflicts = (
 @Injectable()
 export class SettlementsService {
   constructor(
+    private readonly notifications: NotificationsService,
     private readonly database: DatabaseService,
     private readonly events: EventsService,
     private readonly reservations: ReservationFactsService,
@@ -148,7 +150,7 @@ export class SettlementsService {
       digest = createHash("sha256").update(JSON.stringify(c)).digest("hex");
     const db = await this.database.connect();
     await db.transaction(async (m) => {
-      await this.events.assertOwned(owner, event, m, true);
+      const eventInfo = await this.events.assertOwned(owner, event, m, true);
       const old = await m.findOneBy(SettlementCommand, {
         eventId: event,
         requestKey: c.requestKey,
@@ -161,6 +163,7 @@ export class SettlementsService {
       const s = await this.state(event, m);
       if (s.version !== c.expectedVersion)
         throw new DomainHttpException("SETTLEMENT_CONFLICT");
+      const beforeSummary = calculate(s);
       await this.apply(owner, event, s, c, m);
       try {
         calculate(s);
@@ -168,6 +171,29 @@ export class SettlementsService {
         throw invalid();
       }
       s.version++;
+      const summary = calculate(s);
+      const completed =
+        summary.status === "COMPLETE" && beforeSummary.status !== "COMPLETE";
+      if (completed || (c.action === "NOTICE" && summary.unconfirmed > 0))
+        await this.notifications.record(m, {
+          eventKey: `settlement:${event}:${c.requestKey}`,
+          kind: completed ? "SETTLEMENT_COMPLETED" : "SETTLEMENT_REQUIRED",
+          category: "SETTLEMENT",
+          eventId: event,
+          requestId: c.requestKey,
+          revision: s.version,
+          accounts: [
+            {
+              id: owner,
+              title: completed ? "정산이 완료됐어요" : "정산 확인이 필요해요",
+              summary: completed
+                ? `${eventInfo.name} · 현재 정산 내역의 입금 확인이 완료됐어요.`
+                : `${eventInfo.name} · 미확인 ${summary.unconfirmed}명 · 정산 내역을 확인해 주세요.`,
+              destination: `/events?event=${event}&view=settlement`,
+            },
+          ],
+          messages: [],
+        });
       await m.save(m.create(EventSettlement, { eventId: event, state: s }));
       await m.save(
         m.create(SettlementCommand, {

@@ -1,11 +1,17 @@
 export type NotificationInput = {
   eventKey: string;
+  category?: "RESERVATION" | "SETTLEMENT" | "EVENT";
   kind:
     | "RESERVATION_UPDATED"
     | "REPLY_RECEIVED"
     | "STORE_SELECTED"
     | "CANDIDATE_CLOSED"
-    | "PROPOSAL_EXPIRED";
+    | "PROPOSAL_EXPIRED"
+    | "SCHEDULE_REMINDER"
+    | "MEMBERS_ADDED"
+    | "FILE_REGISTERED"
+    | "SETTLEMENT_REQUIRED"
+    | "SETTLEMENT_COMPLETED";
   eventId: string;
   requestId: string;
   reservationId?: string;

@@ -79,6 +79,7 @@ export function savePolicies(
   return {
     ...next,
     sourceDescriptions: before.sourceDescriptions,
+    ...(before.weeklyHours ? { weeklyHours: before.weeklyHours } : {}),
     descriptionOverrides: [...replaced],
   };
 }
@@ -143,5 +144,17 @@ export function policyDescriptions(p: StoredRestaurantPolicies) {
   const replaced = p.descriptionOverrides;
   for (const key of descriptionKeys)
     if (!replaced.includes(key)) descriptions[key] = p.sourceDescriptions[key];
+  if (p.weeklyHours) {
+    const fallback = descriptions.operatingHours;
+    descriptions.operatingHours =
+      p.weeklyHours.days
+        .map(
+          (d, i) =>
+            `${["일", "월", "화", "수", "목", "금", "토"][i]}: ${d.kind === "DEFAULT" ? "대표시간 적용" : d.kind === "CLOSED" ? "휴무" : `${d.start}~${d.endDayOffset ? "익일 " : ""}${d.end}`}`,
+        )
+        .join(" · ") +
+      ` / 대표시간: ${fallback ?? "확인 필요"}` +
+      (p.weeklyHours.note ? ` / 비정기 안내: ${p.weeklyHours.note}` : "");
+  }
   return descriptions;
 }

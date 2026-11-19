@@ -1,4 +1,11 @@
-import { Column, Entity, ForeignKey, Index, PrimaryColumn } from "typeorm";
+import {
+  Column,
+  Entity,
+  ForeignKey,
+  Index,
+  PrimaryColumn,
+  Generated,
+} from "typeorm";
 @Entity("notification_facts")
 export class NotificationFact {
   @PrimaryColumn("varchar", {
@@ -20,6 +27,7 @@ export class NotificationFact {
   @Column({ type: "timestamptz", name: "occurred_at" }) occurredAt!: Date;
 }
 @Entity("notifications")
+@Index("notifications_account_sequence", { synchronize: false })
 @Index("notifications_fact_recipient", ["eventKey", "accountId"], {
   unique: true,
 })
@@ -34,6 +42,13 @@ export class Notification {
   @ForeignKey("accounts", "id", { name: "notifications_account_fkey" })
   @Column({ type: "uuid", name: "account_id" })
   accountId!: string;
+  @Column({ type: "bigint", unique: true })
+  @Generated("increment")
+  sequence!: string;
+  @Column({ type: "timestamptz", name: "created_at", default: () => "now()" })
+  createdAt!: Date;
+  @Column({ type: "timestamptz", name: "read_at", nullable: true })
+  readAt!: Date | null;
   @Column({ type: "varchar", length: 100 }) title!: string;
   @Column({ type: "varchar", length: 300 }) summary!: string;
   @Column({ type: "varchar", length: 200 }) destination!: string;
@@ -101,4 +116,17 @@ export class NotificationMessage {
     key: string;
     at: string;
   }[];
+}
+
+@Entity("notification_preferences")
+export class NotificationPreference {
+  @PrimaryColumn("uuid", {
+    name: "account_id",
+    primaryKeyConstraintName: "notification_preferences_pkey",
+  })
+  accountId!: string;
+  @Column({ type: "boolean", default: true }) reservation!: boolean;
+  @Column({ type: "boolean", default: true }) settlement!: boolean;
+  @Column({ type: "boolean", default: true }) event!: boolean;
+  @Column({ type: "integer", default: 1 }) version!: number;
 }

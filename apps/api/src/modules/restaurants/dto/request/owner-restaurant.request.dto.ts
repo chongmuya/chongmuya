@@ -37,3 +37,8 @@ export class MenuSaveInput {
   @IsInt() @Min(1) version!: number;
   @IsObject() menu!: Record<string, unknown>;
 }
+
+export class HoursInput {
+  @IsInt() @Min(1) expectedVersion!: number;
+  @IsObject() hours!: Record<string, unknown>;
+}

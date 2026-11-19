@@ -33,5 +33,11 @@ export class Event {
   @Column({ type: "varchar", length: 100 }) name!: string;
   @Column({ type: "timestamptz", name: "scheduled_at", nullable: true })
   scheduledAt!: Date | null;
+  @Column({
+    type: "timestamptz",
+    name: "schedule_updated_at",
+    default: () => "now()",
+  })
+  scheduleUpdatedAt!: Date;
   @Column({ type: "timestamptz", name: "created_at" }) createdAt!: Date;
 }

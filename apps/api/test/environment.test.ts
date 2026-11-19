@@ -84,6 +84,7 @@ test("configuration rejects missing/invalid required values without exposing val
       UNRELATED_VARIABLE: "allowed",
     }),
     {
+      remindersEnabled: false,
       filesBucket: undefined,
       filesRegion: "ap-northeast-2",
       filesMaxCount: 100,

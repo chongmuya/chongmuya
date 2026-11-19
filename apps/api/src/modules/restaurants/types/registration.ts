@@ -62,6 +62,15 @@ export type PolicyDescriptionKey =
   | "cancellationPolicy";
 // Server-owned provenance inside the existing JSONB; never accepted from registration inputs.
 export type StoredRestaurantPolicies = RestaurantPolicies & {
+  weeklyHours?: {
+    days: {
+      kind: "DEFAULT" | "CLOSED" | "OPEN";
+      start: string;
+      end: string;
+      endDayOffset: 0 | 1;
+    }[];
+    note: string;
+  };
   descriptionOverrides: PolicyDescriptionKey[];
   sourceDescriptions: Record<PolicyDescriptionKey, string | null>;
 };

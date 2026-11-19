@@ -7,6 +7,7 @@ import {
   NotificationFact,
   Notification,
   NotificationMessage,
+  NotificationPreference,
 } from "./entities/notification.entity.js";
 import type {
   NotificationInput,
@@ -17,20 +18,34 @@ export class NotificationsService {
   constructor(private readonly database: DatabaseService) {}
   async record(m: EntityManager, input: NotificationInput) {
     const { accounts, messages, ...fact } = input;
-    await m
+    // Sorted recipient locks serialize settings, recording, and inbox snapshots.
+    for (const id of [...new Set(accounts.map((a) => a.id))].sort())
+      await this.lockAccount(m, id);
+    const inserted = await m
       .createQueryBuilder()
       .insert()
       .into(NotificationFact)
       .values({ ...fact, occurredAt: new Date() })
       .orIgnore()
+      .returning("event_key")
       .execute();
-    if (accounts.length)
+    if (!(inserted.raw as unknown[]).length) return;
+    const recipients = [];
+    for (const account of accounts) {
+      const preferences = await m.findOneBy(NotificationPreference, {
+        accountId: account.id,
+      });
+      const category = (input.category ?? "RESERVATION").toLowerCase() as
+        "reservation" | "settlement" | "event";
+      if (preferences?.[category] !== false) recipients.push(account);
+    }
+    if (recipients.length)
       await m
         .createQueryBuilder()
         .insert()
         .into(Notification)
         .values(
-          accounts.map((a) => ({
+          recipients.map((a) => ({
             id: randomUUID(),
             eventKey: input.eventKey,
             accountId: a.id,
@@ -60,6 +75,106 @@ export class NotificationsService {
         )
         .orIgnore()
         .execute();
+  }
+  async lockAccount(m: EntityManager, id: string) {
+    await m.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+      `inbox:${id}`,
+    ]);
+  }
+  private position(value: string) {
+    if (!/^\d{1,19}$/.test(value) || BigInt(value) > 9223372036854775807n)
+      throw new DomainHttpException("VALIDATION_FAILED");
+  }
+  async inbox(accountId: string, before?: string, countOnly = false) {
+    if (before) this.position(before);
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      await this.lockAccount(m, accountId);
+      const base = m
+        .createQueryBuilder(Notification, "n")
+        .where("n.accountId = :accountId", { accountId });
+      const unread = await base.clone().andWhere("n.readAt IS NULL").getCount();
+      const newest = await base.clone().orderBy("n.sequence", "DESC").getOne();
+      if (countOnly)
+        return {
+          unread,
+          through: newest?.sequence ?? "0",
+          items: [],
+          next: null,
+        };
+      const query = base.clone().orderBy("n.sequence", "DESC").take(31);
+      if (before) query.andWhere("n.sequence < :before", { before });
+      const rows = await query.getMany();
+      const items = rows.slice(0, 30);
+      const facts = items.length
+        ? await m.findBy(NotificationFact, {
+            eventKey: In(items.map((r) => r.eventKey)),
+          })
+        : [];
+      return {
+        items: items.map((row) => ({
+          ...row,
+          fact: facts.find((f) => f.eventKey === row.eventKey),
+        })),
+        unread,
+        through: newest?.sequence ?? "0",
+        next: rows.length > 30 ? items.at(-1)!.sequence : null,
+      };
+    });
+  }
+  async read(accountId: string, input: { id?: string; through?: string }) {
+    if (input.through) this.position(input.through);
+    const db = await this.database.connect();
+    await db.transaction(async (m) => {
+      await this.lockAccount(m, accountId);
+      const query = m
+        .createQueryBuilder()
+        .update(Notification)
+        .set({ readAt: new Date() })
+        .where("account_id = :accountId AND read_at IS NULL", { accountId });
+      if (input.id) query.andWhere("id = :id", { id: input.id });
+      else if (input.through)
+        query.andWhere("sequence <= :through", { through: input.through });
+      else throw new DomainHttpException("VALIDATION_FAILED");
+      await query.execute();
+    });
+    return { ok: true };
+  }
+  async preferences(accountId: string) {
+    const db = await this.database.connect();
+    return (
+      (await db.manager.findOneBy(NotificationPreference, { accountId })) ?? {
+        accountId,
+        reservation: true,
+        settlement: true,
+        event: true,
+        version: 0,
+      }
+    );
+  }
+  async savePreferences(
+    accountId: string,
+    input: {
+      reservation: boolean;
+      settlement: boolean;
+      event: boolean;
+      expectedVersion: number;
+    },
+  ) {
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      await this.lockAccount(m, accountId);
+      const current = await m.findOneBy(NotificationPreference, { accountId });
+      if ((current?.version ?? 0) !== input.expectedVersion)
+        throw new DomainHttpException("WORKSPACE_VERSION_CONFLICT");
+      return m.save(NotificationPreference, {
+        accountId,
+        reservation: input.reservation,
+        settlement: input.settlement,
+        event: input.event,
+        version: input.expectedVersion + 1,
+      });
+    });
   }
   async messages(requestId: string, m: EntityManager) {
     const facts = await m.findBy(NotificationFact, { requestId });

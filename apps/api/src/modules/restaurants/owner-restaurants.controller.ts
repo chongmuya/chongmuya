@@ -15,6 +15,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
 import { RestaurantManagementService } from "./restaurant-management.service.js";
 import {
+  HoursInput,
   AddressSearchInput,
   ContactCheckInput,
   ContactVerifyInput,
@@ -27,6 +28,24 @@ import {
 @UseGuards(AccessGuard)
 export class OwnerRestaurantsController {
   constructor(private readonly management: RestaurantManagementService) {}
+  @Get("restaurants/:id/hours") hours(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return this.management.hours(user, id);
+  }
+  @Put("restaurants/:id/hours") saveHours(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() input: HoursInput,
+  ) {
+    return this.management.saveHours(
+      user,
+      id,
+      input.expectedVersion,
+      input.hours,
+    );
+  }
   @Get("context") context(@CurrentUser() user: AuthUser) {
     return this.management.context(user);
   }

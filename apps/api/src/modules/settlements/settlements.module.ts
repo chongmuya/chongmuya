@@ -1,3 +1,4 @@
+import { NotificationsModule } from "../notifications/notifications.module.js";
 import { ConfigModule } from "../../config/config.module.js";
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../../database/database.module.js";
@@ -9,6 +10,7 @@ import { SettlementsService } from "./settlements.service.js";
 import { SettlementsController } from "./settlements.controller.js";
 @Module({
   imports: [
+    NotificationsModule,
     DatabaseModule,
     ConfigModule,
     AuthModule,

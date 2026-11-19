@@ -32,6 +32,57 @@ export class EventsService {
     private readonly groups: GroupsService,
   ) {}
 
+  async reminderCandidates(now: Date, m: EntityManager, after?: string) {
+    const q = m
+      .createQueryBuilder(Event, "e")
+      .where("e.scheduledAt > :now AND e.scheduledAt < :until", {
+        now,
+        until: new Date(now.getTime() + 172800000),
+      });
+    if (after) q.andWhere("e.id > :after", { after });
+    return (await q.orderBy("e.id", "ASC").take(100).getMany()).map(
+      (e) => e.id,
+    );
+  }
+  async reminderCurrent(id: string, m: EntityManager) {
+    const e = await m.findOne(Event, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    return e
+      ? {
+          id: e.id,
+          ownerId: e.ownerId,
+          title: e.name,
+          version: e.version,
+          startsAt: e.scheduledAt,
+          updatedAt: e.scheduleUpdatedAt,
+        }
+      : null;
+  }
+  async calendar(
+    ownerId: string,
+    groupId: string | undefined,
+    from: Date,
+    to: Date,
+    m: EntityManager,
+  ) {
+    if (groupId) await this.groups.assertOwned(ownerId, groupId, m);
+    return (
+      await m
+        .createQueryBuilder(Event, "e")
+        .where(
+          "e.ownerId = :ownerId AND e.scheduledAt >= :from AND e.scheduledAt < :to",
+          { ownerId, from, to },
+        )
+        .andWhere(groupId ? "e.groupId = :groupId" : "e.groupId IS NULL", {
+          groupId,
+        })
+        .orderBy("e.scheduledAt", "ASC")
+        .addOrderBy("e.id", "ASC")
+        .getMany()
+    ).map(eventDto);
+  }
   async settlementFacts(ownerId: string, id: string, m: EntityManager) {
     await this.assertOwned(ownerId, id, m);
     const participants = await m.find(EventParticipant, {
@@ -158,6 +209,7 @@ export class EventsService {
       event.scheduledAt = date;
       event.reservationScheduleLocked = locked;
       event.version++;
+      event.scheduleUpdatedAt = new Date();
       await manager.save(event);
     }
   }
@@ -280,6 +332,7 @@ export class EventsService {
         event.scheduledAt =
           input.scheduledAt === null ? null : new Date(input.scheduledAt);
       event.version += 1;
+      event.scheduleUpdatedAt = new Date();
       return eventDto(await repository.save(event));
     });
   }

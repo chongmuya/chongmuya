@@ -1,3 +1,4 @@
+import { NotificationsModule } from "../notifications/notifications.module.js";
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../../database/database.module.js";
 import { ConfigModule } from "../../config/config.module.js";
@@ -11,7 +12,13 @@ import { AttendanceController } from "./attendance.controller.js";
 import { PublicAttendanceController } from "./public-attendance.controller.js";
 
 @Module({
-  imports: [DatabaseModule, ConfigModule, AuthModule, GroupsModule],
+  imports: [
+    NotificationsModule,
+    DatabaseModule,
+    ConfigModule,
+    AuthModule,
+    GroupsModule,
+  ],
   controllers: [
     EventsController,
     AttendanceController,
