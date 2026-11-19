@@ -44,7 +44,7 @@ Access와 Refresh는 API 호스트의 host-only HttpOnly 쿠키다. 웹과 API�
 
 `POST /api/v1/groups`는 `{ name, groupType?, creationKey?, members?: [{ name, phoneLast4? }], duplicatesConfirmed? }`를 받는다. 웹은 화면의 동일한 등록에 UUID creationKey를 재사용한다. 모임·명단을 같은 트랜잭션에 저장하고 소유자/creationKey 고유 제약으로 동시 재시도를 한 번만 생성한다. 이미 성공한 키로 다른 입력을 보내면 409다. 응답을 받지 못한 경우에는 같은 입력으로 재시도하거나 홈에서 결과를 확인한다. 단계 간 뒤로 가기는 입력·미리보기 수정을 유지한다. 화면 자체를 떠나거나 새로고침하면 저장하지 않은 입력은 사라지며 브라우저 이탈 경고를 제공한다. 개인정보를 브라우저 영구 저장소에 저장하지 않는다.
 
-`GET /api/v1/groups`와 상세 응답은 groupType/memberCount를 포함한다. `GET /api/v1/groups/:id/members`는 인증된 소유자만 조회할 수 있고 다른 계정에는 404를 반환한다. 명단 추가는 회원가입·초대·운영 권한 부여가 아니며 행사 명단에 복사하지 않는다. 홈은 실제 계정·모임·행사를 표시하고 모임이 없으면 ‘내 행사’로 안내한다. 저장된 명단은 선택한 모임의 마이페이지에서 확인한다. 캘린더·모임 기록·매장 등록은 준비 중으로 표시한다.
+`GET /api/v1/groups`와 상세 응답은 groupType/memberCount를 포함한다. `GET /api/v1/groups/:id/members`는 인증된 소유자만 조회할 수 있고 다른 계정에는 404를 반환한다. 기본 명단에 구성원을 추가해도 계정이나 조회 권한은 생기지 않는다. 행사 소유자가 모임 행사에서 ‘모임 명단 가져오기’를 선택하면 행사 명단에 복사한다. 홈 상단의 모임 선택창에는 모임 없는 단기 행사도 함께 표시하며, 행사 이름을 선택하면 해당 상세로 이동한다. 저장된 명단은 선택한 모임의 마이페이지에서 확인한다. 캘린더·모임 기록·매장 등록은 준비 중으로 표시한다.
 
 `1795046400000-GroupRoster`는 기존 모임에 nullable 유형·재시도 식별자/해시를 추가하고 group_members를 생성한다. 기존 계정·모임·행사 ID와 데이터는 보존한다. API 빌드 → 대상 DB 확인 → `pnpm --filter @chongmuya/api db:migration:show` → `pnpm --filter @chongmuya/api db:migration:run` → 새 API/웹 실행 순서다. 새 환경변수는 없다. 명단·유형·재시도 데이터가 있으면 down은 거부하며 데이터 보존을 위한 후속 migration으로 수정한다.
 
@@ -72,7 +72,7 @@ Figma의 명단 필수처럼 보이는 화면에는 건너뛰기를 추가하고
 
 `OctomoService`는 [Octomo 공식 API](https://octomo.octoverse.kr/api-docs/) 통신만, `PhoneVerificationService`는 가입 목적의 발급·기한·횟수·소비 규칙을 담당한다. 서버만 OCTOMO_API_KEY를 사용한다. POST `/signup/context`가 32바이트 난수 HttpOnly/SameSite=Strict 요청자 쿠키를 설정하며 DB에는 해시만 남긴다. production 이름은 `__Host-signup-requester`, 로컬은 `signup-requester`이고 30분 유지한다. 쿠키 설정도 CSRF 검사를 통과해야 한다. 유효한 기존 쿠키는 교체하지 않는다. 두 인증이 동시에 시작할 때 SessionClient의 단일 요청과 탭 간 잠금으로 쿠키 초기화를 공유한다.
 
-인증 요청마다 새 UUID와 AUTH_SECRET 기반 HMAC 난수 문구를 만들고 요청자·번호·signup 용도에 묶는다. 문구 원문은 DB에 저장하지 않는다. 재발급은 같은 요청자의 이전 ID를 교체한다. 기한은 발급부터 5분, 재발급 간격은 60초다. 발급 시도는 15분 동안 요청자/번호 각 5회, 직접 연결 IP 30회로 제한한다. 결과 확인은 10초 간격, 요청당 최대 12회이고 자동 무한 polling을 하지 않는다.
+인증 요청마다 새 UUID와 AUTH_SECRET 기반 HMAC 난수 문구를 만들고 요청자·번호·signup 용도에 묶는다. 문구 원문은 DB에 저장하지 않는다. 재발급은 같은 요청자의 이전 ID를 교체한다. 기한은 발급부터 5분, 재발급 간격은 60초다. 발급 시도는 15분 동안 요청자/번호 각 5회, 요청 IP 30회로 제한한다. 결과 확인은 10초 간격, 요청당 최대 12회이고 자동 무한 polling을 하지 않는다.
 
 모바일에서는 수신 번호 16663538과 본문이 채워진 문자 앱을 열고 직접 전송한다. 데스크톱은 인증 요청 직후 Octomo가 생성한 QR을 바로 보여주며 휴대폰 카메라로 스캔한다. 터치 기기에서는 문자 앱 열기를 우선 표시한다. 번호·본문은 ‘번호·문구 직접 확인’을 펼쳐 확인하고 입력할 수도 있다. ‘인증 결과 확인’을 누르면 Nest가 Octomo의 `/message/exists`에 mobileNum/text/withinMinutes=5를 보내 수신 여부를 확인한다. 클라이언트의 verified 값은 받지 않는다. Octomo는 수신 시각을 반환하지 않으므로 phoneVerifiedAt은 서버가 수신 사실을 처음 확인한 시각이다.
 
@@ -90,20 +90,32 @@ Figma의 명단 필수처럼 보이는 화면에는 건너뛰기를 추가하고
 
 재사용은 엄격하게 거부한다. 같은 Refresh를 직접 동시에 보내면 하나만 성공하고 재사용 요청이 세션을 폐기한다. 정상 웹은 single-flight와 탭 간 Web Locks로 이를 예방한다. Web Locks가 없는 브라우저에서는 탭 내 중복 방지만 가능하다. 갱신 결과가 네트워크에서 유실된 뒤 옛 토큰을 다시 쓰는 경우에도 세션 폐기로 이어질 수 있어 재로그인이 필요하다. 일시 장애 자체를 클라이언트가 세션 무효화로 해석하지는 않는다.
 
-시도 제한은 DB upsert로 15분 고정 창 동안 이메일당 10회, 직접 연결 IP당 50회(가입·로그인 합산)를 적용한다. 알 수 없는 계정도 동일 비용의 비밀번호 연산을 수행한다. `trust proxy`를 켜지 않아 임의 X-Forwarded-For로 제한을 우회하지 못한다. 실제 프록시 배포 시 신뢰할 프록시 목록과 IP 집계를 확정해야 한다. 브라우저는 API에 직접 요청하며 운영 CDN/LB가 있다면 그 경로에 맞춰 신뢰할 프록시와 IP 집계를 확정해야 한다.
+시도 제한은 DB upsert로 15분 고정 창 동안 이메일당 10회, 요청 IP당 50회(가입·로그인 합산)를 적용한다. 알 수 없는 계정도 동일 비용의 비밀번호 연산을 수행한다. IP 기준은 Express의 `request.ip`다.
 
 만료 세션과 사용된 Refresh 이력은 만료 전 삭제하지 않는다. 운영 전 만료 세션(자식 토큰 cascade)과 오래된 시도 제한 행을 정리하는 보존·청소 작업을 추가해야 한다. 세션 정리 작업은 유효한 Refresh 재사용 감지 이력을 지우면 안 된다.
 
 ### 배포 전 IP 제한 설정
 
-배포 경로가 확정되지 않았으므로 `trust proxy`는 기본 false를 유지한다. API 앞에 CDN/LB가 있으면 그 소켓 IP로 집계되어 사용자들이 IP 제한을 공유할 수 있다. 헤더를 그대로 읽거나 `trust proxy: true`를 켜서 우회하지 않는다. 배포를 확정할 때 다음 항목을 함께 검증한다.
+`TRUST_PROXY_HOPS`는 모든 환경에서 기본 `0`이다. 이때 Express는 소켓 상대 주소를 사용한다. 운영에서는 `https://chongmuya.com`의 브라우저가 `https://api.chongmuya.com`을 호출하고, EC2 호스트의 Nginx가 Docker 내부 Nest API로 전달한다. Cloudflare는 DNS only이며 Docker 포트 전달을 포함해 이 경로의 HTTP 프록시는 Nginx 한 단계다.
 
-1. 클라이언트 → API CDN/LB → Nest의 실제 경로, 우회 경로, 각 홉의 주소와 변경 범위를 확정한다. Nest 직접 접근은 신뢰한 프록시로 제한한다.
-2. 외부 경계에서 클라이언트가 임의로 보낸 X-Forwarded-For/Host/Proto를 제거·덮어쓰고, API 앞의 각 홉이 검증된 체인을 어떻게 전달하는지 확인한다. 임의 X-Forwarded-For를 붙여도 사용자 IP를 바꿀 수 없어야 한다.
-3. Nest에서 신뢰할 주소/CIDR 범위를 최소한으로 지정하는 안을 배포 구성에 맞게 선택한다. 경로 길이가 달라질 수 있으면 고정 홉 수나 모든 프록시 신뢰를 사용하지 않는다. 실제 경로에서 서로 다른 클라이언트가 서로 다른 제한 키를 갖는지 검증한다.
-4. 프록시 우회·헤더 위조·IPv4/IPv6·여러 API 인스턴스·공유 NAT 환경을 검증하고 IP 제한 수치를 조정한다. 이메일 제한과 DB 원자 집계는 유지한다. 이 설정은 실제 배포 구성과 함께 검증한다.
+1. Nest는 컨테이너의 네트워크 인터페이스에서 3001을 수신한다. Docker는 호스트에 `127.0.0.1:3001:3001`로만 공개하고 EC2 보안 그룹에서 외부 3001 인바운드를 차단한다. 같은 Docker 네트워크의 컨테이너는 API에 직접 접속할 수 있으므로 신뢰하는 컨테이너만 연결한다.
+2. Nginx에서 `api.chongmuya.com`에 대해 아래 설정을 적용하고, 다른 Host의 요청은 이 upstream으로 라우팅하지 않는다. Nginx가 소켓 상대 주소, 수락한 호스트와 접속 스킴으로 전달 헤더를 덮어쓴다. 클라이언트의 헤더를 그대로 넘기거나 `$proxy_add_x_forwarded_for`로 체인을 이어 붙이지 않는다.
 
-근거: [Express 5 프록시 설정](https://expressjs.com/en/5x/guide/behind-proxies/). 현재 통합 테스트는 위조 X-Forwarded-For가 제한 IP로 채택되지 않는 것까지 확인한다.
+   ```nginx
+   location / {
+       proxy_pass http://127.0.0.1:3001;
+       proxy_set_header Host $host;
+       proxy_set_header X-Forwarded-For $remote_addr;
+       proxy_set_header X-Forwarded-Host $host;
+       proxy_set_header X-Forwarded-Proto $scheme;
+   }
+   ```
+
+3. API에 `TRUST_PROXY_HOPS=1`을 명시한다. 숫자 한 단계 신뢰는 직접 연결한 상대가 전달한 주소를 채택하므로, 프록시 인증과 우회 접근 차단은 네트워크 구성에 의존한다. **외부 직접 접근 차단과 Nginx의 헤더 덮어쓰기**가 모두 필요하다. 구 `TRUSTED_PROXY_CIDRS`는 실행 환경과 환경변수 파일에서 제거한다.
+
+첫 배포에서는 외부 네트워크에서 호스트의 3001 포트가 차단되는지 확인한다. 서로 다른 공인 IP에서 HTTPS로 API를 호출해 실제 사용자 IP별로 요청 제한이 집계되고, 클라이언트가 전달 헤더를 보내도 결과가 바뀌지 않는지 확인한다. 저장소의 로컬 HTTP 프록시 테스트는 이 배포 확인과 별개다. Cloudflare 프록시를 켜거나 CDN·ALB를 추가하면 경로와 헤더 처리, 신뢰 설정을 다시 검토한다.
+
+공식 문서는 [Express 프록시 설정](https://expressjs.com/en/guide/behind-proxies/), [NestJS 요청 제한](https://docs.nestjs.com/security/rate-limiting), [Docker 포트 공개](https://docs.docker.com/engine/network/port-publishing/)를 참고한다.
 
 ## 프론트 생명주기
 
@@ -200,7 +212,7 @@ API 전용 openid-client 6.9.0을 사용한다. 고정 issuer `https://kauth.kak
 
 - `/api/v1/groups`는 모임 소유권, `/api/v1/events`는 행사 자체의 소유권으로 조회·수정 범위를 제한한다. 상세에 groupId를 요구하지 않는다. 타인 자원과 존재하지 않는 자원은 같은 404다.
 - 생성의 ownerId는 인증 계정에서 정한다. groupId를 지정하면 모임 소유권도 확인한다. 일반 행사 PATCH로 ownerId·groupId를 바꾸지 못한다.
-- `/events`는 전체 내 행사, `/events?event=<id>`는 개인 상세, `/events?group=<id>`는 모임별 내 행사다. 모임 없음과 행사 없음은 정상 상태이며 조회 실패와 구분한다. 모임 관리는 `/mypage?view=groups`에서 선택한다.
+- `/events`는 개인 행사 생성, `/events?group=<id>`는 모임 행사 생성, `/events?event=<id>`는 행사 상세 화면이다. 행사 목록은 홈에 표시한다. 모임 없음과 행사 없음은 정상 상태이며 조회 실패와 구분한다. 모임 관리는 `/mypage?view=groups`에서 선택한다.
 - 비로그인 개인 화면의 로그인 링크는 `/auth?next=<내부 경로>`를 사용한다. safeReturnPath는 지원하는 페이지와 유효한 UUID query만 허용한다. 외부 URL·인증/API 경로는 `/events`로 대체하며 로그인 후 원래 요청한 화면으로 돌아간다. 클라이언트의 화면 보호는 API 권한 검사를 대체하지 않는다.
 - 사용자 Query key는 `user / accountId` 범위를 유지하고 상세는 `events / detail / eventId`로 식별한다. 행사 생성은 내 행사·해당 모임 목록과 상세를 갱신한다. 계정 전환·로그아웃·화면 이탈 후 늦은 응답을 반영하지 않는다.
 

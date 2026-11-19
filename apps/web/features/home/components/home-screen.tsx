@@ -13,7 +13,7 @@ import {
 } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
 import { GroupSwitcher, useGroups } from "@/features/groups/client";
-import { EventSummary } from "@/features/events/client";
+import { EventSummary, useEvents } from "@/features/events/client";
 import { Button, buttonStyles } from "@/shared/ui/button";
 
 import { ErrorState, LoadingState } from "@/shared/ui/states";
@@ -135,6 +135,12 @@ function AccountHome({
     (!requested || !!selected);
   const complete = isFirstSetupComplete(account);
   const owner = account.accountType === "owner";
+  const events = useEvents(
+    account.id,
+    request,
+    dialog === "groups" && complete && !owner,
+  );
+  const personalEvents = events.data?.filter((event) => event.groupId === null);
   const eventPath = selected ? `/events?group=${selected.id}` : "/events";
   const createPath = complete ? "/groups/new" : firstSetupPath("/groups/new");
   return (
@@ -146,17 +152,23 @@ function AccountHome({
           <Button
             className="min-w-0 border-0 px-1 text-left font-medium"
             variant="outline"
+            aria-label={complete ? "모임·행사 선택" : "모임 만들기"}
+            aria-haspopup={complete ? "dialog" : undefined}
+            aria-expanded={complete ? dialog === "groups" : undefined}
             onClick={() =>
-              groups.data?.length
-                ? setDialog("groups")
-                : router.push(createPath)
+              complete ? setDialog("groups") : router.push(createPath)
             }
           >
             <span className="truncate">
-              {selected?.name ?? (personal ? "개인 행사" : "모임 만들기")}
+              {selected?.name ??
+                (personal
+                  ? "개인 행사"
+                  : complete
+                    ? "모임·행사 선택"
+                    : "모임 만들기")}
             </span>
             <span aria-hidden="true" className="ml-2 text-placeholder">
-              {groups.data?.length ? "⌄" : "＋"}
+              {complete ? "⌄" : "＋"}
             </span>
           </Button>
         )}
@@ -258,12 +270,51 @@ function AccountHome({
       )}
       {dialog === "groups" && (
         <GroupSwitcher
-          groups={groups.data ?? []}
+          groups={isAccessError(groups.error) ? [] : (groups.data ?? [])}
           selected={selected?.id}
           view="home"
           createPath={createPath}
           onClose={() => setDialog(null)}
-        />
+        >
+          {groups.isError ? (
+            <li>
+              <ErrorState retry={() => void groups.refetch()}>
+                모임을 불러오지 못했어요.
+              </ErrorState>
+            </li>
+          ) : !groups.data ? (
+            <li>
+              <LoadingState>모임 불러오는 중…</LoadingState>
+            </li>
+          ) : null}
+          {!isAccessError(events.error) &&
+            personalEvents?.map((event) => (
+              <li key={event.id}>
+                <Link
+                  href={`/events?event=${event.id}`}
+                  onClick={() => setDialog(null)}
+                  className={buttonStyles({
+                    variant: "outline",
+                    className: "w-full justify-between gap-3",
+                  })}
+                >
+                  <span className="truncate">{event.name}</span>
+                  <span className="shrink-0 text-xs">단기 행사</span>
+                </Link>
+              </li>
+            ))}
+          {events.isError ? (
+            <li>
+              <ErrorState retry={() => void events.refetch()}>
+                단기 행사를 불러오지 못했어요.
+              </ErrorState>
+            </li>
+          ) : !events.data ? (
+            <li>
+              <LoadingState>단기 행사 불러오는 중…</LoadingState>
+            </li>
+          ) : null}
+        </GroupSwitcher>
       )}
     </main>
   );

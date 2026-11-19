@@ -30,7 +30,7 @@ class ProbeDto {
 @Controller("test")
 class ProbeController {
   @Get("ip") ip(@Req() req: Request) {
-    return { ip: req.ip };
+    return { ip: req.ip, hostname: req.hostname, protocol: req.protocol };
   }
   @Post("validate")
   validate(@Body() body: ProbeDto) {

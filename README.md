@@ -1,6 +1,6 @@
 # 총무야 (chongmuya)
 
-총무야는 개인 행사와 모임을 관리하는 웹앱입니다. 이메일 가입·로그인, 모임 관리, 개인·모임 행사 생성 및 참석 관리을 제공합니다. 행사는 생성한 계정이 소유하며 모임이나 예약 없이 이용할 수 있습니다.
+총무야는 개인 행사와 모임을 관리하는 웹앱입니다. 이메일 가입·로그인, 모임 관리, 개인·모임 행사 생성 및 참석 관리를 제공합니다. 행사는 생성한 계정이 소유하며 모임이나 예약 없이 이용할 수 있습니다.
 
 ## 개발 환경
 
@@ -38,13 +38,16 @@ install·build·서버 시작은 migration을 자동 적용하지 않습니다. 
 | <http://localhost:3000>        | 비로그인 공개 홈                                         |
 | <http://localhost:3000/start>  | 시작 화면: 가입·로그인·공개 홈 선택                      |
 | <http://localhost:3000/auth>   | 이메일·카카오 로그인 (`?mode=signup`은 새 가입으로 이동) |
-| <http://localhost:3000/events> | 로그인한 계정의 전체 행사·개인 행사 생성                 |
+| <http://localhost:3000/events> | 로그인한 계정의 개인 행사 생성                           |
 | <http://localhost:3000/mypage> | 모임 목록·생성·이름 수정, 계정·로그아웃                  |
 | <http://localhost:3001/health> | DB와 독립된 liveness                                     |
 | <http://localhost:3001/ready>  | 실제 DB 쿼리; 정상 200, 가용성 장애 503                  |
 | <http://localhost:3001/docs>   | 개발용 Swagger; 변경 요청은 Origin·CSRF 헤더 필요        |
 
-행사는 생성할 때 홈에서 선택한 모임에 속하며 개인 행사로도 만들 수 있습니다. 행사 명단으로 모임 기본 명단을 가져올 수 있고, 이후 수정은 해당 행사에만 반영됩니다. 홈의 모임 전환에서 개인 행사를 다시 열 수 있습니다.
+행사 이름만으로 개인 행사를 만들 수 있고, 일정은 선택 사항입니다. 모임 행사는 홈에서 본인 모임을 선택한 뒤 만듭니다. 소속은 생성 시 확정되며 이후 연결·해제·이동할 수 없습니다. 행사는 생성한 계정이 소유합니다. 다른 모임 구성원에게 조회 권한이 생기지 않으며 소유권 이전은 지원하지 않습니다. 모임 행사에서 **모임 명단 가져오기**를 누르면 아직 가져오지 않은 구성원을 행사 명단에 복사합니다. 이후 두 명단은 독립적으로 관리합니다.
+
+홈 상단의 모임 선택창에는 본인 모임과 모임 없는 단기 행사가 함께 표시됩니다. 모임을 선택하면 해당 모임 홈으로 전환하고, 단기 행사를 선택하면 행사 상세로 들어갑니다. 모임이 없는 계정도 같은 선택창을 이용할 수 있습니다.
+
 참석 링크와 QR은 같은 차수의 응답을 엽니다. 첫 응답 전에는 미응답이며 총무가 참석이나 불참으로 정정하면 그 값이 우선합니다. 정정을 해제하면 최신 본인 응답을 집계합니다. 참여자 응답 마감 후에도 총무는 정정할 수 있습니다.
 
 행사 문의 후보는 지역과 매장 전체 최대 인원으로 조회합니다. 최대 인원을 모르는 매장은 인원 없는 공개 탐색에서 볼 수 있습니다. 공간별 대관 최소 인원과 착석 조건은 상세와 문의에 표시됩니다.
@@ -60,11 +63,14 @@ install·build·서버 시작은 migration을 자동 적용하지 않습니다. 
 | `DATABASE_URL`           | API `.env` 또는 실행 환경      | 필수. 호스트·DB 이름이 있는 PostgreSQL URL                      |
 | `AUTH_SECRET`            | API `.env` 또는 실행 환경      | 필수. 32자 이상; 운영은 암호학적 난수                           |
 | `WEB_ORIGIN`             | API `.env` 또는 실행 환경      | 필수. 경로·끝 슬래시 없는 웹 origin. production은 HTTPS         |
+| `TRUST_PROXY_HOPS`       | API `.env` 또는 실행 환경      | 모든 환경 기본 `0`. EC2의 단일 Nginx 배포에서만 `1` 명시        |
 | `API_PORT`               | API `.env` 또는 실행 환경      | 3001; 1~65535                                                   |
 | `NODE_ENV`               | API 실행 환경                  | development; test/production 허용                               |
 | `API_DOCS_ENABLED`       | API `.env` 또는 실행 환경      | true/false; production 기본 false                               |
 | `NEXT_PUBLIC_API_ORIGIN` | 웹 `.env.local` 또는 빌드 환경 | 개발 기본 `http://localhost:3001`; production 빌드·실행 시 필수 |
 | `TEST_DATABASE_URL`      | 테스트 실행 환경               | DB 통합 테스트용 격리 PostgreSQL                                |
+
+운영에서는 Parameter Store의 `/chongmuya/prod/TRUST_PROXY_HOPS`를 `String` 값 `1`로 설정해 API 환경변수 `TRUST_PROXY_HOPS`로 전달합니다. 구 `TRUSTED_PROXY_CIDRS`는 실행 환경에서 제거하세요. 값이 남아 있으면 API 시작이 중단됩니다. [Nginx 설정과 첫 배포 확인 절차](docs/authentication.md#배포-전-ip-제한-설정)를 함께 적용하세요.
 
 API는 `.env`보다 지정된 셸 환경변수를 우선하며 Zod로 검증합니다. 오류에는 변수 이름만 표시합니다. 로컬 DB는 `127.0.0.1:15432`에만 열립니다. 브라우저는 `NEXT_PUBLIC_API_ORIGIN`의 `/api/v1/*`를 `credentials: include`로 직접 호출합니다. Next API·health rewrite와 카카오 콜백 중계는 없습니다. 주소는 경로·끝 슬래시 없는 origin이며 공개 API 주소 이외의 비밀값은 NEXT_PUBLIC에 넣지 않습니다. 로컬 웹과 API는 각각 `http://localhost:3000`, `http://localhost:3001`로 통일하고 `127.0.0.1`과 혼용하지 않습니다. API 주소 변경 시 개발 서버를 재시작하고 웹을 다시 빌드·배포합니다. 빌드에 포함된 공개 변수는 실행 시 바꾸는 것만으로 갱신되지 않습니다. 운영 설정이 없으면 빌드를 중단합니다.
 
@@ -161,7 +167,7 @@ API 빌드 후 새 `OwnerRestaurants`, `MerchantRepliesAndDelivery`, `DeliveryLi
 - `WEB_ORIGIN`은 고정 링크 origin이며 운영은 HTTPS다. `PROVIDER_TIMEOUT_MS=5000`, 브라우저 제한 10초, 최대 3곳을 병렬로 기다린다. 링크는 기본 7일과 행사 시작 중 빠른 시각까지며 제안 선택 기본 12시간과 다르다.
 - 운영자가 SOLAPI 콘솔 등 공식 경로에서 공개 HTTPS `POST /api/v1/webhooks/solapi`와 `SOLAPI_WEBHOOK_SECRET`, `SINGLE-REPORT`를 연결한다. 이 경로만 CSRF 예외이며 원본 본문에 대한 `X-Solapi-Signature`를 검증한다. 연결 전에는 ACCEPTED를 전달 완료로 바꾸지 않는다. 웹훅 본문은 기존 API의 256KB 한도다.
 - 발신번호 등록·잔액, 실제 Nest 송신 공인 IP/NAT IP와 SOLAPI 허용 IP의 일치, 키의 send-sms/send-lms/read 권한, 실제 수신번호·동의·공개 상태는 실행 환경에서 별도 확인한다. 키 발급과 Geocoding 활성화를 다시 할 필요는 없다.
-- `TRUSTED_PROXY_CIDRS`는 실제 ingress의 IP/CIDR만 명시한다. 기본은 직접 연결 IP이며 임의 X-Forwarded-For를 신뢰하지 않는다. 참석 제한은 차수·IP별 열기/저장 각 600회/15분, 식별 조합별 각 20회, IP·차수·이름별 열기 30회다.
+- 참석 제한은 Express의 `request.ip`로 집계한다. 한도는 차수·IP별 열기/저장 각 600회/15분, 식별 조합별 각 20회, IP·차수·이름별 열기 30회다.
 
 정상 문의는 DB 저장 후 서버가 문자를 자동 발송한다. 아래 도구는 서버 접근 권한이 있는 운영자의 매장 관리·장애 확인용이며 평소 문의마다 실행할 필요가 없다. API 빌드 후 실행한다. 조회는 최신순으로 50건씩 표시한다. 다음 목록은 `--page 2`, 보류 사유와 다음 조치는 `--delivery <UUID>`로 확인한다. 원본 연락처/접수 이력은 페이지 또는 발송 ID를 지정한 후 `--output <새 파일>`을 추가한다(0600·wx, 기존 파일 덮어쓰기 금지). 링크 토큰·문자 본문은 출력하지 않는다.
 

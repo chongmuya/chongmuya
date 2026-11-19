@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import { buttonStyles } from "@/shared/ui/button";
 import type { Group } from "../types/group.types";
@@ -11,17 +12,22 @@ export function GroupSwitcher({
   view,
   createPath = "/groups/new",
   onClose,
+  children,
 }: {
   groups: Group[];
   selected?: string;
   view: "home" | "roster";
   createPath?: string;
   onClose: () => void;
+  children?: ReactNode;
 }) {
   const destination =
     view === "home" ? "/?group=" : "/mypage?view=groups&group=";
   return (
-    <BottomSheet title="모임 전환" onClose={onClose}>
+    <BottomSheet
+      title={view === "home" ? "모임·행사 선택" : "모임 전환"}
+      onClose={onClose}
+    >
       <ul className="my-5 space-y-2">
         {view === "home" && (
           <li>
@@ -56,6 +62,7 @@ export function GroupSwitcher({
             </Link>
           </li>
         ))}
+        {children}
       </ul>
       <Link
         href={createPath}
