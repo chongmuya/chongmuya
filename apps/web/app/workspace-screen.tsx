@@ -1,4 +1,5 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
@@ -12,7 +13,7 @@ import type { SessionRequest } from "@/features/auth/types";
 import { GroupBoundary, GroupSettings } from "@/features/groups/client";
 import { AttendanceWorkspace, EventRoster } from "@/features/attendance/client";
 import { ReservationProgress } from "@/features/reservations/client";
-import { EventForm, EventDetail } from "@/features/events/client";
+import { EventForm, EventDetail, eventKeys } from "@/features/events/client";
 
 import { buttonStyles } from "@/shared/ui/button";
 import { StepLayout } from "@/shared/ui/step-layout";
@@ -23,6 +24,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
   const params = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
+  const cache = useQueryClient();
   if (status !== "authenticated" || !account)
     return (
       <StepLayout
@@ -90,13 +92,21 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
     <StepLayout
       variant="flow"
       title={mode === "mypage" ? "마이페이지" : ""}
-      onBack={() =>
-        params.get("view") && mode === "mypage"
-          ? router.push("/mypage")
-          : router.push(
-              params.get("group") ? `/?group=${params.get("group")}` : "/",
-            )
-      }
+      onBack={() => {
+        if (mode === "mypage" && params.get("view"))
+          return router.replace("/mypage");
+        const id = params.get("event");
+        const event =
+          id && mode === "events"
+            ? cache.getQueryData<{ groupId: string | null }>(
+                eventKeys.detail(account.id, id),
+              )
+            : undefined;
+        const group = event?.groupId ?? params.get("group");
+        router.replace(
+          group ? `/?group=${group}` : event ? "/?view=personal" : "/",
+        );
+      }}
     >
       {mode === "mypage" && params.get("view") === "account" ? (
         <div className="space-y-8">

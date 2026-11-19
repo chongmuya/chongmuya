@@ -46,12 +46,6 @@ export type Restaurant = {
   }[];
 };
 
-export type RestaurantConditions = {
-  expectedGuests: number;
-  seating: "CLOSE" | "SEPARATED" | "ANY";
-  space: "HALL" | "ROOM" | "FLOOR" | "WHOLE" | "ANY";
-};
-
 export type RestaurantSummary = Pick<
   Restaurant,
   | "id"

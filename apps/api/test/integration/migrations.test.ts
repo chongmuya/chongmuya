@@ -519,8 +519,9 @@ test("catalog migration preserves survey text and ambiguous rows while enforcing
         .localeCompare(b.constructor.name.slice(-13)),
     );
     for (const migration of migrations)
-      if (!migration.constructor.name.startsWith("RestaurantCatalogModel"))
-        await migration.up(q);
+      if (migration.constructor.name.startsWith("RestaurantCatalogModel"))
+        break;
+      else await migration.up(q);
     const ids = [randomUUID(), randomUUID(), randomUUID()];
     await q.query(
       "INSERT INTO restaurants(id,name,address,region,booking_policy,deposit_policy,photo_path) VALUES ($1,'보존 식당','서울 길 1 2층','지역','전체 대관은 협의','금액 미정','/images/preserved.png'),($2,' 중복  식당 ','서울 길 2','지역',null,null,null),($3,'중복 식당','서울 길 2','지역',null,null,null)",
@@ -563,6 +564,25 @@ test("catalog migration preserves survey text and ambiguous rows while enforcing
       (await q.query("SELECT count(*)::int AS count FROM restaurants"))[0]
         .count,
       3,
+    );
+    const demo = "c0210000-0000-4000-8000-000000000001";
+    const editedDemo = "c0210000-0000-4000-8000-000000000002";
+    await q.query(
+      "INSERT INTO restaurants(id,name,address,region,is_demo) VALUES ($1,'가상 온기홀','서울 광진구 가상 테스트길 1 (실제 매장 아님)','건대입구',true),($2,'사용자 지정 상호','변경한 주소','세종대',true)",
+      [demo, editedDemo],
+    );
+    const { DemoRestaurantLabels1795658400000 } =
+      await import("../../src/database/migrations/1795658400000-DemoRestaurantLabels.js");
+    await new DemoRestaurantLabels1795658400000().up(q);
+    assert.deepEqual(
+      await q.query(
+        "SELECT name,address FROM restaurants WHERE id IN ($1,$2) ORDER BY id",
+        [demo, editedDemo],
+      ),
+      [
+        { name: "온기홀", address: "서울 광진구 늘봄길 1" },
+        { name: "사용자 지정 상호", address: "변경한 주소" },
+      ],
     );
   } finally {
     await q.rollbackTransaction();

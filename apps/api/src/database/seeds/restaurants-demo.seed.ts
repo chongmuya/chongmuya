@@ -31,13 +31,8 @@ export async function seedDemoRestaurantRows(
       .into(Restaurant)
       .values({
         id,
-        name: [
-          "가상 온기홀",
-          "가상 한층식탁",
-          "가상 확인중식당",
-          "가상 사진없는집",
-        ][i]!,
-        address: `서울 광진구 가상 테스트길 ${i + 1} (실제 매장 아님)`,
+        name: ["온기홀", "한층식탁", "소담식당", "마루식탁"][i]!,
+        address: `서울 광진구 늘봄길 ${i + 1}`,
         region: i % 2 === 0 ? "건대입구" : "세종대",
         category: "한식",
         latitude: i === 3 ? null : 37.543 + i * 0.001,
@@ -130,7 +125,7 @@ export async function seedDemoRestaurantRows(
       .values({
         id: `c0230000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
         restaurantId: id,
-        name: "테스트용 식사",
+        name: "오늘의 정식",
         kind: "REGULAR",
         price: unknown ? null : 12000,
         unit: "1인분",
@@ -146,6 +141,9 @@ export async function seedDemoRestaurantRows(
       .into(RestaurantContact)
       .values({
         id: contactId,
+        isPrimary:
+          !unknown &&
+          !(await manager.existsBy(RestaurantContact, { restaurantId: id })),
         restaurantId: id,
         name: "가상 운영 담당자",
         phone: i === 0 && ownerPhone ? ownerPhone : "00000000000",

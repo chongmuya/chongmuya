@@ -1,3 +1,4 @@
+import { RestaurantOperationsService } from "./restaurant-operations.service.js";
 import { FakeGeocoder } from "./providers/fake.geocoder.js";
 import { NaverGeocoder } from "./providers/naver.geocoder.js";
 import { AuthModule } from "../auth/auth.module.js";
@@ -16,6 +17,7 @@ import { RestaurantsService } from "./restaurants.service.js";
   providers: [
     RestaurantsService,
     RestaurantManagementService,
+    RestaurantOperationsService,
     {
       provide: Geocoder,
       inject: [ConfigService],

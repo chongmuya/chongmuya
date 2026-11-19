@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { replyView } from "./lib/reply-view.js";
 import { Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
@@ -73,41 +74,14 @@ export class MerchantRepliesService {
         targetId,
         revision: c.target.replyVersion,
       });
-      const defaults = await this.restaurants.replyDefaults(
+      const snapshot = c.request.snapshot;
+      const { defaults, proposal } = await this.proposal(
         c.target.restaurantId,
+        snapshot,
         m,
       );
-      const snapshot = c.request.snapshot;
       const defaultExpires = new Date(Date.now() + 12 * 3600_000);
-      const deadline = defaults.policies?.menuDeadline;
-      const menuDeadlineAt =
-        deadline &&
-        deadline.value !== null &&
-        ["DAYS_BEFORE", "HOURS_BEFORE"].includes(deadline.kind)
-          ? new Date(
-              new Date(snapshot.startsAt).getTime() -
-                deadline.value *
-                  (deadline.kind === "DAYS_BEFORE" ? 24 : 1) *
-                  3600_000,
-            ).toISOString()
-          : null;
-      const proposal: Proposal = {
-        startsAt: snapshot.startsAt,
-        expectedGuests: snapshot.expectedGuests,
-        space: snapshot.space,
-        seating: snapshot.seating,
-        minimumSpend:
-          defaults.policies?.minimumOrder.kind === "AMOUNT"
-            ? defaults.policies.minimumOrder.amount
-            : null,
-        separateFee: null,
-        deposit: defaults.policies?.deposit ?? {
-          kind: "UNKNOWN",
-          amount: null,
-        },
-        menuDeadlineAt,
-        note: "",
-      };
+      const { menuDeadlineAt } = proposal;
       const validDefault =
         defaultExpires.getTime() <
         Math.min(
@@ -131,6 +105,46 @@ export class MerchantRepliesService {
         linkExpiresAt: c.link?.expiresAt.toISOString() ?? null,
       };
     });
+  }
+  private async proposal(
+    restaurantId: string,
+    snapshot: Pick<
+      Proposal,
+      "startsAt" | "expectedGuests" | "space" | "seating"
+    >,
+    m: EntityManager,
+  ) {
+    const defaults = await this.restaurants.replyDefaults(restaurantId, m);
+    const deadline = defaults.policies?.menuDeadline;
+    const menuDeadlineAt =
+      deadline &&
+      deadline.value !== null &&
+      ["DAYS_BEFORE", "HOURS_BEFORE"].includes(deadline.kind)
+        ? new Date(
+            new Date(snapshot.startsAt).getTime() -
+              deadline.value *
+                (deadline.kind === "DAYS_BEFORE" ? 24 : 1) *
+                3600_000,
+          ).toISOString()
+        : null;
+    const proposal: Proposal = {
+      startsAt: snapshot.startsAt,
+      expectedGuests: snapshot.expectedGuests,
+      space: snapshot.space,
+      seating: snapshot.seating,
+      minimumSpend:
+        defaults.policies?.minimumOrder.kind === "AMOUNT"
+          ? defaults.policies.minimumOrder.amount
+          : null,
+      separateFee: null,
+      deposit: defaults.policies?.deposit ?? {
+        kind: "UNKNOWN",
+        amount: null,
+      },
+      menuDeadlineAt,
+      note: "",
+    };
+    return { defaults, proposal };
   }
   async save(targetId: string, principal: Principal, raw: unknown, ip: string) {
     const parsed = replySchema.safeParse(raw);
@@ -163,6 +177,43 @@ export class MerchantRepliesService {
       if (c.target.replyVersion !== input.expectedVersion)
         throw new DomainHttpException("MERCHANT_REPLY_CONFLICT");
       this.validate(input, c.request.snapshot);
+      if (
+        input.kind === "CHANGE" &&
+        input.proposal &&
+        !input.proposal.note.trim()
+      ) {
+        const { proposal } = await this.proposal(
+          c.target.restaurantId,
+          c.request.snapshot,
+          m,
+        );
+        if (
+          isDeepStrictEqual(
+            {
+              ...input.proposal,
+              startsAt: Date.parse(input.proposal.startsAt),
+              note: "",
+            },
+            { ...proposal, startsAt: Date.parse(proposal.startsAt) },
+          )
+        )
+          throw new DomainHttpException("VALIDATION_FAILED");
+      }
+      const current = c.target.replyVersion
+        ? await m.findOneBy(MerchantReplyRevision, {
+            targetId,
+            revision: c.target.replyVersion,
+          })
+        : null;
+      if (
+        current &&
+        current.kind === input.kind &&
+        current.reason === input.reason &&
+        (current.expiresAt?.getTime() ?? null) ===
+          (input.expiresAt ? Date.parse(input.expiresAt) : null) &&
+        isDeepStrictEqual(current.snapshot.offered, input.proposal)
+      )
+        return { response: replyView(current), version: current.revision };
       const actor: ReplyActor =
         principal.kind === "link"
           ? { kind: "MERCHANT_LINK", id: `${targetId}:${c.link!.generation}` }
@@ -184,15 +235,6 @@ export class MerchantRepliesService {
         digest,
         kind: input.kind,
         snapshot: {
-          ...c.request.snapshot,
-          ...(p
-            ? {
-                startsAt: p.startsAt,
-                expectedGuests: p.expectedGuests,
-                space: p.space,
-                seating: p.seating,
-              }
-            : {}),
           offered: p,
           requested: c.request.snapshot,
         },
@@ -219,7 +261,13 @@ export class MerchantRepliesService {
       throw new DomainHttpException("VALIDATION_FAILED");
     };
     if (input.kind === "DECLINE") {
-      if (!input.reason.trim() || input.proposal || input.expiresAt) invalid();
+      if (
+        !input.reason.trim() ||
+        input.proposal ||
+        input.expiresAt ||
+        input.holdConfirmed
+      )
+        invalid();
       return;
     }
     const p = input.proposal;
@@ -256,6 +304,5 @@ export class MerchantRepliesService {
         p.seating !== requested.seating)
     )
       invalid();
-    if (input.kind === "CHANGE" && !p.note.trim()) invalid();
   }
 }

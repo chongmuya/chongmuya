@@ -11,7 +11,7 @@ import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { EmailVerification } from "./entities/email-verification.entity.js";
 import { Account } from "./entities/account.entity.js";
-import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import { tokenHash } from "./utils/token-hash.js";
 import { ResendMailService } from "./resend-mail.service.js";
 export const EMAIL_LIMITS = {
@@ -28,7 +28,6 @@ export class EmailVerificationService {
   constructor(
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
-    private readonly attempts: AuthAttemptsRepository,
     private readonly mail: ResendMailService,
   ) {}
   private owner(requester?: string) {
@@ -96,17 +95,17 @@ export class EmailVerificationService {
     this.mail.assertConfigured();
     const requesterHash = this.owner(requester),
       db = await this.database.connect();
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `email-issue-ip:${ip}`,
       EMAIL_LIMITS.issueIp,
     );
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `email-issue-owner:${requesterHash}`,
       EMAIL_LIMITS.issueIdentity,
     );
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `email-issue-address:${email}`,
       EMAIL_LIMITS.issueIdentity,
@@ -181,17 +180,17 @@ export class EmailVerificationService {
     const db = await this.database.connect(),
       owner = this.owner(requester);
     // Separate committed buckets survive code reissue and failed verification transactions.
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `email-check-ip:${ip}`,
       EMAIL_LIMITS.checkIp,
     );
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `email-check-owner:${owner}`,
       EMAIL_LIMITS.checkIdentity,
     );
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `email-check-address:${email}`,
       EMAIL_LIMITS.checkIdentity,

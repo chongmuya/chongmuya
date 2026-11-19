@@ -8,7 +8,7 @@ import { DatabaseService } from "../../database/database.service.js";
 import { Account } from "./entities/account.entity.js";
 import { AuthSession } from "./entities/auth-session.entity.js";
 import { RefreshToken } from "./entities/refresh-token.entity.js";
-import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import { tokenHash } from "./utils/token-hash.js";
 import { AuthError } from "./exceptions/auth.exception.js";
 import { hashPassword, verifyPassword } from "./utils/password.js";
@@ -25,7 +25,6 @@ import type { SignupDto } from "./dto/request/signup.request.dto.js";
 export class AuthService {
   constructor(
     private readonly database: DatabaseService,
-    private readonly repository: AuthAttemptsRepository,
     private readonly sessions: SessionIssuerService,
     private readonly emailVerification: EmailVerificationService,
     private readonly phone: PhoneVerificationService,
@@ -37,8 +36,8 @@ export class AuthService {
   }
   private async limit(ip: string, email: string) {
     const db = await this.database.connect();
-    await this.repository.limit(db.manager, `ip:${ip}`, 50);
-    await this.repository.limit(db.manager, `email:${email}`, 10);
+    await consumeRequestLimit(db.manager, `ip:${ip}`, 50);
+    await consumeRequestLimit(db.manager, `email:${email}`, 10);
     return db;
   }
   async login(input: CredentialsDto, ip: string) {

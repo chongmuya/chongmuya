@@ -5,10 +5,11 @@ import { parseApiError } from "./error-contract";
 export async function requestJson<T>(
   path: `/api/v1/${string}`,
   options: RequestInit = {},
+  timeoutMs = 10_000,
 ): Promise<T> {
   if (!path.startsWith("/api/v1/") || path.includes("\\"))
     throw new ApiError("잘못된 API 경로입니다.", 0, "INVALID_PATH");
-  const timeout = AbortSignal.timeout(10_000);
+  const timeout = AbortSignal.timeout(timeoutMs);
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
   if (options.body) headers.set("Content-Type", "application/json");

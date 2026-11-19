@@ -22,7 +22,13 @@ export function RestaurantPhoto({
           role="img"
           aria-label="사진 없음"
         >
-          등록된 사진이 없어요
+          <Image
+            src="/images/restaurants/menu.svg"
+            alt=""
+            width={40}
+            height={40}
+            className="opacity-40"
+          />
         </div>
       ) : (
         <Image

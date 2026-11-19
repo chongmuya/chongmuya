@@ -46,7 +46,7 @@ export function RosterPreview({
       <div>
         <h2 className="text-label">
           가져온 명단{" "}
-          <span className="ml-2 text-control text-brand">
+          <span className="ml-2 text-control text-brand-action">
             {fields.length}명
           </span>
         </h2>
@@ -213,9 +213,14 @@ export function RosterPreview({
                     <option value="">선택해 주세요</option>
                     {matches.map((member) => (
                       <option key={member.id} value={member.id}>
-                        기존 구성원 · {member.name} ·{" "}
-                        {member.label ?? "구분 표시 없음"} ·{" "}
-                        {member.phoneLast4 ?? "뒤 4자리 없음"}
+                        {[
+                          "기존 구성원",
+                          member.name,
+                          member.label,
+                          member.phoneLast4,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </option>
                     ))}
                     <option value="new">새 동명이인으로 등록</option>

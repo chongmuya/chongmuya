@@ -1617,7 +1617,7 @@
       "longitude": 127.0685677,
       "maxCapacity": 120,
       "facilities": null,
-      "bookingPolicy": "단체예약은 60명부터 최대 120명까지 가능해요. 평일을 선호하며 주말 예약은 매장과 협의가 필요해요.",
+      "bookingPolicy": "일반 홀은 소규모로도 예약할 수 있어요. 평일을 선호하며 주말 예약은 매장과 협의가 필요해요.",
       "menuPolicy": "일반 메뉴에서 자유롭게 선택할 수 있어요. 메뉴와 이용금액은 매장과 협의해 주세요.",
       "spaces": [
         {
@@ -1627,7 +1627,7 @@
           "availability": "AVAILABLE",
           "togetherSeating": "YES",
           "capacity": 120,
-          "minGuests": 60,
+          "minGuests": 0,
           "minSpend": null,
           "separateFee": null,
           "conditions": "테이블을 붙여 이용할 수 있어요. 실제 좌석 배치는 매장 확인이 필요해요."

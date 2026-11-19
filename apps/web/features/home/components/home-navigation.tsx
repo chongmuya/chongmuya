@@ -1,16 +1,28 @@
 import Image from "next/image";
 import Link from "next/link";
 
-export function HomeNavigation({ groupId }: { groupId?: string }) {
+export function HomeNavigation({
+  groupId,
+  personal,
+}: {
+  groupId?: string;
+  personal?: boolean;
+}) {
   return (
     <nav
       aria-label="주요 메뉴"
       className="sticky bottom-0 z-10 mt-auto grid grid-cols-2 bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] text-center shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
     >
       <Link
-        href={groupId ? `/?group=${encodeURIComponent(groupId)}` : "/"}
+        href={
+          groupId
+            ? `/?group=${encodeURIComponent(groupId)}`
+            : personal
+              ? "/?view=personal"
+              : "/"
+        }
         aria-current="page"
-        className="flex flex-col items-center gap-1 text-[10px] text-brand"
+        className="flex flex-col items-center gap-1 text-[10px] text-brand-action"
       >
         <span className="relative flex size-[22px] items-center justify-center">
           <Image

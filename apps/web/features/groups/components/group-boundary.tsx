@@ -1,4 +1,5 @@
 "use client";
+import { isAccessError } from "@/shared/http/access-error";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import type { SessionRequest } from "@/features/auth/types";
@@ -23,7 +24,8 @@ export function GroupBoundary({
   const selected =
     groups.data?.find((group) => group.id === groupId) ??
     (!groupId ? groups.data?.[0] : undefined);
-  if (groups.isError) return <ErrorState retry={() => void groups.refetch()} />;
+  if (groups.isError && (!groups.data || isAccessError(groups.error)))
+    return <ErrorState retry={() => void groups.refetch()} />;
   if (!groups.data) return <LoadingState>모임 확인 중…</LoadingState>;
   if (groupId && !selected)
     return (
@@ -45,5 +47,14 @@ export function GroupBoundary({
         </Link>
       </section>
     );
-  return selected ? children(selected, groups.data) : null;
+  return selected ? (
+    <>
+      {groups.isError && (
+        <ErrorState retry={() => void groups.refetch()}>
+          최신 모임 정보를 불러오지 못했어요.
+        </ErrorState>
+      )}
+      {children(selected, groups.data)}
+    </>
+  ) : null;
 }

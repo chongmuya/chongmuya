@@ -7,6 +7,7 @@ import {
   isMerchantAccessError,
   type ReplyAccess,
 } from "../api/replies.api";
+import type { MerchantInquiry } from "../types/reply.types";
 import type { MerchantReplyInput } from "../schemas/reply.schema";
 export function useReplyAction(
   id: string,
@@ -22,6 +23,14 @@ export function useReplyAction(
     gcTime: 0,
     onError: (error) => {
       if (active.current && isMerchantAccessError(error)) onAccessFailure?.();
+    },
+    onSuccess: (result) => {
+      if (active.current)
+        cache.setQueryData<MerchantInquiry>(replyKey(id, access), (current) =>
+          current && current.version <= result.version
+            ? { ...current, ...result }
+            : current,
+        );
     },
     onSettled: async (_data, error) => {
       if (active.current && !isMerchantAccessError(error))

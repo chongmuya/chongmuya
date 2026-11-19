@@ -10,7 +10,7 @@ import { RefreshToken } from "./entities/refresh-token.entity.js";
 import { AccountConsent } from "./entities/account-consent.entity.js";
 import { ExternalIdentity } from "./entities/external-identity.entity.js";
 import { KakaoAttempt } from "./entities/kakao-attempt.entity.js";
-import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import { KakaoOidcService, KAKAO_ISSUER } from "./kakao-oidc.service.js";
 import { SessionIssuerService } from "./session-issuer.service.js";
 import { EmailVerificationService } from "./email-verification.service.js";
@@ -38,7 +38,6 @@ export class KakaoFlowService {
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
     private readonly oidc: KakaoOidcService,
-    private readonly attempts: AuthAttemptsRepository,
     private readonly sessions: SessionIssuerService,
     private readonly email: EmailVerificationService,
     private readonly phone: PhoneVerificationService,
@@ -89,7 +88,7 @@ export class KakaoFlowService {
   ) {
     this.oidc.assertConfigured();
     const db = await this.database.connect();
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `kakao-start-ip:${ip}`,
       KAKAO_POLICY.startPerIp,
@@ -97,14 +96,14 @@ export class KakaoFlowService {
     const binding =
       browser && /^[A-Za-z0-9_-]{43}$/.test(browser) ? browser : random();
     const browserHash = this.browserHash(binding);
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `kakao-start-browser:${browserHash}`,
       KAKAO_POLICY.startPerBrowser,
     );
     let account: Account | null = null;
     if (link) {
-      await this.attempts.limit(
+      await consumeRequestLimit(
         db.manager,
         `kakao-reauth:${link.user.id}`,
         KAKAO_POLICY.reauthPerAccount,
@@ -287,7 +286,7 @@ export class KakaoFlowService {
   }
   private async prepare(browser: string | undefined, ip: string) {
     const db = await this.database.connect();
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `kakao-finish-ip:${ip}`,
       KAKAO_POLICY.finishPerIp,

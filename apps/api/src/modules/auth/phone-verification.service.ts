@@ -5,7 +5,7 @@ import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { PhoneVerification } from "./entities/phone-verification.entity.js";
-import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import { tokenHash } from "./utils/token-hash.js";
 import { OctomoService, OCTOMO_RECEIVER } from "./octomo.service.js";
 
@@ -19,7 +19,6 @@ export class PhoneVerificationService {
   constructor(
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
-    private readonly attempts: AuthAttemptsRepository,
     private readonly octomo: OctomoService,
   ) {}
   private owner(requester?: string) {
@@ -79,13 +78,13 @@ export class PhoneVerificationService {
     this.octomo.assertConfigured();
     const requesterHash = this.owner(requester);
     const db = await this.database.connect();
-    await this.attempts.limit(db.manager, `phone-issue-ip:${ip}`, 30);
-    await this.attempts.limit(
+    await consumeRequestLimit(db.manager, `phone-issue-ip:${ip}`, 30);
+    await consumeRequestLimit(
       db.manager,
       `phone-issue-owner:${requesterHash}`,
       5,
     );
-    await this.attempts.limit(db.manager, `phone-issue-number:${phone}`, 5);
+    await consumeRequestLimit(db.manager, `phone-issue-number:${phone}`, 5);
     const row = await db.transaction(async (manager) => {
       const now = new Date();
       const next = Object.assign(new PhoneVerification(), {

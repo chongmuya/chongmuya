@@ -53,7 +53,6 @@ export const policiesSchema = z
       .strict(),
   })
   .strict();
-export type RestaurantPolicies = z.infer<typeof policiesSchema>;
 export const spaceInputSchema = z
   .object({
     id: z.uuid().optional(),
@@ -75,7 +74,7 @@ export const registrationSchema = z
     branchName: text(80),
     addressQuery: text(200),
     detailAddress: text(120),
-    category: z.enum(["한식", "호프·주점", "기타 음식점"]),
+    category: z.string().max(40),
     phone: text(20),
     receiveConsent: z.boolean(),
     maxCapacity: count,
@@ -98,33 +97,10 @@ export type VerifiedAddress = {
   region: string;
   source: "naver" | "fake" | "existing";
 };
-export function emptyRegistration(): RegistrationData {
-  return {
-    name: "",
-    branchName: "",
-    addressQuery: "",
-    detailAddress: "",
-    category: "한식",
-    phone: "",
-    receiveConsent: false,
-    maxCapacity: null,
-    minimumGuests: { kind: "UNKNOWN", value: null },
-    spaces: [],
-    policies: {
-      hours: null,
-      holidays: { kind: "UNKNOWN", weekdays: [], note: "" },
-      advance: { kind: "UNKNOWN", days: null },
-      minimumOrder: { kind: "UNKNOWN", amount: null, quantity: null, unit: "" },
-      menuDeadline: { kind: "UNKNOWN", value: null },
-      guestDeadline: { kind: "UNKNOWN", value: null },
-      usage: { kind: "UNKNOWN", minutes: null },
-      deposit: { kind: "UNKNOWN", amount: null },
-    },
-  };
-}
 export type RegistrationIssue = { path: string; step: number; message: string };
 export function registrationIssues(
   data: RegistrationData,
+  preserveExistingContact = false,
 ): RegistrationIssue[] {
   const issues: RegistrationIssue[] = [];
   const check = (ok: boolean, path: string, step: number, message: string) => {
@@ -141,29 +117,10 @@ export function registrationIssues(
     "주소를 검색하고 선택해 주세요.",
   );
   check(
-    /^01[016789]\d{7,8}$/.test(data.phone),
+    preserveExistingContact || /^01[016789]\d{7,8}$/.test(data.phone),
     "phone",
     0,
     "올바른 휴대폰 번호를 입력해 주세요.",
-  );
-  check(
-    data.minimumGuests.kind === "NONE"
-      ? data.minimumGuests.value === 0
-      : conditional(
-          data.minimumGuests.kind === "AT_LEAST",
-          data.minimumGuests.value,
-        ),
-    "minimumGuests.value",
-    1,
-    "최소 인원을 확인해 주세요.",
-  );
-  check(
-    data.maxCapacity === null ||
-      data.minimumGuests.value === null ||
-      data.minimumGuests.value <= data.maxCapacity,
-    "maxCapacity",
-    1,
-    "전체 인원은 최소 인원 이상이어야 해요.",
   );
   check(
     data.spaces.length > 0,
@@ -277,8 +234,6 @@ export function registrationIssues(
   );
   return issues;
 }
-export const validRegistration = (data: RegistrationData) =>
-  registrationIssues(data).length === 0;
 export const menuInputSchema = z
   .object({
     id: z.uuid().optional(),

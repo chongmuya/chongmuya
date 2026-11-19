@@ -10,6 +10,7 @@ import {
 } from "@/features/auth/client";
 import { buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
+import { isAccessError } from "@/shared/http/access-error";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { useGroups } from "../hooks/use-groups";
@@ -67,7 +68,6 @@ export function GroupRegistrationScreen() {
     return (
       <main className="app-page">
         <h1>사장님 홈에서 매장을 관리해 주세요</h1>
-        <p>사장님은 총무용 모임이나 명단을 등록하지 않아도 돼요.</p>
         <Link href="/owner">사장님 홈으로 가기</Link>
       </main>
     );
@@ -77,7 +77,7 @@ export function GroupRegistrationScreen() {
       current.status === "authenticated" &&
       current.account?.id === account.id
     )
-      router.push(path);
+      router.replace(path);
   };
   return groupId ? (
     <ExistingRosterRegistration
@@ -112,7 +112,10 @@ function ExistingRosterRegistration({
   const members = useQuery(
     groupMembersQueryOptions(accountId, groupId, request),
   );
-  if ((!groups.data && groups.isError) || (!members.data && members.isError))
+  if (
+    (groups.isError && (!groups.data || isAccessError(groups.error))) ||
+    (members.isError && (!members.data || isAccessError(members.error)))
+  )
     return (
       <main className="app-page">
         <ErrorState
@@ -121,7 +124,7 @@ function ExistingRosterRegistration({
             void members.refetch();
           }}
         />
-        <Link href="/mypage">내 모임으로 돌아가기</Link>
+        <Link href="/mypage?view=groups">내 모임으로 돌아가기</Link>
       </main>
     );
   if (!groups.data || !members.data)
@@ -135,7 +138,7 @@ function ExistingRosterRegistration({
     return (
       <main className="app-page">
         <p role="alert">접근할 수 없는 모임이에요.</p>
-        <Link href="/mypage">내 모임으로 돌아가기</Link>
+        <Link href="/mypage?view=groups">내 모임으로 돌아가기</Link>
       </main>
     );
   return (

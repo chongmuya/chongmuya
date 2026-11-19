@@ -14,7 +14,7 @@ export class RestaurantsController {
     return this.restaurants.list(query);
   }
   @Get("map") map(@Query() query: RestaurantRegionQuery) {
-    return this.restaurants.map(query.region);
+    return this.restaurants.map(query.region, query.expectedGuests);
   }
   @Get(":id") get(@Param("id", ParseUUIDPipe) id: string) {
     return this.restaurants.get(id);

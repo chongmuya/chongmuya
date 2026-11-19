@@ -31,7 +31,8 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
       resolver: zodResolver(identitySchema),
       defaultValues: { name: "", phoneLast4: "" },
     }),
-    [answer, setAnswer] = useState<AttendanceAnswer | null>(null);
+    [selection, setAnswer] = useState<AttendanceAnswer | null>(null);
+  const answer = selection ?? action.access?.response?.selfAnswer;
   const closed =
     info.data?.closed ||
     (action.error instanceof ApiError &&
@@ -198,15 +199,11 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
               {action.access.response && (
                 <div className="space-y-2 rounded-control bg-surface p-5 text-sm">
                   <p>
-                    내 응답: {stateLabel(action.access.response.selfAnswer)}
+                    현재 참석 상태 ·{" "}
+                    {stateLabel(action.access.response.finalState)}
                   </p>
                   {action.access.response.managerOverride !== null && (
-                    <p>
-                      총무 확인 상태:{" "}
-                      {action.access.response.managerOverride === null
-                        ? "지정 없음 · 본인 응답 사용"
-                        : stateLabel(action.access.response.managerOverride)}
-                    </p>
+                    <p className="text-xs">총무가 정정한 상태로 집계돼요.</p>
                   )}
                 </div>
               )}

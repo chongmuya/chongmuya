@@ -10,7 +10,7 @@ import { Account } from "./entities/account.entity.js";
 import { AuthSession } from "./entities/auth-session.entity.js";
 import { PasswordReset } from "./entities/password-reset.entity.js";
 import { KakaoAttempt } from "./entities/kakao-attempt.entity.js";
-import { AuthAttemptsRepository } from "./repositories/auth-attempts.repository.js";
+import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import { ResendMailService } from "./resend-mail.service.js";
 import { tokenHash } from "./utils/token-hash.js";
 import { hashPassword } from "./utils/password.js";
@@ -31,7 +31,6 @@ export class PasswordResetService {
   constructor(
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
-    private readonly attempts: AuthAttemptsRepository,
     private readonly mail: ResendMailService,
   ) {}
   private digest(token: string) {
@@ -44,13 +43,13 @@ export class PasswordResetService {
     const started = performance.now();
     try {
       const db = await this.database.connect();
-      await this.attempts.limit(
+      await consumeRequestLimit(
         db.manager,
         `reset-issue-ip:${ip}`,
         RESET_POLICY.issuePerIp,
       );
       try {
-        await this.attempts.limit(
+        await consumeRequestLimit(
           db.manager,
           `reset-issue-email:${email}`,
           RESET_POLICY.issuePerEmail,
@@ -144,12 +143,12 @@ export class PasswordResetService {
   }
   async check(token: string, ip: string) {
     const db = await this.database.connect();
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `reset-check-ip:${ip}`,
       RESET_POLICY.checkPerIp,
     );
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `reset-check:${this.digest(token)}`,
       RESET_POLICY.perToken,
@@ -170,12 +169,12 @@ export class PasswordResetService {
   async reset(token: string, password: string, ip: string) {
     const db = await this.database.connect();
     const hash = this.digest(token);
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `reset-save-ip:${ip}`,
       RESET_POLICY.savePerIp,
     );
-    await this.attempts.limit(
+    await consumeRequestLimit(
       db.manager,
       `reset-save:${hash}`,
       RESET_POLICY.perToken,

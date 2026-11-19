@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { open } from "node:fs/promises";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../dist/app.module.js";
-import { RestaurantManagementService } from "../dist/modules/restaurants/restaurant-management.service.js";
+import { RestaurantOperationsService } from "../dist/modules/restaurants/restaurant-operations.service.js";
 import {
   operationId,
   requireOperator,
@@ -40,7 +40,7 @@ try {
       logger: false,
       abortOnError: false,
     });
-    console.table(await app.get(RestaurantManagementService).addressReview());
+    console.table(await app.get(RestaurantOperationsService).addressReview());
   } else {
     requireOperator(v);
     const restaurantId = operationId(v.restaurant);
@@ -55,7 +55,7 @@ try {
       logger: false,
       abortOnError: false,
     });
-    const result = await app.get(RestaurantManagementService).normalizeAddress({
+    const result = await app.get(RestaurantOperationsService).normalizeAddress({
       restaurantId,
       version: Number(v.version),
       query: v.query,

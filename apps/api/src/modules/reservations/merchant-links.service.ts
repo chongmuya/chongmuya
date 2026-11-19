@@ -85,11 +85,17 @@ export class MerchantLinksService {
     request: ReservationRequest,
     link: MerchantReplyLink | null,
     m: EntityManager,
+    liveDelivery = false,
   ) {
-    const [reasons] = await this.restaurants.deliveryEligibility(
+    const [recipientReasons] = await this.restaurants.deliveryEligibility(
       [this.recipient(target, link)],
       m,
+      liveDelivery,
     );
+    return [...recipientReasons, ...this.linkReasons(request, link)];
+  }
+  linkReasons(request: ReservationRequest, link: MerchantReplyLink | null) {
+    const reasons: string[] = [];
     if (
       request.closedAt ||
       new Date(request.snapshot.startsAt).getTime() <= Date.now()

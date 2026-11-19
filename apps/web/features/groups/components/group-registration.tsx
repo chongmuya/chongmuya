@@ -113,6 +113,56 @@ export function GroupRegistration({
       submitting.current = false;
     }
   };
+  if (completed)
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-[402px] flex-col justify-center gap-6 px-6 py-12 text-center">
+        <Image
+          className="mx-auto"
+          src="/images/ui/success.svg"
+          alt=""
+          width={48}
+          height={48}
+        />
+        <div>
+          <h1 className="text-2xl font-bold">
+            {target ? "명단을 확인했어요!" : "모임이 만들어졌어요!"}
+          </h1>
+          <p className="mt-2 break-words text-caption text-muted">
+            {completed.group.name}
+            {target
+              ? ` · ${completed.addedCount}명 추가 완료 (총 ${completed.group.memberCount}명)`
+              : completed.group.memberCount > 0
+                ? ` · 명단 ${completed.group.memberCount}명 등록 완료`
+                : " · 명단 없이 등록 완료"}
+          </p>
+        </div>
+        <div className="space-y-2">
+          {target && (
+            <Button
+              className="w-full"
+              onClick={() =>
+                onNavigate(`/mypage?view=groups&group=${target.group.id}`)
+              }
+            >
+              명단으로 돌아가기
+            </Button>
+          )}
+          <Button
+            className="w-full"
+            onClick={() => onNavigate(`/events?group=${completed.group.id}`)}
+          >
+            행사 등록하기
+          </Button>
+          <Button
+            className="w-full"
+            variant="brand-outline"
+            onClick={() => onNavigate(`/?group=${completed.group.id}`)}
+          >
+            홈으로 가기
+          </Button>
+        </div>
+      </main>
+    );
   return (
     <>
       {step === "group" && (
@@ -164,7 +214,7 @@ export function GroupRegistration({
           </form>
         </StepLayout>
       )}
-      {started && !completed && (
+      {started && (
         <div hidden={step !== "roster"}>
           <RosterEditor
             existing={target?.members}
@@ -188,61 +238,6 @@ export function GroupRegistration({
           <FormError message={error} />
         </div>
       )}
-      {completed && (
-        <Dialog
-          showCloseButton
-          labelledBy={`${id}-complete`}
-          onClose={() => onNavigate(`/?group=${completed.group.id}`)}
-          className="max-w-[322px] space-y-7 text-center"
-        >
-          <Image
-            className="mx-auto"
-            src="/images/ui/success.svg"
-            alt=""
-            width={48}
-            height={48}
-          />
-          <div>
-            <h2 id={`${id}-complete`} className="text-2xl font-bold">
-              {target ? "명단을 확인했어요!" : "모임이 만들어졌어요!"}
-            </h2>
-            <p className="mt-2 break-words text-caption text-muted">
-              {completed.group.name}
-              {target
-                ? ` · ${completed.addedCount}명 추가 완료 (총 ${completed.group.memberCount}명)`
-                : completed.group.memberCount > 0
-                  ? ` · 명단 ${completed.group.memberCount}명 등록 완료`
-                  : " · 명단 없이 등록 완료"}
-            </p>
-            <p className="mt-2 text-control text-muted">
-              이제 첫 행사를 준비해 볼까요?
-            </p>
-          </div>
-          <div className="space-y-2">
-            {target && (
-              <Button
-                className="w-full"
-                onClick={() => onNavigate(`/mypage?group=${target.group.id}`)}
-              >
-                명단으로 돌아가기
-              </Button>
-            )}
-            <Button
-              className="w-full"
-              onClick={() => onNavigate(`/events?group=${completed.group.id}`)}
-            >
-              행사 등록하기
-            </Button>
-            <Button
-              className="w-full"
-              variant="brand-outline"
-              onClick={() => onNavigate(`/?group=${completed.group.id}`)}
-            >
-              홈으로 가기
-            </Button>
-          </div>
-        </Dialog>
-      )}
       {leaving && (
         <Dialog labelledBy={`${id}-leave`} onClose={() => setLeaving(false)}>
           <h2 id={`${id}-leave`} className="text-label">
@@ -258,7 +253,9 @@ export function GroupRegistration({
             className="mt-2 w-full"
             variant="outline"
             onClick={() =>
-              onNavigate(target ? `/mypage?group=${target.group.id}` : "/")
+              onNavigate(
+                target ? `/mypage?view=groups&group=${target.group.id}` : "/",
+              )
             }
           >
             나가기

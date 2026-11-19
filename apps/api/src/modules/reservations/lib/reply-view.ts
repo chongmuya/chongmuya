@@ -9,7 +9,20 @@ export function replyView(
     ? {
         kind: row.kind,
         revision: row.revision,
-        snapshot: row.snapshot,
+        snapshot: {
+          // Preserve the public DTO used by existing clients while storing each fact once.
+          ...row.snapshot.requested,
+          ...(row.snapshot.offered
+            ? {
+                startsAt: row.snapshot.offered.startsAt,
+                expectedGuests: row.snapshot.offered.expectedGuests,
+                space: row.snapshot.offered.space,
+                seating: row.snapshot.offered.seating,
+              }
+            : {}),
+          requested: row.snapshot.requested,
+          offered: row.snapshot.offered,
+        },
         reason: row.reason,
         createdAt: row.createdAt.toISOString(),
         expiresAt: row.expiresAt?.toISOString() ?? null,

@@ -1,9 +1,10 @@
 "use client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
-import { eventKeys } from "@/features/events/client";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import {
+  roundQuery,
+  roundsQuery,
   attendanceKey,
   writeAttendance,
   type AttendanceAction,
@@ -20,17 +21,27 @@ export function useAttendanceAction(
     mutationFn: (action: AttendanceAction) =>
       writeAttendance(request, eventId, action),
     retry: false,
-    onSettled: async () => {
+    onSettled: async (data) => {
       if (!active.current) return;
-      await Promise.all([
-        cache.invalidateQueries({
-          queryKey: attendanceKey(accountId, eventId),
-        }),
-        cache.invalidateQueries({
-          queryKey: eventKeys.detail(accountId, eventId),
+      if (data && "participants" in data) {
+        const detail = roundQuery(
+          accountId,
+          eventId,
+          data.id,
+          request,
+        ).queryKey;
+        await cache.cancelQueries({ queryKey: detail, exact: true });
+        if (!active.current) return;
+        cache.setQueryData(detail, data);
+        await cache.invalidateQueries({
+          queryKey: roundsQuery(accountId, eventId, request).queryKey,
           exact: true,
-        }),
-      ]);
+        });
+      } else {
+        await cache.invalidateQueries({
+          queryKey: attendanceKey(accountId, eventId),
+        });
+      }
     },
   });
 }

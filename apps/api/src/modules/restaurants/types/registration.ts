@@ -86,7 +86,7 @@ export const registrationSchema = z
     branchName: text(80),
     addressQuery: text(200),
     detailAddress: text(120),
-    category: z.enum(["한식", "호프·주점", "기타 음식점"]),
+    category: z.string().max(40),
     phone: text(20),
     receiveConsent: z.boolean(),
     maxCapacity: count,
@@ -133,7 +133,10 @@ export function emptyRegistration(): RegistrationData {
     },
   };
 }
-export function validRegistration(data: RegistrationData) {
+export function validRegistration(
+  data: RegistrationData,
+  preserveExistingContact = false,
+) {
   const p = data.policies;
   const conditional = (required: boolean, value: number | null) =>
     required ? value !== null && value > 0 : value === null;
@@ -144,16 +147,7 @@ export function validRegistration(data: RegistrationData) {
   return (
     !!data.name.trim() &&
     !!data.addressQuery.trim() &&
-    /^01[016789]\d{7,8}$/.test(data.phone) &&
-    (data.minimumGuests.kind === "NONE"
-      ? data.minimumGuests.value === 0
-      : conditional(
-          data.minimumGuests.kind === "AT_LEAST",
-          data.minimumGuests.value,
-        )) &&
-    (data.maxCapacity === null ||
-      data.minimumGuests.value === null ||
-      data.minimumGuests.value <= data.maxCapacity) &&
+    (preserveExistingContact || /^01[016789]\d{7,8}$/.test(data.phone)) &&
     data.spaces.length > 0 &&
     data.spaces.every(
       (s) =>

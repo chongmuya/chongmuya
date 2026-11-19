@@ -1,4 +1,5 @@
 "use client";
+import { isAccessError } from "@/shared/http/access-error";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import Link from "next/link";
@@ -21,16 +22,17 @@ export function GroupRoster({
   return (
     <section aria-label="저장된 모임 명단">
       <h2>모임 명단</h2>
-      <p className="text-caption text-muted">
-        명단은 본인만 볼 수 있어요. 회원 초대나 행사 명단 복사는 자동으로
-        이루어지지 않아요.
-      </p>
-      {members.isError ? (
+      {members.isError && members.data && !isAccessError(members.error) && (
+        <ErrorState retry={() => void members.refetch()}>
+          최신 명단을 불러오지 못했어요.
+        </ErrorState>
+      )}
+      {members.isError && (!members.data || isAccessError(members.error)) ? (
         <ErrorState retry={() => void members.refetch()} />
       ) : !members.data ? (
         <LoadingState>명단 불러오는 중…</LoadingState>
       ) : !members.data.length ? (
-        <p>등록된 명단이 없어요. 명단 없이도 행사를 만들 수 있어요.</p>
+        <p>아직 등록된 구성원이 없어요.</p>
       ) : (
         <>
           <p>{members.data.length}명</p>
@@ -49,11 +51,11 @@ export function GroupRoster({
                     </span>
                   )}
                 </span>
-                <span className="text-caption text-muted">
-                  {member.phoneLast4
-                    ? `뒤 4자리 ${member.phoneLast4}`
-                    : "뒤 4자리 미입력"}
-                </span>
+                {member.phoneLast4 && (
+                  <span className="text-caption text-muted">
+                    뒤 4자리 {member.phoneLast4}
+                  </span>
+                )}
               </li>
             ))}
           </ol>

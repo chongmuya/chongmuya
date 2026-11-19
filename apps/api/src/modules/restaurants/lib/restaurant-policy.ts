@@ -105,7 +105,31 @@ export function policyDescriptions(p: StoredRestaurantPolicies) {
     operatingHours: p.hours
       ? `${p.hours.start}~${p.hours.endDayOffset ? "익일 " : ""}${p.hours.end} / ${holidays}`
       : `영업시간 확인 필요 / ${holidays}`,
-    bookingPolicy: `사전 문의: ${p.advance.kind === "UNKNOWN" ? "확인 필요" : p.advance.kind === "SAME_DAY" ? "당일 가능" : p.advance.kind === "NO_FIXED_RULE" ? "정해진 기준 없음" : `${p.advance.days}일 전`}. 최소 주문: ${order.kind === "UNKNOWN" ? "확인 필요" : order.kind === "NONE" ? "없음" : order.kind === "AMOUNT" ? `${order.amount!.toLocaleString("ko-KR")}원` : `${order.quantity} ${order.unit}`}. 인원 변경: ${deadline(p.guestDeadline)}. 이용 시간: ${p.usage.kind === "UNKNOWN" ? "확인 필요" : p.usage.kind === "NONE" ? "제한 없음" : `${p.usage.minutes}분`}`,
+    bookingPolicy:
+      [
+        p.sourceDescriptions.bookingPolicy,
+        p.advance.kind !== "UNKNOWN" &&
+          "사전 문의: " +
+            (p.advance.kind === "SAME_DAY"
+              ? "당일 가능"
+              : p.advance.kind === "NO_FIXED_RULE"
+                ? "정해진 기준 없음"
+                : `${p.advance.days}일 전`),
+        order.kind !== "UNKNOWN" &&
+          "최소 주문: " +
+            (order.kind === "NONE"
+              ? "없음"
+              : order.kind === "AMOUNT"
+                ? `${order.amount!.toLocaleString("ko-KR")}원`
+                : `${order.quantity} ${order.unit}`),
+        p.guestDeadline.kind !== "UNKNOWN" &&
+          "인원 변경: " + deadline(p.guestDeadline),
+        p.usage.kind !== "UNKNOWN" &&
+          "이용 시간: " +
+            (p.usage.kind === "NONE" ? "제한 없음" : `${p.usage.minutes}분`),
+      ]
+        .filter(Boolean)
+        .join(" · ") || null,
     depositPolicy:
       p.deposit.kind === "NONE"
         ? "예약금 없음"

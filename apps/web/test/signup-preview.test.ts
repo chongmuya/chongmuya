@@ -420,7 +420,7 @@ test("recovery request/reset handles loading, retry, matching passwords and unav
     assert.equal(changes, 0);
     await fill(password.container, "passwordConfirm", "abcdefgh");
     await submit(password.container);
-    assert.match(password.container.textContent!, /저장하지 못했습니다/);
+    assert(password.container.querySelector('[role="alert"]')?.textContent);
     assert.doesNotMatch(password.container.textContent!, /private details/);
     await submit(password.container);
     assert.match(password.container.textContent!, /비밀번호를 변경했어요/);

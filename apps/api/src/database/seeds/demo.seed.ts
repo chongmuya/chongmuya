@@ -270,7 +270,7 @@ export async function seedDemo(
         const event = Object.assign(new Event(), {
           id,
           ownerId,
-          groupId: index === 2 ? null : groupIds[index === 3 ? 2 : 0]!,
+          groupId: index === 2 ? null : groupIds[index === 3 ? 2 : index]!,
           version: 1,
           name: [
             "동아리 정기 모임",
@@ -418,6 +418,9 @@ async function inquiry(
     restaurants.push(
       await m.findOneByOrFail(Restaurant, { id: demoRestaurantIds[i]! }),
     );
+  const group = event.groupId
+    ? await m.findOneByOrFail(Group, { id: event.groupId })
+    : null;
   const conditions = {
     startsAt: event.scheduledAt!.toISOString(),
     expectedGuests: 20,
@@ -445,8 +448,8 @@ async function inquiry(
     snapshot: {
       ...conditions,
       eventName: event.name,
-      groupName: compare ? null : "데모 동아리",
-      groupType: compare ? null : "친목",
+      groupName: group?.name ?? null,
+      groupType: group?.groupType ?? null,
     },
     contactName: demoAccounts[0]!.name,
     contactPhone: demoAccounts[0]!.phone,
@@ -458,7 +461,7 @@ async function inquiry(
     if (!r.isDemo || !r.published)
       throw new DemoSeedConflict("DEMO_RESTAURANT_NOT_ELIGIBLE");
     const contact = await m.findOne(RestaurantContact, {
-      where: { restaurantId: r.id, active: true },
+      where: { restaurantId: r.id, active: true, isPrimary: true },
       order: { id: "ASC" },
     });
     if (!contact?.requestConsentAt)
@@ -549,15 +552,6 @@ async function inquiry(
         digest: digest(input),
         kind,
         snapshot: {
-          ...request.snapshot,
-          ...(proposal
-            ? {
-                startsAt: proposal.startsAt,
-                expectedGuests: proposal.expectedGuests,
-                space: proposal.space,
-                seating: proposal.seating,
-              }
-            : {}),
           offered: proposal,
           requested: request.snapshot,
         },

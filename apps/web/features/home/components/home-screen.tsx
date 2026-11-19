@@ -1,5 +1,6 @@
 "use client";
 
+import { isAccessError } from "@/shared/http/access-error";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -11,10 +12,10 @@ import {
   useAuth,
 } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
-import { useGroups } from "@/features/groups/client";
+import { GroupSwitcher, useGroups } from "@/features/groups/client";
 import { EventSummary } from "@/features/events/client";
 import { Button, buttonStyles } from "@/shared/ui/button";
-import { BottomSheet } from "@/shared/ui/bottom-sheet";
+
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { HomeNavigation } from "./home-navigation";
 
@@ -122,12 +123,16 @@ function AccountHome({
   const groups = useGroups(account.id, request);
   const [dialog, setDialog] = useState<"groups" | null>(null);
   const requested = params.get("group");
-  const selected = groups.isError
-    ? undefined
-    : (groups.data?.find((group) => group.id === requested) ??
-      (!requested ? groups.data?.[0] : undefined));
+  const personal = params.get("view") === "personal" && !requested;
+  const selected =
+    personal || isAccessError(groups.error)
+      ? undefined
+      : (groups.data?.find((group) => group.id === requested) ??
+        (!requested ? groups.data?.[0] : undefined));
   const groupsReady =
-    !!groups.data && !groups.isError && (!requested || !!selected);
+    !isAccessError(groups.error) &&
+    (personal || !!groups.data) &&
+    (!requested || !!selected);
   const complete = isFirstSetupComplete(account);
   const owner = account.accountType === "owner";
   const eventPath = selected ? `/events?group=${selected.id}` : "/events";
@@ -142,12 +147,16 @@ function AccountHome({
             className="min-w-0 border-0 px-1 text-left font-medium"
             variant="outline"
             onClick={() =>
-              selected ? setDialog("groups") : router.push(createPath)
+              groups.data?.length
+                ? setDialog("groups")
+                : router.push(createPath)
             }
           >
-            <span className="truncate">{selected?.name ?? "모임 만들기"}</span>
+            <span className="truncate">
+              {selected?.name ?? (personal ? "개인 행사" : "모임 만들기")}
+            </span>
             <span aria-hidden="true" className="ml-2 text-placeholder">
-              {selected ? "⌄" : "＋"}
+              {groups.data?.length ? "⌄" : "＋"}
             </span>
           </Button>
         )}
@@ -213,7 +222,7 @@ function AccountHome({
                 </Link>
               </div>
             ) : null}
-            {groupsReady && (
+            {(groupsReady || (!requested && groups.isError)) && (
               <EventBanner
                 href={complete ? eventPath : firstSetupPath(eventPath)}
               />
@@ -224,6 +233,7 @@ function AccountHome({
                 accountId={account.id}
                 request={request}
                 groupId={selected?.id}
+                personal={personal}
               />
             )}
           </>
@@ -240,43 +250,20 @@ function AccountHome({
           >
             매장 둘러보기
           </Link>
-          <HomeNavigation groupId={selected?.id ?? requested ?? undefined} />
+          <HomeNavigation
+            personal={personal}
+            groupId={selected?.id ?? requested ?? undefined}
+          />
         </>
       )}
       {dialog === "groups" && (
-        <BottomSheet title="모임 전환" onClose={() => setDialog(null)}>
-          <ul className="my-5 space-y-2">
-            {groups.data?.map((group) => (
-              <li key={group.id}>
-                <Button
-                  className="w-full justify-between"
-                  variant={group.id === selected?.id ? "solid" : "outline"}
-                  onClick={() => {
-                    setDialog(null);
-                    router.replace(`/?group=${group.id}`);
-                  }}
-                >
-                  <span className="truncate">{group.name}</span>
-                  <span className="text-xs">{group.memberCount}명</span>
-                </Button>
-              </li>
-            ))}
-          </ul>
-          <Button
-            variant="brand-outline"
-            className="w-full"
-            onClick={() => router.push(createPath)}
-          >
-            새 모임 만들기
-          </Button>
-          <Button
-            variant="outline"
-            className="mt-2 w-full"
-            onClick={() => setDialog(null)}
-          >
-            닫기
-          </Button>
-        </BottomSheet>
+        <GroupSwitcher
+          groups={groups.data ?? []}
+          selected={selected?.id}
+          view="home"
+          createPath={createPath}
+          onClose={() => setDialog(null)}
+        />
       )}
     </main>
   );

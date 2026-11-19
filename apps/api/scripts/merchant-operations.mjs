@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { open } from "node:fs/promises";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../dist/app.module.js";
-import { RestaurantManagementService } from "../dist/modules/restaurants/restaurant-management.service.js";
+import { RestaurantOperationsService } from "../dist/modules/restaurants/restaurant-operations.service.js";
 import { MessageDeliveryService } from "../dist/modules/reservations/message-delivery.service.js";
 import { MerchantRepliesService } from "../dist/modules/reservations/merchant-replies.service.js";
 import { deliveryStates } from "../dist/modules/reservations/types/merchant-reply.js";
@@ -34,6 +34,7 @@ async function run() {
         "output",
         "input",
         "status",
+        "page",
       ]
         .map((key) => [key, { type: "string" }])
         .concat([
@@ -45,14 +46,14 @@ async function run() {
   });
   if (v.help) {
     console.log(`merchant:operations --action <작업> [옵션]
-조회: deliveries [--status ${deliveryStates.join("|")}] [--delivery UUID]
+조회: deliveries [--status ${deliveryStates.join("|")}] [--page N | --delivery UUID] (최신순, 50건씩)
 매장 관리: publish --restaurant UUID [--unpublish], owner-link --restaurant UUID --account UUID,
            record-contact --restaurant UUID --input 비공개JSON
 발송 복구: retry --delivery UUID, reconcile --delivery UUID
 예외 처리: regenerate-link --target UUID, change-recipient --target UUID --contact UUID,
            record-reply --target UUID --input 비공개JSON
 변경 작업은 --actor 실행자 --reason 사유가 필수이며 기본은 dry-run입니다. --execute로 적용합니다.
-조회는 마스킹된 표로 출력합니다. 원본 이력 파일이 필요할 때만 --output 새파일을 지정하세요(0600, 덮어쓰기 금지).
+조회는 마스킹된 표로 출력합니다. 이력 파일은 --page N 또는 --delivery UUID와 함께 --output 새파일을 지정하세요(0600, 덮어쓰기 금지).
 정상 문의 문자는 서버가 자동 발송합니다. 이 도구는 매장 관리와 장애 확인용입니다.`);
     return;
   }
@@ -73,6 +74,17 @@ async function run() {
     (v.action !== "deliveries" || !deliveryStates.includes(v.status))
   )
     throw new Error("INVALID_STATUS");
+  const page = Number(v.page ?? "1");
+  if (
+    v.page !== undefined &&
+    (v.action !== "deliveries" ||
+      v.delivery ||
+      !/^[1-9]\d*$/.test(v.page) ||
+      !Number.isSafeInteger(page * 50))
+  )
+    throw new Error("INVALID_PAGE");
+  if (v.action === "deliveries" && v.output && !v.page && !v.delivery)
+    throw new Error("EXPORT_SCOPE_REQUIRED");
   if (v.action !== "deliveries") requireOperator(v);
   if (["owner-link", "publish", "record-contact"].includes(v.action))
     uuid(v.restaurant);
@@ -92,7 +104,7 @@ async function run() {
   const deliveries = app.get(MessageDeliveryService);
   let result;
   if (["owner-link", "publish"].includes(v.action))
-    result = await app.get(RestaurantManagementService).operate({
+    result = await app.get(RestaurantOperationsService).operate({
       restaurantId: v.restaurant,
       actor: v.actor,
       reason: v.reason,
@@ -103,7 +115,7 @@ async function run() {
     });
   else if (v.action === "record-contact")
     result = await app
-      .get(RestaurantManagementService)
+      .get(RestaurantOperationsService)
       .recordContact(
         v.restaurant,
         await privateInput(v.input),
@@ -114,6 +126,7 @@ async function run() {
   else if (v.action === "deliveries")
     result = await deliveries.listForOperations({
       status: v.status,
+      page,
       deliveryId: v.delivery,
     });
   else if (v.action === "retry")
@@ -176,8 +189,11 @@ async function run() {
     await output.writeFile(JSON.stringify(result, null, 2) + "\n");
     console.log("원본 결과를 새 비공개 파일(0600)에 저장했습니다.");
   }
-  if (v.action === "deliveries") printDeliveries(result);
-  else printOperation(v.action, result, v);
+  if (v.action === "deliveries") {
+    printDeliveries(result, Boolean(v.delivery));
+    if (!v.delivery && result.length === 50)
+      console.log(`다음 페이지 조회: --page ${page + 1}`);
+  } else printOperation(v.action, result, v);
 }
 try {
   await run();

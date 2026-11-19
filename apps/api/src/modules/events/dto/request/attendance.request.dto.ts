@@ -14,10 +14,7 @@ import {
   normalizePersonName,
   personNamePattern,
 } from "../../../../common/validation/person-name.js";
-import type {
-  AttendanceAnswer,
-  AttendanceState,
-} from "../../types/attendance.js";
+import type { AttendanceAnswer } from "../../types/attendance.js";
 
 export class CreateRoundInput {
   @IsUUID() requestKey!: string;
@@ -45,8 +42,8 @@ export class SaveAttendanceInput {
 export class SetAttendanceInput {
   @IsInt() @Min(0) expectedVersion!: number;
   @ValidateIf((_o, v: unknown) => v !== null)
-  @IsIn(["UNANSWERED", "ATTENDING", "ABSENT"])
-  managerOverride!: AttendanceState | null;
+  @IsIn(["ATTENDING", "ABSENT"])
+  managerOverride!: AttendanceAnswer | null;
 }
 export class ResolveAttendanceInput {
   @IsInt() @Min(1) expectedReviewVersion!: number;
