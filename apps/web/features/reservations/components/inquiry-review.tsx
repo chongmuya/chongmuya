@@ -97,8 +97,8 @@ export function InquiryReview({
         문의 조건 수정
       </Button>
       <p className="rounded-control bg-choice p-4 text-sm">
-        보낸 뒤에는 조건이나 매장을 바꿀 수 없고, 이 행사에서 다시 문의할 수
-        없어요.
+        문의가 진행 중일 때는 조건이나 매장을 바꿀 수 없어요. 선택한 매장이 없고
+        모든 후보가 불가·종료되면 새 회차로 다시 문의할 수 있어요.
       </p>
       <FormError message={error} />
       <Button

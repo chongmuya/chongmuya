@@ -313,6 +313,51 @@ export function ReplyForm({
                       .join(" · ")}
                   </div>
                 )}
+                <label className="block space-y-2">
+                  예약금
+                  <Select
+                    name="proposal.deposit.kind"
+                    value={deposit}
+                    onChange={(e) => {
+                      const v = e.target.value as typeof deposit;
+
+                      form.setValue("proposal.deposit", {
+                        kind: v,
+                        amount: v === "NONE" ? 0 : null,
+                      });
+                    }}
+                  >
+                    <option value="UNKNOWN">미확인</option>
+                    <option value="NONE">없음 (0원)</option>
+                    <option value="FIXED">확정 금액</option>
+                    <option value="PER_RESERVATION">예약별 협의</option>
+                  </Select>
+                </label>
+                {deposit === "FIXED" && (
+                  <Controller
+                    name="proposal.deposit.amount"
+                    control={form.control}
+                    render={({ field }) => (
+                      <label className="block space-y-2">
+                        예약금 (원)
+                        <Input
+                          type="number"
+                          min={1}
+                          name={field.name}
+                          ref={field.ref}
+                          value={field.value ?? ""}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value),
+                            )
+                          }
+                        />
+                      </label>
+                    )}
+                  />
+                )}
                 <details className="rounded-control border border-field p-4">
                   <summary className="cursor-pointer font-semibold">
                     금액·메뉴 조건 수정
@@ -350,51 +395,6 @@ export function ReplyForm({
                         )}
                       />
                     ))}
-                    <label className="block space-y-2">
-                      예약금
-                      <Select
-                        name="proposal.deposit.kind"
-                        value={deposit}
-                        onChange={(e) => {
-                          const v = e.target.value as typeof deposit;
-
-                          form.setValue("proposal.deposit", {
-                            kind: v,
-                            amount: v === "NONE" ? 0 : null,
-                          });
-                        }}
-                      >
-                        <option value="UNKNOWN">미확인</option>
-                        <option value="NONE">없음 (0원)</option>
-                        <option value="FIXED">확정 금액</option>
-                        <option value="PER_RESERVATION">예약별 협의</option>
-                      </Select>
-                    </label>
-                    {deposit === "FIXED" && (
-                      <Controller
-                        name="proposal.deposit.amount"
-                        control={form.control}
-                        render={({ field }) => (
-                          <label className="block space-y-2">
-                            예약금 (원)
-                            <Input
-                              type="number"
-                              min={1}
-                              name={field.name}
-                              ref={field.ref}
-                              value={field.value ?? ""}
-                              onChange={(e) =>
-                                field.onChange(
-                                  e.target.value === ""
-                                    ? null
-                                    : Number(e.target.value),
-                                )
-                              }
-                            />
-                          </label>
-                        )}
-                      />
-                    )}
                     <Controller
                       name="proposal.menuDeadlineAt"
                       control={form.control}
@@ -417,6 +417,69 @@ export function ReplyForm({
                     />
                   </div>
                 </details>
+                <label className="block space-y-2">
+                  이용 시간
+                  <Select
+                    name="proposal.usageTime.kind"
+                    aria-label="이용 시간"
+                    value={offered?.usageTime?.kind ?? "UNKNOWN"}
+                    onChange={(e) =>
+                      form.setValue("proposal.usageTime", {
+                        kind: e.target.value as
+                          "UNKNOWN" | "UNLIMITED" | "MINUTES",
+                        minutes: e.target.value === "MINUTES" ? 120 : null,
+                      })
+                    }
+                  >
+                    <option value="UNKNOWN">미확인</option>
+                    <option value="UNLIMITED">별도 시간 제한 없음</option>
+                    <option value="MINUTES">이용 시간 지정</option>
+                  </Select>
+                </label>
+                {offered?.usageTime?.kind === "MINUTES" && (
+                  <label className="block space-y-2">
+                    이용 시간 (분)
+                    <Input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      {...form.register("proposal.usageTime.minutes", {
+                        valueAsNumber: true,
+                      })}
+                    />
+                  </label>
+                )}
+                <Controller
+                  name="proposal.minimumQuantity"
+                  control={form.control}
+                  render={({ field }) => (
+                    <label className="block space-y-2">
+                      최소 주문 수량 (미확인 시 비움)
+                      <Input
+                        type="number"
+                        min={0}
+                        name={field.name}
+                        ref={field.ref}
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value === ""
+                              ? null
+                              : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                />
+                <label className="block space-y-2">
+                  변경·취소·환불 조건 (미확인 시 비움)
+                  <textarea
+                    {...form.register("proposal.changeCancellationPolicy")}
+                    className="min-h-24 w-full rounded-control border border-field bg-surface p-3"
+                    maxLength={1500}
+                  />
+                </label>
                 <Controller
                   name="expiresAt"
                   control={form.control}
@@ -439,7 +502,7 @@ export function ReplyForm({
                   )}
                 />
                 <label className="block space-y-2">
-                  추가 안내 (선택)
+                  사장님 한마디 (선택)
                   <textarea
                     {...form.register("proposal.note")}
                     className="min-h-24 w-full rounded-control border border-field bg-surface p-3"
@@ -487,7 +550,7 @@ export function ReplyForm({
                 <label className="flex items-start gap-3 text-sm">
                   <Checkbox {...form.register("holdConfirmed")} />
                   <span>
-                    이 조건으로 받을 수 있으며{" "}
+                    이 날짜·시간에 해당 인원의 좌석을 준비하며{" "}
                     {deadline ? koreanDateLabel(deadline) : "선택 기한"}
                     까지 좌석을 유지할 수 있어요.
                   </span>

@@ -45,6 +45,14 @@ export class RestaurantsService {
       })
     ).map((r) => r.id);
   }
+  async notificationAccount(
+    id: string,
+    manager: EntityManager,
+  ): Promise<string | null> {
+    return (
+      (await manager.findOneBy(Restaurant, { id }))?.ownerAccountId ?? null
+    );
+  }
   async replyDefaults(id: string, manager: EntityManager) {
     const r = await manager.findOneBy(Restaurant, { id });
     if (!r) throw new NotFoundException();
@@ -342,6 +350,7 @@ export class RestaurantsService {
       targets.push({
         restaurantId: id,
         restaurantName: restaurant.name,
+        photoPath: restaurant.photoPath,
         address: restaurant.address,
         isDemo: restaurant.isDemo,
         contactId: contact.id,

@@ -1,5 +1,9 @@
 "use client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  onlineManager,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import {
   replyKey,
@@ -20,6 +24,7 @@ export function useReplyAction(
     mutationKey: [...replyKey(id, access), "write"],
     mutationFn: (input: MerchantReplyInput) => saveReply(id, access, input),
     retry: false,
+    networkMode: "always",
     gcTime: 0,
     onError: (error) => {
       if (active.current && isMerchantAccessError(error)) onAccessFailure?.();
@@ -34,7 +39,10 @@ export function useReplyAction(
     },
     onSettled: async (_data, error) => {
       if (active.current && !isMerchantAccessError(error))
-        await cache.invalidateQueries({ queryKey: replyKey(id, access) });
+        await cache.invalidateQueries({
+          refetchType: onlineManager.isOnline() ? "active" : "none",
+          queryKey: replyKey(id, access),
+        });
     },
   });
 }

@@ -27,6 +27,7 @@ export type Reply = {
   state: "DECLINED" | "EXPIRED" | "PROPOSED";
 };
 export type MerchantInquiry = {
+  closedState?: string | null;
   targetId: string;
   restaurantName: string;
   snapshot: RequestSnapshot;

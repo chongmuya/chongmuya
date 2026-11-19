@@ -1,4 +1,7 @@
 "use client";
+import { useState } from "react";
+import { EditEvent } from "./edit-event";
+import { Button } from "@/shared/ui/button";
 import { isAccessError } from "@/shared/http/access-error";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
@@ -15,6 +18,7 @@ export function EventDetail({
   eventId: string;
   request: SessionRequest;
 }) {
+  const [editing, setEditing] = useState(false);
   const detail = useQuery(eventQueryOptions(accountId, eventId, request));
   if (detail.isError && (!detail.data || isAccessError(detail.error)))
     return <ErrorState retry={() => void detail.refetch()} />;
@@ -22,9 +26,26 @@ export function EventDetail({
   const event = detail.data;
   return (
     <article className="mb-7 space-y-3">
-      <h1 className="text-2xl font-bold break-words">{event.name}</h1>
+      <div className="flex items-start justify-between gap-3">
+        <h1 className="min-w-0 text-xl font-bold break-words">{event.name}</h1>
+        <Button
+          variant="outline"
+          className="shrink-0 min-h-9 px-3 text-xs"
+          onClick={() => setEditing(true)}
+        >
+          행사 수정
+        </Button>
+      </div>
       <p className="text-xs text-secondary">{dateLabel(event.scheduledAt)}</p>
       {!event.groupId && <p className="text-xs text-secondary">개인 행사</p>}
+      {editing && (
+        <EditEvent
+          event={event}
+          accountId={accountId}
+          request={request}
+          onClose={() => setEditing(false)}
+        />
+      )}
       {detail.isError && (
         <ErrorState retry={() => void detail.refetch()}>
           최신 행사 정보를 불러오지 못했어요.

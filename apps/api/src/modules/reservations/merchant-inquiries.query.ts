@@ -51,6 +51,7 @@ export class MerchantInquiriesQuery {
           "t.id AS id",
           "t.restaurant_id AS restaurant_id",
           "t.restaurant_name AS restaurant_name",
+          "t.candidate_state AS candidate_state",
           "r.snapshot AS snapshot",
           "r.closed_at AS closed_at",
           `to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS received_at`,
@@ -73,6 +74,7 @@ export class MerchantInquiriesQuery {
         id: string;
         restaurant_id: string;
         restaurant_name: string;
+        candidate_state: string;
         snapshot: InquirySnapshot;
         closed_at: Date | null;
         received_at: string;
@@ -95,7 +97,10 @@ export class MerchantInquiriesQuery {
           expectedGuests: r.snapshot.expectedGuests,
           receivedAt: r.received_at,
           closed:
-            !!r.closed_at || Date.parse(r.snapshot.startsAt) <= Date.now(),
+            !!r.closed_at ||
+            r.candidate_state !== "OPEN" ||
+            Date.parse(r.snapshot.startsAt) <= Date.now(),
+          candidateState: r.candidate_state,
           response: replyView(
             r.kind
               ? {

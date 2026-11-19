@@ -9,6 +9,7 @@ import {
   isMerchantAccessError,
   type ReplyAccess,
 } from "../api/replies.api";
+import { ClosedInquiry } from "./closed-inquiry";
 import { ReplyForm } from "./reply-form";
 export function ReplyWorkspace({
   targetId,
@@ -38,7 +39,7 @@ export function ReplyWorkspace({
   const notice = isMerchantAccessError(q.error)
     ? safeErrorMessage(q.error)
     : "접근 권한이 만료됐습니다. 문자에 있는 원래 링크를 다시 열어 주세요.";
-  if (blocked && !q.data) return <p role="alert">{notice}</p>;
+  if (blocked) return <p role="alert">{notice}</p>;
   if (q.isError && !q.data)
     return (
       <ErrorState retry={() => void q.refetch()}>
@@ -46,6 +47,7 @@ export function ReplyWorkspace({
       </ErrorState>
     );
   if (!q.data) return <LoadingState>예약 문의 확인 중…</LoadingState>;
+  if (q.data.closedState) return <ClosedInquiry state={q.data.closedState} />;
   return (
     <>
       {blocked && (

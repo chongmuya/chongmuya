@@ -35,6 +35,8 @@ import type { BrowseNavigation } from "@/features/restaurants/types";
 import { serviceArea } from "@/shared/lib/service-area";
 import { ApiError } from "@/shared/http/api-error";
 import { InquiryReview } from "./inquiry-review";
+import { isAccessError } from "@/shared/http/access-error";
+import type { ReservationRequest } from "../types/inquiry.types";
 import { InquiryReceipt } from "./reservation-progress";
 
 const uuid =
@@ -219,6 +221,7 @@ function InquiryFlow({
   browse: BrowseNavigation;
 }) {
   const router = useRouter();
+  const params = useSearchParams();
   const event = useEvent(account.id, eventId, request);
   const existing = useQuery({
     ...inquiryQuery(account.id, eventId, request),
@@ -228,7 +231,10 @@ function InquiryFlow({
   });
   if (
     (event.isError || existing.isError) &&
-    (!event.data || existing.data === undefined)
+    (!event.data ||
+      existing.data === undefined ||
+      isAccessError(event.error) ||
+      isAccessError(existing.error))
   )
     return (
       <StepLayout
@@ -256,7 +262,11 @@ function InquiryFlow({
         <LoadingState>행사와 기존 문의 확인 중…</LoadingState>
       </StepLayout>
     );
-  if (existing.data)
+  const previous =
+    existing.data?.canReinquire && params.get("reinquire") === existing.data.id
+      ? existing.data
+      : undefined;
+  if (existing.data && !previous)
     return (
       <StepLayout
         variant="flow"
@@ -273,6 +283,8 @@ function InquiryFlow({
     );
   return (
     <InquiryDraft
+      key={previous?.id ?? "initial"}
+      previous={previous}
       unavailable={event.isError || existing.isError}
       retry={() => {
         void event.refetch();
@@ -292,6 +304,7 @@ function InquiryFlow({
 }
 
 function InquiryDraft({
+  previous,
   unavailable,
   retry,
   account,
@@ -299,6 +312,7 @@ function InquiryDraft({
   request,
   browse,
 }: {
+  previous?: ReservationRequest;
   unavailable: boolean;
   retry: () => void;
   account: Account;
@@ -314,9 +328,32 @@ function InquiryDraft({
   const router = useRouter();
   const params = useSearchParams();
   const active = useActiveScreen();
-  const [values, setValues] = useState(() =>
-    initialConditions(account, event.scheduledAt),
-  );
+  const [values, setValues] = useState(() => {
+    const initial = initialConditions(
+      account,
+      previous?.snapshot.startsAt ?? event.scheduledAt,
+    );
+    const p = previous?.snapshot;
+    return p
+      ? {
+          ...initial,
+          expectedGuests: String(p.expectedGuests),
+          seating: p.seating,
+          space: p.space,
+          seatingImportance: p.seatingImportance ?? ("PREFERRED" as const),
+          spaceImportance: p.spaceImportance ?? ("PREFERRED" as const),
+          budgetBasis: p.budgetBasis ?? ("PER_PERSON" as const),
+          budgetAmount: p.budgetAmount ? String(p.budgetAmount) : "",
+          alcohol: p.alcohol ?? ("UNKNOWN" as const),
+          additionalRequests: p.additionalRequests ?? "",
+        }
+      : initial;
+  });
+  const [scheduleConfirmed, setScheduleConfirmed] = useState(false);
+  const scheduleChanged =
+    !!previous &&
+    conditionsSchema.safeParse(values).success &&
+    inquiryConditions(values).startsAt !== event.scheduledAt;
   const [error, setError] = useState<string>();
   const valid = conditionsSchema.safeParse(values).success;
   const step =
@@ -359,7 +396,8 @@ function InquiryDraft({
       submitting.current ||
       unavailable ||
       targetState !== "ready" ||
-      !browse.selected.length
+      !browse.selected.length ||
+      (scheduleChanged && !scheduleConfirmed)
     )
       return;
     const parsed = conditionsSchema.safeParse(values);
@@ -379,6 +417,9 @@ function InquiryDraft({
     const body = {
       mode: "DIRECT" as const,
       expectedEventVersion: confirmationVersion,
+      previousRequestId: previous?.id,
+      expectedRequestVersion: previous?.version,
+      updateEventSchedule: scheduleConfirmed,
       restaurantIds: browse.selected,
       conditions: inquiryConditions(parsed.data),
       contact: {
@@ -447,6 +488,23 @@ function InquiryDraft({
           최신 행사 상태를 확인하지 못했어요. 다시 확인한 뒤 보내 주세요.
         </ErrorState>
       )}
+      {previous && (
+        <p className="mb-5 text-sm text-muted">
+          {previous.round ?? 1}회차는 보존하고 새 회차로 문의해요. 제출 전에
+          매장 답변이 바뀌면 다시 확인해야 해요.
+        </p>
+      )}
+      {step === "review" && scheduleChanged && (
+        <label className="mb-5 flex gap-3 rounded-control bg-choice p-4 text-sm">
+          <input
+            type="checkbox"
+            checked={scheduleConfirmed}
+            onChange={(e) => setScheduleConfirmed(e.target.checked)}
+          />
+          새 문의 일시로 행사 대표 일정도 갱신합니다. 이전 회차의 일시는
+          유지됩니다.
+        </label>
+      )}
       {step === "conditions" ? (
         <ConditionsForm
           initial={values}
@@ -471,7 +529,7 @@ function InquiryDraft({
           browse={browse}
           targets={targets}
           targetState={targetState}
-          unavailable={unavailable}
+          unavailable={unavailable || (scheduleChanged && !scheduleConfirmed)}
           sending={create.isPending}
           onSubmit={submit}
           error={

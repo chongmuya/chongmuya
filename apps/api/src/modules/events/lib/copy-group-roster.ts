@@ -16,7 +16,7 @@ export async function copyGroupRoster(
   });
   const imported = new Set(existing.map((p) => p.groupMemberId));
   const fresh = members.filter((m) => !imported.has(m.id));
-  if (existing.length + fresh.length > 500)
+  if (fresh.length && existing.length + fresh.length > 500)
     throw new DomainHttpException("ROSTER_LIMIT");
   const position = existing.reduce(
     (max, p) => Math.max(max, p.position + 1),

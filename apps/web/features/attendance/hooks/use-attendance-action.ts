@@ -1,5 +1,9 @@
 "use client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  onlineManager,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import {
@@ -21,6 +25,7 @@ export function useAttendanceAction(
     mutationFn: (action: AttendanceAction) =>
       writeAttendance(request, eventId, action),
     retry: false,
+    networkMode: "always",
     onSettled: async (data) => {
       if (!active.current) return;
       if (data && "participants" in data) {
@@ -34,11 +39,13 @@ export function useAttendanceAction(
         if (!active.current) return;
         cache.setQueryData(detail, data);
         await cache.invalidateQueries({
+          refetchType: onlineManager.isOnline() ? "active" : "none",
           queryKey: roundsQuery(accountId, eventId, request).queryKey,
           exact: true,
         });
       } else {
         await cache.invalidateQueries({
+          refetchType: onlineManager.isOnline() ? "active" : "none",
           queryKey: attendanceKey(accountId, eventId),
         });
       }

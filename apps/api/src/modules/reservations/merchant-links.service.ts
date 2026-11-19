@@ -1,3 +1,4 @@
+import { ReservationLocksService } from "./reservation-locks.service.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
@@ -21,6 +22,7 @@ export class MerchantLinksService {
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
     private readonly restaurants: RestaurantsService,
+    private readonly locks: ReservationLocksService,
   ) {}
   url(link: MerchantReplyLink) {
     try {
@@ -62,6 +64,7 @@ export class MerchantLinksService {
     });
   }
   async context(targetId: string, m: EntityManager, lock = false) {
+    if (lock) await this.locks.target(targetId, m);
     const target = await m.findOne(RequestTarget, {
       where: { id: targetId },
       ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
@@ -92,7 +95,11 @@ export class MerchantLinksService {
       m,
       liveDelivery,
     );
-    return [...recipientReasons, ...this.linkReasons(request, link)];
+    return [
+      ...recipientReasons,
+      ...(target.candidateState !== "OPEN" ? ["CANDIDATE_CLOSED"] : []),
+      ...this.linkReasons(request, link),
+    ];
   }
   linkReasons(request: ReservationRequest, link: MerchantReplyLink | null) {
     const reasons: string[] = [];
@@ -128,9 +135,17 @@ export class MerchantLinksService {
       !timingSafeEqual(
         Buffer.from(digest(raw), "hex"),
         Buffer.from(c.link.digest, "hex"),
-      ) ||
-      (await this.reasons(c.target, c.request, c.link, db.manager)).length
+      )
     )
+      this.invalid();
+    if (c.request.closedAt || c.target.candidateState !== "OPEN")
+      return {
+        closedState:
+          c.target.candidateState === "OPEN"
+            ? "INQUIRY_CLOSED"
+            : c.target.candidateState,
+      };
+    if ((await this.reasons(c.target, c.request, c.link, db.manager)).length)
       this.invalid();
     const accessExpiresAt = Math.min(
       Date.now() + 3600_000,
@@ -159,6 +174,7 @@ export class MerchantLinksService {
     access: string | undefined,
     m: EntityManager,
     lock = false,
+    allowClosed = false,
   ) {
     if (!access || access.length > 1000) this.invalid();
     const [payload, signature, extra] = access.split(".");
@@ -186,7 +202,11 @@ export class MerchantLinksService {
       decoded.targetId !== targetId ||
       decoded.generation !== c.link?.generation ||
       typeof decoded.expiresAt !== "number" ||
-      (await this.reasons(c.target, c.request, c.link, m)).length
+      (await this.reasons(c.target, c.request, c.link, m)).filter(
+        (reason) =>
+          !allowClosed ||
+          !["INQUIRY_CLOSED", "CANDIDATE_CLOSED"].includes(reason),
+      ).length
     )
       this.invalid();
     if (decoded.expiresAt! <= Date.now())

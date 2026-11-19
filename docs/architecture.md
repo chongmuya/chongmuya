@@ -293,14 +293,20 @@ PasswordResetService는 복구 토큰 발급·소비, KakaoFlowService는 브라
 
 카카오 GET 콜백은 명시적인 KAKAO_REDIRECT_URI의 Nest 엔드포인트에서만 처리합니다. 임시 결과를 DB에 저장한 뒤 WEB_ORIGIN의 깨끗한 완료 화면으로 이동하고, 프론트가 Origin·CSRF 헤더를 갖춘 POST로 API에 최종 확정을 요청합니다. 콜백 query는 프론트 URL이나 애플리케이션 로그에 전달하지 않습니다. 운영 ingress·CDN·APM의 query 수집도 배포 설정에서 제외해야 합니다.
 
-`1795132800000-RosterAdditions`는 기존 구성원에 nullable label과 별도 명단 추가 재시도 기록 테이블을 추가한다. 기존 모임·구성원·행사·계정 ID와 데이터는 그대로 유지한다. API 빌드 → 대상 DB 확인 → `pnpm --filter @chongmuya/api db:migration:show` → `pnpm --filter @chongmuya/api db:migration:run` → 새 API/웹 순서로 적용한다. 구분 표시 또는 재시도 기록이 생긴 뒤에는 손실을 막기 위해 down을 거부한다. 새 환경변수는 없다. 신규 동명이인 등록에는 구분 표시가 필수이므로 API와 웹을 함께 갱신한다. 이전 버전의 레이블 없는 중복 등록 요청도 이미 저장된 creationKey가 있으면 기존 결과를 돌려준다.
-
 ### 공급자 경계와 편집 복구
 
 DB CLI는 `database-environment`만 검증하고 런타임 환경은 그 정의를 조합한다. Nest 조립 지점에서 MessageGateway/SolapiMessageGateway/FakeMessageGateway, Geocoder/NaverGeocoder/FakeGeocoder를 선택한다. 공급자 인증·원본 payload·서명·상태 코드 해석은 어댑터에 두고 발송 서비스는 정규화한 결과와 처리권/상태 전환을 담당한다. 실제 공급자 오류를 fake로 전환하지 않는다. 가상 주소로 신규 생성한 매장은 isDemo이며 실제 매장의 주소를 fake 결과로 교체하지 않는다.
 
-링크 접근은 현재 연락처·동의·공개·문의·generation·만료를 검사하되 로컬 데모 접근을 허용한다. 실제 메시지 경계에는 추가로 데모/가상 수신자 차단을 적용한다. 발송 생성은 공유 생성 함수, 수신자/재발급은 target advisory lock → target row → delivery row 순서다. 웹훅 묶음은 target ID 순서로 잠근다. 문의 생성의 event → 정렬한 restaurant → contact 잠금과 커밋 뒤 awaited dispatch 진입점은 유지한다. Redis/워커는 없다.
+링크 접근은 현재 연락처·동의·공개·문의·generation·만료를 검사하되 로컬 데모 접근을 허용한다. 실제 메시지 경계에는 추가로 데모/가상 수신자 차단을 적용한다. 예약 쓰기는 행사 → 문의 → target ID 순 후보 행 → target advisory lock → delivery 행 순서로 잠근다. 답변 저장·총무 선택·재문의·만료·문의 문자 재발급/재처리/웹훅이 같은 ReservationLocksService를 사용한다. 웹훅 묶음은 보고 하나씩 별도 트랜잭션으로 처리해 서로 다른 행사의 역순 잠금을 만들지 않는다. 신규 문의는 이 경계 안에서 restaurant ID 순 매장 → 연락처를 확인하며, 외부 발송은 commit 후 실행한다. Redis/워커는 없다.
 
 운영 조회는 읽기 전용이며 이전 PENDING은 수신자 전환 트랜잭션에서 CANCELLED로 보존한다. UNKNOWN/PROCESSING은 세대와 관계없이 우회하지 않는다. `merchant:operations --action deliveries`가 현재 generation/연락처 판정과 상태 필터를 사용하는 단일 운영 조회다. 터미널은 마스킹된 projection만 출력하며 명시적 비공개 파일 내보내기에만 원래 수신자 이력을 포함한다. 만료 lease의 영속 변경은 실행자·사유가 있는 `reconcile --execute`에서 공급자 결과 확인에 앞서 수행한다. 활성 lease와 불명 결과는 재발송하지 않으며 dry-run은 외부 조회·DB 변경을 하지 않는다.
 
-사장님 문의 목록은 소유 매장을 SQL에서 제한한 projection이며 접수 시각+target ID 커서로 20개씩 조회한다. 웹은 endpoint별 typed API와 필요한 캐시만 갱신한다. 메뉴의 편집 snapshot/baseVersion은 배경 조회로 교체하지 않고 명시적 다시 적용/불러오기로 복구한다. 비회원 accessExpiresAt(최대 1시간)과 linkExpiresAt은 별개다. 접근 만료 시 현재 탭의 입력은 유지하고 재조회/쓰기를 멈춘다. 원래 문자 링크를 다시 열어야 하며 capability는 영구 브라우저 저장소에 보관하지 않는다.
+사장님 문의 목록은 소유 매장을 SQL에서 제한한 projection이며 접수 시각+target ID 커서로 20개씩 조회한다. 웹은 endpoint별 typed API와 필요한 캐시만 갱신한다. 메뉴의 편집 snapshot/baseVersion은 배경 조회로 교체하지 않고 명시적 다시 적용/불러오기로 복구한다. 비회원 accessExpiresAt(최대 1시간)과 linkExpiresAt은 별개다. 일시 장애에는 입력을 유지하고 명시적 재시도를 제공한다. 접근 만료·권한 상실 시 과거 문의 개인정보를 숨기고 재조회/쓰기를 멈춘다. 원래 문자 링크를 다시 열어야 하며 capability는 영구 브라우저 저장소에 보관하지 않는다.
+
+### 행사 생성·예약 회차와 알림
+
+행사 생성은 계정/creationKey 유일성·정규화 digest로 응답 유실과 동시 요청을 복구한다. 생성과 모임 명단 복사는 한 트랜잭션이다. 행사 PATCH는 행사 잠금·expectedVersion 아래 이름과 기본 일정을 편집하되 `reservationScheduleLocked`인 일정은 유지한다. 재문의 또는 매장 선택 명령이 합의한 일정으로 대표 일정을 같은 행사 잠금 안에서 갱신한다.
+
+행사 명단 추가는 `expectedRoster: [{id,version}]`, `existingParticipantId`, `newPersonConfirmed`, `duplicatesConfirmed`를 검증한다. 기존 인물 연결은 행/ID/응답을 추가·교체하지 않는다. 명단 검토 기준은 저장 재시도 동안 고정하며 새 명단은 명시적으로 다시 검토한다. 명단 추가·모임 가져오기의 신규 인원 한도는 500명이고 기존 초과 자료는 보존한다.
+
+`reservations → notifications` 공개 기록 API는 같은 EntityManager로 업무 사실·계정별 인앱 항목·문자 예정 이력을 저장한다. notifications는 예약 모듈에 의존하지 않는다. 예약금·메뉴·예약 확정은 이 PR의 선택 기록 `PREPARING` 다음 단계다. 문의는 행사별 회차로 보존하며 동시에 활성 회차와 유효 선택 예약은 각각 한 건이다.

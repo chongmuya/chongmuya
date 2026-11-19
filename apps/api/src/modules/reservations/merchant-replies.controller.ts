@@ -1,3 +1,4 @@
+import { NotificationsService } from "../notifications/notifications.service.js";
 import { MerchantInquiriesQuery } from "./merchant-inquiries.query.js";
 import { SolapiWebhookDecoder } from "./providers/solapi-webhook.js";
 import {
@@ -101,15 +102,17 @@ export class SolapiWebhookController {
   constructor(
     private readonly delivery: MessageDeliveryService,
     private readonly decoder: SolapiWebhookDecoder,
+    private readonly notifications: NotificationsService,
   ) {}
   @Post()
   @HttpCode(200)
-  webhook(
+  async webhook(
     @Headers("x-solapi-signature") signature: string | undefined,
     @Req() req: Request & { rawBody?: Buffer },
   ) {
-    return this.delivery.applyReports(
-      this.decoder.decode(signature, req.rawBody),
-    );
+    const reports = this.decoder.decode(signature, req.rawBody);
+    await this.delivery.applyReports(reports);
+    for (const report of reports) await this.notifications.report(report);
+    return { received: true };
   }
 }

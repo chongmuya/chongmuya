@@ -1,0 +1,129 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { test } from "node:test";
+import { startResourceApplication } from "../support/resource-application.js";
+
+test("PR1 forward migration retains legacy inquiry/reply/link/delivery bytes and rejects lossy round rollback", async (t) => {
+  const { db } = await startResourceApplication(t);
+  const q = db.createQueryRunner();
+  await q.connect();
+  await q.startTransaction();
+  try {
+    const schema = `pr1_${randomUUID().replaceAll("-", "")}`;
+    await q.query(`CREATE SCHEMA ${schema}`);
+    await q.query(`SET LOCAL search_path TO ${schema}`);
+    const migrations = [...db.migrations].sort((a, b) =>
+      a.constructor.name
+        .slice(-13)
+        .localeCompare(b.constructor.name.slice(-13)),
+    );
+    for (const m of migrations) {
+      if (m.constructor.name.startsWith("EventCreationRetry")) break;
+      await m.up(q);
+    }
+    const account = randomUUID(),
+      event = randomUUID(),
+      restaurant = randomUUID(),
+      request = randomUUID(),
+      target = randomUUID(),
+      contact = randomUUID();
+    await q.query(
+      `INSERT INTO accounts(id,email,"passwordHash","createdAt") VALUES($1,'legacy@example.test','hash',now())`,
+      [account],
+    );
+    await q.query(
+      "INSERT INTO events(id,owner_id,name,created_at) VALUES($1,$2,'기존 행사',now())",
+      [event, account],
+    );
+    await q.query(
+      "INSERT INTO restaurants(id,name,address,region) VALUES($1,'과거 매장','과거 주소','지역')",
+      [restaurant],
+    );
+    await q.query(
+      `INSERT INTO reservation_requests(id,event_id,request_key,digest,snapshot,contact_name,contact_phone,created_at) VALUES($1,$2,$3,$4,'{"expectedGuests":24,"startsAt":"2099-01-01T12:00:00.000Z"}','당시 총무','01000001234',now())`,
+      [request, event, randomUUID(), "a".repeat(64)],
+    );
+    await q.query(
+      "INSERT INTO reservation_request_targets(id,request_id,restaurant_id,restaurant_name,address,is_demo,contact_id,contact_name,contact_phone,consent_at,reply_version,delivery_status) VALUES($1,$2,$3,'당시 매장','당시 주소',true,$4,'당시 담당','01000005678',now(),1,'DELIVERED')",
+      [target, request, restaurant, contact],
+    );
+    await q.query(
+      `INSERT INTO merchant_reply_revisions(id,target_id,revision,request_key,digest,kind,snapshot,reason,actor,created_at) VALUES($1,$2,1,$3,$4,'DECLINE','{"requested":{"expectedGuests":24},"offered":null}','과거 불가 사유','{"kind":"OPERATOR_RECORDED","id":"migration-test"}',now())`,
+      [randomUUID(), target, randomUUID(), "b".repeat(64)],
+    );
+    await q.query(
+      "INSERT INTO merchant_reply_links(target_id,contact_id,phone_snapshot,digest,expires_at) VALUES($1,$2,'01000005678',$3,now()+interval '1 day')",
+      [target, contact, "c".repeat(64)],
+    );
+    await q.query(
+      `INSERT INTO message_deliveries(id,target_id,contact_id,phone_snapshot,variables,status,provider,provider_message_id,created_at,updated_at) VALUES($1,$2,$3,'01000005678','{"eventName":"과거 행사"}','DELIVERED','fake','legacy-delivery',now(),now())`,
+      [randomUUID(), target, contact],
+    );
+    const beforeDelivery = await q.query("SELECT * FROM message_deliveries");
+    const legacy = await q.query(
+      "SELECT to_jsonb(r) AS request,to_jsonb(t) AS target,to_jsonb(p) AS reply,to_jsonb(l) AS link FROM reservation_requests r,reservation_request_targets t,merchant_reply_revisions p,merchant_reply_links l",
+    );
+    const foundation = migrations.find((m) =>
+      m.constructor.name.startsWith("EventCreationRetry"),
+    )!;
+    const selection = migrations.find((m) =>
+      m.constructor.name.startsWith("ReservationSelection"),
+    )!;
+    await foundation.up(q);
+    await selection.up(q);
+    assert.deepEqual(
+      await q.query("SELECT * FROM message_deliveries"),
+      beforeDelivery,
+    );
+    const [upgraded] = await q.query(
+      "SELECT to_jsonb(r) AS request,to_jsonb(t) AS target,to_jsonb(p) AS reply,to_jsonb(l) AS link FROM reservation_requests r,reservation_request_targets t,merchant_reply_revisions p,merchant_reply_links l",
+    );
+    for (const key of ["request", "target"] as const)
+      for (const field of Object.keys(legacy[0][key]))
+        assert.deepEqual(
+          upgraded[key][field],
+          legacy[0][key][field],
+          `${key}.${field}`,
+        );
+    assert.deepEqual(upgraded.reply, legacy[0].reply);
+    assert.deepEqual(upgraded.link, legacy[0].link);
+    assert.equal(upgraded.request.round, 1);
+    assert.equal(upgraded.request.created_by_id, null);
+    assert.equal(upgraded.request.current_contact_account_id, account);
+    assert.equal(upgraded.target.candidate_state, "OPEN");
+    assert.equal(upgraded.target.delivery_status, "DELIVERED");
+    assert.equal(
+      (
+        await q.query(
+          "SELECT count(*)::int AS count FROM selected_reservations",
+        )
+      )[0].count,
+      0,
+    );
+    await selection.down(q);
+    await selection.up(q);
+    await q.query(
+      "UPDATE reservation_requests SET state='CLOSED',closed_at=now() WHERE id=$1",
+      [request],
+    );
+    await q.query(
+      "INSERT INTO reservation_requests(id,event_id,round,request_key,digest,snapshot,contact_name,contact_phone,created_at) SELECT $1,event_id,2,$2,digest,snapshot,contact_name,contact_phone,now() FROM reservation_requests WHERE id=$3",
+      [randomUUID(), randomUUID(), request],
+    );
+    await assert.rejects(selection.down(q), /forward recovery/);
+    assert.equal(
+      (
+        await q.query("SELECT count(*)::int AS count FROM reservation_requests")
+      )[0].count,
+      2,
+    );
+    await q.query(
+      "UPDATE events SET creation_key=$1,creation_digest=$2 WHERE id=$3",
+      [randomUUID(), "d".repeat(64), event],
+    );
+    await assert.rejects(foundation.down(q), /receipts must be preserved/);
+  } finally {
+    await q.rollbackTransaction();
+    await q.release();
+  }
+});

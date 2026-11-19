@@ -1,4 +1,5 @@
 "use client";
+import { ClosedInquiry } from "./closed-inquiry";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -69,6 +70,8 @@ function PublicReply({ targetId }: { targetId: string }) {
         </ErrorState>
       ) : !access ? (
         <LoadingState>문의 링크 확인 중…</LoadingState>
+      ) : access.closedState ? (
+        <ClosedInquiry state={access.closedState} />
       ) : (
         <ReplyWorkspace
           targetId={targetId}

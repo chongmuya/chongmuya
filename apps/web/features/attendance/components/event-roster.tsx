@@ -37,7 +37,6 @@ export function EventRoster(props: OwnerProps) {
   const action = useAttendanceAction(accountId, eventId, request),
     active = useActiveScreen();
   const [notice, setNotice] = useState<string>();
-  const requestKey = useRef<string>(crypto.randomUUID());
   if ((!roster.data && roster.isError) || (!event.data && event.isError))
     return (
       <ErrorState
@@ -51,6 +50,17 @@ export function EventRoster(props: OwnerProps) {
     return <LoadingState>행사 명단 확인 중…</LoadingState>;
   const denied = isAccessError(roster.error) || isAccessError(event.error);
   const editing = roster.data.find((person) => person.id === editingId);
+  if (denied)
+    return (
+      <ErrorState
+        retry={() => {
+          void roster.refetch();
+          void event.refetch();
+        }}
+      >
+        이 행사 명단에 접근할 수 없어요.
+      </ErrorState>
+    );
   if (adding)
     return (
       <fieldset disabled={denied} className="min-w-0">
@@ -61,23 +71,7 @@ export function EventRoster(props: OwnerProps) {
               : "최신 명단 조회에 실패했어요. 입력은 유지됩니다."}
           </p>
         )}
-        <RosterEditor
-          title="행사 명단 직접 입력"
-          busy={action.isPending}
-          onBack={close}
-          onSave={async (rows) => {
-            await action.mutateAsync({
-              kind: "add",
-              requestKey: requestKey.current,
-              members: rows.map((row) => ({
-                name: row.name,
-                phoneLast4: row.phoneLast4 || null,
-                label: row.label || null,
-              })),
-            });
-            if (active.current) close();
-          }}
-        />
+        <RosterAddition {...props} existing={roster.data} onClose={close} />
       </fieldset>
     );
   if (editingId)
@@ -135,7 +129,7 @@ export function EventRoster(props: OwnerProps) {
                   { kind: "import" },
                   {
                     onSuccess: (result) => {
-                      if ("addedCount" in result)
+                      if (active.current && "addedCount" in result)
                         setNotice(
                           `${result.addedCount}명 추가했어요. 이미 가져온 사람의 정보와 응답은 유지됩니다.`,
                         );
@@ -150,7 +144,6 @@ export function EventRoster(props: OwnerProps) {
           <Button
             disabled={action.isPending}
             onClick={() => {
-              requestKey.current = crypto.randomUUID();
               action.reset();
               router.push(`/events?event=${eventId}&view=roster&action=add`);
             }}
@@ -300,5 +293,75 @@ function EditParticipant({
         </div>
       </form>
     </section>
+  );
+}
+
+function RosterAddition({
+  existing,
+  onClose,
+  ...props
+}: OwnerProps & { existing: ParticipantDto[]; onClose: () => void }) {
+  const [reviewed, setReviewed] = useState(existing);
+  const key = useRef(crypto.randomUUID());
+  const action = useAttendanceAction(
+      props.accountId,
+      props.eventId,
+      props.request,
+    ),
+    active = useActiveScreen();
+  const changed =
+    JSON.stringify(existing.map((p) => [p.id, p.version])) !==
+    JSON.stringify(reviewed.map((p) => [p.id, p.version]));
+  return (
+    <>
+      {changed && (
+        <div
+          role="status"
+          className="mb-5 rounded-control bg-choice p-4 text-sm"
+        >
+          <p>
+            검토 후 명단이 바뀌었어요. 응답을 받지 못한 저장은 같은 내용으로
+            다시 시도하면 원래 결과를 확인해요.
+          </p>
+          <Button
+            variant="outline"
+            className="mt-3"
+            disabled={action.isPending}
+            onClick={() => {
+              setReviewed(existing);
+              key.current = crypto.randomUUID();
+            }}
+          >
+            최신 명단으로 다시 검토
+          </Button>
+        </div>
+      )}
+      <RosterEditor
+        title="행사 명단 직접 입력"
+        existing={reviewed}
+        busy={action.isPending}
+        onBack={onClose}
+        onSave={async (rows, confirmed) => {
+          await action.mutateAsync({
+            kind: "add",
+            requestKey: key.current,
+            expectedRoster: reviewed.map(({ id, version }) => ({
+              id,
+              version,
+            })),
+            duplicatesConfirmed: confirmed,
+            members: rows.map((row) => ({
+              name: row.name,
+              phoneLast4: row.phoneLast4 || null,
+              label: row.label || null,
+              existingParticipantId:
+                row.match && row.match !== "new" ? row.match : undefined,
+              newPersonConfirmed: row.match === "new",
+            })),
+          });
+          if (active.current) onClose();
+        }}
+      />
+    </>
   );
 }

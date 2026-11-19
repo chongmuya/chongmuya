@@ -17,6 +17,7 @@ import {
   Min,
   ValidateNested,
   IsObject,
+  IsBoolean,
 } from "class-validator";
 
 const trim = ({ value }: { value: unknown }) =>
@@ -50,6 +51,9 @@ export class InquiryContactInput {
   @IsString() @Matches(/^0\d{8,10}$/) phone!: string;
 }
 export class CreateReservationRequestInput {
+  @IsOptional() @IsUUID() previousRequestId?: string;
+  @IsOptional() @IsInt() @Min(1) expectedRequestVersion?: number;
+  @IsOptional() @IsBoolean() updateEventSchedule?: boolean;
   @IsUUID() requestKey!: string;
   @IsIn(["DIRECT"]) mode!: "DIRECT";
   @IsInt() @Min(1) expectedEventVersion!: number;

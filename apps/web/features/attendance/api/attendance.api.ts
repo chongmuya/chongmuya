@@ -64,7 +64,16 @@ type PersonInput = {
   label: string | null;
 };
 export type AttendanceAction =
-  | { kind: "add"; requestKey: string; members: PersonInput[] }
+  | {
+      kind: "add";
+      requestKey: string;
+      members: (PersonInput & {
+        existingParticipantId?: string;
+        newPersonConfirmed?: boolean;
+      })[];
+      expectedRoster?: { id: string; version: number }[];
+      duplicatesConfirmed?: boolean;
+    }
   | { kind: "import" }
   | {
       kind: "edit";
@@ -100,6 +109,8 @@ export async function writeAttendance(
         body: JSON.stringify({
           requestKey: action.requestKey,
           members: action.members,
+          expectedRoster: action.expectedRoster,
+          duplicatesConfirmed: action.duplicatesConfirmed,
         }),
       });
     case "import":

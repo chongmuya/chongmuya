@@ -11,6 +11,10 @@ import {
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class EventInput {
+  @ApiPropertyOptional({ format: "uuid" })
+  @IsOptional()
+  @IsUUID()
+  creationKey?: string;
   @ApiProperty({ maxLength: 100 })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim() : value,

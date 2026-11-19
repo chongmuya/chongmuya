@@ -38,13 +38,35 @@ export class EventRosterService {
     eventId: string,
     input: AddEventParticipantsInput,
   ) {
-    const members = input.members.map((p) => ({
+    const choices = input.members.map((p) => ({
       name: normalizePersonName(p.name),
       phoneLast4: p.phoneLast4 ?? null,
       label: p.label ?? null,
+      existingParticipantId: p.existingParticipantId ?? null,
+      newPersonConfirmed: p.newPersonConfirmed ?? false,
     }));
     const digest = createHash("sha256")
-      .update(JSON.stringify(members))
+      .update(
+        JSON.stringify(
+          input.expectedRoster === undefined &&
+            input.duplicatesConfirmed === undefined &&
+            input.members.every(
+              (p) =>
+                p.existingParticipantId === undefined &&
+                p.newPersonConfirmed === undefined,
+            )
+            ? choices.map(({ name, phoneLast4, label }) => ({
+                name,
+                phoneLast4,
+                label,
+              }))
+            : {
+                choices,
+                expectedRoster: input.expectedRoster ?? null,
+                duplicatesConfirmed: input.duplicatesConfirmed ?? false,
+              },
+        ),
+      )
       .digest("hex");
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
@@ -59,26 +81,64 @@ export class EventRosterService {
         return { addedCount: receipt.addedCount };
       }
       const existing = await this.rows(eventId, manager);
-      if (existing.length + members.length > 500)
+      const versions = (rows: { id: string; version: number }[]) =>
+        JSON.stringify(
+          rows
+            .map(({ id, version }) => ({ id, version }))
+            .sort((a, b) => a.id.localeCompare(b.id)),
+        );
+      if (
+        input.expectedRoster &&
+        versions(input.expectedRoster) !== versions(existing)
+      )
+        throw new DomainHttpException("ROSTER_MEMBER_CONFLICT");
+      for (const row of choices) {
+        const match = existing.find((p) => p.id === row.existingParticipantId);
+        if (
+          row.existingParticipantId &&
+          (!input.expectedRoster ||
+            !match ||
+            match.name !== row.name ||
+            match.phoneLast4 !== row.phoneLast4 ||
+            match.label !== row.label)
+        )
+          throw new DomainHttpException("ROSTER_MEMBER_CONFLICT");
+        if (
+          !row.existingParticipantId &&
+          existing.some((p) => p.name === row.name) &&
+          (!input.expectedRoster || !row.newPersonConfirmed)
+        )
+          throw new DomainHttpException("ROSTER_DUPLICATES_UNCONFIRMED");
+      }
+      const members = choices
+        .filter((p) => !p.existingParticipantId)
+        .map(({ name, phoneLast4, label }) => ({ name, phoneLast4, label }));
+      if (
+        new Set(members.map((p) => p.name)).size !== members.length &&
+        !input.duplicatesConfirmed
+      )
+        throw new DomainHttpException("ROSTER_DUPLICATES_UNCONFIRMED");
+      if (members.length && existing.length + members.length > 500)
         throw new DomainHttpException("ROSTER_LIMIT");
       const position = existing.reduce(
         (max, p) => Math.max(max, p.position + 1),
         0,
       );
       const createdAt = new Date();
-      await manager.insert(
-        EventParticipant,
-        members.map((p, i) => ({
-          ...p,
-          id: randomUUID(),
-          eventId,
-          groupMemberId: null,
-          position: position + i,
-          version: 1,
-          identityVersion: 1,
-          createdAt,
-        })),
-      );
+      if (members.length)
+        await manager.insert(
+          EventParticipant,
+          members.map((p, i) => ({
+            ...p,
+            id: randomUUID(),
+            eventId,
+            groupMemberId: null,
+            position: position + i,
+            version: 1,
+            identityVersion: 1,
+            createdAt,
+          })),
+        );
       await manager.insert(EventRosterAddition, {
         eventId,
         requestKey: input.requestKey,

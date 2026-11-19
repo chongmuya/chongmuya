@@ -267,12 +267,24 @@ test("public catalog excludes private contacts; one inquiry per owned event, con
       .status,
     404,
   );
+  const currentEvent = await (await call(`events/${event.id}`, a)).json();
   assert.equal(
     (
       await call(`events/${event.id}`, a, "PATCH", {
         name: "변경된 행사",
         scheduledAt: null,
-        expectedVersion: 1,
+        expectedVersion: currentEvent.version,
+      })
+    ).status,
+    409,
+    "active inquiry blocks silent schedule edits",
+  );
+  assert.equal(
+    (
+      await call(`events/${event.id}`, a, "PATCH", {
+        name: "변경된 행사",
+        scheduledAt: currentEvent.scheduledAt,
+        expectedVersion: currentEvent.version,
       })
     ).status,
     200,
