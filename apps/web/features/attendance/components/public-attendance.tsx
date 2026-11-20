@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,10 +34,25 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
   });
   const [selection, setAnswer] = useState<AttendanceAnswer | null>(null),
     [editing, setEditing] = useState(false);
-  const answer = selection ?? action.access?.response?.selfAnswer;
-  const hasSavedAnswer =
-    !!action.access?.response?.selfAnswer || action.saved === "REVIEW";
+  const response = action.access?.response;
+  const selfAnswer = response?.selfAnswer;
+  const managerCorrected = response?.managerOverride != null;
+  const answer = selection ?? selfAnswer;
+  const hasSavedAnswer = !!selfAnswer || action.saved === "REVIEW";
   const showEditor = editing || !hasSavedAnswer;
+  const choicesRef = useRef<HTMLFieldSetElement>(null);
+  const editRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (editing) {
+      const choices = choicesRef.current;
+      const target =
+        choices?.querySelector<HTMLInputElement>("input:checked") ??
+        choices?.querySelector<HTMLInputElement>("input");
+      target?.focus();
+    } else if (action.saved) {
+      editRef.current?.focus();
+    }
+  }, [editing, action.saved]);
   const identifying = !action.access || action.access.kind === "MISMATCH";
   const closed =
     info.data?.closed ||
@@ -89,7 +104,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
         <div className="flex flex-1 flex-col gap-12 pt-[clamp(48px,15.75svh,149px)]">
           <header
             className="mx-auto w-full max-w-[306px] text-center"
-            aria-label={action.access?.response ? "현재 집계 상태" : undefined}
+            aria-label={response ? "현재 집계 상태" : undefined}
           >
             <div className="mx-auto mb-7 flex size-[60px] items-center justify-center rounded-full bg-brand">
               <Image
@@ -108,15 +123,22 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                   이름과 뒤 4자리로 내 응답을 확인해요.
                 </p>
               </>
-            ) : action.access?.response ? (
+            ) : response ? (
               <>
-                <p className="text-sm text-secondary">현재 참석 상태</p>
+                <p aria-hidden="true" className="text-sm text-secondary">
+                  현재 참석 상태
+                </p>
                 <h1 className="mt-2 text-2xl leading-[normal] font-bold text-foreground">
-                  {stateLabel(action.access.response.finalState)}
+                  <span className="sr-only">현재 참석 상태: </span>
+                  {stateLabel(response.finalState)}
                 </h1>
-                {action.access.response.managerOverride !== null && (
-                  <p className="mt-2 text-xs text-secondary">
+                {managerCorrected && (
+                  <p className="mt-2 text-xs leading-relaxed text-secondary">
                     총무가 정정한 상태로 집계돼요.
+                    <br />
+                    {selfAnswer
+                      ? `내가 마지막으로 제출한 응답은 ${stateLabel(selfAnswer)}이에요.`
+                      : "아직 내가 제출한 응답은 없어요."}
                   </p>
                 )}
               </>
@@ -251,14 +273,15 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                     확인 전에는 참석 인원에 포함되지 않아요.
                   </p>
                 )}
-                {hasSavedAnswer && !showEditor && answer && (
-                  <p className="text-sm text-secondary">
-                    내가 제출한 응답: <strong>{stateLabel(answer)}</strong>
+                {action.saved === "REVIEW" && !showEditor && selection && (
+                  <p className="text-xs text-secondary">
+                    내가 마지막으로 제출한 응답은 {stateLabel(selection)}이에요.
                   </p>
                 )}
                 {showEditor ? (
                   <>
                     <fieldset
+                      ref={choicesRef}
                       disabled={action.isPending}
                       className="flex gap-3"
                     >
@@ -288,7 +311,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                         </label>
                       ))}
                     </fieldset>
-                    {action.access?.response?.managerOverride != null && (
+                    {managerCorrected && (
                       <p className="text-xs text-secondary">
                         내 응답을 저장해도 총무의 정정은 유지돼요.
                       </p>
@@ -314,8 +337,10 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                   </>
                 ) : (
                   <Button
+                    ref={editRef}
                     className="w-full"
                     onClick={() => {
+                      if (response) setAnswer(null);
                       setEditing(true);
                       action.clearSaved();
                     }}

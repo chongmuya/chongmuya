@@ -53,16 +53,9 @@ export function AttendanceWorkspace({
   return (
     <section className="space-y-5">
       {list.isError && (
-        <p role="alert">
-          {isAccessError(list.error)
-            ? "이 행사를 관리할 권한이 없어요."
-            : "최신 정보를 불러오지 못했어요. 입력은 유지됩니다."}
-        </p>
+        <p role="alert">최신 정보를 불러오지 못했어요. 입력은 유지됩니다.</p>
       )}
-      <fieldset
-        disabled={isAccessError(list.error)}
-        className="min-w-0 space-y-5"
-      >
+      <div className="min-w-0 space-y-5">
         <div className="flex items-center justify-between gap-2">
           <Link
             href={`/events?event=${props.eventId}&view=roster`}
@@ -133,7 +126,7 @@ export function AttendanceWorkspace({
             }}
           />
         )}
-      </fieldset>
+      </div>
     </section>
   );
 }
