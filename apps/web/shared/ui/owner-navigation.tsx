@@ -31,7 +31,7 @@ export function OwnerNavigation({
   return (
     <nav
       aria-label="사장님 주요 메뉴"
-      className="sticky bottom-0 z-10 -mx-5 mt-auto grid min-h-[72px] grid-cols-3 bg-surface px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
+      className="bottom-navigation -mx-5 grid-cols-3 px-5"
     >
       {items.map((item) => (
         <Link

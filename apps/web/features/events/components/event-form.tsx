@@ -189,10 +189,10 @@ export function EventForm({
               ].map((option) => (
                 <label
                   key={String(option.value)}
-                  className="flex min-h-20 cursor-pointer items-center justify-between gap-2 rounded-control border border-transparent bg-soft px-3 py-5 has-checked:border-brand has-checked:bg-choice has-focus-visible:outline-2 has-focus-visible:outline-brand"
+                  className="relative flex min-h-20 cursor-pointer items-center justify-between gap-2 rounded-control border border-transparent bg-soft px-3 py-5 has-checked:border-brand has-checked:bg-choice has-focus-visible:focus-outline"
                 >
                   <input
-                    className="sr-only"
+                    className="choice-card-radio"
                     type="radio"
                     name="findVenue"
                     checked={findVenue === option.value}
