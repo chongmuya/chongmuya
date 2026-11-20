@@ -53,6 +53,28 @@ export class RestaurantsService {
       (await manager.findOneBy(Restaurant, { id }))?.ownerAccountId ?? null
     );
   }
+  async reservationMenu(id: string, manager: EntityManager, lock = false) {
+    const restaurant = await manager.findOne(Restaurant, {
+      where: { id },
+      ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
+    });
+    if (!restaurant) throw new NotFoundException();
+    return {
+      version: restaurant.version,
+      menus: (
+        await manager.find(RestaurantMenu, {
+          where: { restaurantId: id },
+          order: { position: "ASC", id: "ASC" },
+        })
+      ).map(({ id, name, unit, price, available }) => ({
+        id,
+        name,
+        unit,
+        price,
+        available,
+      })),
+    };
+  }
   async replyDefaults(id: string, manager: EntityManager) {
     const r = await manager.findOneBy(Restaurant, { id });
     if (!r) throw new NotFoundException();

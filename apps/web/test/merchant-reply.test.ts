@@ -246,3 +246,79 @@ test("merchant access expiration hides private inquiry and stops writes and focu
     await view.unmount();
   }
 });
+
+test("usage minutes and minimum quantity explain blocked submission accessibly and recover", async () => {
+  const inquiry = merchantInquiryFixture();
+  inquiry.defaults.proposal.usageTime = { kind: "MINUTES", minutes: 120 };
+  let saves = 0;
+  const request: SessionRequest = async <T>(
+    _p: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "POST") {
+      saves++;
+      return { version: 1, response: null } as T;
+    }
+    return structuredClone(inquiry) as T;
+  };
+  const view = await render(
+    createElement(ReplyWorkspace, {
+      targetId: inquiry.targetId,
+      access: { kind: "owner", accountId: merchantAccount.id, request },
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /요청 조건으로 가능/),
+    );
+    await click(view.container, "요청 조건으로 가능");
+    await fill(view.container, "proposal.usageTime.minutes", "0");
+    await fill(view.container, "proposal.minimumQuantity", "-1");
+    await submit(view.container);
+    for (const name of [
+      "proposal.usageTime.minutes",
+      "proposal.minimumQuantity",
+    ]) {
+      const input = view.container.querySelector<HTMLInputElement>(
+        `[name="${name}"]`,
+      )!;
+      await until(() =>
+        assert.equal(input.getAttribute("aria-invalid"), "true"),
+      );
+      assert.match(
+        document.getElementById(input.getAttribute("aria-describedby")!)!
+          .textContent!,
+        /입력해 주세요/,
+      );
+    }
+    assert.equal(saves, 0);
+    await fill(view.container, "proposal.usageTime.minutes", "120");
+    await fill(view.container, "proposal.minimumQuantity", "10");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('[name="holdConfirmed"]')!
+        .click(),
+    );
+    await submit(view.container);
+    await until(() => assert.equal(saves, 1));
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("expired inquiry renders notice instead of editable reply", async () => {
+  const inquiry = { ...merchantInquiryFixture(), closedState: "EXPIRED" };
+  const request: SessionRequest = async <T>() => inquiry as T;
+  const view = await render(
+    createElement(ReplyWorkspace, {
+      targetId: inquiry.targetId,
+      access: { kind: "owner", accountId: merchantAccount.id, request },
+    }),
+  );
+  try {
+    await until(() => assert.match(view.container.textContent!, /기한/));
+    assert.equal(view.container.querySelector("form"), null);
+  } finally {
+    await view.unmount();
+  }
+});

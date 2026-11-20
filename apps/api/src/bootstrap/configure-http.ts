@@ -22,7 +22,12 @@ export function configureHttp(
       callback(null, origin === environment.webOrigin),
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-CSRF-Protection", "X-Merchant-Access"],
+    allowedHeaders: [
+      "Content-Type",
+      "X-CSRF-Protection",
+      "X-Merchant-Access",
+      "X-Reservation-Access",
+    ],
     exposedHeaders: ["x-request-id"],
     optionsSuccessStatus: 204,
   });

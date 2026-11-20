@@ -1,4 +1,33 @@
 export const domainErrors = {
+  RESERVATION_STATE_CONFLICT: {
+    status: 409,
+    message:
+      "예약 내용이 변경됐어요. 최신 내용과 작성한 입력을 확인한 뒤 다시 적용해 주세요.",
+  },
+  RESERVATION_MENU_CHANGED: {
+    status: 409,
+    message:
+      "메뉴판이 변경됐거나 가격·판매 상태를 확인해야 해요. 최신 메뉴를 다시 확인해 주세요.",
+  },
+  RESERVATION_MENU_INVALID: {
+    status: 409,
+    message: "한 품목 이상 선택하고 최소 주문 금액·수량을 확인해 주세요.",
+  },
+  RESERVATION_GUIDANCE_PENDING: {
+    status: 409,
+    message: "예약금 안내와 현재 조건을 확인한 뒤 제출해 주세요.",
+  },
+  RESERVATION_ACTION_BLOCKED: {
+    status: 409,
+    message:
+      "현재 예약 상태에서는 처리할 수 없어요. 미처리 요청과 확인 내용을 확인해 주세요.",
+  },
+  RESERVATION_ACCESS_INVALID: {
+    status: 403,
+    message:
+      "예약 관리 권한이 만료되거나 폐기됐어요. 새 예약 관리 문자 링크를 열어 주세요.",
+  },
+
   RESERVATION_SELECTION_CONFLICT: {
     status: 409,
     message:

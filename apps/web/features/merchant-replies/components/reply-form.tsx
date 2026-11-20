@@ -6,6 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Select } from "@/shared/ui/select";
 import { Checkbox } from "@/shared/ui/checkbox";
+import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
@@ -437,39 +438,57 @@ export function ReplyForm({
                   </Select>
                 </label>
                 {offered?.usageTime?.kind === "MINUTES" && (
-                  <label className="block space-y-2">
-                    이용 시간 (분)
-                    <Input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      {...form.register("proposal.usageTime.minutes", {
-                        valueAsNumber: true,
-                      })}
-                    />
-                  </label>
+                  <FormField
+                    id="reply-usage-minutes"
+                    label="이용 시간 (분)"
+                    error={
+                      form.formState.errors.proposal?.usageTime?.minutes
+                        ?.message
+                    }
+                  >
+                    {(attrs) => (
+                      <Input
+                        {...attrs}
+                        type="number"
+                        min={1}
+                        max={1440}
+                        {...form.register("proposal.usageTime.minutes", {
+                          valueAsNumber: true,
+                        })}
+                      />
+                    )}
+                  </FormField>
                 )}
                 <Controller
                   name="proposal.minimumQuantity"
                   control={form.control}
                   render={({ field }) => (
-                    <label className="block space-y-2">
-                      최소 주문 수량 (미확인 시 비움)
-                      <Input
-                        type="number"
-                        min={0}
-                        name={field.name}
-                        ref={field.ref}
-                        value={field.value ?? ""}
-                        onChange={(e) =>
-                          field.onChange(
-                            e.target.value === ""
-                              ? null
-                              : Number(e.target.value),
-                          )
-                        }
-                      />
-                    </label>
+                    <FormField
+                      id="reply-minimum-quantity"
+                      label="최소 주문 수량 (미확인 시 비움)"
+                      error={
+                        form.formState.errors.proposal?.minimumQuantity?.message
+                      }
+                    >
+                      {(attrs) => (
+                        <Input
+                          {...attrs}
+                          type="number"
+                          min={0}
+                          max={100000}
+                          name={field.name}
+                          ref={field.ref}
+                          value={field.value ?? ""}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value),
+                            )
+                          }
+                        />
+                      )}
+                    </FormField>
                   )}
                 />
                 <label className="block space-y-2">

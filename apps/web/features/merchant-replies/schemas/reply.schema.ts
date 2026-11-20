@@ -18,14 +18,26 @@ export const proposalSchema = z
     usageTime: z
       .object({
         kind: z.enum(["UNKNOWN", "UNLIMITED", "MINUTES"]),
-        minutes: z.number().int().min(1).max(1440).nullable(),
+        minutes: z
+          .number({ error: "이용 시간은 1~1,440분의 정수로 입력해 주세요." })
+          .int({ error: "이용 시간은 정수로 입력해 주세요." })
+          .min(1, "이용 시간은 1분 이상 입력해 주세요.")
+          .max(1440, "이용 시간은 1,440분 이하로 입력해 주세요.")
+          .nullable(),
       })
       .strict()
-      .refine((v) =>
-        v.kind === "MINUTES" ? v.minutes !== null : v.minutes === null,
+      .refine(
+        (v) => (v.kind === "MINUTES" ? v.minutes !== null : v.minutes === null),
+        { path: ["minutes"], message: "이용 시간을 확인해 주세요." },
       )
       .optional(),
-    minimumQuantity: z.number().int().min(0).max(100000).nullable().optional(),
+    minimumQuantity: z
+      .number({ error: "최소 주문 수량은 0~100,000의 정수로 입력해 주세요." })
+      .int({ error: "최소 주문 수량은 정수로 입력해 주세요." })
+      .min(0, "최소 주문 수량은 0 이상 입력해 주세요.")
+      .max(100000, "최소 주문 수량은 100,000 이하로 입력해 주세요.")
+      .nullable()
+      .optional(),
     changeCancellationPolicy: z.string().trim().max(1500).nullable().optional(),
     note: z.string().max(1500),
   })

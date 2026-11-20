@@ -1,6 +1,7 @@
 export type NotificationInput = {
   eventKey: string;
   kind:
+    | "RESERVATION_UPDATED"
     | "REPLY_RECEIVED"
     | "STORE_SELECTED"
     | "CANDIDATE_CLOSED"
@@ -19,6 +20,7 @@ export type NotificationInput = {
   messages: {
     recipientKey: string;
     phone: string;
+    contactId?: string;
     text: string;
     isDemo: boolean;
   }[];

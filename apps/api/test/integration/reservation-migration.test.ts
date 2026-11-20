@@ -100,6 +100,76 @@ test("PR1 forward migration retains legacy inquiry/reply/link/delivery bytes and
       )[0].count,
       0,
     );
+    const recipientMigration = migrations.find((m) =>
+      m.constructor.name.startsWith("NotificationRecipientSnapshot"),
+    )!;
+    await recipientMigration.up(q);
+    await recipientMigration.down(q);
+    await recipientMigration.up(q);
+    const fact = randomUUID(),
+      message = randomUUID();
+    await q.query(
+      "INSERT INTO notification_facts(event_key,kind,event_id,request_id,revision,occurred_at) VALUES($1,'STORE_SELECTED',$2,$3,1,now())",
+      [fact, event, request],
+    );
+    await q.query(
+      "INSERT INTO notification_messages(id,event_key,recipient_key,phone_snapshot,text,updated_at) VALUES($1,$2,'merchant:legacy','01000005678','legacy',now())",
+      [message, fact],
+    );
+    assert.equal(
+      (
+        await q.query(
+          "SELECT contact_id_snapshot FROM notification_messages WHERE id=$1",
+          [message],
+        )
+      )[0].contact_id_snapshot,
+      null,
+    );
+    await q.query(
+      "UPDATE notification_messages SET contact_id_snapshot=$1 WHERE id=$2",
+      [contact, message],
+    );
+    await assert.rejects(recipientMigration.down(q), /forward recovery/);
+    await q.query("DELETE FROM notification_messages WHERE id=$1", [message]);
+    await q.query("DELETE FROM notification_facts WHERE event_key=$1", [fact]);
+    await q.query("SAVEPOINT pr2_upgrade");
+    const reservation = randomUUID();
+    await q.query(
+      "INSERT INTO selected_reservations(id,event_id,request_id,target_id,revision,snapshot,selected_by,selected_at) VALUES($1,$2,$3,$4,1,$5::jsonb,$6,now())",
+      [
+        reservation,
+        event,
+        request,
+        target,
+        JSON.stringify({
+          offered: { deposit: { kind: "UNKNOWN", amount: null } },
+          requested: { expectedGuests: 24 },
+        }),
+        account,
+      ],
+    );
+    const beforeSelected = await q.query("SELECT * FROM selected_reservations");
+    const { ReservationCompletion1795755600000 } =
+      await import("../../src/database/migrations/1795755600000-ReservationCompletion.js");
+    const completion = new ReservationCompletion1795755600000();
+    await completion.up(q);
+    assert.deepEqual(
+      await q.query("SELECT * FROM selected_reservations"),
+      beforeSelected,
+    );
+    assert.deepEqual(await q.query("SELECT * FROM reservation_progress"), []);
+    await completion.down(q);
+    await completion.up(q);
+    await q.query(
+      "INSERT INTO reservation_progress(reservation_id,state) VALUES($1,'{}')",
+      [reservation],
+    );
+    await assert.rejects(completion.down(q), /forward recovery/);
+    assert.deepEqual(
+      await q.query("SELECT * FROM selected_reservations"),
+      beforeSelected,
+    );
+    await q.query("ROLLBACK TO SAVEPOINT pr2_upgrade");
     await selection.down(q);
     await selection.up(q);
     await q.query(

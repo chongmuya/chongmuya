@@ -17,7 +17,7 @@ export type ReservationRequestDto = {
     targetId: string;
     revision: number;
     version: number;
-    status: "PREPARING";
+    status: "PREPARING" | "CONFIRMED" | "CHECK_REQUIRED" | "CANCELLED";
     snapshot: import("../../types/merchant-reply.js").ReplySnapshot;
     selectedAt: string;
   } | null;

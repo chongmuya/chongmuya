@@ -1,0 +1,195 @@
+"use client";
+import { useId, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { Field } from "../types/command-field";
+import { commandSchema } from "../schemas/command.schema";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { FormField } from "@/shared/ui/form-field";
+import { FormError } from "@/shared/ui/form-error";
+import { ApiError } from "@/shared/http/api-error";
+import { safeErrorMessage } from "@/shared/http/error-contract";
+import type { Completion, CompletionAccess } from "../types/completion.types";
+import { useCompletionCommand } from "../hooks/use-completion-command";
+import { UncertainCommand } from "./uncertain-command";
+import { ReviewCurrent } from "./review-current";
+export function CommandForm({
+  data,
+  access,
+  action,
+  title,
+  description,
+  fields: fieldSource,
+  build,
+  onDone,
+}: {
+  data: Completion;
+  access: CompletionAccess;
+  action: string;
+  title: string;
+  description?: string;
+  fields: Field[] | ((base: Completion) => Field[]);
+  build: (
+    v: Record<string, string>,
+    base: Completion,
+  ) => Record<string, unknown>;
+  onDone?: () => void;
+}) {
+  const [base, setBase] = useState(data),
+    id = useId(),
+    mutation = useCompletionCommand(data.id, access);
+  const fieldsFor = (current: Completion) =>
+    typeof fieldSource === "function" ? fieldSource(current) : fieldSource;
+  const fields = fieldsFor(base);
+  const schema = commandSchema(fields);
+  const form = useForm<Record<string, string>>({
+    resolver: zodResolver(schema),
+    defaultValues: Object.fromEntries(
+      fields.map((f) => [f.name, f.value ?? ""]),
+    ),
+  });
+  const values = useWatch({ control: form.control });
+  const completed = (result: Completion) => {
+    if (!mutation.active.current) return;
+    setBase(result);
+    form.reset(
+      Object.fromEntries(fieldsFor(result).map((f) => [f.name, f.value ?? ""])),
+    );
+    onDone?.();
+  };
+  return (
+    <form
+      noValidate
+      className="space-y-4 rounded-control bg-surface p-5 shadow-card"
+      onSubmit={form.handleSubmit(async (v) => {
+        if (
+          mutation.uncertain ||
+          mutation.isPending ||
+          base.version !== data.version
+        )
+          return;
+        try {
+          const result = await mutation.mutateAsync({
+            action,
+            input: { ...build(v, base), expectedVersion: base.version },
+          });
+          completed(result);
+        } catch (error) {
+          if (error instanceof ApiError && error.code === "VALIDATION_FAILED")
+            for (const issue of error.fieldErrors ?? [])
+              if (fields.some((f) => f.name === issue.field))
+                form.setError(
+                  issue.field,
+                  { message: "입력 값과 안내 조건을 확인해 주세요." },
+                  { shouldFocus: true },
+                );
+
+          if (!mutation.error && error instanceof RangeError)
+            form.setError("root", { message: "날짜와 시간을 확인해 주세요." });
+        }
+      })}
+    >
+      <h3 className="font-semibold">{title}</h3>
+      {description && <p className="text-xs text-muted">{description}</p>}
+      <fieldset
+        disabled={mutation.uncertain || mutation.isPending}
+        className="contents"
+      >
+        {fields.map((f) => (
+          <FormField
+            key={f.name}
+            id={`${id}-${f.name}`}
+            label={f.label}
+            required={!f.optional}
+            error={form.formState.errors[f.name]?.message}
+          >
+            {(attrs) =>
+              f.options ? (
+                <select
+                  {...attrs}
+                  {...form.register(f.name)}
+                  className="min-h-11 w-full rounded-control border border-field bg-surface px-3"
+                >
+                  <option value="">선택해 주세요</option>
+                  {f.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === "textarea" ? (
+                <textarea
+                  {...attrs}
+                  {...form.register(f.name)}
+                  rows={3}
+                  maxLength={f.max}
+                  className="w-full rounded-control border border-field p-3"
+                />
+              ) : f.type === "checkbox" ? (
+                <input
+                  {...attrs}
+                  type="checkbox"
+                  checked={values[f.name] === "yes"}
+                  className="size-5"
+                  onChange={(e) =>
+                    form.setValue(f.name, e.target.checked ? "yes" : "", {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    })
+                  }
+                />
+              ) : (
+                <Input
+                  {...attrs}
+                  type={f.type ?? "text"}
+                  {...form.register(f.name)}
+                />
+              )
+            }
+          </FormField>
+        ))}
+        {!mutation.uncertain && (
+          <ReviewCurrent
+            data={data}
+            baseVersion={base.version}
+            onReview={() => {
+              setBase(data);
+              mutation.reset();
+            }}
+          />
+        )}
+        <FormError
+          message={
+            form.formState.errors.root?.message ??
+            (mutation.error ? safeErrorMessage(mutation.error) : undefined)
+          }
+        />
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={base.version !== data.version}
+          loading={mutation.isPending}
+        >
+          {title}
+        </Button>
+      </fieldset>
+      {mutation.uncertain && (
+        <UncertainCommand
+          loading={mutation.isPending}
+          onRetry={() => {
+            void mutation
+              .retryUncertain()
+              .then(completed)
+              .catch(() => undefined);
+          }}
+        />
+      )}
+      {mutation.isSuccess && (
+        <p role="status" className="text-sm">
+          기록을 저장했어요.
+        </p>
+      )}
+    </form>
+  );
+}

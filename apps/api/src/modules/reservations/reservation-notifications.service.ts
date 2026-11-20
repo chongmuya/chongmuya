@@ -4,6 +4,10 @@ import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
+import { ReservationAccessService } from "./reservation-access.service.js";
+import { ReservationManagementLink } from "./entities/reservation-progress.entity.js";
+import { SelectedReservation } from "./entities/selected-reservation.entity.js";
+import { MerchantLinksService } from "./merchant-links.service.js";
 import { MessageGateway } from "./providers/message.gateway.js";
 import type { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
@@ -15,6 +19,8 @@ export class ReservationNotificationsService {
     private readonly gateway: MessageGateway,
     private readonly config: ConfigService,
     private readonly restaurants: RestaurantsService,
+    private readonly links: MerchantLinksService,
+    private readonly management: ReservationAccessService,
   ) {}
   async organizer(
     m: EntityManager,
@@ -61,6 +67,10 @@ export class ReservationNotificationsService {
     kind: "STORE_SELECTED" | "CANDIDATE_CLOSED" | "PROPOSAL_EXPIRED",
     reservationId?: string,
   ) {
+    const { link } = await this.links.context(target.id, m);
+    const managementLink = reservationId
+      ? await m.findOneBy(ReservationManagementLink, { reservationId })
+      : null;
     const owner = await this.restaurants.notificationAccount(
       target.restaurantId,
       m,
@@ -75,7 +85,9 @@ export class ReservationNotificationsService {
         : kind === "PROPOSAL_EXPIRED"
           ? "총무의 선택 기한이 지났어요."
           : "이 문의의 후보 선정이 종료됐어요.";
-    const destination = `/owner/inquiries?target=${target.id}`;
+    const destination = reservationId
+      ? `/owner/reservations?reservation=${reservationId}`
+      : `/owner/inquiries?target=${target.id}`;
     await this.notices.record(m, {
       eventKey: `${request.id}:${target.id}:${kind}`,
       kind,
@@ -85,14 +97,19 @@ export class ReservationNotificationsService {
       reservationId,
       revision: target.replyVersion,
       accounts: owner ? [{ id: owner, title, summary, destination }] : [],
-      messages: [
-        {
-          recipientKey: `merchant:${target.id}`,
-          phone: target.contactPhone,
-          isDemo: target.isDemo,
-          text: `[총무야] ${request.snapshot.eventName} · ${target.restaurantName}\n${title}\n${summary}`,
-        },
-      ],
+      messages: link
+        ? [
+            {
+              recipientKey: managementLink
+                ? `reservation:${reservationId}:${managementLink.generation}`
+                : `merchant:${target.id}`,
+              phone: managementLink?.phoneSnapshot ?? link.phoneSnapshot,
+              contactId: managementLink?.contactId ?? link.contactId,
+              isDemo: target.isDemo,
+              text: `[총무야] ${request.snapshot.eventName} · ${target.restaurantName}\n${title}\n${summary}${managementLink ? `\n${this.management.url(managementLink)}` : ""}`,
+            },
+          ]
+        : [],
     });
   }
   async dispatchRequest(requestId: string) {
@@ -107,26 +124,53 @@ export class ReservationNotificationsService {
       retry,
     );
     if (!row) return;
-    if (row.recipientKey.startsWith("merchant:")) {
+    if (
+      row.recipientKey.startsWith("merchant:") ||
+      row.recipientKey.startsWith("reservation:")
+    ) {
       const db = await this.database.connect();
+      let targetId = row.recipientKey.slice(9);
+      if (row.recipientKey.startsWith("reservation:")) {
+        const [, id, generation] = row.recipientKey.split(":");
+        const selection = await db.manager.findOneBy(SelectedReservation, {
+          id,
+        });
+        const link = await db.manager.findOneBy(ReservationManagementLink, {
+          reservationId: id,
+        });
+        if (
+          !selection ||
+          !link ||
+          link.revokedAt ||
+          link.expiresAt.getTime() <= Date.now() ||
+          String(link.generation) !== generation ||
+          link.contactId !== row.contactIdSnapshot ||
+          link.phoneSnapshot !== row.phoneSnapshot
+        ) {
+          await this.notices.hold(row.id, "LINK_INVALID");
+          return;
+        }
+        targetId = selection.targetId;
+      }
       const target = await db.manager.findOneBy(RequestTarget, {
-        id: row.recipientKey.slice(9),
+        id: targetId,
       });
-      const reasons = target
-        ? (
-            await this.restaurants.deliveryEligibility(
-              [
-                {
-                  contactId: target.contactId,
-                  restaurantId: target.restaurantId,
-                  contactPhone: row.phoneSnapshot,
-                },
-              ],
-              db.manager,
-              this.gateway.requiresRealRecipient,
-            )
-          )[0]
-        : ["CONTACT_DELETED"];
+      const reasons =
+        target && row.contactIdSnapshot
+          ? (
+              await this.restaurants.deliveryEligibility(
+                [
+                  {
+                    contactId: row.contactIdSnapshot,
+                    restaurantId: target.restaurantId,
+                    contactPhone: row.phoneSnapshot,
+                  },
+                ],
+                db.manager,
+                this.gateway.requiresRealRecipient,
+              )
+            )[0]
+          : ["CONTACT_DELETED"];
       if (reasons?.length) {
         await this.notices.hold(row.id, reasons[0]!);
         return;

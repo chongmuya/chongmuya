@@ -105,6 +105,8 @@ test("selection retries keep the seen revision and key; refresh shows the saved 
     _path: string,
     options?: RequestInit,
   ) => {
+    if (_path.startsWith("/api/v1/reservations/"))
+      throw new ApiError("", 503, "DATABASE_UNAVAILABLE");
     if (options?.method === "POST") {
       writes.push(JSON.parse(String(options.body)));
       if (writes.length === 1)
@@ -146,15 +148,12 @@ test("selection retries keep the seen revision and key; refresh shows the saved 
     );
     await click(view.container, "이 매장 선택");
     await until(() =>
-      assert.match(
-        view.container.textContent!,
-        /매장 선택 완료 · 예약 마무리 준비/,
-      ),
+      assert.match(view.container.textContent!, /매장 선택 당시 응답/),
     );
     assert.deepEqual(writes[1], writes[0]);
     assert.equal(writes[0].expectedVersion, 2);
     assert.equal(writes[0].revision, 1);
-    assert.match(view.container.textContent!, /아직 예약 확정이 아니에요/);
+    assert.match(view.container.textContent!, /선택 당시 조건을 보존한 이력/);
   } finally {
     onlineManager.setOnline(true);
     await view.unmount();
@@ -178,6 +177,8 @@ test("conflicting selection renders the actual winner and permission loss hides 
       throw new ApiError("ignored", 409, "RESERVATION_SELECTION_CONFLICT");
     }
     if (denied) throw new ApiError("ignored", 404, "NOT_FOUND");
+    if (_path.startsWith("/api/v1/reservations/"))
+      throw new ApiError("", 503, "DATABASE_UNAVAILABLE");
     return { request: structuredClone(q) } as T;
   };
   const view = await render(

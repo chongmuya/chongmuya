@@ -5,6 +5,7 @@ import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { EventsService } from "../events/events.service.js";
 import { ReservationLocksService } from "./reservation-locks.service.js";
+import { ReservationAccessService } from "./reservation-access.service.js";
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
@@ -23,6 +24,7 @@ export class ReservationSelectionService {
     private readonly events: EventsService,
     private readonly locks: ReservationLocksService,
     private readonly notices: ReservationNotificationsService,
+    private readonly access: ReservationAccessService,
   ) {}
   async decide(
     ownerId: string,
@@ -101,6 +103,15 @@ export class ReservationSelectionService {
           selectedAt: now,
           version: 1,
           status: "PREPARING",
+        });
+        await this.access.issue(selection, target, m, {
+          kind: "SYSTEM",
+          recorder: ownerId,
+          confirmer: ownerId,
+          method: "WEB",
+          confirmedAt: now.toISOString(),
+          recordedAt: now.toISOString(),
+          reason: "매장 선택",
         });
         target.candidateState = "SELECTED";
         await m.save(target);

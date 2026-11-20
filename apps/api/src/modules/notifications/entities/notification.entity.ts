@@ -56,6 +56,8 @@ export class NotificationMessage {
   recipientKey!: string;
   @Column({ type: "varchar", length: 20, name: "phone_snapshot" })
   phoneSnapshot!: string;
+  @Column({ type: "uuid", name: "contact_id_snapshot", nullable: true })
+  contactIdSnapshot!: string | null;
   @Column({ type: "varchar", length: 1000 }) text!: string;
   @Column({ type: "boolean", name: "is_demo", default: false })
   isDemo!: boolean;

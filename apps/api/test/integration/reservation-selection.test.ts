@@ -1,3 +1,8 @@
+import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
+import { ReservationNotificationsService } from "../../src/modules/reservations/reservation-notifications.service.js";
+import { NotificationsService } from "../../src/modules/notifications/notifications.service.js";
+import { SolapiMessageGateway } from "../../src/modules/reservations/providers/solapi-message.gateway.js";
+import { ConfigService } from "../../src/config/config.service.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -119,6 +124,172 @@ test("selection, reinquiry and durable notifications serialize competing command
     },
   });
   await t.test(
+    "replacement recipient is snapshotted for selection and closure without changing original history",
+    async () => {
+      const f = await fixture();
+      const replacements = new Map<string, { id: string; phone: string }>();
+      for (const target of f.request.targets) {
+        const contact = await db.manager.save(RestaurantContact, {
+          id: randomUUID(),
+          restaurantId: target.restaurantId,
+          name: "새 담당자",
+          phone: "01099998888",
+          active: true,
+          isPrimary: false,
+          requestConsentAt: new Date(),
+        });
+        replacements.set(target.id, contact);
+        await app
+          .get(MessageDeliveryService)
+          .changeRecipient(target.id, contact.id, "test", "담당자 교체", false);
+        await replies.save(
+          target.id,
+          principal,
+          proposal(f.request),
+          "recipient",
+        );
+      }
+      const q = await get(f.event.id),
+        input = decide(q, q.targets[0].id);
+      await json(await call(input.url, owner, "POST", input.body), 201);
+      await json(await call(input.url, owner, "POST", input.body), 201);
+      const notices = app.get(NotificationsService);
+      const rows = (await notices.messages(q.id, db.manager)).filter(
+        (r) =>
+          r.recipientKey.startsWith("merchant:") ||
+          r.recipientKey.startsWith("reservation:"),
+      );
+      assert.equal(rows.length, 2);
+      for (const row of rows) {
+        const id = row.recipientKey.startsWith("reservation:")
+            ? q.targets[0].id
+            : row.recipientKey.slice(9),
+          contact = replacements.get(id)!;
+        assert.equal(row.contactIdSnapshot, contact.id);
+        assert.equal(row.phoneSnapshot, contact.phone);
+        assert.equal(row.attempts, 1);
+        assert.notEqual(row.status, "HELD");
+        assert.notEqual(
+          (await db.manager.findOneByOrFail(RequestTarget, { id })).contactId,
+          contact.id,
+        );
+        await app.get(ReservationNotificationsService).dispatch(row.id);
+        assert.equal(
+          (
+            await db.manager.findOneByOrFail(NotificationMessage, {
+              id: row.id,
+            })
+          ).attempts,
+          1,
+        );
+      }
+    },
+  );
+  await t.test(
+    "HTTP rejection retries explicitly, while transport uncertainty and delivery failures cannot resend",
+    async (t) => {
+      const f = await fixture(),
+        notices = app.get(NotificationsService);
+      const provider = new SolapiMessageGateway({
+        environment: {
+          solapiApiKey: "fake",
+          solapiApiSecret: "fake",
+          solapiSenderNumber: "0299999999",
+          providerTimeoutMs: 100,
+        },
+      } as ConfigService);
+      let mode = 403;
+      const originalFetch = globalThis.fetch;
+      t.mock.method(
+        globalThis,
+        "fetch",
+        async (...args: Parameters<typeof fetch>) => {
+          if (!String(args[0]).startsWith("https://api.solapi.com/"))
+            return originalFetch(...args);
+          if (mode === 0) throw new DOMException("timeout", "TimeoutError");
+          if (mode === 200)
+            return Response.json({
+              failedMessageList: [],
+              groupInfo: { groupId: "test" },
+            });
+          return new Response("", { status: mode });
+        },
+      );
+      for (const code of [403, 429]) {
+        mode = code;
+        await db.transaction((m) =>
+          notices.record(m, {
+            eventKey: randomUUID(),
+            kind: "STORE_SELECTED",
+            eventId: f.event.id,
+            requestId: f.request.id,
+            revision: 1,
+            accounts: [],
+            messages: [
+              {
+                recipientKey: `organizer:${code}`,
+                phone: "01000001234",
+                text: "test",
+                isDemo: true,
+              },
+            ],
+          }),
+        );
+        const row = (await notices.messages(f.request.id, db.manager)).find(
+          (r) => r.recipientKey === `organizer:${code}`,
+        )!;
+
+        const claimed = await notices.claim(row.id, false);
+        await notices.settle(
+          row.id,
+          await provider.send(row.id, row.phoneSnapshot, "test"),
+          claimed!.attempts,
+        );
+        assert.equal(
+          (
+            await db.manager.findOneByOrFail(NotificationMessage, {
+              id: row.id,
+            })
+          ).failureStage,
+          "SUBMISSION",
+        );
+        const retry = await notices.claim(row.id, false, {
+          actor: "test",
+          reason: "원인 해결",
+        });
+        assert.equal(retry!.attempts, 2);
+        mode = code === 403 ? 200 : 0;
+        await notices.settle(
+          row.id,
+          await provider.send(row.id, row.phoneSnapshot, "test", 2),
+          2,
+        );
+        assert.equal(
+          (
+            await db.manager.findOneByOrFail(NotificationMessage, {
+              id: row.id,
+            })
+          ).status,
+          code === 403 ? "ACCEPTED" : "UNKNOWN",
+        );
+        await assert.rejects(
+          notices.claim(row.id, false, {
+            actor: "test",
+            reason: "접수 또는 불명 재시도",
+          }),
+        );
+        await notices.settle(
+          row.id,
+          { status: "FAILED", provider: "solapi", failureStage: "DELIVERY" },
+          2,
+        );
+        await assert.rejects(
+          notices.claim(row.id, false, { actor: "test", reason: "전달 실패" }),
+        );
+      }
+    },
+  );
+  await t.test(
     "different simultaneous selections produce one winner; retries, access and notifications stay isolated",
     async () => {
       const f = await fixture();
@@ -231,6 +402,15 @@ test("selection, reinquiry and durable notifications serialize competing command
         MerchantReplyRevision,
         { targetId: target.id },
         { expiresAt: new Date(Date.now() - 1000) },
+      );
+      assert.equal(
+        (await replies.get(target.id, principal)).closedState,
+        "EXPIRED",
+      );
+      assert.equal(
+        (await db.manager.findOneByOrFail(RequestTarget, { id: target.id }))
+          .candidateState,
+        "OPEN",
       );
       const results = await Promise.all([
         call(input.url, owner, "POST", input.body),
