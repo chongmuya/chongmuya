@@ -28,7 +28,7 @@ export function TimePicker({
   return (
     <div
       className={cn(
-        "flex min-h-input min-w-0 items-center rounded-pill border border-transparent bg-surface px-2 shadow-control has-[:invalid]:border-danger has-[[aria-invalid=true]]:border-danger",
+        "time-picker flex min-h-input min-w-0 items-center rounded-pill border bg-surface px-2 shadow-control",
         className,
       )}
       role="group"

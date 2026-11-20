@@ -97,7 +97,7 @@ export function ScheduleForm({
           </label>
           <textarea
             id="schedule-memo"
-            className="mt-2 block h-[100px] w-full resize-y rounded-card border border-transparent bg-surface px-4 py-3.5 text-base leading-5 shadow-control placeholder:text-placeholder aria-invalid:border-danger"
+            className="mt-2 block h-[100px] w-full resize-y rounded-card border border-transparent bg-surface px-4 py-3.5 text-base leading-5 shadow-control placeholder:text-placeholder"
             placeholder="행사에 대한 메모를 써주세요."
             {...form.register("memo")}
             aria-invalid={!!form.formState.errors.memo}

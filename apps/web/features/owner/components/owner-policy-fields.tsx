@@ -166,7 +166,7 @@ function DeadlineValue({
                 <select
                   {...attributes}
                   className={cn(
-                    "h-input w-[61px] appearance-none rounded-pill bg-surface px-3 pr-6 text-control shadow-control aria-invalid:outline-danger",
+                    "h-input w-[61px] appearance-none rounded-pill bg-surface px-3 pr-6 text-control shadow-control",
                     field.value && field.value > 99 && "w-[96px]",
                   )}
                   name={field.name}

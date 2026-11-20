@@ -46,8 +46,22 @@
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 
-  &:where(.focus-on-brand *) {
+  &:where(.focus-on-brand *):not(
+      [aria-invalid="true"],
+      :user-invalid,
+      :has(> .choice-card-radio[aria-invalid="true"])
+    ) {
     @apply ring-2 ring-surface;
+  }
+
+  &:where(
+    [aria-invalid="true"],
+    :user-invalid,
+    :has(> .choice-card-radio[aria-invalid="true"])
+  ) {
+    /* Thicken the error outline in place so keyboard focus stays visible. */
+    outline: 3px solid var(--color-danger);
+    outline-offset: -3px;
   }
 }
 
@@ -69,6 +83,13 @@
   /* Keep the outline color stable on controls that transition colors. */
   :where(*) {
     outline-color: var(--color-focus);
+  }
+  :where(input, textarea, select, button)[aria-invalid="true"]:not(
+      :where(.choice-card-radio, .time-picker > select)
+    ) {
+    outline: 1px solid var(--color-danger);
+    outline-offset: -1px;
+    accent-color: var(--color-danger);
   }
   :focus-visible,
   :where(
@@ -92,6 +113,22 @@
   .choice-card-radio {
     /* The browser scrolls the whole card into view when the radio gets focus. */
     @apply pointer-events-none absolute inset-0 size-full scroll-my-0.5 opacity-0;
+  }
+  .time-picker {
+    border-color: transparent;
+
+    &:has(> select:is([aria-invalid="true"], :user-invalid)) {
+      border-color: var(--color-danger);
+
+      &:has(> :focus-visible) {
+        border-color: transparent;
+      }
+
+      > button:focus-visible {
+        outline: 3px solid var(--color-danger);
+        outline-offset: -3px;
+      }
+    }
   }
   .bottom-navigation {
     @apply sticky bottom-0 z-10 mt-auto grid min-h-(--bottom-navigation-height) bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] shadow-[0_-4px_4px_rgb(0_0_0/0.1)];

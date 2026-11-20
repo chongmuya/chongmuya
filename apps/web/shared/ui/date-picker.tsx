@@ -45,7 +45,7 @@ export function DatePicker({
         aria-expanded={open}
         aria-disabled={readOnly || props.disabled || undefined}
         className={cn(
-          "flex min-h-input w-full items-center justify-between gap-2 rounded-pill border border-transparent bg-surface px-3 py-2 text-left text-sm min-[360px]:text-control shadow-control aria-invalid:border-danger disabled:opacity-60",
+          "flex min-h-input w-full items-center justify-between gap-2 rounded-pill border border-transparent bg-surface px-3 py-2 text-left text-sm min-[360px]:text-control shadow-control disabled:opacity-60",
           className,
         )}
         onClick={(event) => {

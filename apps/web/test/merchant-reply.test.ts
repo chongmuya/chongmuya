@@ -305,14 +305,15 @@ test("usage hours and deposit explain blocked submission accessibly and recover"
         /입력해 주세요/,
       );
     }
+    const hold = view.container.querySelector<HTMLInputElement>(
+      '[name="holdConfirmed"]',
+    )!;
+    assert.equal(hold.getAttribute("aria-invalid"), "true");
+    assert.ok(document.getElementById(hold.getAttribute("aria-describedby")!));
     assert.equal(saves, 0);
     await fill(view.container, "usageHours", "2");
     await fill(view.container, "proposal.deposit.amount", "10000");
-    await act(async () =>
-      view.container
-        .querySelector<HTMLInputElement>('[name="holdConfirmed"]')!
-        .click(),
-    );
+    await act(async () => hold.click());
     await submit(view.container);
     await until(() => assert.equal(saves, 1));
   } finally {

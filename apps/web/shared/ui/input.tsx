@@ -9,7 +9,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "block min-h-input w-full border border-input bg-surface px-3 py-2 text-control text-foreground aria-invalid:border-danger disabled:cursor-not-allowed disabled:opacity-60",
+        "block min-h-input w-full border border-input bg-surface px-3 py-2 text-control text-foreground disabled:cursor-not-allowed disabled:opacity-60",
         variant === "pill"
           ? "rounded-pill border-transparent px-4 placeholder:text-placeholder"
           : "rounded-control placeholder:text-muted",

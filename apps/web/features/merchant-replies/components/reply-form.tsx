@@ -250,10 +250,15 @@ export function ReplyForm({
                 거절 사유 *
                 <textarea
                   {...form.register("reason")}
+                  aria-invalid={!!form.formState.errors.reason}
+                  aria-describedby="reply-reason-error"
                   className="min-h-24 w-full rounded-control border border-field bg-surface p-3"
                   maxLength={1000}
                 />
-                <FormError message={form.formState.errors.reason?.message} />
+                <FormError
+                  id="reply-reason-error"
+                  message={form.formState.errors.reason?.message}
+                />
               </label>
             ) : (
               <>
@@ -494,6 +499,8 @@ export function ReplyForm({
                     <textarea
                       id="reply-merchant-comment"
                       name="proposal.note"
+                      aria-invalid={!!proposalErrors?.note}
+                      aria-describedby="reply-note-error"
                       className="block h-[100px] w-full resize-none rounded-card bg-surface px-4 py-3.5 leading-normal shadow-control placeholder:text-placeholder"
                       placeholder={`${offered?.expectedGuests ?? q.snapshot.expectedGuests}명 한 공간으로 준비해 드릴게요.`}
                       maxLength={100}
@@ -507,13 +514,18 @@ export function ReplyForm({
                     <p className="text-right text-xs leading-tight text-secondary">
                       {comments[kind].length}/100
                     </p>
-                    <FormError message={proposalErrors?.note?.message} />
+                    <FormError
+                      id="reply-note-error"
+                      message={proposalErrors?.note?.message}
+                    />
                   </div>
                   <div>
                     <label className="flex items-start gap-3 rounded-[10px] bg-[#fef3ec] p-3.5 leading-tight shadow-control">
                       <span className="relative grid size-5 shrink-0 place-items-center">
                         <Checkbox
                           {...form.register("holdConfirmed")}
+                          aria-invalid={!!form.formState.errors.holdConfirmed}
+                          aria-describedby="reply-hold-error"
                           className="peer size-5 rounded-[6px] checked:bg-brand checked:shadow-none"
                         />
                         <Image
@@ -536,6 +548,7 @@ export function ReplyForm({
                       </span>
                     </label>
                     <FormError
+                      id="reply-hold-error"
                       message={
                         form.formState.errors.holdConfirmed?.message ??
                         form.formState.errors.expiresAt?.message
