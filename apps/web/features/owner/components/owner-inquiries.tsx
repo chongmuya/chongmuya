@@ -30,6 +30,7 @@ export function OwnerInquiries({
       {targetId ? (
         <ReplyWorkspace
           targetId={targetId}
+          onDone={() => onNavigate("/owner/inquiries")}
           access={{ kind: "owner", accountId: account.id, request }}
         />
       ) : q.isError && !q.data ? (
@@ -83,7 +84,7 @@ export function OwnerInquiries({
                       })}
                       href={`/owner/inquiries?target=${i.targetId}`}
                     >
-                      문의 확인·답변
+                      {i.response ? "보낸 답변 보기" : "문의 확인·답변"}
                     </Link>
                   )}
                 </li>

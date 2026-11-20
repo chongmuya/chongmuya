@@ -42,13 +42,22 @@ export const proposalSchema = z
     note: z.string().max(1500),
   })
   .strict();
+export function replyMenuDeadline(original: Proposal, startsAt: string) {
+  if (!original.menuDeadlineAt) return null;
+  const proposedStart = Date.parse(startsAt);
+  if (!Number.isFinite(proposedStart)) return null;
+  const offset =
+    Date.parse(original.startsAt) - Date.parse(original.menuDeadlineAt);
+  return proposedStart - offset;
+}
+
 export const replySchema = (original: Proposal) =>
   z
     .object({
       requestKey: z.uuid(),
       expectedVersion: z.number().int().min(0),
       kind: z.enum(["AVAILABLE", "CHANGE", "DECLINE"]),
-      proposal: proposalSchema.nullable(),
+      proposal: proposalSchema.omit({ menuDeadlineAt: true }).nullable(),
       expiresAt: z.iso.datetime({ offset: true }).nullable(),
       reason: z.string().max(1000),
       holdConfirmed: z.boolean(),
@@ -76,7 +85,7 @@ export const replySchema = (original: Proposal) =>
           Math.min(
             Date.parse(p.startsAt),
             Date.parse(original.startsAt),
-            p.menuDeadlineAt ? Date.parse(p.menuDeadlineAt) : Infinity,
+            replyMenuDeadline(original, p.startsAt) ?? Infinity,
           )
       )
         issue(
@@ -101,7 +110,6 @@ export const replySchema = (original: Proposal) =>
         p.separateFee === original.separateFee &&
         p.deposit.kind === original.deposit.kind &&
         p.deposit.amount === original.deposit.amount &&
-        p.menuDeadlineAt === original.menuDeadlineAt &&
         (p.usageTime?.kind ?? "UNKNOWN") ===
           (original.usageTime?.kind ?? "UNKNOWN") &&
         (p.usageTime?.minutes ?? null) ===
@@ -121,14 +129,6 @@ export const replySchema = (original: Proposal) =>
         issue(
           ["proposal", "deposit", "amount"],
           "확정 예약금을 입력해 주세요.",
-        );
-      if (
-        p.menuDeadlineAt &&
-        Date.parse(p.menuDeadlineAt) > Date.parse(p.startsAt)
-      )
-        issue(
-          ["proposal", "menuDeadlineAt"],
-          "행사 시작 이전의 메뉴 확정 기한을 입력해 주세요.",
         );
     });
 export type MerchantReplyInput = z.infer<ReturnType<typeof replySchema>>;

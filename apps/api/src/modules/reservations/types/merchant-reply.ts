@@ -46,7 +46,8 @@ export const replySchema = z
     requestKey: z.uuid(),
     expectedVersion: z.number().int().min(0),
     kind: z.enum(["AVAILABLE", "CHANGE", "DECLINE"]),
-    proposal: proposalSchema.nullable(),
+    // Former clients may still include a deadline. The service derives the stored value.
+    proposal: proposalSchema.partial({ menuDeadlineAt: true }).nullable(),
     expiresAt: z.iso.datetime({ offset: true }).nullable(),
     reason: z.string().max(1000),
     holdConfirmed: z.boolean(),
