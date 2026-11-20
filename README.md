@@ -110,19 +110,11 @@ docs/      아키텍처·인증·협업 문서
 
 Entity 변경 시 로컬 개발 DB에서 `pnpm --filter @chongmuya/api db:migration:generate src/database/migrations/<이름>`으로 SQL을 생성할 수 있습니다. 검토 후 다시 build하고 명시적으로 적용합니다. CLI는 컴파일한 `dist/database/data-source.js`를 읽으며 `migration:show`도 이력 테이블을 생성할 수 있습니다. 운영 DB에 검증 명령이나 reset/drop을 실행하지 않습니다.
 
-### 매장 시드
+### 개발 시드와 운영 매장 데이터
 
-로컬 PostgreSQL과 `NODE_ENV=development` 또는 `test`에서 실행합니다. 실제 매장 4곳·공간 11개·메뉴 146개를 추가하며, 기존 값은 덮어쓰지 않습니다. 미확인 가격은 null로 보존합니다.
+개발 fixture는 `apps/api/src/database/seeds/data/restaurants.local.json` 하나로 관리합니다. 루트에서 `pnpm db:seed`로 기존 demo 계정·모임·문의와 함께 생성하고, fixture를 처음부터 다시 적용할 때만 `pnpm db:reset`을 실행합니다. reset은 허용된 로컬 개발 DB의 기존 데이터를 삭제합니다.
 
-```sh
-pnpm --filter @chongmuya/api build
-pnpm --filter @chongmuya/api db:migration:run
-pnpm --filter @chongmuya/api db:seed:restaurants
-# 가상 매장·계정·행사는 db:seed:demo로 함께 생성
-pnpm --filter @chongmuya/api db:seed:restaurants --contacts-file src/database/seeds/data/restaurant-contacts.private.json
-```
-
-연락처 파일은 `apps/api/src/database/seeds/data/restaurant-contacts.private.json`에 `{ "contacts": [...] }` 형식으로 두며 Git·빌드에서 제외됩니다. 항목은 `restaurantKey`(`gaemijiptu`, `bakmulje`, `otaesik-sejong`, `sijang-kondae`), `name`, `phone`(숫자 문자열), `active`(기본 true), `requestConsentAt`(실제 수신 동의 시각, 시간대 포함 ISO 문자열 또는 null), `consentNote`입니다. 파일은 위 옵션을 지정해야 읽으며, 활성·수신 동의가 있는 담당자만 문의 대상으로 사용할 수 있습니다. 파일만으로 기존 연락처를 수정하거나 삭제된 담당자를 재등록하지 않습니다. 등록 이력에는 ID만 남깁니다. 시드는 발송하지 않습니다. 문의 접수 후 발송·답변 동작은 아래 사장님 등록·문의 문자 절을 따릅니다.
+운영은 외부 비공개 JSON을 `pnpm --filter @chongmuya/api data:restaurants import|update --file <경로> --actor <실행자> --reason <사유>`로 처리합니다. 기본은 미리보기이며 `--execute`로 반영합니다. DB 설정과 컴파일된 API가 필요합니다. 개발 최초 준비·ID/version 조회·부분 수정·EC2 실행 예시는 [매장 데이터 관리](docs/restaurant-data.md)를 참고하세요.
 
 ## 검증
 
@@ -145,15 +137,15 @@ TEST_DATABASE_URL=<격리된_PostgreSQL_URL> pnpm test:integration
 
 Vercel 프로젝트의 Settings → Build and Deployment → Node.js Version을 **26.x**로 맞추고 변경된 커밋을 재배포합니다. `package.json`의 `engines.node`가 프로젝트 설정보다 우선하며, Vercel은 26.x의 마이너·패치 업데이트를 자동 적용하므로 `.nvmrc`의 정확한 패치로 고정되지는 않습니다. 빌드와 Functions의 실제 패치 버전도 다를 수 있습니다. 자세한 정책은 [Vercel Node.js 버전 문서](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions)를 참고하세요.
 
-API 운영 이미지는 Node 26.13.1·pnpm 11.25.0으로 빌드합니다. GitHub Actions의 수동 이미지 발행과 EC2의 첫 배포·업데이트·복구는 [운영 배포 안내](docs/deployment.md)를 따릅니다. 루트 `compose.yaml`은 로컬 PostgreSQL용이고 `infra/compose.prod.yml`은 RDS를 사용하는 운영 API용입니다.
+API 운영 이미지는 Node 26.13.1·pnpm 11.25.0으로 빌드합니다. GitHub Actions의 수동 이미지 발행과 EC2의 첫 배포·업데이트·복구는 `infra/deploy.sh`와 수동 GitHub Actions를 따릅니다. 루트 `compose.yaml`은 로컬 PostgreSQL용이고 `infra/compose.prod.yml`은 RDS를 사용하는 운영 API용입니다.
 
-첫 운영 식당 데이터는 별도 `db:seed:restaurants:production` 진입점으로 실제 공개 정보만 추가합니다. EC2에서는 같은 잠금을 사용하는 `infra/deploy.sh seed-restaurants`로 미리보고 `--execute`로 반영합니다. 기존 로컬 시드의 운영 차단은 유지합니다. 배포는 `deploy <digest>`, 수동 복구는 `rollback <release-id> --confirm-compatibility`이며 상세 명령·설정·복구 제약은 배포 안내에 있습니다.
+운영 데이터는 현재 성공한 릴리스의 이미지로 `infra/deploy.sh data-restaurants import|update|show`를 일회성 실행합니다. 입력 파일 변경에는 이미지 재빌드가 필요하지 않습니다. [파일 준비와 실행 방법](docs/restaurant-data.md)을 참고하세요. 배포·롤백·migration 순서는 유지하며 데이터 변경은 자동 실행하지 않습니다.
 
 ## 문서
 
 - [아키텍처](docs/architecture.md): 책임·의존 방향·API·캐시·오류·migration
 - [인증 기준](docs/authentication.md): Passport·쿠키·CSRF·세션·개인 자원 접근
-- [운영 배포](docs/deployment.md): 이미지 발행·EC2 실행·RDS TLS·Nginx·실패 복구
+- [매장 데이터 관리](docs/restaurant-data.md): 로컬 seed/reset·운영 import/update·외부 파일·EC2 실행
 - [협업 규칙](docs/CONTRIBUTING.md): 커밋·브랜치·PR과 검증
 - [PR 템플릿](.github/pull_request_template.md)
 
@@ -181,14 +173,13 @@ pnpm --filter @chongmuya/api merchant:operations --action deliveries --status PE
 # 특정 발송만 확인: --delivery <UUID>
 ```
 
-| action           | 용도·추가 인자                                                                                                                                                                                                                                                                                                                                                                                      |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `publish`        | 매장 공개/비공개: `--restaurant <UUID> [--unpublish]`                                                                                                                                                                                                                                                                                                                                               |
-| `owner-link`     | 기존 매장 계정 연결: `--restaurant <UUID> --account <owner Account UUID>`; 다른 소유자는 덮어쓰지 않음                                                                                                                                                                                                                                                                                              |
-| `record-contact` | 담당자 번호·동의 등록: `--restaurant <UUID> --input <0600 JSON>`; `{id:고정 UUID,name,phone,requestConsentAt:실제 동의 시각 또는 null,consentNote,primary?:true}`. 첫 동의 번호는 대표 수신자가 된다. 기존 담당자 중 새 문의를 받을 번호를 정할 때만 해당 번호에 `primary: true`를 지정한다. 담당자 교체 전 문의의 수신자는 별도로 관리한다. 기존 번호/과거 문의를 덮어쓰지 않고 null 동의는 비활성 |
-| `deliveries`     | 상태/발송 ID 필터 조회, 현재·이전 기록·실패/보류 사유·다음 조치 표시                                                                                                                                                                                                                                                                                                                                |
-| `retry`          | `--delivery <UUID>`; PENDING 또는 명확한 SUBMISSION 실패만 현재 동의·번호·공개·링크를 재검사해 발송                                                                                                                                                                                                                                                                                                 |
-| `reconcile`      | `--delivery <UUID>`; 만료된 PROCESSING을 UNKNOWN으로 기록한 뒤 공급자 결과 조회·반영. 아직 처리 중이면 대기 안내. 결과가 불명확하면 UNKNOWN 유지; 재발송 없음                                                                                                                                                                                                                                       |
+| action       | 용도·추가 인자                                                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `publish`    | 매장 공개/비공개: `--restaurant <UUID> [--unpublish]`                                                                                                         |
+| `owner-link` | 기존 매장 계정 연결: `--restaurant <UUID> --account <owner Account UUID>`; 다른 소유자는 덮어쓰지 않음                                                        |
+| `deliveries` | 상태/발송 ID 필터 조회, 현재·이전 기록·실패/보류 사유·다음 조치 표시                                                                                          |
+| `retry`      | `--delivery <UUID>`; PENDING 또는 명확한 SUBMISSION 실패만 현재 동의·번호·공개·링크를 재검사해 발송                                                           |
+| `reconcile`  | `--delivery <UUID>`; 만료된 PROCESSING을 UNKNOWN으로 기록한 뒤 공급자 결과 조회·반영. 아직 처리 중이면 대기 안내. 결과가 불명확하면 UNKNOWN 유지; 재발송 없음 |
 
 변경 작업은 기본 dry-run이며 `--actor <실행자> --reason <확인 사유>`가 필요하다. `--execute`를 추가해야 적용한다. 예를 들어 결과 미확인 건은 아래처럼 확인한 뒤 실행한다.
 
@@ -211,7 +202,7 @@ pnpm --filter @chongmuya/api merchant:operations --action reconcile --delivery <
 # 저장소 루트, .nvmrc의 Node와 packageManager의 pnpm 사용
 pnpm --filter @chongmuya/api build
 pnpm --filter @chongmuya/api db:migration:run
-MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo
+MESSAGE_PROVIDER=fake pnpm db:seed
 pnpm dev
 ```
 
@@ -224,16 +215,16 @@ pnpm dev
 ```bash
 MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:demo:links
 # 만료된 사례를 새로 만들 때만 새 세트 이름 지정
-MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo --set second
+MESSAGE_PROVIDER=fake pnpm db:seed --set second
 # 선택: 링크 파일 저장
 MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:demo:links --output ../../.local/my-demo.links.json
 # 지정한 세트의 행사·참석·문의만 지우고 다시 만들 때(기존 수정 내용 삭제)
-MESSAGE_PROVIDER=fake pnpm --filter @chongmuya/api db:seed:demo --set second --recreate
+MESSAGE_PROVIDER=fake pnpm db:seed --set second --recreate
 ```
 
 재실행은 기존 계정 비밀번호·인증 상태·명단·답변·매장 수정/삭제·소유권 해제를 보존한다. 공용 계정/모임/매장 루트가 삭제된 경우 새로 복원하지 않고 충돌로 보고한다. 새 세트는 기존 계정·모임·매장을 재사용하며 행사 시나리오만 추가한다. 링크/제안 만료는 연장하지 않는다. 매장 소유자/ID/이메일 충돌은 롤백하며 기존 소유권을 가져오지 않는다. 기존 데모 연락처가 `000...`이면 보존되므로 사장님 A 매장 수정에서 계정의 기인증 테스트 번호 `01000000004`로 바꾸고 개발용 수신 동의를 선택한다. 다른 사용자 수정 번호·철회 동의는 시드로 덮어쓰지 않는다. 데모 매장 소담식당의 미동의 상태도 유지한다.
 
-실제 매장 시드/비공개 연락처 입력은 독립 명령 그대로다. 두 시드 모두 로컬 development/test DB 전용이며 운영 이관 도구가 아니다. 데모는 외부 HTTP 없이 Entity와 공유 codec으로 생성하고 fake ACCEPTED만 기록한다. 실제 휴대폰 전달·SOLAPI/NAVER 운영 검증·제안 수락·예약 확정·결제·정산을 구현/검증한 것으로 보지 않는다.
+개발 시드는 가짜 JSON 하나만 사용한다. 실제 매장 등록·연락처 보완은 data:restaurants의 import/update로 분리한다. 데모는 외부 HTTP 없이 Entity와 공유 codec으로 생성하고 fake ACCEPTED만 기록한다. 실제 휴대폰 전달·SOLAPI/NAVER 운영 검증·제안 수락·예약 확정·결제·정산을 구현/검증한 것으로 보지 않는다.
 
 ### PR3 정산·기록
 

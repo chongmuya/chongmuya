@@ -17,7 +17,9 @@
     "db:logs": "docker compose logs -f postgres",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "prepare": "node .husky/install.mjs"
+    "prepare": "node .husky/install.mjs",
+    "db:seed": "pnpm --filter @chongmuya/api build && pnpm --filter @chongmuya/api db:seed",
+    "db:reset": "pnpm --filter @chongmuya/api build && pnpm --filter @chongmuya/api db:reset"
   },
   "devDependencies": {
     "husky": "9.1.7",

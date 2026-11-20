@@ -16,7 +16,7 @@ services:
           create_host_path: false
     restart: "no"
     command: ["node", "scripts/migrate.mjs"]
-  seed-restaurants:
+  restaurant-data:
     profiles: ["tools"]
     image: ${API_IMAGE:?API_IMAGE required}
     platform: linux/amd64
@@ -30,5 +30,11 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${DATA_INPUT_FILE:-/dev/null}
+        target: /run/input.json
+        read_only: true
+        bind:
+          create_host_path: false
     restart: "no"
-    command: ["node", "dist/database/seeds/run-production-restaurants.js"]
+    command: ["node", "scripts/restaurant-data.mjs", "--help"]

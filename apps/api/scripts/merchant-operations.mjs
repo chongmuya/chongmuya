@@ -47,8 +47,7 @@ async function run() {
   if (v.help) {
     console.log(`merchant:operations --action <작업> [옵션]
 조회: deliveries [--status ${deliveryStates.join("|")}] [--page N | --delivery UUID] (최신순, 50건씩)
-매장 관리: publish --restaurant UUID [--unpublish], owner-link --restaurant UUID --account UUID,
-           record-contact --restaurant UUID --input 비공개JSON
+매장 관리: publish --restaurant UUID [--unpublish], owner-link --restaurant UUID --account UUID
 발송 복구: retry --delivery UUID, reconcile --delivery UUID
 예외 처리: regenerate-link --target UUID, change-recipient --target UUID --contact UUID,
            record-reply --target UUID --input 비공개JSON
@@ -66,7 +65,6 @@ async function run() {
     "regenerate-link",
     "change-recipient",
     "record-reply",
-    "record-contact",
   ];
   if (!actions.includes(v.action)) throw new Error("INVALID_ACTION");
   if (
@@ -86,8 +84,7 @@ async function run() {
   if (v.action === "deliveries" && v.output && !v.page && !v.delivery)
     throw new Error("EXPORT_SCOPE_REQUIRED");
   if (v.action !== "deliveries") requireOperator(v);
-  if (["owner-link", "publish", "record-contact"].includes(v.action))
-    uuid(v.restaurant);
+  if (["owner-link", "publish"].includes(v.action)) uuid(v.restaurant);
   if (v.action === "owner-link") uuid(v.account);
   if (["retry", "reconcile"].includes(v.action) || v.delivery) uuid(v.delivery);
   if (
@@ -113,16 +110,6 @@ async function run() {
         : { published: !v.unpublish }),
       dryRun: !v.execute,
     });
-  else if (v.action === "record-contact")
-    result = await app
-      .get(RestaurantOperationsService)
-      .recordContact(
-        v.restaurant,
-        await privateInput(v.input),
-        v.actor,
-        v.reason,
-        !v.execute,
-      );
   else if (v.action === "deliveries")
     result = await deliveries.listForOperations({
       status: v.status,

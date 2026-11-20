@@ -57,11 +57,11 @@ async function atomicEnv(path, entries) {
 
 try {
   const [mode, directory, migrationFile] = process.argv.slice(2);
-  if ((mode === "prepare" || mode === "seed") && directory) {
+  if ((mode === "prepare" || mode === "data") && directory) {
     const chunks = [];
     for await (const chunk of process.stdin) chunks.push(chunk);
     const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (mode === "seed") {
+    if (mode === "data") {
       if (
         payload.Parameter?.Name !== "/chongmuya/prod/DATABASE_URL" ||
         typeof payload.Parameter.Value !== "string" ||

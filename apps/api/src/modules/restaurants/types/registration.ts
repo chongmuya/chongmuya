@@ -146,13 +146,6 @@ export function validRegistration(
   data: RegistrationData,
   preserveExistingContact = false,
 ) {
-  const p = data.policies;
-  const conditional = (required: boolean, value: number | null) =>
-    required ? value !== null && value > 0 : value === null;
-  const validTime = (v: string, end = false) =>
-    /^([01]\d|2[0-3]):[0-5]\d$/.test(v) || (end && v === "24:00");
-  const minutes = (v: string) =>
-    Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
   return (
     !!data.name.trim() &&
     !!data.addressQuery.trim() &&
@@ -168,6 +161,17 @@ export function validRegistration(
           s.capacity === null ||
           s.capacity <= data.maxCapacity),
     ) &&
+    validPolicies(data.policies)
+  );
+}
+export function validPolicies(p: RestaurantPolicies) {
+  const conditional = (required: boolean, value: number | null) =>
+    required ? value !== null && value > 0 : value === null;
+  const validTime = (v: string, end = false) =>
+    /^([01]\d|2[0-3]):[0-5]\d$/.test(v) || (end && v === "24:00");
+  const minutes = (v: string) =>
+    Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
+  return (
     (!p.hours ||
       (validTime(p.hours.start) &&
         validTime(p.hours.end, true) &&
@@ -208,3 +212,29 @@ export const menuInputSchema = z
     position: z.number().int().min(0).max(10000),
   })
   .strict();
+
+const weeklyTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+export const weeklyHoursSchema = z
+  .object({
+    days: z
+      .array(
+        z
+          .object({
+            kind: z.enum(["DEFAULT", "CLOSED", "OPEN"]),
+            start: weeklyTime,
+            end: weeklyTime,
+            endDayOffset: z.union([z.literal(0), z.literal(1)]),
+          })
+          .strict(),
+      )
+      .length(7),
+    note: z.string().max(500),
+  })
+  .strict()
+  .refine((v) =>
+    v.days.every(
+      (d) =>
+        d.kind !== "OPEN" ||
+        (d.endDayOffset === 0 ? d.end > d.start : d.end <= d.start),
+    ),
+  );

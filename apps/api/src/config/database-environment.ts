@@ -44,7 +44,7 @@ export function parseDatabaseEnvironment(env: NodeJS.ProcessEnv) {
 
 export const rdsCaPath = "/run/certs/rds-global-bundle.pem";
 
-// Shared by deployment preflight and the DB-only production seed. A restored
+// Shared by deployment preflight and the DB-only operational data tool. A restored
 // Seoul RDS instance may have a new hostname; never replace TLS verification.
 export function parseProductionDatabaseEnvironment(env: NodeJS.ProcessEnv) {
   const parsed = parseDatabaseEnvironment(env);
@@ -98,3 +98,18 @@ export function validateDeploymentDatabasePair(app: string, migrator: string) {
   )
     throw new Error("Invalid environment variables: DATABASE_URL");
 }
+
+// Local developer commands accept only the repository's DB identity. Test targets are explicitly named isolated databases.
+export const developmentDatabaseEnvironmentSchema =
+  localDatabaseEnvironmentSchema.refine(
+    ({ DATABASE_URL, NODE_ENV }) => {
+      const url = new URL(DATABASE_URL);
+      return (
+        decodeURIComponent(url.username) === "chongmuya" &&
+        (NODE_ENV === "development"
+          ? url.port === "15432" && url.pathname === "/chongmuya"
+          : /^\/chongmuya_test(?:_[a-z0-9_]+)?$/.test(url.pathname))
+      );
+    },
+    { path: ["DATABASE_URL"] },
+  );
