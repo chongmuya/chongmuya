@@ -87,9 +87,7 @@ export function AttendanceWorkspace({
                 aria-current={round.id === roundId ? "page" : undefined}
                 className={cn(
                   "rounded-pill border border-brand px-4 py-2 text-sm",
-                  round.id === roundId
-                    ? "bg-brand-action text-white"
-                    : "text-brand-action",
+                  round.id === roundId ? "bg-brand text-copy" : "text-brand",
                 )}
               >
                 {round.title}
@@ -146,9 +144,7 @@ function Counts({ counts }: { counts: AttendanceCounts }) {
     >
       <span>
         참석{" "}
-        <strong className="ml-1 text-lg text-brand-action">
-          {counts.attending}
-        </strong>
+        <strong className="ml-1 text-lg text-brand">{counts.attending}</strong>
         명
       </span>
       <span>불참 {counts.absent}명</span>

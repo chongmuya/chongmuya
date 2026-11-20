@@ -439,7 +439,7 @@ export function ImportGroupRoster({
             </Button>
           ) : (
             <Button
-              className="w-full border-brand bg-brand"
+              className="w-full"
               type="submit"
               loading={action.isPending}
               disabled={

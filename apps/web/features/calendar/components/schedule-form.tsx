@@ -152,7 +152,7 @@ export function ScheduleForm({
       <div className="mt-auto space-y-3 pt-8">
         <Button
           type="submit"
-          className="w-full border-brand bg-brand text-white [&:not(:disabled):hover]:bg-brand-action"
+          className="w-full"
           disabled={busy || conflict || deleteUncertain}
         >
           {uncertain

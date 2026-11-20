@@ -88,7 +88,7 @@ export function ProposalCard({
               {p.startsAt !== original.startsAt && (
                 <p>
                   {koreanDateLabel(original.startsAt)} →{" "}
-                  <strong className="text-brand-action">
+                  <strong className="text-brand">
                     {koreanDateLabel(p.startsAt)}
                   </strong>
                 </p>
@@ -96,9 +96,7 @@ export function ProposalCard({
               {p.expectedGuests !== original.expectedGuests && (
                 <p>
                   {original.expectedGuests}명 →{" "}
-                  <strong className="text-brand-action">
-                    {p.expectedGuests}명
-                  </strong>
+                  <strong className="text-brand">{p.expectedGuests}명</strong>
                 </p>
               )}
               {original.space !== p.space && (

@@ -753,18 +753,18 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
       phone: proof.phone,
     }))
       await fill(view.container, name, value);
-    await click(view.container, "인증번호 보내기");
+    await click(view.container, "이메일 인증하기");
     await fill(view.container, "code", "123456");
     await click(view.container, "인증번호 확인");
     await submit(view.container);
     assert.match(view.container.textContent!, /휴대폰 인증을 완료/);
     assert.equal(joined, 0);
-    await click(view.container, "휴대폰 인증 요청");
+    await click(view.container, "휴대폰 인증하기");
     await until(() =>
       assert.match(view.container.textContent!, /인증을 확인하지 못/),
     );
     assert.doesNotMatch(view.container.textContent!, /private/);
-    await click(view.container, "휴대폰 인증 요청");
+    await click(view.container, "휴대폰 인증하기");
     await until(() => assert.match(view.container.textContent!, /16663538/));
     assert.match(
       view.container.querySelector('a[href^="sms:"]')!.getAttribute("href")!,
@@ -1500,12 +1500,12 @@ test("Kakao signup keeps verified provider email separate, never asks for a pass
       view.container.textContent!,
       /카카오에서 확인한 이메일/,
     );
-    await click(view.container, "인증번호 보내기");
+    await click(view.container, "이메일 인증하기");
     assert.equal(emailRequests, 1);
     await fill(view.container, "email", account.email);
     await fill(view.container, "name", account.name);
     await fill(view.container, "phone", proof.phone);
-    await click(view.container, "휴대폰 인증 요청");
+    await click(view.container, "휴대폰 인증하기");
     await click(view.container, "인증 결과 확인");
     await submit(view.container);
     await until(() => assert.match(view.container.textContent!, /가입을 축하/));

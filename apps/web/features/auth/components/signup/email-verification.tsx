@@ -2,15 +2,15 @@
 import { useForm, useFormContext } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Button } from "@/shared/ui/button";
+import { Button, buttonStyles } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import Link from "next/link";
 import { NoticeDialog } from "@/shared/ui/notice-dialog";
-import { buttonStyles } from "@/shared/ui/button";
 import type { SignupValues } from "../../schemas/signup.schema";
 import type { useContactVerification } from "../../hooks/use-contact-verification";
+import { VerificationRequestButton } from "../verification-request-button";
 const codeSchema = z.object({
   code: z.string().regex(/^\d{6}$/, "6자리 숫자 인증번호를 입력해 주세요."),
 });
@@ -31,13 +31,33 @@ export function EmailVerification({
   const { state, now, error } = email;
   const waiting = Math.max(0, Math.ceil(((state.retryAt ?? 0) - now) / 1000));
   const busy = state.status === "requesting";
+  const verified = trusted || state.status === "verified";
+  const requestLabel = verified
+    ? "인증 완료"
+    : waiting
+      ? `${waiting}초 후 재전송`
+      : state.id
+        ? "재전송"
+        : "인증하기";
+  const statusMessage = trusted
+    ? "카카오에서 확인한 이메일이에요. 변경하면 다시 인증해 주세요."
+    : busy
+      ? "이메일 인증을 처리하고 있어요."
+      : state.status === "verified"
+        ? "이메일 인증이 완료되었어요."
+        : state.status === "expired"
+          ? "인증 시간이 만료되었어요. 다시 요청해 주세요."
+          : state.status === "error"
+            ? !error && "이메일 발송에 실패했어요. 대기 후 다시 요청해 주세요."
+            : state.id && "메일로 받은 인증번호를 입력해 주세요.";
   return (
     <div className="space-y-3">
       <FormField
         required
         id="signup-email"
         label="이메일"
-        labelClassName="text-label"
+        className="gap-2"
+        labelClassName="text-label text-black/80"
         error={errors.email?.message}
       >
         {(attributes) => (
@@ -46,7 +66,7 @@ export function EmailVerification({
               {...attributes}
               {...register("email", { onChange: email.reset })}
               variant="pill"
-              className="min-w-0 shadow-control aria-invalid:bg-brand/10"
+              className="min-w-0 shadow-control aria-invalid:bg-brand/10 max-[374px]:px-3 max-[374px]:placeholder:text-sm"
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -55,43 +75,25 @@ export function EmailVerification({
               placeholder="chongmuya@gmail.com"
               required
             />
-            <Button
-              className="min-h-input max-w-[92px] shrink-0 rounded-control px-3 text-caption leading-normal break-keep"
-              disabled={
-                trusted || busy || waiting > 0 || state.status === "verified"
-              }
+            <VerificationRequestButton
+              aria-label={`이메일 ${requestLabel}`}
+              disabled={verified || busy || waiting > 0}
               onClick={() =>
                 void trigger("email", { shouldFocus: true }).then((valid) => {
                   if (valid) void email.request();
                 })
               }
             >
-              {trusted || state.status === "verified"
-                ? "인증 완료"
-                : waiting
-                  ? `${waiting}초 후 재전송`
-                  : state.id
-                    ? "재전송"
-                    : "인증번호 보내기"}
-            </Button>
+              {requestLabel}
+            </VerificationRequestButton>
           </div>
         )}
       </FormField>
-      <p role="status" className="text-caption text-muted">
-        {trusted
-          ? "카카오에서 확인한 이메일이에요. 변경하면 다시 인증해 주세요."
-          : busy
-            ? "이메일 인증을 처리하고 있어요."
-            : state.status === "verified"
-              ? "이메일 인증이 완료되었어요."
-              : state.status === "expired"
-                ? "인증 시간이 만료되었어요. 다시 요청해 주세요."
-                : state.status === "error" && !error
-                  ? "이메일 발송에 실패했어요. 대기 후 다시 요청해 주세요."
-                  : state.id
-                    ? "메일로 받은 인증번호를 입력해 주세요."
-                    : "가입할 이메일을 인증해 주세요."}
-      </p>
+      {statusMessage && (
+        <p role="status" className="text-caption text-muted">
+          {statusMessage}
+        </p>
+      )}
       <FormError message={error} />
       {email.errorCode === "EMAIL_ALREADY_REGISTERED" && (
         <NoticeDialog
@@ -114,7 +116,7 @@ export function EmailVerification({
         state.status !== "expired" && (
           <EmailCode key={state.id} email={email} />
         )}
-      {!trusted && state.expiresAt && state.status !== "expired" && (
+      {!verified && state.expiresAt && state.status !== "expired" && (
         <p className="text-caption text-muted">
           남은 인증 시간{" "}
           {Math.max(0, Math.ceil((state.expiresAt - now) / 1000))}초
@@ -141,42 +143,40 @@ function EmailCode({
     await email.check?.(code);
     reset({ code: "" });
   });
+  const busy = email.state.status === "requesting";
   return (
-    <div className="flex items-start gap-2">
-      <div className="min-w-0 flex-1">
-        <FormField
-          id="signup-email-code"
-          label="이메일 인증번호"
-          error={errors.code?.message}
-        >
-          {(attributes) => (
-            <Input
-              {...attributes}
-              {...register("code")}
-              variant="pill"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="6자리 인증번호"
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void check();
-                }
-              }}
-            />
-          )}
-        </FormField>
-      </div>
-      <Button
-        className="mt-7 shrink-0 rounded-control"
-        disabled={
-          email.state.status === "requesting" ||
-          email.state.attemptsRemaining === 0
-        }
-        onClick={() => void check()}
-      >
-        인증번호 확인
-      </Button>
-    </div>
+    <FormField
+      id="signup-email-code"
+      label="이메일 인증번호"
+      error={errors.code?.message}
+    >
+      {(attributes) => (
+        <div className="flex items-start gap-2">
+          <Input
+            {...attributes}
+            {...register("code")}
+            variant="pill"
+            className="min-w-0 shadow-control"
+            disabled={busy}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="6자리 인증번호"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void check();
+              }
+            }}
+          />
+          <Button
+            className="h-input shrink-0 rounded-control text-caption whitespace-nowrap"
+            disabled={busy || email.state.attemptsRemaining === 0}
+            onClick={() => void check()}
+          >
+            인증번호 확인
+          </Button>
+        </div>
+      )}
+    </FormField>
   );
 }

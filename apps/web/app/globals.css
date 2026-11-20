@@ -5,10 +5,8 @@
   --color-soft: #f8f8f5;
   --color-field: #e0e0e0;
   --color-secondary: #686868;
-  --color-brand-action: #b84613;
   --color-choice: #f8eae1;
   --color-brand: #f46224;
-  --color-brand-hover: #a03c10;
   --color-brand-ink: #243b33;
   --color-brand-ink-hover: #182c25;
   --color-accent: #a0f6dc;
@@ -142,7 +140,7 @@
     border-radius: 50%;
   }
   .service-calendar .calendar-today button {
-    color: var(--color-brand-action);
+    color: var(--color-brand);
     font-weight: 700;
   }
   .service-calendar .calendar-scheduled::after {

@@ -211,7 +211,7 @@ export function ReplyForm({
                       변경할 조건
                     </h2>
                     <details className="text-sm">
-                      <summary className="cursor-pointer font-semibold text-brand-action">
+                      <summary className="cursor-pointer font-semibold text-brand">
                         예약문의 보기
                       </summary>
                       <div className="pt-3">

@@ -91,13 +91,12 @@ export function SignupFlow(
                     />
                   )}
                   <div className="mt-auto pt-12">
-                    <div className="mb-3 min-h-5">
-                      <FormError
-                        message={
-                          flow.methods.formState.errors.root?.server?.message
-                        }
-                      />
-                    </div>
+                    <FormError
+                      className="mb-3"
+                      message={
+                        flow.methods.formState.errors.root?.server?.message
+                      }
+                    />
                     <Button
                       variant="solid"
                       type="submit"

@@ -152,7 +152,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                   ? koreanDateLabel(info.data.scheduledAt)
                   : "행사 일정 미정"}
               </p>
-              <span className="absolute -top-3 right-[18px] flex min-h-[46px] min-w-[51px] items-center justify-center rounded-pill bg-brand px-3 text-base font-medium text-white">
+              <span className="absolute -top-3 right-[18px] flex min-h-[46px] min-w-[51px] items-center justify-center rounded-pill bg-brand px-3 text-base font-medium text-copy">
                 {info.data.roundTitle}
               </span>
             </section>
@@ -222,7 +222,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                 />
                 <Button
                   type="submit"
-                  className="w-full border-brand bg-brand"
+                  className="w-full"
                   loading={action.isPending}
                 >
                   내 응답 열기
@@ -301,7 +301,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                       }
                     />
                     <Button
-                      className="w-full border-brand bg-brand"
+                      className="w-full"
                       loading={action.isPending}
                       disabled={!answer}
                       onClick={() => {
@@ -314,7 +314,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                   </>
                 ) : (
                   <Button
-                    className="w-full border-brand bg-brand"
+                    className="w-full"
                     onClick={() => {
                       setEditing(true);
                       action.clearSaved();

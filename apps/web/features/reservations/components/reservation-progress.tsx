@@ -57,7 +57,7 @@ export function InquiryReceipt({
             <li
               key={label}
               className={
-                i === (q.selection ? 2 : 1) ? "text-brand-action" : "text-muted"
+                i === (q.selection ? 2 : 1) ? "text-brand" : "text-muted"
               }
             >
               <span className="mx-auto mb-2 flex size-5 items-center justify-center rounded-full border border-current">
@@ -70,7 +70,7 @@ export function InquiryReceipt({
       </ol>
       {q.selection ? (
         <div className="space-y-4 rounded-card bg-surface p-6 shadow-card">
-          <p className="text-xs text-brand-action">매장 선택 당시 응답</p>
+          <p className="text-xs text-brand">매장 선택 당시 응답</p>
           <h2 className="text-xl font-bold">{selected?.restaurantName}</h2>
           {q.selection.snapshot.offered && (
             <ConditionSummary

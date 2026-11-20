@@ -164,7 +164,7 @@ export function EditMember({
                 <label className="flex items-start gap-2 text-xs">
                   <input
                     type="checkbox"
-                    className="mt-1 accent-brand-action"
+                    className="mt-1 accent-brand"
                     {...form.register("duplicatesConfirmed")}
                     disabled={save.isPending || uncertain}
                   />
@@ -327,7 +327,7 @@ export function EditMember({
           </Button>
         ) : (
           <Button
-            className="-mx-[3px] border-brand bg-brand"
+            className="-mx-[3px]"
             type="submit"
             disabled={save.isPending || changed}
           >

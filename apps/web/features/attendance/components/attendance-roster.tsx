@@ -47,7 +47,7 @@ export function AttendanceRoster({
         />
         <span
           aria-hidden="true"
-          className="relative h-5 w-9 rounded-pill bg-secondary/30 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-brand-action peer-checked:after:translate-x-4 peer-focus-visible:focus-outline"
+          className="relative h-5 w-9 rounded-pill bg-secondary/30 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-brand peer-checked:after:translate-x-4 peer-focus-visible:focus-outline"
         />
         참석만 보기
       </label>
@@ -92,7 +92,7 @@ export function AttendanceRoster({
                         className={cn(
                           "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold",
                           person.response.finalState === value
-                            ? "bg-brand-action text-white"
+                            ? "bg-brand text-copy"
                             : "text-secondary",
                         )}
                       >

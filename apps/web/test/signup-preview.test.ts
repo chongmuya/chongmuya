@@ -110,6 +110,16 @@ async function information(container: HTMLElement) {
   for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
     await agree(container, name);
   await submit(container);
+  for (const label of ["이메일 인증하기", "휴대폰 인증하기"]) {
+    assert.equal(
+      container.querySelector(`button[aria-label="${label}"]`)?.textContent,
+      "인증하기",
+    );
+  }
+  assert.doesNotMatch(
+    container.textContent!,
+    /가입할 이메일을 인증해 주세요|휴대폰 인증을 시작해 주세요|문자 종류별 필수 조합/,
+  );
   for (const name of [
     "email",
     "name",
@@ -118,8 +128,8 @@ async function information(container: HTMLElement) {
     "passwordConfirm",
   ] as const)
     await fill(container, name, data[name]);
-  await click(container, "휴대폰 인증 요청");
-  await click(container, "인증번호 보내기");
+  await click(container, "휴대폰 인증하기");
+  await click(container, "이메일 인증하기");
 }
 
 test("password policy is exact ASCII 8–16 across login, signup and recovery", () => {
@@ -322,7 +332,7 @@ test("final field failure returns to the input, focuses it and permits retry wit
     assert.match(view.container.textContent!, /이메일을 확인/);
     assert.doesNotMatch(view.container.textContent!, /SECRET/);
     await fill(view.container, "email", "retry@example.test");
-    await click(view.container, "인증번호 보내기");
+    await click(view.container, "이메일 인증하기");
     await submit(view.container);
     assert.equal(calls, 2);
     assert.match(view.container.textContent!, /가입을 축하/);

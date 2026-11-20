@@ -124,7 +124,7 @@ export function DeadlineReminder({
       </div>
       <div className="space-y-2">
         <Button
-          className="w-full border-brand bg-brand text-soft"
+          className="w-full"
           disabled={blocked}
           onClick={() => {
             onClose();

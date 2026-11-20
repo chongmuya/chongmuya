@@ -65,9 +65,7 @@ export function EventSummary({
         <h2 className="text-label text-copy">
           {groupId ? "우리 모임 행사" : personal ? "개인 행사" : "내 행사"}
           {shown && (
-            <span className="ml-2 text-caption text-brand-action">
-              {shown.length}
-            </span>
+            <span className="ml-2 text-caption text-brand">{shown.length}</span>
           )}
         </h2>
         {!!shown?.length && (

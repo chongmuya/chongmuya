@@ -4,11 +4,11 @@ import { cn } from "../lib/cn";
 type Variant = "solid" | "outline" | "brand-outline" | "ink" | "kakao";
 const variants: Record<Variant, string> = {
   solid:
-    "border-brand-action bg-brand-action text-white [&:not(:disabled):hover]:bg-brand-hover",
+    "border-brand bg-brand text-copy not-disabled:hover:bg-brand/90 not-disabled:active:bg-brand/80",
   outline:
     "border-brand-ink bg-transparent text-brand-ink [&:not(:disabled):hover]:bg-brand-ink/5",
   "brand-outline":
-    "border-brand bg-transparent text-brand-action [&:not(:disabled):hover]:bg-brand/5",
+    "border-brand bg-transparent text-copy [&:not(:disabled):hover]:bg-brand/5",
   ink: "border-brand-ink bg-brand-ink text-white [&:not(:disabled):hover]:bg-brand-ink-hover",
   kakao: "border-kakao bg-kakao text-black/80",
 };

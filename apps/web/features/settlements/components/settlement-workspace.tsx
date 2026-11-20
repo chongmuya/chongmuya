@@ -224,7 +224,7 @@ function People({ a, data }: { a: Access; data: Detail }) {
                   </small>
                   {p.remaining > 0 && (
                     <>
-                      <small className="block text-brand-action">
+                      <small className="block text-brand">
                         미확인 {p.remaining.toLocaleString()}원
                       </small>
                       <Button
@@ -263,7 +263,7 @@ function People({ a, data }: { a: Access; data: Detail }) {
                     </Button>
                   )}
                   {!p.remaining && !p.excess && (
-                    <span className="text-brand-action">
+                    <span className="text-brand">
                       {p.amount ? "확인됨" : "입금 불필요"}
                     </span>
                   )}
@@ -586,7 +586,7 @@ function Loaded({
               key={id}
               role="tab"
               aria-selected={tab === id}
-              className={`min-h-control flex-1 rounded-pill px-2 text-xs ${tab === id ? "bg-brand-action text-white" : "text-secondary"}`}
+              className={`min-h-control flex-1 rounded-pill px-2 text-xs ${tab === id ? "bg-brand text-copy" : "text-secondary"}`}
               onClick={() => setTab(id)}
             >
               {label}
@@ -610,7 +610,7 @@ function Loaded({
                 className="flex flex-wrap items-center justify-between gap-3"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <span className="shrink-0 rounded-lg bg-brand-action px-2 py-3 text-white">
+                  <span className="shrink-0 rounded-lg bg-brand px-2 py-3 text-copy">
                     {data.facts.rounds.find((r) => r.id === e.roundId)?.title ??
                       "차수"}
                   </span>

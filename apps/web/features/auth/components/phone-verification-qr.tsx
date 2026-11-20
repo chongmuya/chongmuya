@@ -66,7 +66,7 @@ export function PhoneVerificationQr({ qrCode }: { qrCode: string }) {
           </div>
           <Button
             ref={confirmRef}
-            className="w-full border-brand bg-brand text-soft"
+            className="w-full"
             onClick={() => setOpen(false)}
           >
             확인

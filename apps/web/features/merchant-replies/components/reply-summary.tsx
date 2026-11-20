@@ -127,7 +127,7 @@ export function SubmittedReply({
         <>
           {offer && (
             <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-4 rounded-control border border-field bg-surface px-5 py-4 text-sm">
-              <div className="space-y-2 text-center text-brand-action">
+              <div className="space-y-2 text-center text-brand">
                 <Image
                   src="/images/merchant-replies/sent-date.svg"
                   alt=""
@@ -173,7 +173,7 @@ export function SubmittedReply({
           )}
           <ReplySummary response={response} showHold={!closedState} />
           <details className="space-y-3 text-sm">
-            <summary className="cursor-pointer text-right font-semibold text-brand-action">
+            <summary className="cursor-pointer text-right font-semibold text-brand">
               전체 예약문의 보기
             </summary>
             <RequestSummary snapshot={request} />
@@ -307,7 +307,7 @@ export function ReplySummary({
             {p.note && (
               <p className="whitespace-pre-wrap break-words">{p.note}</p>
             )}
-            <p className="font-semibold text-brand-action">
+            <p className="font-semibold text-brand">
               {r.state === "EXPIRED"
                 ? "제안 선택 기한이 지났어요"
                 : `선택 기한: ${koreanDateLabel(r.expiresAt!)}`}

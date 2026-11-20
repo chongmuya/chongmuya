@@ -29,6 +29,7 @@ async function setup(state: VerificationState) {
           state: next,
           now: 0,
           available: true,
+          renderField: (requestButton) => requestButton,
           onRequest() {},
           onCheck() {
             checks++;
