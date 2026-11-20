@@ -207,7 +207,11 @@ try {
   const cli = (script, args = [], pnpm = false) => {
     const result = spawnSync(
       pnpm ? "pnpm" : process.execPath,
-      pnpm ? [script, ...args] : [`scripts/${script}.mjs`, ...args],
+      // The isolated fixture reuses frozen-installed node_modules by symlink.
+      // It has no workspace lockfile, so pnpm must not reinstall those modules.
+      pnpm
+        ? ["--config.verify-deps-before-run=false", "run", script, ...args]
+        : [`scripts/${script}.mjs`, ...args],
       { cwd: process.cwd(), env, encoding: "utf8", timeout: 30000 },
     );
     assert.equal(
