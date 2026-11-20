@@ -51,6 +51,12 @@ export class ReservationFactsService {
         "reply.expires_at AS expires_at",
         "reply.kind AS reply_kind",
         "r.snapshot->>'eventName' AS title",
+        "COALESCE(p.state->'agreement'->>'expectedGuests',s.snapshot->'offered'->>'expectedGuests',reply.snapshot->'offered'->>'expectedGuests',r.snapshot->>'expectedGuests')::integer AS guests",
+        "r.snapshot->>'region' AS region",
+        "r.snapshot->>'budgetBasis' AS budget_basis",
+        "(r.snapshot->>'budgetAmount')::integer AS budget_amount",
+        "(p.state->'order'->>'total')::integer AS order_total",
+        "(p.state->'guidance'->>'amount')::integer AS deposit_amount",
         `${starts} AS starts_at`,
       ])
       .orderBy(`${starts}::timestamptz`, "ASC")
@@ -63,6 +69,12 @@ export class ReservationFactsService {
         expires_at: Date | null;
         reply_kind: MerchantReplyRevision["kind"] | null;
         title: string;
+        guests: number;
+        region: string | null;
+        budget_basis: "PER_PERSON" | "TOTAL" | null;
+        budget_amount: number | null;
+        order_total: number | null;
+        deposit_amount: number | null;
         starts_at: string;
       }>();
     return rows.map((r) => {
@@ -75,6 +87,12 @@ export class ReservationFactsService {
         id: r.id,
         reservationId: r.reservation_id,
         title: r.title,
+        expectedGuests: r.guests,
+        region: r.region,
+        budgetBasis: r.budget_basis,
+        budgetAmount: r.budget_amount,
+        orderTotal: r.order_total,
+        depositAmount: r.deposit_amount,
         startsAt: r.starts_at,
         status:
           r.status ??
@@ -88,6 +106,23 @@ export class ReservationFactsService {
           : `/owner/inquiries?target=${r.id}`,
       };
     });
+  }
+
+  async calendarPlaces(ownerId: string, eventIds: string[], m: EntityManager) {
+    if (!eventIds.length) return [];
+    return m
+      .createQueryBuilder(SelectedReservation, "s")
+      .innerJoin(ReservationRequest, "r", "r.id=s.request_id")
+      .innerJoin(RequestTarget, "t", "t.id=s.target_id")
+      .where("s.event_id IN (:...eventIds) AND s.cancelled_at IS NULL", {
+        eventIds,
+      })
+      .andWhere("r.current_contact_account_id=:ownerId", { ownerId })
+      .select([
+        's.event_id AS "eventId"',
+        't.restaurant_name AS "restaurantName"',
+      ])
+      .getRawMany<{ eventId: string; restaurantName: string }>();
   }
 
   async forEvent(ownerId: string, eventId: string, m: EntityManager) {

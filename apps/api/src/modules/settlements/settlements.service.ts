@@ -220,7 +220,10 @@ export class SettlementsService {
         }),
       );
     });
-    return this.get(owner, event);
+    return {
+      ...(await this.get(owner, event)),
+      createdNoticeId: c.action === "NOTICE" ? c.requestKey : null,
+    };
   }
   private async apply(
     owner: string,
@@ -414,7 +417,7 @@ export class SettlementsService {
         );
       else lines.push("추가 입금 요청이 없습니다.");
       const n: Notice = {
-        id: randomUUID(),
+        id: c.requestKey,
         replaces: c.replaces,
         title: c.title,
         message: c.message,

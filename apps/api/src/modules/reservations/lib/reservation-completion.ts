@@ -66,6 +66,14 @@ export function completionIssues(s: ReservationPreparation, now = Date.now()) {
   const resolved = s.exceptionResolution
     ? Date.parse(s.exceptionResolution.at)
     : 0;
+  const startsAt = Date.parse(s.agreement.startsAt);
+  if (
+    !s.confirmation &&
+    !s.agreement.menuDeadlineAt &&
+    now >= startsAt &&
+    resolved < startsAt
+  )
+    issues.push("EVENT_STARTED");
   const menuDeadline = s.agreement.menuDeadlineAt
     ? Date.parse(s.agreement.menuDeadlineAt)
     : Infinity;
@@ -120,6 +128,7 @@ export function completionStatus(s: ReservationPreparation, now = Date.now()) {
   if (
     issues.some((i) =>
       [
+        "EVENT_STARTED",
         "MENU_LATE",
         "PAYMENT_LATE",
         "TRANSFER_REVIEW",
@@ -197,8 +206,12 @@ export function advanceConfirmation(
     selection.status = "CANCELLED";
     return false;
   }
-  if (completionIssues(s).length) {
-    selection.status = s.confirmation ? "CHECK_REQUIRED" : "PREPARING";
+  const issues = completionIssues(s);
+  if (issues.length) {
+    selection.status =
+      s.confirmation || issues.includes("EVENT_STARTED")
+        ? "CHECK_REQUIRED"
+        : "PREPARING";
     return false;
   }
   const newlyConfirmed = selection.status !== "CONFIRMED";
@@ -206,7 +219,8 @@ export function advanceConfirmation(
     s.confirmation = {
       at: new Date().toISOString(),
       audit:
-        s.guidance.kind === "REQUIRED" && s.receipt ? s.receipt.audit : audit,
+        s.exceptionResolution?.audit ??
+        (s.guidance.kind === "REQUIRED" && s.receipt ? s.receipt.audit : audit),
       agreement: structuredClone(s.agreement),
       guidance: structuredClone(s.guidance),
       order: structuredClone(s.order!),

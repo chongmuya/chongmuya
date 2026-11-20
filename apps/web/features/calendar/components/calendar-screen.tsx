@@ -10,6 +10,8 @@ import { NotificationBadge } from "@/features/notifications/client";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
+import { OwnerNavigation } from "@/shared/ui/owner-navigation";
+import { ReservationFacts } from "./reservation-facts";
 import { Dialog } from "@/shared/ui/dialog";
 import {
   calendarQuery,
@@ -85,6 +87,7 @@ function CalendarContent({
           date: s.date,
           order: s.startsAt ? Date.parse(s.startsAt) : -1,
           title: s.title,
+          reservation: undefined,
           status: s.startsAt
             ? new Date(s.startsAt).toLocaleTimeString("ko-KR", {
                 timeZone: "Asia/Seoul",
@@ -99,7 +102,8 @@ function CalendarContent({
           date: kstDate(new Date(e.scheduledAt)),
           order: Date.parse(e.scheduledAt),
           title: e.name,
-          status: "행사",
+          reservation: undefined,
+          status: e.restaurantName ?? "매장 선택 전",
           href: `/events?event=${e.id}`,
         })),
         ...(data.reservations ?? []).map((r) => ({
@@ -107,6 +111,7 @@ function CalendarContent({
           date: kstDate(new Date(r.startsAt)),
           order: Date.parse(r.startsAt),
           title: r.title,
+          reservation: r,
           status:
             (
               {
@@ -281,7 +286,17 @@ function CalendarContent({
             ))}
           </div>
           <div className="my-6 flex items-center justify-between">
-            <h2 className="text-lg font-bold">{selected}</h2>
+            <h2 className="text-lg font-bold">
+              {new Intl.DateTimeFormat("ko-KR", {
+                timeZone: "Asia/Seoul",
+                month: "long",
+                day: "numeric",
+                weekday: "short",
+              }).format(new Date(`${selected}T00:00:00+09:00`))}
+              <span className="ml-2 text-sm text-brand-action">
+                {items.filter((i) => i.date === selected).length}
+              </span>
+            </h2>
             {!owner && (
               <Button variant="outline" onClick={() => setAdding(true)}>
                 일정 추가
@@ -306,10 +321,29 @@ function CalendarContent({
                 href={i.href}
                 className="mb-4 rounded-control bg-surface p-5 shadow-card"
               >
-                <strong className="block">{i.title}</strong>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    {i.reservation && (
+                      <p className="mb-2 text-sm text-brand-action">
+                        {new Intl.DateTimeFormat("ko-KR", {
+                          timeZone: "Asia/Seoul",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        }).format(new Date(i.reservation.startsAt))}
+                      </p>
+                    )}
+                    <strong className="block">{i.title}</strong>
+                  </div>
+                  <span aria-hidden className="text-xl text-muted">
+                    ›
+                  </span>
+                </div>
                 <span className="mt-2 block text-sm text-secondary">
                   {i.status}
                 </span>
+                {i.reservation && (
+                  <ReservationFacts reservation={i.reservation} />
+                )}
               </Link>
             ))}
         </>
@@ -343,45 +377,49 @@ function CalendarContent({
           </div>
         </Dialog>
       )}
-      <nav
-        aria-label="주요 메뉴"
-        className="sticky bottom-0 mt-auto grid grid-cols-4 gap-2 bg-surface py-5 text-center text-xs"
-      >
-        <Link
-          href={
-            owner
-              ? "/owner"
-              : groupId
-                ? `/?group=${groupId}`
-                : "/?view=personal"
-          }
+      {owner ? (
+        <OwnerNavigation current="calendar" restaurantId={restaurant} />
+      ) : (
+        <nav
+          aria-label="주요 메뉴"
+          className="sticky bottom-0 mt-auto grid grid-cols-4 gap-2 bg-surface py-5 text-center text-xs"
         >
-          홈
-        </Link>
-        <Link href={root} aria-current="page">
-          캘린더
-        </Link>
-        <Link
-          href={
-            owner
-              ? "/owner"
-              : groupId
-                ? `/mypage?view=groups&group=${groupId}`
-                : "/mypage?view=groups"
-          }
-        >
-          {owner ? "매장관리" : "모임명단"}
-        </Link>
-        <Link
-          href={
-            owner
-              ? "/owner/reservations"
-              : `/events?view=records${groupId ? `&group=${groupId}` : ""}`
-          }
-        >
-          {owner ? "예약관리" : "모임기록"}
-        </Link>
-      </nav>
+          <Link
+            href={
+              owner
+                ? "/owner"
+                : groupId
+                  ? `/?group=${groupId}`
+                  : "/?view=personal"
+            }
+          >
+            홈
+          </Link>
+          <Link href={root} aria-current="page">
+            캘린더
+          </Link>
+          <Link
+            href={
+              owner
+                ? "/owner"
+                : groupId
+                  ? `/mypage?view=groups&group=${groupId}`
+                  : "/mypage?view=groups"
+            }
+          >
+            {owner ? "매장관리" : "모임명단"}
+          </Link>
+          <Link
+            href={
+              owner
+                ? "/owner/reservations"
+                : `/events?view=records${groupId ? `&group=${groupId}` : ""}`
+            }
+          >
+            {owner ? "예약관리" : "모임기록"}
+          </Link>
+        </nav>
+      )}
     </main>
   );
 }

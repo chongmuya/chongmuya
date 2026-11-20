@@ -1,28 +1,11 @@
 "use client";
-import { useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
-import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { isAccessError } from "@/shared/http/access-error";
-import { hoursQuery, saveHours, type HoursData } from "../api/hours.api";
-const schema = z.object({
-  days: z
-    .array(
-      z.object({
-        kind: z.enum(["DEFAULT", "OPEN", "CLOSED"]),
-        start: z.string().regex(/^\d{2}:\d{2}$/),
-        end: z.string().regex(/^\d{2}:\d{2}$/),
-        endDayOffset: z.union([z.literal(0), z.literal(1)]),
-      }),
-    )
-    .length(7),
-  note: z.string().max(500, "500자 이내로 입력해 주세요."),
-});
+import { hoursQuery, type HoursData } from "../api/hours.api";
+import { useOwnerHours } from "../hooks/use-owner-hours";
 export function OwnerHours({
   accountId,
   restaurantId,
@@ -64,31 +47,13 @@ function HoursForm({
   latest: HoursData;
   refresh: () => void;
 }) {
-  const [base, setBase] = useState(latest.version),
-    active = useActiveScreen(),
-    cache = useQueryClient();
-  const form = useForm({
-    resolver: zodResolver(schema),
-    defaultValues: latest.hours,
-  });
-  const days = useWatch({ control: form.control, name: "days" });
-  const save = useMutation({
-    mutationFn: (v: z.infer<typeof schema>) =>
-      saveHours(request, restaurantId, base, v),
-    onSuccess: (r) => {
-      if (active.current) {
-        setBase(r.version);
-        cache.setQueryData(
-          hoursQuery(accountId, restaurantId, request).queryKey,
-          r,
-        );
-      }
-    },
-    onError: () => {
-      if (active.current) refresh();
-    },
-    retry: false,
-  });
+  const { base, setBase, form, days, save } = useOwnerHours(
+    accountId,
+    restaurantId,
+    request,
+    latest,
+    refresh,
+  );
   return (
     <form
       onSubmit={form.handleSubmit((v) => save.mutate(v))}

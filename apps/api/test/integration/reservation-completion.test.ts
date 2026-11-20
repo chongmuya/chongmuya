@@ -14,6 +14,7 @@ import { ReservationAccessService } from "../../src/modules/reservations/reserva
 import {
   ReservationManagementLink,
   ReservationCompletionHistory,
+  ReservationProgress,
 } from "../../src/modules/reservations/entities/reservation-progress.entity.js";
 import { RestaurantMenu } from "../../src/modules/restaurants/entities/restaurant-menu.entity.js";
 import { NotificationFact } from "../../src/modules/notifications/entities/notification.entity.js";
@@ -150,6 +151,125 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     policy: "합의 후 환불",
     webConsent: channel === "WEB",
   });
+  for (const amount of [0, 5000]) {
+    await t.test(
+      `agreed refund remains 10000 until the organizer accepts ${amount}, including retries`,
+      async () => {
+        let v = await fixture("UNKNOWN");
+        v = await payments.guidance(v.id, operator, guide(v));
+        v = await payments.receipt(v.id, operator, {
+          ...key(v.version),
+          guidanceRevision: v.guidance.revision,
+          amount: 10000,
+          receivedAt: new Date().toISOString(),
+          corrects: null,
+          reason: "실입금 확인",
+        });
+        v = await post(v.id, "change-request", {
+          ...key(v.version),
+          kind: "CANCEL",
+          subject: "OTHER",
+          reason: "취소 합의",
+        });
+        v = await changes.propose(v.id, operator, {
+          ...key(v.version),
+          changeId: v.changes[0].id,
+          reason: "전액 반환",
+          refundExpected: 10000,
+        });
+        v = await post(v.id, "change-accept", {
+          ...key(v.version),
+          changeId: v.changes[0].id,
+          confirmed: true,
+        });
+        const proposal = {
+          ...key(v.version),
+          amount,
+          reason: "환불 예정액 재합의",
+        };
+        await Promise.all([
+          changes.refundPlan(v.id, operator, proposal),
+          changes.refundPlan(v.id, operator, proposal),
+        ]);
+        v = await view(v.id);
+        assert.equal(v.refundExpected, 10000);
+        assert.equal(v.progress, "REFUND_PENDING");
+        assert.equal(v.changes.filter((c) => c.kind === "REFUND").length, 1);
+        const pending = v.changes.find((c) => c.kind === "REFUND")!;
+        assert.equal(pending.status, "PROPOSED");
+        await assert.rejects(
+          changes.refundPlan(v.id, operator, {
+            ...key(v.version),
+            amount: 0,
+            reason: "중복 제안",
+          }),
+        );
+        const accept = {
+          ...key(v.version),
+          changeId: pending.id,
+          confirmed: true,
+        };
+        v = await post(v.id, "change-accept", accept);
+        const acceptedVersion = v.version;
+        v = await post(v.id, "change-accept", accept);
+        assert.equal(v.version, acceptedVersion);
+        assert.equal(v.refundExpected, amount);
+        assert.equal(v.progress, amount ? "REFUND_PENDING" : "CANCELLED");
+        assert.equal(v.receivedAmount, 10000);
+        assert.equal(v.refundedAmount, 0);
+        await post(
+          v.id,
+          "change-accept",
+          { ...key(v.version), changeId: pending.id, confirmed: true },
+          409,
+        );
+        if (amount) {
+          const refund = {
+            ...key(v.version),
+            amount,
+            refundedAt: new Date().toISOString(),
+            reason: "은행 반환 확인",
+          };
+          await Promise.all([
+            changes.refund(v.id, operator, refund),
+            changes.refund(v.id, operator, refund),
+          ]);
+          v = await view(v.id);
+          assert.equal(v.refundedAmount, amount);
+          assert.equal(v.progress, "CANCELLED");
+        }
+      },
+    );
+  }
+  await t.test(
+    "past event without a menu deadline requires explicit merchant confirmation",
+    async () => {
+      let v = await fixture();
+      v = await post(v.id, "menu-draft", {
+        ...key(v.version),
+        catalogVersion: v.catalog.version,
+        items: [],
+      });
+      const progress = await db.manager.findOneByOrFail(ReservationProgress, {
+        reservationId: v.id,
+      });
+      progress.state.agreement.startsAt = new Date(
+        Date.now() - 60000,
+      ).toISOString();
+      await db.manager.save(progress);
+      v = await post(v.id, "menu-submit", menu(v));
+      assert.equal(v.status, "CHECK_REQUIRED");
+      assert(v.issues.includes("EVENT_STARTED"));
+      assert.equal(v.confirmation, null);
+      v = await payments.resolve(v.id, operator, {
+        ...key(v.version),
+        reason: "행사 시작 후 매장과 진행 여부를 확인함",
+      });
+      assert.equal(v.status, "CONFIRMED");
+      assert.equal(v.confirmation!.audit.confirmer, operator.confirmer);
+      assert.equal(v.confirmation!.audit.method, "PHONE");
+    },
+  );
   await t.test(
     "mandatory menu, unknown price, draft recovery, snapshot and exact request retry",
     async () => {

@@ -82,11 +82,18 @@ export function ProposalComparison({
     ],
     ["매장 추가 안내", a.note || "없음", b.note || "없음"],
   ];
-  if (kind === "CANCEL")
+  if (kind === "REFUND") rows.length = 0;
+  if (kind === "CANCEL" || kind === "REFUND")
     rows.push(["환불 예정 총액", won(q.refundExpected), won(p.refundExpected)]);
   return (
     <div className="space-y-4">
       <p className="whitespace-pre-wrap">처리 제안: {p.reason}</p>
+      {kind === "REFUND" && (
+        <p>
+          실제 반환액 {won(q.refundedAmount)}은 그대로 유지돼요. 수락해도 송금은
+          실행되지 않아요.
+        </p>
+      )}
       {kind === "CHANGE" && p.refundExpected !== null && (
         <p role="alert">
           변경 제안에는 환불 예정액을 적용할 수 없어요. 매장에 처리 내용을 다시

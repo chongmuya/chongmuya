@@ -61,7 +61,7 @@ export type Order = {
 };
 export type Change = {
   id: string;
-  kind: "CHANGE" | "CANCEL";
+  kind: "CHANGE" | "CANCEL" | "REFUND";
   subject: string;
   reason: string;
   status: "REQUESTED" | "PROPOSED" | "APPLIED" | "REJECTED";

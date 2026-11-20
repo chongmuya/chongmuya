@@ -1,9 +1,9 @@
 "use client";
-import { fromKoreanDateInput } from "@/shared/lib/korean-date";
 import { useId, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import type { Field } from "../types/command-field";
+import { commandSchema } from "../schemas/command.schema";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { FormField } from "@/shared/ui/form-field";
@@ -14,28 +14,13 @@ import type { Completion, CompletionAccess } from "../types/completion.types";
 import { useCompletionCommand } from "../hooks/use-completion-command";
 import { UncertainCommand } from "./uncertain-command";
 import { ReviewCurrent } from "./review-current";
-export type Field = {
-  name: string;
-  label: string;
-  type?: "text" | "number" | "datetime-local" | "textarea" | "checkbox";
-  value?: string;
-  optional?: boolean;
-  max?: number;
-  options?: { value: string; label: string }[];
-};
-export { koreanDateInput as localDate } from "@/shared/lib/korean-date";
-export const isoDate = (value: string) => {
-  const result = fromKoreanDateInput(value);
-  if (!result) throw new RangeError("INVALID_DATE");
-  return result;
-};
 export function CommandForm({
   data,
   access,
   action,
   title,
   description,
-  fields,
+  fields: fieldSource,
   build,
   onDone,
 }: {
@@ -44,7 +29,7 @@ export function CommandForm({
   action: string;
   title: string;
   description?: string;
-  fields: Field[];
+  fields: Field[] | ((base: Completion) => Field[]);
   build: (
     v: Record<string, string>,
     base: Completion,
@@ -54,45 +39,10 @@ export function CommandForm({
   const [base, setBase] = useState(data),
     id = useId(),
     mutation = useCompletionCommand(data.id, access);
-  const schema = z.object(
-    Object.fromEntries(
-      fields.map((f) => [
-        f.name,
-        z.string().superRefine((v, c) => {
-          if (!f.optional && !v.trim())
-            c.addIssue({
-              code: "custom",
-              message: "이 항목을 입력하거나 확인해 주세요.",
-            });
-          if (f.max && v.length > f.max)
-            c.addIssue({
-              code: "custom",
-              message: `${f.max}자 이내로 입력해 주세요.`,
-            });
-          if (
-            f.type === "number" &&
-            v &&
-            (!Number.isSafeInteger(Number(v)) ||
-              Number(v) < 0 ||
-              Number(v) > 2_000_000_000)
-          )
-            c.addIssue({
-              code: "custom",
-              message: "0~20억 사이의 정수를 입력해 주세요.",
-            });
-          if (
-            f.type === "datetime-local" &&
-            v &&
-            !Number.isFinite(Date.parse(v))
-          )
-            c.addIssue({
-              code: "custom",
-              message: "날짜와 시간을 확인해 주세요.",
-            });
-        }),
-      ]),
-    ),
-  );
+  const fieldsFor = (current: Completion) =>
+    typeof fieldSource === "function" ? fieldSource(current) : fieldSource;
+  const fields = fieldsFor(base);
+  const schema = commandSchema(fields);
   const form = useForm<Record<string, string>>({
     resolver: zodResolver(schema),
     defaultValues: Object.fromEntries(
@@ -103,7 +53,9 @@ export function CommandForm({
   const completed = (result: Completion) => {
     if (!mutation.active.current) return;
     setBase(result);
-    form.reset(Object.fromEntries(fields.map((f) => [f.name, f.value ?? ""])));
+    form.reset(
+      Object.fromEntries(fieldsFor(result).map((f) => [f.name, f.value ?? ""])),
+    );
     onDone?.();
   };
   return (

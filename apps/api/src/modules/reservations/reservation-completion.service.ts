@@ -8,6 +8,7 @@ import { DomainHttpException } from "../../common/http/domain-http.exception.js"
 import { EventsService } from "../events/events.service.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
+import type { NotificationInput } from "../notifications/types/notification.js";
 import { ReservationLocksService } from "./reservation-locks.service.js";
 import { ReservationAccessService } from "./reservation-access.service.js";
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
@@ -40,6 +41,7 @@ export type CompletionContext = {
   target: RequestTarget;
   state: ReservationPreparation;
   audit: ReservationAudit;
+  notifications: NotificationInput[];
   evidence?: Record<string, unknown>;
 };
 @Injectable()
@@ -125,6 +127,7 @@ export class ReservationCompletionService {
       request,
       state: stored?.state ?? initialPreparation(selection),
       audit,
+      notifications: [],
     };
   }
   async get(id: string, p: ReservationPrincipal) {
@@ -329,6 +332,7 @@ export class ReservationCompletionService {
           "예약이 확정됐어요. 메뉴와 필요한 실제 입금 확인이 완료됐어요.",
           "both",
         );
+      await this.notices.recordBatch(m, c.notifications);
       c.selection.version++;
       await m.save(c.selection);
       await m.save(ReservationProgress, { reservationId: id, state: c.state });
@@ -482,7 +486,7 @@ export class ReservationCompletionService {
           text: `[총무야] ${request.snapshot.eventName} · ${target.restaurantName}\n${summary}\n${this.access.url(link)}`,
         });
     }
-    await this.notices.record(m, {
+    c.notifications.push({
       eventKey,
       kind: "RESERVATION_UPDATED",
       eventId: r.eventId,

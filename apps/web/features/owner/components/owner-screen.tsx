@@ -1,6 +1,7 @@
 "use client";
 import { MerchantSummary } from "@/features/calendar/client";
 import { NotificationBadge } from "@/features/notifications/client";
+import { OwnerNavigation } from "@/shared/ui/owner-navigation";
 import { OwnerHours } from "./owner-hours";
 import { OwnerReservations } from "@/features/reservation-completion/client";
 import Link from "next/link";
@@ -132,10 +133,31 @@ function OwnerHome({
   onNavigate: (path: string) => void;
 }) {
   const context = useQuery(contextQuery(account.id, request));
+  const [selectedId, setSelectedId] = useState("");
+  const restaurant =
+    context.data?.restaurants.find((r) => r.id === selectedId) ??
+    context.data?.restaurants[0];
   return (
-    <main className="mx-auto flex min-h-svh max-w-[402px] flex-col px-5 pt-[clamp(24px,8.77svh,83px)] pb-[max(40px,env(safe-area-inset-bottom))]">
+    <main className="mx-auto flex min-h-svh max-w-[402px] flex-col px-5 pt-[clamp(24px,8.77svh,83px)] pb-0">
       <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">내 매장</h1>
+        <h1 className="min-w-0 flex-1 text-xl font-bold">
+          {context.data && context.data.restaurants.length > 1 ? (
+            <select
+              aria-label="매장 선택"
+              className="w-full bg-transparent"
+              value={restaurant?.id}
+              onChange={(e) => setSelectedId(e.target.value)}
+            >
+              {context.data.restaurants.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            (restaurant?.name ?? "내 매장")
+          )}
+        </h1>
         <NotificationBadge accountId={account.id} request={request} />
         <Link
           href="/mypage"
@@ -151,59 +173,61 @@ function OwnerHome({
         <LoadingState>매장 확인 중…</LoadingState>
       ) : (
         <div className="flex flex-1 flex-col gap-5">
-          <Link
-            className={buttonStyles({ variant: "outline" })}
-            href="/owner/reservations"
-          >
-            선택된 예약 관리
-          </Link>
-          {context.data.restaurants.map((r) => (
-            <section
-              key={r.id}
-              className="space-y-4 rounded-control bg-surface p-5 shadow-card"
-            >
-              <div>
-                <h2 className="text-xl font-bold">
-                  {r.name}
-                  {r.branchName ? ` (${r.branchName})` : ""}
+          {restaurant && (
+            <>
+              <div className="mb-3">
+                <h2 className="text-2xl font-bold">
+                  우리 매장 예약을 확인해요
                 </h2>
-                <p className="mt-2 text-sm text-brand-action">
-                  등록 완료 · {r.published ? "공개 중" : "공개 대기"}
+                <p className="mt-2 text-sm text-secondary">
+                  받은 문의와 예약 준비 상태를 한눈에 확인하세요.
                 </p>
               </div>
               <MerchantSummary
                 accountId={account.id}
-                restaurantId={r.id}
+                restaurantId={restaurant.id}
                 request={request}
               />
-              <div className="flex flex-wrap gap-3">
-                <Link
-                  className={buttonStyles({ variant: "outline" })}
-                  href={`/calendar?restaurant=${r.id}`}
-                >
-                  예약관리 캘린더
-                </Link>
-                <Link
-                  className={buttonStyles({ variant: "outline" })}
-                  href={`/owner/hours?restaurant=${r.id}`}
-                >
-                  영업시간
-                </Link>
-                <Link
-                  className={buttonStyles({ variant: "outline" })}
-                  href={`/owner/register?restaurant=${r.id}`}
-                >
-                  정보 수정
-                </Link>
-                <Link
-                  className={buttonStyles({ variant: "outline" })}
-                  href={`/owner/menus?restaurant=${r.id}`}
-                >
-                  메뉴 관리
-                </Link>
-              </div>
-            </section>
-          ))}
+              <details
+                id="store-settings"
+                className="my-3 rounded-card bg-surface p-5 shadow-card"
+              >
+                <summary className="cursor-pointer font-semibold">
+                  매장 정보 관리
+                </summary>
+                <p className="mt-3 text-sm text-secondary">
+                  {restaurant.name} ·{" "}
+                  {restaurant.published ? "공개 중" : "공개 대기"}
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <Link
+                    className={buttonStyles({ variant: "outline" })}
+                    href={`/owner/hours?restaurant=${restaurant.id}`}
+                  >
+                    영업시간
+                  </Link>
+                  <Link
+                    className={buttonStyles({ variant: "outline" })}
+                    href={`/owner/register?restaurant=${restaurant.id}`}
+                  >
+                    정보 수정
+                  </Link>
+                  <Link
+                    className={buttonStyles({ variant: "outline" })}
+                    href={`/owner/menus?restaurant=${restaurant.id}`}
+                  >
+                    메뉴 관리
+                  </Link>
+                  <Link
+                    className={buttonStyles({ variant: "outline" })}
+                    href="/owner/register"
+                  >
+                    매장 추가
+                  </Link>
+                </div>
+              </details>
+            </>
+          )}
           {!context.data.restaurants.length ? (
             <section className="flex flex-1 flex-col px-[14px]">
               <Image
@@ -240,6 +264,8 @@ function OwnerHome({
           )}
         </div>
       )}
+      <div className="h-8" />
+      <OwnerNavigation current="home" restaurantId={restaurant?.id} />
     </main>
   );
 }

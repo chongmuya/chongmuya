@@ -460,6 +460,7 @@ function Loaded({
   data: Detail;
   record: boolean;
 }) {
+  const [noticeFlow, setNoticeFlow] = useState(false);
   const [tab, setTab] = useState("expenses"),
     [editing, setEditing] = useState<Expense | "new" | null>(null),
     [deleting, setDeleting] = useState<{ id: string; version: number } | null>(
@@ -479,43 +480,45 @@ function Loaded({
           <Memo a={a} data={data} />
         </section>
       )}
-      <div className="grid grid-cols-[1fr_2fr] gap-3">
-        <div className="rounded-lg bg-surface p-4 shadow-sm">
-          <p className="text-xs text-secondary">입금 확인 인원</p>
-          <p className="mt-4 text-2xl font-semibold">
-            {s.confirmed}
-            <small className="text-xs text-secondary">
-              {" "}
-              / {s.people.filter((p) => p.amount > 0).length}명
-            </small>
-          </p>
+      <div hidden={noticeFlow} className="space-y-7">
+        <div className="grid grid-cols-[1fr_2fr] gap-3">
+          <div className="rounded-lg bg-surface p-4 shadow-sm">
+            <p className="text-xs text-secondary">입금 확인 인원</p>
+            <p className="mt-4 text-2xl font-semibold">
+              {s.confirmed}
+              <small className="text-xs text-secondary">
+                {" "}
+                / {s.people.filter((p) => p.amount > 0).length}명
+              </small>
+            </p>
+          </div>
+          <dl className="rounded-lg bg-surface p-4 shadow-sm">
+            <div className="flex flex-wrap justify-between gap-2">
+              <dt className="text-xs text-secondary">전체 지출</dt>
+              <dd className="font-semibold">{s.total.toLocaleString()}원</dd>
+            </div>
+            <div className="mt-2 flex flex-wrap justify-between gap-2">
+              <dt className="text-xs text-secondary">정산 대상</dt>
+              <dd>{s.target.toLocaleString()}원</dd>
+            </div>
+            <div className="mt-2 flex flex-wrap justify-between gap-2">
+              <dt className="text-xs text-secondary">순입금 확인</dt>
+              <dd>{s.received.toLocaleString()}원</dd>
+            </div>
+          </dl>
         </div>
-        <dl className="rounded-lg bg-surface p-4 shadow-sm">
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-xs text-secondary">전체 지출</dt>
-            <dd className="font-semibold">{s.total.toLocaleString()}원</dd>
-          </div>
-          <div className="mt-2 flex flex-wrap justify-between gap-2">
-            <dt className="text-xs text-secondary">정산 대상</dt>
-            <dd>{s.target.toLocaleString()}원</dd>
-          </div>
-          <div className="mt-2 flex flex-wrap justify-between gap-2">
-            <dt className="text-xs text-secondary">순입금 확인</dt>
-            <dd>{s.received.toLocaleString()}원</dd>
-          </div>
-        </dl>
-      </div>
-      <p className="text-sm">
-        {
+        <p className="text-sm">
           {
-            EMPTY: "정산 데이터 없음",
-            IN_PROGRESS: "정산 진행 중",
-            COMPLETE: "정산 완료",
-          }[s.status]
-        }{" "}
-        · 미완성 {s.drafts}개 · 미확인 {s.unconfirmed}명 · 초과확인{" "}
-        {s.differences}명
-      </p>
+            {
+              EMPTY: "정산 데이터 없음",
+              IN_PROGRESS: "정산 진행 중",
+              COMPLETE: "정산 완료",
+            }[s.status]
+          }{" "}
+          · 미완성 {s.drafts}개 · 미확인 {s.unconfirmed}명 · 초과확인{" "}
+          {s.differences}명
+        </p>
+      </div>
       {editing && (
         <ExpenseForm
           key={editing === "new" ? "new" : editing.id}
@@ -527,9 +530,14 @@ function Loaded({
       )}
       <section
         hidden={!!editing}
-        className="space-y-6 rounded-lg bg-surface p-5 shadow-sm"
+        className={
+          noticeFlow
+            ? "space-y-6"
+            : "space-y-6 rounded-lg bg-surface p-5 shadow-sm"
+        }
       >
         <div
+          hidden={noticeFlow}
           className="flex rounded-pill border border-brand p-1"
           role="tablist"
           aria-label="정산 내용"
@@ -641,7 +649,7 @@ function Loaded({
           <People a={a} data={data} />
         </div>
         <div hidden={tab !== "notices"}>
-          <NoticePanel access={a} data={data} />
+          <NoticePanel access={a} data={data} onFlowChange={setNoticeFlow} />
         </div>
       </section>
       {record && (

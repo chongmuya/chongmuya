@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -128,7 +129,21 @@ function InboxContent({
                         })
                       }
                     >
-                      <span>
+                      <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-surface">
+                        <Image
+                          src={
+                            item.fact.category === "RESERVATION"
+                              ? "/images/restaurants/menu.svg"
+                              : item.fact.category === "SETTLEMENT"
+                                ? "/images/settlements/copy.svg"
+                                : "/images/home/calendar.svg"
+                          }
+                          width={24}
+                          height={24}
+                          alt=""
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1">
                         <strong className="block">{item.title}</strong>
                         <span className="mt-2 block text-xs">
                           {item.summary}
@@ -140,6 +155,11 @@ function InboxContent({
                           }).format(new Date(item.createdAt))}
                         </time>
                       </span>
+                      {destination && (
+                        <span aria-hidden className="ml-2 text-xl text-muted">
+                          ›
+                        </span>
+                      )}
                     </Button>
                     {!destination && (
                       <p className="mt-2 text-xs">

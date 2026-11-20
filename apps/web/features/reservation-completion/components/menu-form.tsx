@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import Image from "next/image";
+import { menuSchema } from "../schemas/menu.schema";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { FormField } from "@/shared/ui/form-field";
@@ -11,22 +12,7 @@ import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useCompletionCommand } from "../hooks/use-completion-command";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { UncertainCommand } from "./uncertain-command";
-import { won } from "./completion-summary";
-const schema = z.object({
-  items: z.array(
-    z.object({
-      id: z.string(),
-      quantity: z
-        .number({ error: "수량을 입력해 주세요." })
-        .int("수량은 정수로 입력해 주세요.")
-        .min(0, "수량은 0 이상이어야 해요.")
-        .max(100000, "수량은 100,000 이하여야 해요."),
-    }),
-  ),
-  confirmed: z.boolean(),
-  payer: z.string().trim().max(80),
-  amount: z.string().trim(),
-});
+import { GuidanceSummary, won } from "./completion-summary";
 export function MenuForm({
   data: q,
   access,
@@ -40,7 +26,7 @@ export function MenuForm({
   const [base, setBase] = useState(q),
     action = useCompletionCommand(q.id, access);
   const form = useForm({
-      resolver: zodResolver(schema),
+      resolver: zodResolver(menuSchema),
       defaultValues: {
         items: base.catalog.menus.map((m) => ({
           id: m.id,
@@ -130,7 +116,7 @@ export function MenuForm({
     >
       <fieldset
         disabled={action.uncertain || action.isPending}
-        className="contents"
+        className="space-y-6"
       >
         <section className="rounded-control bg-surface p-5 shadow-card">
           <h3 className="mb-3 font-semibold">메뉴 선택</h3>
@@ -149,19 +135,29 @@ export function MenuForm({
           )}
           <div className="divide-y divide-border">
             {base.catalog.menus.map((m, index) => (
-              <div
-                key={m.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-4"
-              >
-                <div className="min-w-0">
-                  <strong className="text-sm">{m.name}</strong>
-                  <p className="text-xs text-muted">{m.unit}</p>
-                  <p className="text-sm font-semibold">
-                    {m.price === null ? "가격 확인 필요" : won(m.price)}
-                    {!m.available ? " · 품절" : ""}
-                  </p>
+              <div key={m.id} className="grid grid-cols-1 gap-3 py-4">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <div
+                    className="flex size-[50px] shrink-0 items-center justify-center rounded-control bg-field"
+                    aria-label="메뉴 사진 미등록"
+                  >
+                    <Image
+                      src="/images/restaurants/menu.svg"
+                      width={28}
+                      height={28}
+                      alt=""
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <strong className="text-sm">{m.name}</strong>
+                    <p className="text-xs text-muted">{m.unit}</p>
+                    <p className="text-sm font-semibold">
+                      {m.price === null ? "가격 확인 필요" : won(m.price)}
+                      {!m.available ? " · 품절" : ""}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex max-w-full flex-wrap items-center gap-2">
+                <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                   <Button
                     variant="outline"
                     aria-label={`${m.name} 수량 줄이기`}
@@ -248,6 +244,7 @@ export function MenuForm({
             이용료 {won(base.agreement.separateFee)}
           </p>
         </section>
+        <GuidanceSummary data={q} />
         {base.guidance.kind === "REQUIRED" && (
           <section className="space-y-4 rounded-control bg-surface p-5 shadow-card">
             <h3 className="font-semibold">송금 사실 함께 신고 (선택)</h3>

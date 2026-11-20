@@ -116,10 +116,17 @@ export class NotificationsService {
 
   constructor(private readonly database: DatabaseService) {}
   async record(m: EntityManager, input: NotificationInput) {
+    await this.recordBatch(m, [input]);
+  }
+  // A business transaction with multiple facts must submit the entire batch
+  // once. Per-fact sorting cannot order locks across separate record calls.
+  async recordBatch(m: EntityManager, inputs: NotificationInput[]) {
+    const ids = inputs.flatMap((input) => input.accounts.map((a) => a.id));
+    for (const id of [...new Set(ids)].sort()) await this.lockAccount(m, id);
+    for (const input of inputs) await this.recordLocked(m, input);
+  }
+  private async recordLocked(m: EntityManager, input: NotificationInput) {
     const { accounts, messages, ...fact } = input;
-    // Sorted recipient locks serialize settings, recording, and inbox snapshots.
-    for (const id of [...new Set(accounts.map((a) => a.id))].sort())
-      await this.lockAccount(m, id);
     const inserted = await m
       .createQueryBuilder()
       .insert()

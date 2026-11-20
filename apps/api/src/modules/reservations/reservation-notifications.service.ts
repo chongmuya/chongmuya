@@ -4,6 +4,7 @@ import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
+import type { NotificationInput } from "../notifications/types/notification.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { ReservationAccessService } from "./reservation-access.service.js";
 import { ReservationManagementLink } from "./entities/reservation-progress.entity.js";
@@ -32,6 +33,18 @@ export class ReservationNotificationsService {
     revision: number,
     reservationId?: string,
   ) {
+    await this.notices.record(
+      m,
+      this.organizerInput(request, target, kind, revision, reservationId),
+    );
+  }
+  organizerInput(
+    request: ReservationRequest,
+    target: RequestTarget,
+    kind: "REPLY_RECEIVED" | "STORE_SELECTED",
+    revision: number,
+    reservationId?: string,
+  ): NotificationInput {
     const title =
       kind === "REPLY_RECEIVED"
         ? "매장 답변이 도착했어요"
@@ -41,7 +54,7 @@ export class ReservationNotificationsService {
         ? "문의에서 제안과 선택 기한을 확인해 주세요."
         : "메뉴 전달과 필요한 실제 입금 확인 전에는 예약 확정이 아닙니다.";
     const destination = `/events?event=${request.eventId}`;
-    await this.notices.record(m, {
+    return {
       eventKey: `${request.id}:${target.id}:${kind}:${revision}`,
       kind,
       eventId: request.eventId,
@@ -60,15 +73,15 @@ export class ReservationNotificationsService {
           text: `[총무야] ${title}\n${summary}\n${this.config.environment.webOrigin}${destination}`,
         },
       ],
-    });
+    };
   }
-  async merchant(
+  async merchantInput(
     m: EntityManager,
     request: ReservationRequest,
     target: RequestTarget,
     kind: "STORE_SELECTED" | "CANDIDATE_CLOSED" | "PROPOSAL_EXPIRED",
     reservationId?: string,
-  ) {
+  ): Promise<NotificationInput> {
     const { link } = await this.links.context(target.id, m);
     const managementLink = reservationId
       ? await m.findOneBy(ReservationManagementLink, { reservationId })
@@ -90,7 +103,7 @@ export class ReservationNotificationsService {
     const destination = reservationId
       ? `/owner/reservations?reservation=${reservationId}`
       : `/owner/inquiries?target=${target.id}`;
-    await this.notices.record(m, {
+    return {
       eventKey: `${request.id}:${target.id}:${kind}`,
       kind,
       eventId: request.eventId,
@@ -112,7 +125,10 @@ export class ReservationNotificationsService {
             },
           ]
         : [],
-    });
+    };
+  }
+  recordBatch(m: EntityManager, inputs: NotificationInput[]) {
+    return this.notices.recordBatch(m, inputs);
   }
   async dispatchRequest(requestId: string) {
     const db = await this.database.connect();
