@@ -24,6 +24,7 @@ import {
   initialPreparation,
 } from "../../src/modules/reservations/lib/reservation-completion.js";
 import { SelectedReservation } from "../../src/modules/reservations/entities/selected-reservation.entity.js";
+import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
 import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
 import { RestaurantOperation } from "../../src/modules/restaurants/entities/restaurant-operation.entity.js";
@@ -44,7 +45,7 @@ const json = async <T>(r: Response, status = 200) => {
   return b as T;
 };
 test("reservation completion preserves contracts, scoped links, money evidence and concurrent decisions", async (t) => {
-  const { app, db, call, signup } = await startResourceApplication(t);
+  const { app, db, call, signup, url } = await startResourceApplication(t);
   await seedDemoRestaurants(db);
   const organizer = await signup(),
     alien = await signup();
@@ -105,6 +106,12 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       }),
       201,
     );
+    return selectDemoProposal(q, kind);
+  }
+  async function selectDemoProposal(
+    q: ReservationRequestDto,
+    kind: "NONE" | "UNKNOWN",
+  ) {
     await app.get(MerchantRepliesService).save(
       q.targets[0].id,
       operator,
@@ -132,12 +139,12 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     );
     const latest = (
       await json<{ request: ReservationRequestDto }>(
-        await call(`events/${event.id}/reservation-requests`, organizer),
+        await call(`events/${q.eventId}/reservation-requests`, organizer),
       )
     ).request;
     const chosen = await json<ReservationRequestDto>(
       await call(
-        `events/${event.id}/reservation-requests/${q.id}/select`,
+        `events/${q.eventId}/reservation-requests/${q.id}/select`,
         organizer,
         "POST",
         { ...key(latest.version), targetId: q.targets[0].id, revision: 1 },
@@ -170,6 +177,174 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     policy: "합의 후 환불",
     webConsent: channel === "WEB",
   });
+  await t.test(
+    "reservation contacts use an independent public number and scoped current organizer contact",
+    async () => {
+      const v = await fixture();
+      type Contact = Awaited<
+        ReturnType<ReservationCompletionService["contact"]>
+      >;
+      const restaurant = await db.manager.findOneByOrFail(Restaurant, {
+        id: v.restaurantId,
+      });
+      const selection = await db.manager.findOneByOrFail(SelectedReservation, {
+        id: v.id,
+      });
+      const request = await db.manager.findOneByOrFail(ReservationRequest, {
+        id: selection.requestId,
+      });
+      assert.equal(restaurant.publicPhone, null);
+      assert.deepEqual(
+        await json<Contact>(
+          await call(`reservations/${v.id}/contact`, organizer),
+        ),
+        {
+          kind: "restaurant",
+          name: v.restaurantName,
+          phone: null,
+          changedAt: null,
+        },
+      );
+      assert.equal(
+        (await call(`reservations/${v.id}/contact`, alien)).status,
+        404,
+      );
+      assert.equal(
+        (await call(`reservation-management/${v.id}/contact`)).status,
+        403,
+      );
+      const link = await db.manager.findOneByOrFail(ReservationManagementLink, {
+        reservationId: v.id,
+      });
+      const session = await access.exchange(
+        v.id,
+        new URL(access.url(link)).hash.slice(7),
+        "contacts",
+      );
+      const principal = { kind: "link" as const, access: session.accessToken };
+      const current = await completion.contact(v.id, principal);
+      assert.equal(current.kind, "organizer");
+      assert.equal(
+        current.phone,
+        request.currentContactPhone ?? request.contactPhone,
+      );
+      assert.deepEqual(
+        await json<Contact>(
+          await fetch(`${url}/api/v1/reservation-management/${v.id}/contact`, {
+            headers: { "X-Reservation-Access": session.accessToken },
+          }),
+        ),
+        current,
+      );
+      assert.equal(
+        Object.hasOwn(
+          (await completion.get(v.id, principal)).currentContact,
+          "phone",
+        ),
+        false,
+      );
+      const other = await fixture();
+      await assert.rejects(completion.contact(other.id, principal));
+      try {
+        await db.manager.update(
+          Restaurant,
+          { id: restaurant.id },
+          { publicPhone: "0212345678" },
+        );
+        const contact = await json<Contact>(
+          await call(`reservations/${v.id}/contact`, organizer),
+        );
+        assert.equal(contact.phone, "0212345678");
+        assert.notEqual(contact.phone, link.phoneSnapshot);
+        const changedAt = new Date().toISOString();
+        await db.manager.update(
+          ReservationRequest,
+          { id: request.id },
+          {
+            currentContactName: "새 담당자",
+            currentContactPhone: "01098765432",
+            contactChanges: [
+              ...request.contactChanges,
+              {
+                handoverId: randomUUID(),
+                from:
+                  request.currentContactAccountId ??
+                  request.createdById ??
+                  randomUUID(),
+                to: randomUUID(),
+                name: "새 담당자",
+                at: changedAt,
+                actor: "isolated-fixture",
+              },
+            ],
+          },
+        );
+        assert.deepEqual(await completion.contact(v.id, principal), {
+          kind: "organizer",
+          name: "새 담당자",
+          phone: "01098765432",
+          changedAt,
+        });
+        const original = await db.manager.findOneByOrFail(ReservationRequest, {
+          id: request.id,
+        });
+        assert.equal(original.contactPhone, request.contactPhone);
+      } finally {
+        await db.manager.update(
+          Restaurant,
+          { id: restaurant.id },
+          { publicPhone: restaurant.publicPhone },
+        );
+      }
+      await completion.manageLink(v.id, operator, {
+        ...key(v.version),
+        operation: "REVOKE",
+      });
+      await assert.rejects(completion.contact(v.id, principal));
+    },
+  );
+  await t.test(
+    "rejection reasons remain tied to their original request and retry identity",
+    async () => {
+      let v = await fixture();
+      const baseline = structuredClone(v.agreement);
+      v = await post(v.id, "change-request", {
+        ...key(v.version),
+        kind: "CHANGE",
+        subject: "SCHEDULE",
+        reason: "일정을 늦춰 주세요",
+      });
+      const firstId = v.changes[0].id;
+      const rejection = {
+        ...key(v.version),
+        changeId: firstId,
+        reason: "해당 시간은 다른 예약이 있어요",
+      };
+      v = await changes.reject(v.id, operator, rejection);
+      assert.equal(v.changes[0].resolutionReason, rejection.reason);
+      assert.deepEqual(v.agreement, baseline);
+      const version = v.version;
+      v = await changes.reject(v.id, operator, rejection);
+      assert.equal(v.version, version);
+      v = await post(v.id, "change-request", {
+        ...key(v.version),
+        kind: "CHANGE",
+        subject: "GUESTS",
+        reason: "인원을 바꿔 주세요",
+      });
+      v = await changes.reject(v.id, operator, {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        reason: "수용 인원을 넘어요",
+      });
+      assert.equal(
+        v.changes.find((c) => c.id === firstId)?.resolutionReason,
+        rejection.reason,
+      );
+      assert.equal(v.changes[0].resolutionReason, "수용 인원을 넘어요");
+      assert.deepEqual(v.agreement, baseline);
+    },
+  );
   await t.test(
     "operator reads omit evidence but cannot authorize mutations",
     async () => {
@@ -573,7 +748,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     },
   );
   await t.test(
-    "change request leaves agreement unchanged until accepted; cancellation and actual refunds remain separate",
+    "cancellation permits one new round while the previous reservation's actual refund is pending",
     async () => {
       let v = await fixture("UNKNOWN");
       v = await payments.guidance(v.id, operator, guide(v));
@@ -629,6 +804,46 @@ test("reservation completion preserves contracts, scoped links, money evidence a
         reason: "전액 환불 합의",
         refundExpected: 10000,
       });
+      const requests = `events/${v.eventId}/reservation-requests`;
+      const current = async () =>
+        (
+          await json<{ request: ReservationRequestDto }>(
+            await call(requests, organizer),
+          )
+        ).request;
+      const eventVersion = async () => {
+        const event = await json<{
+          version: number;
+          scheduledAt: string;
+          reservationScheduleLocked: boolean;
+        }>(await call(`events/${v.eventId}`, organizer));
+        return event;
+      };
+      const previous = await current();
+      const newInquiry = {
+        mode: "DIRECT",
+        requestKey: randomUUID(),
+        previousRequestId: previous.id,
+        expectedRequestVersion: previous.version,
+        expectedEventVersion: (await eventVersion()).version,
+        updateEventSchedule: true,
+        restaurantIds: [demoRestaurantIds[1]],
+        conditions: {
+          startsAt: new Date(
+            Date.parse(v.agreement.startsAt) + 86400000,
+          ).toISOString(),
+          expectedGuests: 20,
+          region: "건대입구",
+          seating: "ANY",
+          space: "ANY",
+        },
+        contact: { name: "총무", phone: "01000001234" },
+      };
+      assert.equal(previous.canReinquire, false);
+      assert.equal(
+        (await call(requests, organizer, "POST", newInquiry)).status,
+        409,
+      );
       v = await post(v.id, "change-accept", {
         ...key(v.version),
         changeId: v.changes[0].id,
@@ -637,6 +852,48 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       assert.equal(v.status, "CANCELLED");
       assert.equal(v.progress, "REFUND_PENDING");
       assert.equal(v.refundedAmount, 0);
+      const cancelled = await current();
+      assert.equal(cancelled.canReinquire, true);
+      assert.equal(cancelled.selection?.id, v.id);
+      newInquiry.expectedEventVersion = (await eventVersion()).version;
+      assert.equal(
+        (await call(requests, alien, "POST", newInquiry)).status,
+        404,
+      );
+      const competing = { ...newInquiry, requestKey: randomUUID() };
+      const responses = await Promise.all([
+        call(requests, organizer, "POST", newInquiry),
+        call(requests, organizer, "POST", competing),
+      ]);
+      assert.deepEqual(responses.map((r) => r.status).sort(), [201, 409]);
+      const newRound = await json<ReservationRequestDto>(
+        responses.find((r) => r.status === 201)!,
+        201,
+      );
+      const replay = await json<ReservationRequestDto>(
+        await call(
+          requests,
+          organizer,
+          "POST",
+          responses[0].status === 201 ? newInquiry : competing,
+        ),
+        201,
+      );
+      assert.equal(replay.id, newRound.id);
+      assert.equal(newRound.round, previous.round + 1);
+      assert.equal(newRound.selection, null);
+      const oldRound = await json<ReservationRequestDto>(
+        await call(`${requests}/${previous.id}`, organizer),
+      );
+      assert.equal(oldRound.lifecycle, "SELECTED");
+      assert.equal(oldRound.selection?.id, v.id);
+      assert.equal(oldRound.canReinquire, false);
+      assert(oldRound.targets.every((target) => !target.canSelect));
+      const next = await selectDemoProposal(newRound, "NONE");
+      assert.notEqual(next.id, v.id);
+      assert.equal(next.eventId, v.eventId);
+      assert.equal(next.agreement.startsAt, newInquiry.conditions.startsAt);
+      assert.equal(next.receivedAmount, 0);
       const refund = {
         ...key(v.version),
         amount: 6000,
@@ -666,6 +923,11 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       assert.equal(v.progress, "CANCELLED");
       assert.equal(v.receivedAmount, 10000);
       assert.equal(v.refundedAmount, 10000);
+      assert.equal((await current()).selection?.id, next.id);
+      assert.equal((await view(next.id)).refundedAmount, 0);
+      const rescheduled = await eventVersion();
+      assert.equal(rescheduled.scheduledAt, next.agreement.startsAt);
+      assert.equal(rescheduled.reservationScheduleLocked, true);
     },
   );
   await t.test(
@@ -828,6 +1090,15 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       assert.equal(
         (await call(`owner/reservations/${v.id}`, owner)).status,
         200,
+      );
+      const contact = await json<{ kind: string; phone: string }>(
+        await call(`owner/reservations/${v.id}/contact`, owner),
+      );
+      assert.equal(contact.kind, "organizer");
+      assert(contact.phone);
+      assert.equal(
+        (await call(`owner/reservations/${v.id}/contact`, alien)).status,
+        403,
       );
       assert.equal(
         (await call(`owner/reservations/${v.id}`, alien)).status,

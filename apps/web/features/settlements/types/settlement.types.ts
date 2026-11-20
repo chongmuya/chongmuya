@@ -95,6 +95,8 @@ export type Detail = {
       createdAt: string;
       calculationVersion: number;
       outdated: boolean;
+      deadline: string | null;
+      ownerChanged: boolean;
     }[];
   };
   summary: Summary;

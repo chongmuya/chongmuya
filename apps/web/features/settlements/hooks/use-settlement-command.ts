@@ -37,6 +37,12 @@ export function useSettlementCommand(
         queryKey: ["user", a.accountId, "records"],
       });
       void cache.invalidateQueries({
+        queryKey: ["user", a.accountId, "events", "summaries"],
+      });
+      void cache.invalidateQueries({
+        queryKey: ["user", a.accountId, "groups"],
+      });
+      void cache.invalidateQueries({
         queryKey: ["user", a.accountId, "files", a.eventId],
       });
       if (active.current) onApplied?.(data);

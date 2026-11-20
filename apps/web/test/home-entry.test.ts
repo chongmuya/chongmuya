@@ -25,8 +25,9 @@ test("root restores behind the splash then offers the design entry and explicit 
     );
     assert.doesNotMatch(
       view.container.textContent!,
-      /첫 행사를 준비|서비스 소개|내 행사와 명단/,
+      /첫 행사를 준비|내 행사와 명단/,
     );
+    assert(view.container.querySelector('a[href^="/intro?next="]'));
     await click(view.container, "회원가입 없이 사용해볼래요");
     assert(view.container.querySelector('dialog a[href="/restaurants"]'));
   } finally {

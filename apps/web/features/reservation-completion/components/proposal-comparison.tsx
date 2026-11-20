@@ -1,4 +1,5 @@
 import { koreanDateLabel } from "@/shared/lib/korean-date";
+import { cn } from "@/shared/lib/cn";
 import type {
   Completion,
   Change,
@@ -36,10 +37,14 @@ export function ProposalComparison({
   data: q,
   proposal: p,
   kind,
+  onDetails,
+  title,
 }: {
   data: Completion;
   kind: Change["kind"];
   proposal: NonNullable<Change["proposal"]>;
+  onDetails?: () => void;
+  title?: string;
 }) {
   const a = q.agreement,
     b = p.agreement;
@@ -52,7 +57,7 @@ export function ProposalComparison({
     },
     seating = { ANY: "상관없음", CLOSE: "가까이", SEPARATED: "떨어져도 가능" };
   const rows: [string, string, string][] = [
-    ["일정", date(a.startsAt), date(b.startsAt)],
+    ["날짜·시간", date(a.startsAt), date(b.startsAt)],
     ["인원", `${a.expectedGuests}명`, `${b.expectedGuests}명`],
     ["공간", space[a.space], space[b.space]],
     ["착석", seating[a.seating], seating[b.seating]],
@@ -85,9 +90,32 @@ export function ProposalComparison({
   if (kind === "REFUND") rows.length = 0;
   if (kind === "CANCEL" || kind === "REFUND")
     rows.push(["환불 예정 총액", won(q.refundExpected), won(p.refundExpected)]);
+  const visibleRows =
+    kind === "CHANGE"
+      ? rows.filter(
+          ([label, before, after]) =>
+            before !== after || ["날짜·시간", "인원", "공간"].includes(label),
+        )
+      : rows;
   return (
-    <div className="space-y-4">
-      <p className="whitespace-pre-wrap">처리 제안: {p.reason}</p>
+    <div className="space-y-7 text-base">
+      <header className="space-y-2 text-center">
+        {title && (
+          <h3 className="text-2xl leading-[1.5] font-bold text-brand-ink">
+            {title}
+          </h3>
+        )}
+        <div className="leading-[1.5] break-keep wrap-anywhere">
+          <p className="whitespace-pre-wrap">{p.reason}</p>
+          <p>
+            {kind === "CANCEL"
+              ? "수락하면 예약이 취소돼요. 환불은 별도로 처리돼요."
+              : kind === "REFUND"
+                ? "수락하면 환불 예정액에 합의해요."
+                : "수락하면 바꾼 조건대로 예약이 수정돼요."}
+          </p>
+        </div>
+      </header>
       {kind === "REFUND" && (
         <p>
           실제 반환액 {won(q.refundedAmount)}은 그대로 유지돼요. 수락해도 송금은
@@ -100,25 +128,45 @@ export function ProposalComparison({
           제안해 달라고 요청해 주세요.
         </p>
       )}
-      <p>
-        수락하면 아래 제안 내용이 적용돼요. 기존 내용과 모든 조건을 비교해
-        주세요.
-      </p>
-      <dl className="divide-y divide-border">
-        {rows.map(([label, before, after]) => (
-          <div key={label} className="space-y-1 py-3">
-            <dt className="font-semibold">{label}</dt>
-            <dd className="whitespace-pre-wrap wrap-anywhere">
-              <span className="text-muted">기존: </span>
-              {before}
-            </dd>
-            <dd className="whitespace-pre-wrap wrap-anywhere">
-              <span className="text-brand-action">제안: </span>
-              {after}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <div className="space-y-4">
+        <div className="space-y-5 rounded-[12px] border border-placeholder px-5 py-6">
+          <h4 className="text-xl leading-[normal] font-semibold">바꾼 조건</h4>
+          <dl className="space-y-4 leading-[normal] font-medium">
+            {visibleRows.map(([label, before, after]) => (
+              <div
+                key={label}
+                className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
+              >
+                <dt className="text-muted">{label}</dt>
+                <dd
+                  className={cn(
+                    "space-y-2 whitespace-pre-wrap",
+                    label === "날짜·시간" ? "break-keep" : "wrap-anywhere",
+                  )}
+                >
+                  {before === after ? (
+                    after
+                  ) : (
+                    <>
+                      <del className="block">{before}</del>
+                      <span className="block text-brand">→ {after}</span>
+                    </>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        {onDetails && (
+          <button
+            type="button"
+            className="relative ml-auto block text-sm leading-[normal] font-semibold text-brand before:absolute before:inset-x-0 before:-inset-y-3.5"
+            onClick={onDetails}
+          >
+            전체 예약문의 보기
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -227,13 +227,21 @@ export class ReservationSelectionService {
     if (
       input.previousRequestId !== request.id ||
       input.expectedRequestVersion !== request.version ||
-      request.state === "SELECTED" ||
       (await m.existsBy(SelectedReservation, {
         eventId: request.eventId,
         cancelledAt: IsNull(),
       }))
     )
       throw new DomainHttpException("RESERVATION_REINQUIRY_BLOCKED");
+    if (request.state === "SELECTED") {
+      const selection = await m.findOneBy(SelectedReservation, {
+        requestId: request.id,
+      });
+      if (selection?.status !== "CANCELLED" || !selection.cancelledAt)
+        throw new DomainHttpException("RESERVATION_REINQUIRY_BLOCKED");
+      // Keep the selected round, including its refund, as a historical reservation.
+      return;
+    }
     const now = new Date();
     const notifications: NotificationInput[] = [];
     for (const target of targets) {

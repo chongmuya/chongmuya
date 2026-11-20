@@ -32,6 +32,10 @@ import {
   "(latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180)",
 )
 @Check("restaurants_space_photos_check", "jsonb_typeof(space_photos)='array'")
+@Check(
+  "restaurants_public_phone_check",
+  "public_phone IS NULL OR public_phone ~ '^(0[0-9]{8,11}|1[568][0-9]{6})$'",
+)
 export class Restaurant {
   @PrimaryColumn("uuid", { primaryKeyConstraintName: "restaurants_pkey" })
   id!: string;
@@ -75,6 +79,8 @@ export class Restaurant {
   @Column({ type: "jsonb", default: catalogPolicies() })
   policies!: StoredRestaurantPolicies;
   @Column({ type: "varchar", length: 100 }) name!: string;
+  @Column({ type: "varchar", length: 20, name: "public_phone", nullable: true })
+  publicPhone!: string | null;
   @Column({ type: "varchar", length: 240 }) address!: string;
   @Column({ type: "varchar", length: 80 }) region!: string;
   @Column({ type: "varchar", length: 40, nullable: true }) category!:

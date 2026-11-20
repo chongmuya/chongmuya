@@ -18,12 +18,14 @@ function NoticeForm({
   a,
   data,
   previous,
+  initialScope = "ALL",
   onClose,
   onCreated,
 }: {
   a: Access;
   data: Detail;
   previous?: Notice;
+  initialScope?: Notice["scope"];
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
@@ -47,7 +49,7 @@ function NoticeForm({
       deadline: previous?.deadline ?? "",
       saveBank: false,
       includePeople: previous?.includePeople ?? false,
-      scope: previous?.scope ?? "ALL",
+      scope: previous?.scope ?? initialScope,
     },
   });
   const v = useWatch({ control: form.control });
@@ -357,29 +359,37 @@ export function NoticePanel({
   access: a,
   data,
   onFlowChange,
+  createScope,
+  onCreateScopeHandled,
 }: {
   access: Access;
   data: Detail;
   onFlowChange?: (active: boolean) => void;
+  createScope?: Notice["scope"] | null;
+  onCreateScopeHandled?: () => void;
 }) {
   const [editing, setEditing] = useState<Notice | "new" | null>(null),
     [id, setId] = useState<string | null>(null),
     [created, setCreated] = useState(false);
-  if (editing)
+  const editingNotice = editing ?? (createScope ? "new" : null);
+  if (editingNotice)
     return (
       <NoticeForm
-        key={editing === "new" ? "new" : editing.id}
+        key={editingNotice === "new" ? "new" : editingNotice.id}
         a={a}
         data={data}
-        previous={editing === "new" ? undefined : editing}
+        previous={editingNotice === "new" ? undefined : editingNotice}
+        initialScope={createScope ?? "ALL"}
         onClose={() => {
           setEditing(null);
+          onCreateScopeHandled?.();
           onFlowChange?.(!!id);
         }}
         onCreated={(noticeId) => {
           setId(noticeId);
           setCreated(true);
           setEditing(null);
+          onCreateScopeHandled?.();
         }}
       />
     );

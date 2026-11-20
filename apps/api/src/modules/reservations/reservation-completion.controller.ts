@@ -63,6 +63,12 @@ export class OrganizerReservationsController {
     private readonly completion: ReservationCompletionService,
     private readonly commands: ReservationCommands,
   ) {}
+  @Get(":id/contact") @Header("Cache-Control", "no-store") contact(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.completion.contact(id, { kind: "organizer", user });
+  }
   @Get(":id") @Header("Cache-Control", "no-store") get(
     @Param("id", ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
@@ -90,6 +96,12 @@ export class OwnerReservationsController {
     private readonly completion: ReservationCompletionService,
     private readonly commands: ReservationCommands,
   ) {}
+  @Get(":id/contact") @Header("Cache-Control", "no-store") contact(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.completion.contact(id, { kind: "owner", user });
+  }
   @Get() @Header("Cache-Control", "no-store") list(
     @CurrentUser() user: AuthUser,
   ) {
@@ -117,6 +129,12 @@ export class ReservationManagementController {
     private readonly commands: ReservationCommands,
     private readonly access: ReservationAccessService,
   ) {}
+  @Get("contact") @Header("Cache-Control", "no-store") contact(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Headers("x-reservation-access") access?: string,
+  ) {
+    return this.completion.contact(id, { kind: "link", access });
+  }
   @Post("access") @HttpCode(200) @Header("Cache-Control", "no-store") exchange(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: MerchantAccessInput,

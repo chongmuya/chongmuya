@@ -90,6 +90,7 @@ pnpm --filter @chongmuya/api db:demo:links
 - 공간: `key`, `label`, `kind`(HALL/ROOM/FLOOR/WHOLE), `availability`(AVAILABLE/UNAVAILABLE/UNKNOWN), `togetherSeating`(YES/NO/UNKNOWN), `capacity`, `minGuests`, `minSpend`, `separateFee`, `conditions`.
 - 메뉴: `key`, `name`, `kind`(REGULAR/SET), `price`, `unit`, `available`. `position`은 선택적으로 읽고 검증하지만 초기 저장 순서는 파일의 배열 순서(0부터)를 사용한다.
 - `contact`는 생략/null 또는 `{ "phone": "문자열", "requestConsentAt": null, "consentNote": null }`. phone은 필수, 나머지는 생략하면 null이다. ASCII 공백·하이픈만 제거하고 기존 휴대폰 규칙으로 검사한다. 숫자 타입·다른 기호·운영 000 번호는 거부한다.
+- `publicPhone`은 선택적인 고객용 대표번호다. null 또는 빈 문자열은 미확인을 뜻하며 지역번호·휴대폰·0507·대표번호의 숫자와 ASCII 공백·하이픈을 받는다. `contact.phone`과 독립적으로 등록·수정하고, 생략한 기존 번호는 보존한다. 문의 문자 수신용 번호에서 자동으로 복사하지 않는다.
 - 알 수 없는 필드와 서버 필드(`isDemo`, `ownerAccountId`, `version`, 정규화 값 등)는 거부한다. 가격 null과 0원을 구분하며 설명 문장에서 금액·기한을 추정하지 않는다.
 
 연락처 ID는 코드에서 정한다. 새 이름은 매장명을 사용하고 기존 담당자 이름은 보존한다. active/isPrimary는 동의 여부와 명시적 수정으로 결정하며 입력받지 않는다. 번호만으로 동의를 만들지 않고 제공된 과거 동의 시각도 바꾸지 않는다. 새 번호에는 별도의 동의가 필요하다. 연락처 테이블과 과거 문의·링크·발송 스냅샷은 유지한다.

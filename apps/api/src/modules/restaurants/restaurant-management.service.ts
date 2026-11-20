@@ -12,6 +12,7 @@ import { DomainHttpException } from "../../common/http/domain-http.exception.js"
 import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
 import { PhoneVerificationService } from "../auth/phone-verification.service.js";
+import { normalizePublicPhone } from "./lib/restaurant-public-phone.js";
 import { Restaurant } from "./entities/restaurant.entity.js";
 import { RestaurantDraft } from "./entities/restaurant-draft.entity.js";
 import { RestaurantSpace } from "./entities/restaurant-space.entity.js";
@@ -174,6 +175,7 @@ export class RestaurantManagementService {
         detailAddress: r.baseAddress ? (r.detailAddress ?? "") : "",
         category: r.category ?? "",
         phone: contact?.phone ?? "",
+        publicPhone: r.publicPhone ?? "",
         receiveConsent: !!contact?.active && !!contact.requestConsentAt,
         maxCapacity: r.maxCapacity,
         minimumGuests: {
@@ -239,7 +241,7 @@ export class RestaurantManagementService {
       version: d.version,
       restaurantVersion: d.restaurantVersion,
       step: d.step,
-      data: d.data,
+      data: { ...d.data, publicPhone: d.data.publicPhone ?? "" },
       selectedAddress: d.selectedAddress,
       verifiedPhone: d.verifiedContact?.phone ?? null,
       submitted: !!d.submittedAt,
@@ -459,6 +461,7 @@ export class RestaurantManagementService {
         ownerAccountId: user.id,
         version: (previous?.version ?? 0) + 1,
         name: norm(data.name),
+        publicPhone: normalizePublicPhone(data.publicPhone),
         branchName: norm(data.branchName) || null,
         address: `${address.baseAddress} ${data.detailAddress}`.trim(),
         baseAddress:

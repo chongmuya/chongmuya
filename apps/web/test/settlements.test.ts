@@ -14,6 +14,8 @@ import { CommandStatus } from "../features/settlements/components/command-status
 import { ExpenseForm } from "../features/settlements/components/expense-form";
 import { NoticePanel } from "../features/settlements/components/notice-panel";
 import { preview } from "../features/settlements/lib/preview";
+import { confirmationDeadline } from "../features/settlements/lib/confirmation-deadline";
+import { eventSummariesQuery } from "../features/settlements/api/event-summaries.api";
 import type {
   Detail,
   Access,
@@ -56,6 +58,201 @@ const fixture = (): Detail => ({
   reservations: [],
   bankDefault: null,
 });
+
+function deadlineFixture(): Detail {
+  const data = fixture();
+  data.state.notices = [
+    {
+      id: "latest",
+      title: "확인 안내",
+      createdAt: "2026-11-19T01:00:00Z",
+      deadline: "2026-11-20",
+      calculationVersion: 1,
+      outdated: false,
+      ownerChanged: false,
+    },
+  ];
+  data.summary = {
+    ...data.summary,
+    status: "IN_PROGRESS",
+    total: 10000,
+    target: 10000,
+    unconfirmed: 1,
+    people: [
+      {
+        person: data.facts.participants[0]!,
+        amount: 10000,
+        net: 0,
+        remaining: 10000,
+        excess: 0,
+        rounds: { [round]: 10000 },
+      },
+    ],
+  };
+  return data;
+}
+
+test("deadline uses the latest notice, KST midnight and current unconfirmed balances independently of outdated", () => {
+  const data = deadlineFixture();
+  const before = new Date("2026-11-20T14:59:59.999Z");
+  const after = new Date("2026-11-20T15:00:00.000Z");
+  assert.equal(confirmationDeadline(data, before), null);
+  assert.equal(confirmationDeadline(data, after)?.amount, 10000);
+  data.state.notices[0]!.outdated = true;
+  data.summary.people[0]!.net = 6000;
+  data.summary.people[0]!.remaining = 4000;
+  assert.equal(confirmationDeadline(data, after)?.amount, 4000);
+  assert.equal(confirmationDeadline(data, after)?.calculationChanged, false);
+  data.state.calculationVersion++;
+  data.state.notices[0]!.ownerChanged = true;
+  assert.equal(confirmationDeadline(data, after)?.calculationChanged, true);
+  assert.equal(confirmationDeadline(data, after)?.ownerChanged, true);
+  data.state.notices.push({
+    ...data.state.notices[0]!,
+    id: "without-deadline",
+    deadline: null,
+  });
+  assert.equal(confirmationDeadline(data, after), null);
+  data.state.notices.pop();
+  data.summary.people[0]!.remaining = 0;
+  assert.equal(confirmationDeadline(data, after), null);
+  data.summary.people[0]!.amount = 0;
+  assert.equal(confirmationDeadline(data, after), null);
+});
+
+test("deadline dialog opens once on entry, preserves forms after closing and reuses the unconfirmed notice flow", async () => {
+  const { SettlementWorkspace } =
+    await import("../features/settlements/components/settlement-workspace");
+  const data = deadlineFixture();
+  data.state.notices[0]!.deadline = "2000-01-01";
+  data.summary.people.push({
+    person: {
+      ...data.facts.participants[0]!,
+      id: "other",
+      name: "입금 확인된 사람",
+    },
+    amount: 8000,
+    net: 10000,
+    remaining: 0,
+    excess: 2000,
+    rounds: {},
+  });
+  const writes: unknown[] = [];
+  const view = await render(
+    createElement(SettlementWorkspace, {
+      accountId: "deadline-owner",
+      eventId: "deadline-event",
+      request: async <T>(_p: string, options?: RequestInit) => {
+        if (options?.body) writes.push(options.body);
+        return data as T;
+      },
+    }),
+  );
+  try {
+    await until(() =>
+      assert(view.container.querySelector<HTMLDialogElement>("dialog")),
+    );
+    assert.equal(
+      view.container.querySelector('[aria-label="정산 확인 기한 안내"]'),
+      null,
+    );
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>('dialog button[aria-label="닫기"]')!
+        .click(),
+    );
+    await act(async () => {
+      await view.cache.invalidateQueries({
+        queryKey: ["user", "deadline-owner", "settlements", "deadline-event"],
+      });
+    });
+    assert.equal(view.container.querySelector("dialog"), null);
+    await click(view.container, "개인별 정산");
+    await click(view.container, "실제 반환 기록");
+    await fill(view.container, "reason", "작성 중인 반환 기록");
+    assert.equal(view.container.querySelector("dialog"), null);
+    await click(view.container, "미확인 1명");
+    const dialog = view.container.querySelector<HTMLDialogElement>("dialog")!;
+    assert.match(dialog.textContent!, /10,000원/);
+    assert.equal(
+      dialog.querySelectorAll('[aria-label="입금 미확인"]').length,
+      1,
+    );
+    assert.doesNotMatch(
+      dialog.querySelector("ul")!.textContent!,
+      /입금 확인된 사람/,
+    );
+    await click(dialog, "정산문 쓰러가기");
+    const scope = view.container.querySelector<HTMLInputElement>(
+      '[name="scope"][value="UNCONFIRMED"]',
+    )!;
+    assert.equal(scope.checked, true);
+    const form = scope.closest("form")!;
+    await fill(form, "title", "미확인 대상에게 안내");
+    await act(async () =>
+      [...form.querySelectorAll("button")]
+        .find((button) => button.textContent === "취소")!
+        .click(),
+    );
+    await click(view.container, "개인별 정산");
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('[name="reason"]')!.value,
+      "작성 중인 반환 기록",
+    );
+    assert.equal(writes.length, 0);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("home summary requests are bounded batches with account-scoped keys and abort signals", async () => {
+  const calls: URL[] = [];
+  const ids = Array.from(
+    { length: 101 },
+    (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+  );
+  const request: Access["request"] = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    assert(options?.signal instanceof AbortSignal);
+    const url = new URL(path, "http://localhost");
+    calls.push(url);
+    return url.searchParams
+      .get("eventIds")!
+      .split(",")
+      .map((eventId) => ({ eventId })) as T;
+  };
+  const query = eventSummariesQuery({
+    accountId: "owner-a",
+    eventIds: [...ids, ids[0]!],
+    request,
+  });
+  assert.deepEqual(query.queryKey.slice(0, 4), [
+    "user",
+    "owner-a",
+    "events",
+    "summaries",
+  ]);
+  const { QueryClient } = await import("@tanstack/react-query");
+  const cache = new QueryClient();
+  try {
+    const result = await cache.fetchQuery(query);
+    assert.equal(result.length, 101);
+    assert.equal(calls.length, 2);
+    assert.equal(new Set(result.map((row) => row.eventId)).size, 101);
+    assert.equal(
+      cache.getQueryData(
+        eventSummariesQuery({ accountId: "owner-b", eventIds: ids, request })
+          .queryKey,
+      ),
+      undefined,
+    );
+  } finally {
+    cache.clear();
+  }
+});
+
 for (const lostResponse of [false, true]) {
   test(`notice creation and revision open the exact result immediately (lost response: ${lostResponse})`, async () => {
     let current = fixture();
@@ -577,6 +774,8 @@ test("deposit conflicts block new notices while stale historical text remains vi
       createdAt: "2026-01-01T10:00:00Z",
       calculationVersion: 1,
       outdated: true,
+      deadline: null,
+      ownerChanged: false,
     },
   ];
   const a: Access = {
@@ -630,6 +829,8 @@ test("new manager editing an inherited notice preserves its text but must enter 
       createdAt: "2026-01-01T10:00:00Z",
       calculationVersion: 1,
       outdated: true,
+      deadline: null,
+      ownerChanged: true,
     },
   ];
   const a: Access = {

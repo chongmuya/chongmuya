@@ -6,6 +6,7 @@ export function notificationDestination(value: string) {
       `^/events\\?event=${uuid}(?:&view=(?:reservation|settlement|record|roster|attendance))?$`,
       "i",
     ).test(value) ||
+    new RegExp(`^/events\\?event=${uuid}&request=${uuid}$`, "i").test(value) ||
     new RegExp(
       `^/owner/(?:reservations\\?reservation|inquiries\\?target)=${uuid}$`,
       "i",

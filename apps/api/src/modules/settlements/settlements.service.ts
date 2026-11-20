@@ -1,5 +1,9 @@
 import { NotificationsService } from "../notifications/notifications.service.js";
 import type { SettlementDetailDto } from "./dto/response/settlement.response.dto.js";
+import type {
+  EventSummaryDto,
+  MemberHistoryDto,
+} from "./dto/response/event-summary.response.dto.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { In, type EntityManager } from "typeorm";
@@ -100,6 +104,8 @@ export class SettlementsService {
             createdAt: n.createdAt,
             calculationVersion: n.calculationVersion,
             outdated: noticeOutdated(n, s) || n.actorId !== owner,
+            deadline: n.deadline,
+            ownerChanged: n.actorId !== owner,
           })),
         },
         summary: calculate(s),
@@ -108,6 +114,88 @@ export class SettlementsService {
         bankDefault:
           (await m.findOneBy(SettlementBankDefault, { accountId: owner }))
             ?.bank ?? null,
+      };
+    });
+  }
+  async summaries(
+    owner: string,
+    eventIds: string[],
+  ): Promise<EventSummaryDto[]> {
+    const db = await this.database.connect();
+    return db.transaction("REPEATABLE READ", async (m) => {
+      const facts = await this.events.progressFacts(owner, eventIds, m);
+      const rows = await m.findBy(EventSettlement, { eventId: In(eventIds) });
+      const states = new Map(rows.map((row) => [row.eventId, row.state]));
+      const reservations = await this.reservations.forEvents(
+        owner,
+        eventIds,
+        m,
+      );
+      return reservations.map((reservation) => {
+        const counts = facts.find((f) => f.eventId === reservation.eventId)!;
+        const summary = calculate(
+          states.get(reservation.eventId) ?? initialSettlement(),
+        );
+        return {
+          ...reservation,
+          participantCount: counts.participantCount,
+          roundCount: counts.roundCount,
+          attendingCount: counts.attendingCount,
+          settlement: {
+            status: summary.status,
+            total: summary.total,
+            target: summary.target,
+            confirmed: summary.confirmed,
+            unconfirmed: summary.unconfirmed,
+            drafts: summary.drafts,
+            differences: summary.differences,
+          },
+        };
+      });
+    });
+  }
+  async memberHistory(
+    owner: string,
+    group: string,
+    member: string,
+    offset: number,
+  ): Promise<MemberHistoryDto> {
+    const db = await this.database.connect();
+    return db.transaction("REPEATABLE READ", async (m) => {
+      const facts = await this.events.memberHistoryFacts(
+        owner,
+        group,
+        member,
+        m,
+      );
+      const ids = facts.map((f) => f.eventId);
+      const rows = ids.length
+        ? await m.findBy(EventSettlement, { eventId: In(ids) })
+        : [];
+      const states = new Map(rows.map((row) => [row.eventId, row.state]));
+      const history = facts.map(({ participantIds, ...fact }) => {
+        const summary = calculate(
+          states.get(fact.eventId) ?? initialSettlement(),
+        );
+        const participants = new Set(participantIds);
+        return {
+          ...fact,
+          contributionAmount: summary.people.reduce(
+            (sum, person) =>
+              sum + (participants.has(person.person.id) ? person.amount : 0),
+            0,
+          ),
+          settlementStatus: summary.status,
+        };
+      });
+      return {
+        count: history.length,
+        attendedEventCount: history.filter((event) => event.attending).length,
+        contributionTotal: history.reduce(
+          (sum, event) => sum + event.contributionAmount,
+          0,
+        ),
+        events: history.slice(offset, offset + 20),
       };
     });
   }
@@ -123,12 +211,14 @@ export class SettlementsService {
     owner: string,
     options: {
       groupId?: string;
+      scope?: "personal";
       search?: string;
       before?: string;
       after?: string;
       offset: number;
     },
   ) {
+    if (options.scope && options.groupId) throw invalid();
     const db = await this.database.connect();
     return db.transaction("REPEATABLE READ", async (m) => {
       const page = await this.events.recordPage(owner, m, options),

@@ -19,6 +19,7 @@ import { AttendanceService } from "./attendance.service.js";
 import { EventRosterService } from "./event-roster.service.js";
 import {
   AddEventParticipantsInput,
+  ImportSelectedGroupMembersInput,
   UpdateEventParticipantInput,
 } from "./dto/request/event-participants.request.dto.js";
 import {
@@ -60,6 +61,15 @@ export class AttendanceController {
     @Param("eventId", ParseUUIDPipe) event: string,
   ) {
     return this.roster.importGroup(u.id, event);
+  }
+  @Post("participants/import-group/selected")
+  @Header("Cache-Control", "no-store")
+  importSelectedGroup(
+    @CurrentUser() u: AuthUser,
+    @Param("eventId", ParseUUIDPipe) event: string,
+    @Body() input: ImportSelectedGroupMembersInput,
+  ) {
+    return this.roster.importSelectedGroup(u.id, event, input);
   }
   @Patch("participants/:participantId")
   @Header("Cache-Control", "no-store")

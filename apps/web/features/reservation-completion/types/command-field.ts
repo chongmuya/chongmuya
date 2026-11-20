@@ -5,5 +5,7 @@ export type Field = {
   value?: string;
   optional?: boolean;
   max?: number;
+  minValue?: number;
+  maxValue?: number;
   options?: { value: string; label: string }[];
 };

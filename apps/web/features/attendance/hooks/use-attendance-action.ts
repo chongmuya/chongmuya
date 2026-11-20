@@ -49,6 +49,17 @@ export function useAttendanceAction(
           queryKey: attendanceKey(accountId, eventId),
         });
       }
+      if (!active.current) return;
+      await Promise.all([
+        cache.invalidateQueries({
+          queryKey: ["user", accountId, "events", "summaries"],
+          refetchType: onlineManager.isOnline() ? "active" : "none",
+        }),
+        cache.invalidateQueries({
+          queryKey: ["user", accountId, "groups"],
+          refetchType: onlineManager.isOnline() ? "active" : "none",
+        }),
+      ]);
     },
   });
 }

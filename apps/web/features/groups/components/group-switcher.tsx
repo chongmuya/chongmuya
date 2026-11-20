@@ -16,7 +16,7 @@ export function GroupSwitcher({
 }: {
   groups: Group[];
   selected?: string;
-  view: "home" | "roster" | "mypage";
+  view: "home" | "roster" | "groups" | "mypage";
   createPath?: string;
   onClose: () => void;
   children?: ReactNode;
@@ -26,7 +26,9 @@ export function GroupSwitcher({
       ? "/?group="
       : view === "mypage"
         ? "/mypage?group="
-        : "/mypage?view=groups&group=";
+        : view === "roster"
+          ? "/mypage?view=roster&group="
+          : "/mypage?view=groups&group=";
   return (
     <BottomSheet
       title={view === "home" ? "모임·행사 선택" : "모임 전환"}

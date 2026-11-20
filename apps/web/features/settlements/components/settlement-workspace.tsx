@@ -11,10 +11,17 @@ import { ApiError } from "@/shared/http/api-error";
 import { EventFiles } from "@/features/files/client";
 import { settlementQuery } from "../api/settlement.api";
 import { useSettlementCommand } from "../hooks/use-settlement-command";
-import type { Access, Detail, Expense } from "../types/settlement.types";
+import type {
+  Access,
+  Detail,
+  Expense,
+  Notice,
+} from "../types/settlement.types";
 import { ExpenseForm } from "./expense-form";
 import { NoticePanel } from "./notice-panel";
 import { CommandStatus } from "./command-status";
+import { DeadlineReminder } from "./deadline-reminder";
+import { confirmationDeadline } from "../lib/confirmation-deadline";
 const validReturnTime = (value: string) =>
   !!value &&
   Number.isFinite(Date.parse(value)) &&
@@ -460,7 +467,14 @@ function Loaded({
   data: Detail;
   record: boolean;
 }) {
+  const deadline = confirmationDeadline(data);
+  // Decide once on entry. Closing the reminder or background refreshes must not
+  // interrupt an existing form; the current unconfirmed count can reopen it.
+  const [deadlineOpen, setDeadlineOpen] = useState(() => !record && !!deadline);
   const [noticeFlow, setNoticeFlow] = useState(false);
+  const [createNoticeScope, setCreateNoticeScope] = useState<
+    Notice["scope"] | null
+  >(null);
   const [tab, setTab] = useState("expenses"),
     [editing, setEditing] = useState<Expense | "new" | null>(null),
     [deleting, setDeleting] = useState<{ id: string; version: number } | null>(
@@ -470,13 +484,22 @@ function Loaded({
     s = data.summary;
   return (
     <div className="space-y-7">
+      <DeadlineReminder
+        data={data}
+        open={deadlineOpen && !noticeFlow && !editing}
+        onClose={() => setDeadlineOpen(false)}
+        onViewPeople={() => setTab("people")}
+        onCreateNotice={() => {
+          setTab("notices");
+          setCreateNoticeScope("UNCONFIRMED");
+          setNoticeFlow(true);
+        }}
+      />
       {record && (
         <section>
           <h2 className="text-xl font-bold">행사 기록</h2>
           <p>선택 매장: {data.reservations[0]?.restaurantName ?? "없음"}</p>
-          <p>
-            한 차수 이상 참석 응답한 고유 인원 {data.facts.attendingCount}명
-          </p>
+          <p>한 차수 이상 최종 참석 {data.facts.attendingCount}명</p>
           <Memo a={a} data={data} />
         </section>
       )}
@@ -515,8 +538,20 @@ function Loaded({
               COMPLETE: "정산 완료",
             }[s.status]
           }{" "}
-          · 미완성 {s.drafts}개 · 미확인 {s.unconfirmed}명 · 초과확인{" "}
-          {s.differences}명
+          · 미완성 {s.drafts}개 ·{" "}
+          {deadline ? (
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              className="underline underline-offset-2"
+              onClick={() => setDeadlineOpen(true)}
+            >
+              미확인 {s.unconfirmed}명
+            </button>
+          ) : (
+            <>미확인 {s.unconfirmed}명</>
+          )}{" "}
+          · 초과확인 {s.differences}명
         </p>
       </div>
       {editing && (
@@ -649,7 +684,13 @@ function Loaded({
           <People a={a} data={data} />
         </div>
         <div hidden={tab !== "notices"}>
-          <NoticePanel access={a} data={data} onFlowChange={setNoticeFlow} />
+          <NoticePanel
+            access={a}
+            data={data}
+            onFlowChange={setNoticeFlow}
+            createScope={createNoticeScope}
+            onCreateScopeHandled={() => setCreateNoticeScope(null)}
+          />
         </div>
       </section>
       {record && (

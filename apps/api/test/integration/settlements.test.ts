@@ -153,7 +153,7 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
     message: "원문",
     bank: { bank: "테스트", account: "123-456", holder: "총무" },
     saveBank: true,
-    deadline: null,
+    deadline: "2026-11-20",
     includePeople: true,
     scope: "UNCONFIRMED",
   };
@@ -171,6 +171,8 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
   assert.equal(created.createdNoticeId, noticeCommand.requestKey);
   assert.equal(recovered.createdNoticeId, created.createdNoticeId);
   assert.equal(recovered.state.notices.length, 1);
+  assert.equal(recovered.state.notices[0]!.deadline, "2026-11-20");
+  assert.equal(recovered.state.notices[0]!.ownerChanged, false);
   state = recovered;
   const oldId = state.state.notices[0]!.id,
     oldText = await json<{ text: string }>(
@@ -636,6 +638,19 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
     (await call(`records?groupId=${grouped.g!.id}`, other)).status,
     404,
   );
+  const personalRecords = await json<{
+    count: number;
+    events: { id: string; groupId: string | null }[];
+  }>(await call("records?scope=personal", owner));
+  assert(personalRecords.events.some((e) => e.id === f.e.id));
+  assert(personalRecords.events.every((e) => e.groupId === null));
+  assert(!personalRecords.events.some((e) => e.id === grouped.e.id));
+  assert.equal(
+    (await call(`records?scope=personal&groupId=${grouped.g!.id}`, owner))
+      .status,
+    400,
+  );
+  assert.equal((await call("records?scope=invalid", owner)).status, 400);
   await t.test(
     "synthetic two-round acceptance preserves payers, first notice and receipt through reconfirmation and correction",
     async () => {

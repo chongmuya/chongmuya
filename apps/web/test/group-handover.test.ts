@@ -117,12 +117,20 @@ test("roster edit explains exclusion, preserves inputs on conflict and retries a
     _path: string,
     options?: RequestInit,
   ) => {
+    if (!options?.method)
+      return {
+        count: 0,
+        attendedEventCount: 0,
+        contributionTotal: 0,
+        events: [],
+      } as T;
     writes.push(JSON.parse(String(options?.body)));
     if (writes.length === 1) throw new ApiError("", 0, "NETWORK_ERROR");
     return { ok: true } as T;
   };
   const v = await render(
     createElement(EditMember, {
+      accountId: crypto.randomUUID(),
       member,
       groupId: crypto.randomUUID(),
       request,
@@ -132,7 +140,10 @@ test("roster edit explains exclusion, preserves inputs on conflict and retries a
   );
   try {
     await fill(v.container, "name", "바꾼 이름");
-    await click(v.container, "변경 저장");
+    assert(
+      v.container.querySelector('button[aria-label="기본 명단에서 제외"]'),
+    );
+    await click(v.container, "변경사항 저장");
     await until(() =>
       assert.match(v.container.textContent!, /응답을 확인하지 못했어요/),
     );
@@ -143,7 +154,6 @@ test("roster edit explains exclusion, preserves inputs on conflict and retries a
     await click(v.container, "같은 요청 다시 확인");
     await until(() => assert.equal(closes, 1));
     assert.deepEqual(writes[0], writes[1]);
-    assert.match(v.container.textContent!, /과거 행사 기록 보존/);
   } finally {
     await v.unmount();
   }

@@ -14,28 +14,39 @@ export function GroupBoundary({
   request,
   groupId,
   children,
+  fallbackNavigation,
 }: {
   accountId: string;
   request: SessionRequest;
   groupId: string | null;
   children: (group: Group, groups: Group[]) => ReactNode;
+  fallbackNavigation?: ReactNode;
 }) {
   const groups = useGroups(accountId, request);
   const selected =
     groups.data?.find((group) => group.id === groupId) ??
     (!groupId ? groups.data?.[0] : undefined);
+  const fallback = (content: ReactNode) =>
+    fallbackNavigation ? (
+      <>
+        <div className="flex-1 pb-8">{content}</div>
+        {fallbackNavigation}
+      </>
+    ) : (
+      content
+    );
   if (groups.isError && (!groups.data || isAccessError(groups.error)))
-    return <ErrorState retry={() => void groups.refetch()} />;
-  if (!groups.data) return <LoadingState>모임 확인 중…</LoadingState>;
+    return fallback(<ErrorState retry={() => void groups.refetch()} />);
+  if (!groups.data) return fallback(<LoadingState>모임 확인 중…</LoadingState>);
   if (groupId && !selected)
-    return (
+    return fallback(
       <section>
         <h2>접근할 수 없는 모임입니다</h2>
         <Link href="/mypage">내 모임 보기</Link>
-      </section>
+      </section>,
     );
   if (!groups.data.length)
-    return (
+    return fallback(
       <section>
         <h2>아직 모임이 없습니다</h2>
         <p>
@@ -45,7 +56,7 @@ export function GroupBoundary({
         <Link href="/groups/new" className={buttonStyles()}>
           모임 만들기
         </Link>
-      </section>
+      </section>,
     );
   return selected ? (
     <>

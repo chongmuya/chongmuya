@@ -29,6 +29,7 @@ export function OwnerSummary({
         ["지점명", d.branchName || "미입력"],
         ["주소", `${d.addressQuery} ${d.detailAddress}`.trim() || "미입력"],
         ["음식 종류", d.category],
+        ["고객용 대표번호", d.publicPhone || "미확인"],
         ["예약 문의", d.phone || "미입력"],
         ["문자 수신 동의", d.receiveConsent ? "동의" : "동의하지 않음"],
       ],

@@ -5,6 +5,7 @@ import type {
   CreateGroupInput,
   AddGroupMembersInput,
   AddedGroupMembers,
+  MemberHistory,
 } from "../types/group.types";
 import type { GroupInput } from "../schemas/group.schema";
 
@@ -56,3 +57,15 @@ export const updateMember = (
     method: "PATCH",
     body: JSON.stringify(body),
   });
+
+export const getMemberHistory = (
+  request: SessionRequest,
+  groupId: string,
+  memberId: string,
+  offset: number,
+  signal?: AbortSignal,
+) =>
+  request<MemberHistory>(
+    `/api/v1/groups/${groupId}/members/${memberId}/history?offset=${offset}`,
+    { signal },
+  );

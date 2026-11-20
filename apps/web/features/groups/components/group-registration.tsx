@@ -142,7 +142,7 @@ export function GroupRegistration({
             <Button
               className="w-full"
               onClick={() =>
-                onNavigate(`/mypage?view=groups&group=${target.group.id}`)
+                onNavigate(`/mypage?view=roster&group=${target.group.id}`)
               }
             >
               명단으로 돌아가기
@@ -261,7 +261,7 @@ export function GroupRegistration({
             variant="outline"
             onClick={() =>
               onNavigate(
-                target ? `/mypage?view=groups&group=${target.group.id}` : "/",
+                target ? `/mypage?view=roster&group=${target.group.id}` : "/",
               )
             }
           >

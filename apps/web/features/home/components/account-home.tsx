@@ -22,18 +22,18 @@ export function AccountHome({
   request: SessionRequest;
 }) {
   const params = useSearchParams();
+  const requested = params.get("group");
+  const personal = params.get("view") === "personal" && !requested;
   const groups = useGroups(account.id, request);
   const [dialog, setDialog] = useState<"groups" | null>(null);
   const personalEvents = useEvents(
     account.id,
     request,
-    dialog === "groups" || groups.data?.length === 0,
+    dialog === "groups" || personal || groups.data?.length === 0,
   );
   const individual = isAccessError(personalEvents.error)
     ? []
     : (personalEvents.data?.filter((e) => !e.groupId) ?? []);
-  const requested = params.get("group");
-  const personal = params.get("view") === "personal" && !requested;
   const selected =
     personal || isAccessError(groups.error)
       ? undefined
@@ -49,10 +49,10 @@ export function AccountHome({
 
   return (
     <main className="mx-auto flex min-h-svh max-w-[402px] flex-col">
-      <header className="flex min-h-[44px] items-center justify-between gap-3 px-5 pt-[clamp(24px,8.77svh,83px)]">
+      <header className="flex min-h-[44px] items-center justify-between gap-3 px-5 pt-[clamp(24px,8.14svh,77px)]">
         {hasGroups || requested || individual.length > 0 ? (
           <Button
-            className="min-w-0 border-0 px-1 text-left font-medium"
+            className="min-w-0 flex-1 justify-start border-0 px-1 text-left font-medium"
             variant="outline"
             aria-label="모임·행사 선택"
             aria-haspopup="dialog"
@@ -60,9 +60,13 @@ export function AccountHome({
             onClick={() => setDialog("groups")}
           >
             <span className="truncate">{selected?.name ?? "개인 행사"}</span>
-            <span aria-hidden="true" className="ml-2 text-secondary">
-              ⌄
-            </span>
+            <Image
+              src="/images/calendar/scope-arrow.svg"
+              width={6.59099}
+              height={11.0607}
+              alt=""
+              className="ml-2 shrink-0 -rotate-90"
+            />
           </Button>
         ) : (
           <Link
@@ -75,23 +79,32 @@ export function AccountHome({
             </span>
           </Link>
         )}
-        <NotificationBadge accountId={account.id} request={request} />
-        <Link
-          href={selected ? `/mypage?group=${selected.id}` : "/mypage"}
-          aria-label="마이페이지"
-          className="flex size-11 shrink-0 items-center justify-center"
-        >
-          <Image src="/images/home/profile.svg" alt="" width={36} height={36} />
-        </Link>
+        <div className="-mr-1 flex shrink-0 items-center gap-1.5">
+          <NotificationBadge accountId={account.id} request={request} icon />
+          <Link
+            href={selected ? `/mypage?group=${selected.id}` : "/mypage"}
+            aria-label="마이페이지"
+            className="flex size-11 shrink-0 items-center justify-center"
+          >
+            <Image
+              src="/images/home/profile.svg"
+              alt=""
+              width={36}
+              height={36}
+            />
+          </Link>
+        </div>
       </header>
-      <div className="space-y-8 px-5 pt-8 pb-12">
+      <div className="space-y-8 px-5 pt-9 pb-12">
         <div>
-          <h1 className="text-2xl leading-tight font-bold break-words text-copy">
+          <h1 className="text-2xl leading-[1.2] font-bold break-words text-copy">
             {selected
               ? `${account.nickname ?? account.name ?? "총무"}님, 모임 준비 같이 해요!`
-              : "행사를 준비해 볼까요?"}
+              : individual.length
+                ? `${account.nickname ?? account.name ?? "총무"}님, 행사 준비 같이 해요!`
+                : "첫 행사를 준비해 볼까요?"}
           </h1>
-          <p className="mt-2 text-xs text-secondary">
+          <p className="mt-2 text-xs leading-[1.2] text-secondary">
             {selected
               ? "번거로운 모임 준비, 총무야에서 한 번에 관리해요."
               : "행사를 한 번에 준비하고 관리할 수 있어요."}

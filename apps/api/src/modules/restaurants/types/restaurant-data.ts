@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { policiesSchema, weeklyHoursSchema } from "./registration.js";
+import {
+  normalizePublicPhone,
+  validPublicPhone,
+} from "../lib/restaurant-public-phone.js";
 
 export const restaurantDataKey = z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/);
 const text = z.string().max(10000).nullable();
@@ -53,6 +57,13 @@ const fields = z
   .object({
     name: z.string().trim().min(1).max(100),
     address: z.string().trim().min(1).max(240),
+    publicPhone: z
+      .string()
+      .max(30)
+      .refine(validPublicPhone)
+      .transform(normalizePublicPhone)
+      .nullable()
+      .optional(),
     region: z.string().trim().min(1).max(80),
     category: z.string().max(40).nullable(),
     latitude: z.number().min(-90).max(90).nullable(),

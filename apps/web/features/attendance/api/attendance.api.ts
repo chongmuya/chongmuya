@@ -76,6 +76,17 @@ export type AttendanceAction =
     }
   | { kind: "import" }
   | {
+      kind: "import-selected";
+      requestKey: string;
+      members: { id: string; version: number }[];
+      directMembers?: (PersonInput & {
+        existingParticipantId?: string;
+        newPersonConfirmed?: boolean;
+      })[];
+      expectedRoster?: { id: string; version: number }[];
+      duplicatesConfirmed?: boolean;
+    }
+  | {
       kind: "edit";
       participantId: string;
       expectedVersion: number;
@@ -117,6 +128,20 @@ export async function writeAttendance(
       return request<{ addedCount: number }>(
         `${base}/participants/import-group`,
         { method: "POST" },
+      );
+    case "import-selected":
+      return request<{ addedCount: number }>(
+        `${base}/participants/import-group/selected`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            requestKey: action.requestKey,
+            members: action.members,
+            directMembers: action.directMembers,
+            expectedRoster: action.expectedRoster,
+            duplicatesConfirmed: action.duplicatesConfirmed,
+          }),
+        },
       );
     case "edit":
       return request<ParticipantDto>(

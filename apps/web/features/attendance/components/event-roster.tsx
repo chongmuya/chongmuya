@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,6 +20,7 @@ import { safeErrorMessage } from "@/shared/http/error-contract";
 import { participantsQuery } from "../api/attendance.api";
 import { useAttendanceAction } from "../hooks/use-attendance-action";
 import type { ParticipantDto } from "../types/attendance.types";
+import { ImportGroupRoster } from "./import-group-roster";
 export type OwnerProps = {
   accountId: string;
   eventId: string;
@@ -30,6 +31,7 @@ export function EventRoster(props: OwnerProps) {
   const params = useSearchParams(),
     router = useRouter();
   const adding = params.get("action") === "add";
+  const importing = params.get("action") === "import";
   const editingId = params.get("participant");
   const close = () => router.replace(`/events?event=${eventId}&view=roster`);
   const roster = useQuery(participantsQuery(accountId, eventId, request)),
@@ -37,21 +39,29 @@ export function EventRoster(props: OwnerProps) {
   const action = useAttendanceAction(accountId, eventId, request),
     active = useActiveScreen();
   const [notice, setNotice] = useState<string>();
+  const fallback = (content: ReactNode) =>
+    importing ? (
+      <StepLayout title="" onBack={close}>
+        {content}
+      </StepLayout>
+    ) : (
+      content
+    );
   if ((!roster.data && roster.isError) || (!event.data && event.isError))
-    return (
+    return fallback(
       <ErrorState
         retry={() => {
           void roster.refetch();
           void event.refetch();
         }}
-      />
+      />,
     );
   if (!roster.data || !event.data)
-    return <LoadingState>행사 명단 확인 중…</LoadingState>;
+    return fallback(<LoadingState>행사 명단 확인 중…</LoadingState>);
   const denied = isAccessError(roster.error) || isAccessError(event.error);
   const editing = roster.data.find((person) => person.id === editingId);
   if (denied)
-    return (
+    return fallback(
       <ErrorState
         retry={() => {
           void roster.refetch();
@@ -59,7 +69,24 @@ export function EventRoster(props: OwnerProps) {
         }}
       >
         이 행사 명단에 접근할 수 없어요.
-      </ErrorState>
+      </ErrorState>,
+    );
+  if (importing && event.data.groupId)
+    return (
+      <ImportGroupRoster
+        {...props}
+        groupId={event.data.groupId}
+        existing={roster.data}
+        onClose={close}
+        onImported={() => {
+          if (!active.current) return;
+          close();
+        }}
+      />
+    );
+  if (importing)
+    return fallback(
+      <p className="text-sm text-secondary">이 행사에 연결된 모임이 없어요.</p>,
     );
   if (adding)
     return (
@@ -122,6 +149,18 @@ export function EventRoster(props: OwnerProps) {
         <div className="flex flex-wrap gap-2">
           {event.data.groupId && (
             <Button
+              disabled={action.isPending}
+              onClick={() =>
+                router.push(
+                  `/events?event=${eventId}&view=roster&action=import`,
+                )
+              }
+            >
+              모임 명단에서 선택
+            </Button>
+          )}
+          {event.data.groupId && (
+            <Button
               variant="outline"
               loading={action.isPending}
               onClick={() =>
@@ -138,7 +177,7 @@ export function EventRoster(props: OwnerProps) {
                 )
               }
             >
-              모임 명단 가져오기
+              전체 명단 가져오기
             </Button>
           )}
           <Button

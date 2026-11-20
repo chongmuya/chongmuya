@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validPublicPhone } from "../lib/restaurant-public-phone.js";
 
 const text = (length: number) => z.string().max(length);
 const amount = z.number().int().min(0).max(2_000_000_000).nullable();
@@ -97,6 +98,7 @@ export const registrationSchema = z
     detailAddress: text(120),
     category: z.string().max(40),
     phone: text(20),
+    publicPhone: text(30).optional(),
     receiveConsent: z.boolean(),
     maxCapacity: count,
     minimumGuests: z
@@ -126,6 +128,7 @@ export function emptyRegistration(): RegistrationData {
     detailAddress: "",
     category: "한식",
     phone: "",
+    publicPhone: "",
     receiveConsent: false,
     maxCapacity: null,
     minimumGuests: { kind: "UNKNOWN", value: null },
@@ -149,6 +152,7 @@ export function validRegistration(
   return (
     !!data.name.trim() &&
     !!data.addressQuery.trim() &&
+    validPublicPhone(data.publicPhone) &&
     (preserveExistingContact || /^01[016789]\d{7,8}$/.test(data.phone)) &&
     data.spaces.length > 0 &&
     data.spaces.every(

@@ -316,6 +316,22 @@ export class GroupsService {
     }));
   }
 
+  async memberInTransaction(
+    ownerId: string,
+    groupId: string,
+    memberId: string,
+    manager: EntityManager,
+  ) {
+    await this.assertOwned(ownerId, groupId, manager);
+    // Excluding a source member never removes that person's historical identity.
+    const member = await manager.findOneBy(GroupMember, {
+      id: memberId,
+      groupId,
+    });
+    if (!member) throw new NotFoundException();
+    return { id: member.id, name: member.name };
+  }
+
   async rename(
     ownerId: string,
     id: string,

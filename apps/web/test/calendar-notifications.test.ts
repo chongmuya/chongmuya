@@ -25,6 +25,7 @@ test("calendar leap years, KST boundaries and safe notification destinations", (
     assert.equal(notificationDestination(bad), null);
   for (const path of [
     `/events?event=${id}&view=settlement`,
+    `/events?event=${id}&request=${id}`,
     `/owner/reservations?reservation=${id}`,
     `/calendar?schedule=${id}`,
   ]) {

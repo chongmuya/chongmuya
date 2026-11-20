@@ -83,16 +83,29 @@ export function safeReturnPath(
     }
   for (const key of url.pathname === "/events"
     ? ["event", "group", "round", "participant", "review"]
-    : url.pathname === "/mypage" ||
-        url.pathname === "/" ||
-        url.pathname === "/groups/new"
-      ? ["group"]
-      : []) {
+    : url.pathname === "/"
+      ? ["group", "event"]
+      : url.pathname === "/mypage" || url.pathname === "/groups/new"
+        ? ["group"]
+        : []) {
     const item = url.searchParams.get(key);
     if (item && uuid.test(item)) params.set(key, item);
   }
-  if (url.pathname === "/events" && url.searchParams.get("action") === "add")
-    params.set("action", "add");
+  const action = url.searchParams.get("action");
+  const request = url.searchParams.get("request");
+  if (
+    url.pathname === "/events" &&
+    params.has("event") &&
+    request &&
+    uuid.test(request)
+  )
+    params.set("request", request);
+  if (
+    url.pathname === "/events" &&
+    action &&
+    ["add", "import"].includes(action)
+  )
+    params.set("action", action);
   const date = url.searchParams.get("date");
   if (url.pathname === "/events" && !params.has("event") && isDateOnly(date))
     params.set("date", date);
@@ -102,7 +115,7 @@ export function safeReturnPath(
   if (
     url.pathname === "/mypage" &&
     view &&
-    ["account", "groups"].includes(view)
+    ["account", "groups", "roster"].includes(view)
   )
     params.set("view", view);
   if (
@@ -118,5 +131,11 @@ export function safeReturnPath(
     ].includes(view)
   )
     params.set("view", view);
+  if (
+    url.pathname === "/events" &&
+    !params.has("group") &&
+    url.searchParams.get("scope") === "personal"
+  )
+    params.set("scope", "personal");
   return `${url.pathname}${params.size ? `?${params}` : ""}`;
 }

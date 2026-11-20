@@ -8,6 +8,7 @@ export function StepLayout({
   onBack,
   busy,
   progress,
+  action,
   children,
   variant = "default",
 }: {
@@ -16,6 +17,7 @@ export function StepLayout({
   onBack: () => void;
   busy?: boolean;
   progress?: { value: number; max: number };
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -55,6 +57,7 @@ export function StepLayout({
         ) : (
           <p className="px-12 text-center text-label">{title}</p>
         )}
+        {action && <div className="absolute -right-2">{action}</div>}
       </header>
       {children}
     </main>

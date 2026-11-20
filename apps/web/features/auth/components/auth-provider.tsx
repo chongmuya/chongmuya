@@ -102,7 +102,7 @@ function ResourceAuthorityBoundary({
   const state = useSyncExternalStore(
     client.subscribe,
     client.getSnapshot,
-    client.getSnapshot,
+    client.getServerSnapshot,
   );
   const resources = ["group", "event", "schedule", "reservation"]
     .map((key) => params.get(key))
@@ -132,7 +132,7 @@ export function useAuth() {
   const state = useSyncExternalStore(
     client.subscribe,
     client.getSnapshot,
-    client.getSnapshot,
+    client.getServerSnapshot,
   );
   return { client, ...state };
 }

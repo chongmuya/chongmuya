@@ -414,6 +414,15 @@ export function OwnerRegistration({
                   ]}
                 />
                 <OwnerField
+                  path="publicPhone"
+                  label="고객용 매장 대표번호 (선택)"
+                  placeholder="02-1234-5678"
+                />
+                <p className="text-xs text-muted">
+                  예약한 총무에게 안내할 번호예요. 비워 두면 미확인으로
+                  표시해요.
+                </p>
+                <OwnerField
                   path="phone"
                   label={
                     draft.restaurantId

@@ -69,6 +69,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
       addressQuery: result.results[0].baseAddress,
       detailAddress: "2층",
       phone: "01012345678",
+      publicPhone: "02-1234-5678",
       receiveConsent: true,
       maxCapacity: 40,
       minimumGuests: { kind: "AT_LEAST", value: 10 },
@@ -148,6 +149,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     .getRepository(Restaurant)
     .findOneByOrFail({ id: created.restaurantId });
   assert.equal(r.published, false);
+  assert.equal(r.publicPhone, "0212345678");
   assert.equal(r.latitude, 37.5401);
   assert.equal(
     r.minimumGuests,
@@ -186,6 +188,8 @@ test("owner draft/address registration races and ownership; direct delivery, ano
         { restaurantId: r.id, isPrimary: true },
       );
       assert.equal(edit.data.category, "요리주점");
+      assert.equal(edit.data.publicPhone, "0212345678");
+      edit.data.publicPhone = "0507-1234-5678";
       edit.data.policies.minimumOrder = {
         kind: "AMOUNT",
         amount: 10000,
@@ -288,6 +292,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
         .getRepository(Restaurant)
         .findOneByOrFail({ id: r.id });
       assert.equal(current.branchName, "유지할 입력");
+      assert.equal(current.publicPhone, "050712345678");
       assert.equal(current.published, true);
       const after = await json<Menus>(await call(menuPath, winning.jar));
       assert.equal(after.menus[0].id, menus.menus[0].id);

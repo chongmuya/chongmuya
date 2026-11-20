@@ -57,7 +57,7 @@ export function usePublicAttendance(shareId: string) {
       });
       setSaved(null);
     });
-  const save = (answer: AttendanceAnswer) =>
+  const save = (answer: AttendanceAnswer, onSaved?: () => void) =>
     run(async (signal) => {
       if (!token.current) return;
       const result = await saveAttendance(
@@ -74,6 +74,7 @@ export function usePublicAttendance(shareId: string) {
         response: result.response as AttendanceResponseDto | null,
       }));
       setSaved(result.kind);
+      onSaved?.();
     });
   const reset = () => {
     if (controller.current) return;

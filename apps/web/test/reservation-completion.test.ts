@@ -5,6 +5,13 @@ import { ApiError } from "../shared/http/api-error";
 import { completionQuery } from "../features/reservation-completion/api/completion.api";
 import { ChangeForms } from "../features/reservation-completion/components/change-forms";
 import { ProposalComparison } from "../features/reservation-completion/components/proposal-comparison";
+import { AgreementTerms } from "../features/reservation-completion/components/agreement-terms";
+import {
+  CompletionFacts,
+  GuidanceSummary,
+} from "../features/reservation-completion/components/completion-summary";
+import { ChangeResult } from "../features/reservation-completion/components/change-result";
+import { ReservationContactButton } from "../features/reservation-completion/components/reservation-contact";
 import { act, createElement, useState } from "react";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -40,6 +47,288 @@ const fixture = () =>
     receivedAmount: 0,
     refundedAmount: 0,
   }) as Completion;
+
+test("a new change request shows the current date without repeating the previous applied change", async () => {
+  const data = {
+    ...fixture(),
+    agreement: { ...fixture().agreement, startsAt: "2099-01-01T10:00:00Z" },
+    changes: [{ kind: "CHANGE", status: "REQUESTED" }],
+    history: [
+      {
+        action: "CHANGE_APPLIED",
+        agreement: { startsAt: "2099-01-01T10:00:00Z" },
+      },
+      {
+        action: "CHANGE_REQUESTED",
+        agreement: { startsAt: "2099-01-01T09:00:00Z" },
+      },
+    ],
+  } as Completion;
+  const pending = await render(createElement(CompletionFacts, { data }));
+  try {
+    assert.equal(pending.container.querySelector("del"), null);
+    assert.match(pending.container.textContent!, /19:00/);
+    assert.doesNotMatch(pending.container.textContent!, /18:00/);
+  } finally {
+    await pending.unmount();
+  }
+  const applied = await render(
+    createElement(CompletionFacts, {
+      data: { ...data, changes: [{ ...data.changes[0], status: "APPLIED" }] },
+    }),
+  );
+  try {
+    assert.match(applied.container.querySelector("del")!.textContent!, /18:00/);
+    assert.match(applied.container.textContent!, /→.*19:00/);
+  } finally {
+    await applied.unmount();
+  }
+});
+
+test("merchant can edit space, seating, usage and notes while a lost response retries the same proposal", async () => {
+  const data = {
+    ...fixture(),
+    changes: [
+      {
+        id: "change",
+        kind: "CHANGE",
+        subject: "OTHER",
+        status: "REQUESTED",
+        reason: "공간을 바꿔 주세요",
+        createdAt: "2098-01-01T00:00:00Z",
+        resolvedAt: null,
+        proposal: null,
+      },
+    ],
+    agreement: {
+      ...fixture().agreement,
+      startsAt: "2099-01-01T09:00:00Z",
+      expectedGuests: 20,
+      space: "HALL",
+      seating: "ANY",
+      usageTime: { kind: "UNLIMITED", minutes: null },
+      note: "기존 안내",
+      menuDeadlineAt: null,
+      changeCancellationPolicy: "사전 협의",
+      deposit: { kind: "NONE", amount: 0 },
+    },
+  } as Completion;
+  const writes: Record<string, unknown>[] = [];
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "proposal-owner",
+    request: async <T>(_path: string, options?: RequestInit) => {
+      writes.push(JSON.parse(String(options?.body)).command);
+      if (writes.length === 1) throw new TypeError("response lost");
+      return { ...data, version: 2 } as T;
+    },
+  };
+  const view = await render(createElement(ChangeForms, { data, access }));
+  const set = async (name: string, value: string) => {
+    const input = view.container.querySelector<
+      HTMLSelectElement | HTMLTextAreaElement
+    >(`[name="${name}"]`)!;
+    await act(async () => {
+      const proto =
+        input.tagName === "SELECT"
+          ? window.HTMLSelectElement.prototype
+          : window.HTMLTextAreaElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(input, value);
+      input.dispatchEvent(
+        new window.Event(input.tagName === "SELECT" ? "change" : "input", {
+          bubbles: true,
+        }),
+      );
+    });
+  };
+  try {
+    assert.equal(
+      view.container.querySelector<HTMLSelectElement>('[name="space"]')!.value,
+      "HALL",
+    );
+    await set("space", "ROOM");
+    await set("seating", "CLOSE");
+    await set("usageKind", "MINUTES");
+    await set("note", "룸에서 함께 착석");
+    await set("changeCancellationPolicy", "하루 전 협의");
+    await set("reason", "변경 조건을 제안합니다");
+    await submit(view.container);
+    assert.equal(writes.length, 0);
+    assert.match(view.container.textContent!, /이용시간을 1~1440분/);
+    await fill(view.container, "usageMinutes", "90");
+    assert.match(view.container.textContent!, /일반 홀→ 룸/);
+    await submit(view.container);
+    await until(() => assert.equal(writes.length, 1));
+    await click(view.container, "원래 요청 결과 다시 확인");
+    await until(() => assert.equal(writes.length, 2));
+    assert.deepEqual(writes[0], writes[1]);
+    assert.deepEqual(writes[0].agreement, {
+      ...data.agreement,
+      startsAt: "2099-01-01T09:00:00.000Z",
+      space: "ROOM",
+      seating: "CLOSE",
+      usageTime: { kind: "MINUTES", minutes: 90 },
+      note: "룸에서 함께 착석",
+      changeCancellationPolicy: "하루 전 협의",
+      minimumQuantity: null,
+    });
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("latest rejection is visible outside history and does not claim that the reservation changed", async () => {
+  const data = {
+    ...fixture(),
+    changes: [
+      {
+        id: "new",
+        kind: "CHANGE",
+        subject: "SCHEDULE",
+        status: "REJECTED",
+        reason: "30분 늦춰 주세요",
+        resolutionReason: "다른 예약이 있어요",
+      },
+    ],
+  } as Completion;
+  let openedCurrent = false;
+  const view = await render(
+    createElement(ChangeResult, {
+      data,
+      organizer: true,
+      onReview() {},
+      onDetails() {
+        openedCurrent = true;
+      },
+    }),
+  );
+  try {
+    assert.match(view.container.textContent!, /예약 변경이 어려워요/);
+    assert.match(view.container.textContent!, /다른 예약이 있어요/);
+    assert.match(view.container.textContent!, /기존 예약으로 진행할지 확인/);
+    assert.equal(view.container.querySelector("details"), null);
+    await click(view.container, "기존 예약으로 진행하기");
+    assert.equal(openedCurrent, true);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("current agreement shows missing, zero and unlimited independently after a changed agreement", async () => {
+  const data = {
+    ...fixture(),
+    restaurantName: "가상 매장",
+    restaurantAddress: "서울 테스트로 1",
+    agreementRevision: 3,
+    guidance: {
+      kind: "REQUIRED",
+      revision: 2,
+      amount: 10000,
+      channel: "SMS",
+      policy: "합의 후 처리",
+    },
+    agreement: {
+      ...fixture().agreement,
+      startsAt: "2099-01-01T09:00:00Z",
+      expectedGuests: 12,
+      space: "ROOM",
+      seating: "CLOSE",
+      separateFee: 0,
+      usageTime: { kind: "UNLIMITED", minutes: null },
+      note: "변경 후 안내",
+      deposit: { kind: "UNKNOWN", amount: null },
+      menuDeadlineAt: null,
+    },
+  } as Completion;
+  const view = await render(
+    createElement(
+      "div",
+      null,
+      createElement(AgreementTerms, { data }),
+      createElement(GuidanceSummary, { data }),
+    ),
+  );
+  try {
+    assert.match(view.container.textContent!, /3차 합의/);
+    for (const [label, expected] of [
+      ["최소 주문", "미확인"],
+      ["별도 이용료", "0원"],
+      ["이용 시간", "제한 없음"],
+      ["제안 기준 예약금", "미확인"],
+      ["추가 안내", "변경 후 안내"],
+    ]) {
+      const term = [...view.container.querySelectorAll("dt")].find(
+        (n) => n.textContent === label,
+      )!;
+      assert.equal(term.nextElementSibling!.textContent, expected);
+    }
+    assert.match(
+      view.container.textContent!,
+      /예약금 안내 · 2차예약금 10,000원/,
+    );
+    assert.match(view.container.textContent!, /계좌는 문자로만 안내/);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("contact sheet queries only its scoped reservation and hides the number on lost permission", async () => {
+  const paths: string[] = [];
+  let denied = false;
+  let lost = false;
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "contact-owner",
+    request: async <T>(path: string) => {
+      paths.push(path);
+      if (denied) throw new ApiError("", 403, "RESERVATION_ACCESS_INVALID");
+      return {
+        kind: "organizer",
+        name: "현재 총무",
+        phone: "01012345678",
+        changedAt: null,
+      } as T;
+    },
+  };
+  const view = await render(
+    createElement(ReservationContactButton, {
+      id: "selected",
+      access,
+      onAccessLost: (value: boolean) => {
+        lost = value;
+      },
+    }),
+  );
+  try {
+    assert.equal(paths.length, 0);
+    await click(view.container, "총무에게 문의하기");
+    await until(() =>
+      assert.equal(
+        view.container.querySelector('a[href="tel:01012345678"]')?.textContent,
+        "010-1234-5678",
+      ),
+    );
+    assert.deepEqual(paths, ["/api/v1/owner/reservations/selected/contact"]);
+    denied = true;
+    await act(async () => {
+      await view.cache.invalidateQueries({
+        queryKey: [
+          "user",
+          "contact-owner",
+          "reservation-completion",
+          "owner",
+          "selected",
+          "contact",
+        ],
+      });
+    });
+    await until(() => assert.equal(lost, true));
+    assert.doesNotMatch(view.container.textContent!, /01012345678/);
+    assert.equal(view.container.querySelector('a[href^="tel:"]'), null);
+  } finally {
+    await view.unmount();
+  }
+});
 
 test("confirmed and cancelled reservations never render an empty guidance disclosure", async () => {
   const access: CompletionAccess = {
@@ -701,8 +990,8 @@ test("organizer proposal preview shows all applied limits, fees and deadlines be
       )!.parentElement!;
       assert(row.textContent!.includes(before));
       assert(row.textContent!.includes(after));
-      assert.match(row.textContent!, /기존:/);
-      assert.match(row.textContent!, /제안:/);
+      assert(row.querySelector("del")?.textContent?.includes(before));
+      assert.match(row.textContent!, /→/);
     }
   } finally {
     await view.unmount();

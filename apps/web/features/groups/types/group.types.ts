@@ -12,6 +12,19 @@ export type GroupMember = {
   phoneLast4: string | null;
   label: string | null;
 };
+export type MemberHistory = {
+  count: number;
+  attendedEventCount: number;
+  contributionTotal: number;
+  events: {
+    eventId: string;
+    name: string;
+    startsAt: string | null;
+    attending: boolean;
+    contributionAmount: number;
+    settlementStatus: "EMPTY" | "IN_PROGRESS" | "COMPLETE";
+  }[];
+};
 export type CreateGroupInput = {
   name: string;
   groupType?: string | null;

@@ -24,6 +24,20 @@ function transport(handler: (path: string) => Promise<unknown>) {
   return handler as typeof requestJson;
 }
 
+test("delayed hydration retains its initial anonymous-safe snapshot after session restoration", async () => {
+  const client = new SessionClient(
+    () => {},
+    transport(async () => session),
+  );
+  const server = client.getServerSnapshot();
+  await client.restore();
+  assert.equal(client.getSnapshot().account?.id, "a");
+  assert.equal(client.getServerSnapshot(), server);
+  assert.deepEqual(server, { status: "loading", account: null });
+  const other = new SessionClient(() => {});
+  assert.deepEqual(other.getSnapshot(), { status: "loading", account: null });
+});
+
 test("anonymous bootstrap is deduplicated without clearing public/user caches", async () => {
   let calls = 0;
   let clears = 0;

@@ -311,7 +311,7 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
             </Button>
           )}
           <Button
-            className="flex-1"
+            className="flex-1 break-keep"
             variant="outline"
             disabled={!!round.closedAt || action.isPending}
             onClick={() => setClosing(true)}
