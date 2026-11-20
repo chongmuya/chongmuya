@@ -18,6 +18,8 @@ import { RestaurantMenu } from "../../src/modules/restaurants/entities/restauran
 import { RestaurantManagementService } from "../../src/modules/restaurants/restaurant-management.service.js";
 import { MessageGateway } from "../../src/modules/reservations/providers/message.gateway.js";
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
+import { MerchantRepliesService } from "../../src/modules/reservations/merchant-replies.service.js";
+import type { Proposal } from "../../src/modules/reservations/types/merchant-reply.js";
 import { MerchantLinksService } from "../../src/modules/reservations/merchant-links.service.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
 import { MerchantReplyLink } from "../../src/modules/reservations/entities/merchant-reply-link.entity.js";
@@ -32,7 +34,7 @@ const json = async <T = Record<string, unknown>>(r: Response, status = 200) => {
   return b as T;
 };
 
-test("owner draft/address registration races and ownership; direct delivery, anonymous reply revisions, webhook and immutable inquiry", async (t) => {
+test("owner draft/address registration races and ownership; direct delivery, first answers, audited operator corrections, webhook and immutable inquiry", async (t) => {
   const secret = "test-webhook-secret-only-123456789";
   const { app, db, call, signup, url, logs } = await startResourceApplication(
     t,
@@ -424,6 +426,16 @@ test("owner draft/address registration races and ownership; direct delivery, ano
           groupId: `group-${id}`,
         };
   });
+  await db.manager.update(
+    Restaurant,
+    { id: r.id },
+    {
+      policies: {
+        ...r.policies,
+        menuDeadline: { kind: "HOURS_BEFORE", value: 24 },
+      },
+    },
+  );
   const event = await json<{ id: string }>(
     await call("events", organizer, "POST", { name: "문의·응답 행사" }),
     201,
@@ -513,7 +525,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     });
   const opened = await json<{
     version: number;
-    defaults: { proposal: { expectedGuests: number }; expiresAt: string };
+    defaults: { proposal: Proposal; expiresAt: string };
     snapshot: unknown;
   }>(await publicCall(target.id));
   assert.equal(opened.version, 0);
@@ -528,90 +540,133 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     /01012345678|ownerAccountId|responseCount|계정 없는/,
   );
   assert.equal((await publicCall(uncertain.targetId)).status, 403);
+  const startsAt = new Date(
+    Date.parse(input.conditions.startsAt) + 7200_000,
+  ).toISOString();
+  const expectedMenuDeadline = new Date(
+    Date.parse(startsAt) - 24 * 3600_000,
+  ).toISOString();
   const reply = {
     requestKey: randomUUID(),
     expectedVersion: 0,
-    kind: "AVAILABLE",
-    proposal: opened.defaults.proposal,
+    kind: "CHANGE",
+    proposal: {
+      ...opened.defaults.proposal,
+      startsAt,
+      expectedGuests: 18,
+      separateFee: 30000,
+      usageTime: { kind: "MINUTES", minutes: 120 },
+      // An earlier client can still send this field. Persist the registered policy.
+      menuDeadlineAt: new Date(Date.parse(startsAt) + 3600_000).toISOString(),
+    },
     expiresAt: opened.defaults.expiresAt,
     reason: "",
     holdConfirmed: true,
+  };
+  const organizerMessagesBefore = sent.length;
+  type ReplyReceipt = {
+    version: number;
+    response: { revision: number; snapshot: { offered: Proposal } };
   };
   const concurrent = await Promise.all([
     publicCall(target.id, "POST", { reply }),
     publicCall(target.id, "POST", { reply }),
   ]);
-  const response = await json<{ version: number }>(concurrent[0]);
+  const response = await json<ReplyReceipt>(concurrent[0]);
   assert.equal(response.version, 1);
-  await json(concurrent[1]);
-  await json(await publicCall(target.id, "POST", { reply }));
-  assert.equal(
-    await db
-      .getRepository(MerchantReplyRevision)
-      .countBy({ targetId: target.id }),
-    1,
+  assert.deepEqual(await json(concurrent[1]), response);
+  assert.deepEqual(
+    await json(await publicCall(target.id, "POST", { reply })),
+    response,
   );
-  const conflict = await publicCall(target.id, "POST", {
-    reply: { ...reply, requestKey: randomUUID() },
+  assert.equal(sent.length, organizerMessagesBefore + 1);
+  assert.equal(
+    response.response.snapshot.offered.menuDeadlineAt,
+    expectedMenuDeadline,
+  );
+  assert.equal(response.response.snapshot.offered.separateFee, 30000);
+  assert.deepEqual(response.response.snapshot.offered.usageTime, {
+    kind: "MINUTES",
+    minutes: 120,
   });
-  assert.equal(conflict.status, 409);
-  assert.equal(
+  const reopened = await call(
+    `merchant-replies/${target.id}/access`,
+    "",
+    "POST",
+    { token: raw },
+  );
+  const reopenedAccess = await json<{ accessToken: string }>(reopened);
+  assert.deepEqual(
     (
-      await json<{ version: number }>(
-        await publicCall(target.id, "POST", {
-          reply: { ...reply, expectedVersion: 1, requestKey: randomUUID() },
-        }),
+      await json<ReplyReceipt>(
+        await publicCall(
+          target.id,
+          "GET",
+          undefined,
+          reopenedAccess.accessToken,
+        ),
       )
-    ).version,
-    1,
+    ).response,
+    response.response,
   );
-  const changedReply = {
-    ...reply,
-    kind: "CHANGE",
-    proposal: { ...reply.proposal, expectedGuests: 18 },
-  };
-  const changedReplies = await Promise.all([
-    publicCall(target.id, "POST", {
-      reply: { ...changedReply, expectedVersion: 1, requestKey: randomUUID() },
-    }),
-    publicCall(target.id, "POST", {
-      reply: { ...changedReply, expectedVersion: 1, requestKey: randomUUID() },
-    }),
-  ]);
-  assert.deepEqual(changedReplies.map((r) => r.status).sort(), [200, 409]);
-  // Replaying a lost old response must not grant the version of someone else's newer edit.
-  const oldReplay = await json<{ version: number }>(
-    await publicCall(target.id, "POST", { reply }),
+  assert.deepEqual(
+    (
+      await json<ReplyReceipt>(
+        await call(`owner/inquiries/${target.id}`, winning.jar),
+      )
+    ).response,
+    response.response,
   );
-  assert.equal(oldReplay.version, 1);
   const decline = {
     ...reply,
     requestKey: randomUUID(),
-    expectedVersion: 2,
+    expectedVersion: 1,
     kind: "DECLINE",
     proposal: null,
     expiresAt: null,
     reason: "해당 시간은 어렵습니다",
     holdConfirmed: false,
   };
-  const ownerReply = await call(
-    `owner/inquiries/${target.id}`,
-    winning.jar,
-    "POST",
-    { reply: decline },
-  );
-  await json(ownerReply);
-  const editedDecline = await json<{ version: number }>(
+  for (const rejected of [
     await publicCall(target.id, "POST", {
-      reply: {
-        ...decline,
-        requestKey: randomUUID(),
-        expectedVersion: 3,
-        reason: "휴무일입니다",
-      },
+      reply: { ...reply, requestKey: randomUUID(), expectedVersion: 1 },
     }),
+    await publicCall(target.id, "POST", { reply: decline }),
+    await call(`owner/inquiries/${target.id}`, winning.jar, "POST", {
+      reply: decline,
+    }),
+  ]) {
+    assert.equal(rejected.status, 409);
+    assert.equal((await rejected.json()).code, "MERCHANT_REPLY_CONFLICT");
+  }
+  const replies = db.getRepository(MerchantReplyRevision);
+  assert.equal(await replies.countBy({ targetId: target.id }), 1);
+  assert.equal(sent.length, organizerMessagesBefore + 1);
+
+  const corrected = await app.get(MerchantRepliesService).save(
+    target.id,
+    {
+      kind: "operator",
+      actor: "fixture-operator",
+      method: "PHONE",
+      confirmedAt: new Date().toISOString(),
+      reason: "매장 전화 확인",
+    },
+    decline,
+    "integration-operator",
   );
-  assert.equal(editedDecline.version, 4);
+  assert.equal(corrected.version, 2);
+  assert.equal(await replies.countBy({ targetId: target.id }), 2);
+  assert.deepEqual(
+    await json(await publicCall(target.id, "POST", { reply })),
+    response,
+  );
+  assert.equal(
+    (await replies.findOneByOrFail({ targetId: target.id, revision: 1 }))
+      .snapshot.offered?.separateFee,
+    30000,
+  );
+
   assert.equal(
     (await call(`owner/inquiries/${target.id}`, winning.alien)).status,
     404,
@@ -628,6 +683,65 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   assert.deepEqual(result.request.snapshot, inquiry.snapshot);
   assert.equal(result.request.responseCount, 1);
   assert.equal(result.request.declineCount, 1);
+  const otherLink = await db.manager.findOneByOrFail(MerchantReplyLink, {
+    targetId: uncertain.targetId,
+  });
+  const otherToken = new URLSearchParams(
+    new URL(links.url(otherLink)).hash.slice(1),
+  ).get("token")!;
+  const otherAccess = await json<{ accessToken: string }>(
+    await call(`merchant-replies/${uncertain.targetId}/access`, "", "POST", {
+      token: otherToken,
+    }),
+  );
+  const { menuDeadlineAt: originalDeadline, ...otherProposal } =
+    opened.defaults.proposal;
+  assert.equal(
+    originalDeadline,
+    new Date(
+      Date.parse(input.conditions.startsAt) - 24 * 3600_000,
+    ).toISOString(),
+  );
+  const otherInput = {
+    ...reply,
+    kind: "AVAILABLE",
+    requestKey: randomUUID(),
+    proposal: { ...otherProposal, separateFee: 0 },
+  };
+  const countBeforeRace = sent.length;
+  const race = await Promise.all([
+    publicCall(
+      uncertain.targetId,
+      "POST",
+      { reply: otherInput },
+      otherAccess.accessToken,
+    ),
+    publicCall(
+      uncertain.targetId,
+      "POST",
+      {
+        reply: {
+          ...otherInput,
+          requestKey: randomUUID(),
+          proposal: { ...otherInput.proposal, separateFee: null },
+        },
+      },
+      otherAccess.accessToken,
+    ),
+  ]);
+  assert.deepEqual(race.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(await replies.countBy({ targetId: uncertain.targetId }), 1);
+  assert.equal(sent.length, countBeforeRace + 1);
+  assert.equal(
+    (
+      await replies.findOneByOrFail({
+        targetId: uncertain.targetId,
+        revision: 1,
+      })
+    ).snapshot.offered?.menuDeadlineAt,
+    null,
+  );
+
   {
     const seedTarget = await db.manager.findOneByOrFail(RequestTarget, {
       id: target.id,
@@ -970,7 +1084,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
       await publicCall(
         target.id,
         "POST",
-        { reply: { ...decline, expectedVersion: 3, requestKey: randomUUID() } },
+        { reply: { ...decline, expectedVersion: 2, requestKey: randomUUID() } },
         nextAccess.accessToken,
       )
     ).status,

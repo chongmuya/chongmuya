@@ -124,7 +124,7 @@ export const domainErrors = {
   },
   MERCHANT_REPLY_CONFLICT: {
     status: 409,
-    message: "답변이 변경됐어요. 최신 답변을 확인한 뒤 다시 저장해 주세요.",
+    message: "이미 보낸 답변을 수정할 수 없어요. 현재 답변을 확인해 주세요.",
   },
   DELIVERY_RETRY_BLOCKED: {
     status: 409,

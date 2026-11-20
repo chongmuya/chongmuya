@@ -11,12 +11,15 @@ import {
 } from "../api/replies.api";
 import { ClosedInquiry } from "./closed-inquiry";
 import { ReplyForm } from "./reply-form";
+import { SubmittedReply } from "./reply-summary";
 export function ReplyWorkspace({
   targetId,
   access,
+  onDone,
 }: {
   targetId: string;
   access: ReplyAccess;
+  onDone?: () => void;
 }) {
   const expiresAt =
     access.kind === "link" ? Date.parse(access.accessExpiresAt) : Infinity;
@@ -47,15 +50,18 @@ export function ReplyWorkspace({
       </ErrorState>
     );
   if (!q.data) return <LoadingState>예약 문의 확인 중…</LoadingState>;
+  if (q.data.response)
+    return (
+      <SubmittedReply
+        response={q.data.response}
+        closedState={q.data.closedState}
+        onDone={onDone}
+      />
+    );
   if (q.data.closedState) return <ClosedInquiry state={q.data.closedState} />;
   return (
     <>
-      {blocked && (
-        <p role="alert" className="mb-4">
-          {notice}
-        </p>
-      )}
-      {q.isError && !blocked && (
+      {q.isError && (
         <div
           role="alert"
           className="mb-4 rounded-control border border-field p-4"
@@ -73,7 +79,6 @@ export function ReplyWorkspace({
       <ReplyForm
         inquiry={q.data}
         access={access}
-        blocked={blocked}
         onAccessFailure={() => setDenied(true)}
       />
     </>

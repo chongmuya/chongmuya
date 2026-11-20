@@ -8,6 +8,13 @@ const closureReasons = new Map([
   ["EXPIRED", "총무의 선택 기한이 지났어요."],
   ["OPERATOR_CLOSED", "운영자가 문의를 종료했어요."],
 ]);
+export function inquiryClosureMessage(state: string) {
+  return (
+    closureReasons.get(state) ??
+    "이 문의에는 답변을 추가하거나 수정할 수 없어요."
+  );
+}
+
 export function ClosedInquiry({ state }: { state: string }) {
   return (
     <section className="my-12 text-center">
@@ -23,10 +30,7 @@ export function ClosedInquiry({ state }: { state: string }) {
           ? "총무가 매장을 선택했어요"
           : "이 예약 문의는 종료됐어요"}
       </h1>
-      <p className="mt-5 text-base">
-        {closureReasons.get(state) ??
-          "이 문의에는 답변을 추가하거나 수정할 수 없어요."}
-      </p>
+      <p className="mt-5 text-base">{inquiryClosureMessage(state)}</p>
       <p className="mt-5 text-sm text-muted">
         기존 답변은 이력으로 보존됩니다.
       </p>

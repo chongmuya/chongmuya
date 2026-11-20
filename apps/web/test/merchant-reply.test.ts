@@ -9,7 +9,10 @@ import {
   koreanDateInput,
   fromKoreanDateInput,
 } from "../shared/lib/korean-date";
-import { replySchema } from "../features/merchant-replies/schemas/reply.schema";
+import {
+  replyMenuDeadline,
+  replySchema,
+} from "../features/merchant-replies/schemas/reply.schema";
 import type { MerchantInquiry } from "../features/merchant-replies/types/reply.types";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
@@ -163,19 +166,33 @@ test("merchant proposal deadlines use Korean wall time and respect the original 
   const original = {
     ...merchantInquiryFixture().defaults.proposal,
     startsAt: "2099-06-02T09:00:00.000Z",
+    menuDeadlineAt: "2099-06-01T09:00:00.000Z",
   };
   assert.equal(koreanDateInput(original.startsAt), "2099-06-02T18:00");
   assert.equal(fromKoreanDateInput("2099-06-02T18:00"), original.startsAt);
+  const { menuDeadlineAt, ...proposed } = original;
+  assert.equal(
+    replyMenuDeadline(original, original.startsAt),
+    Date.parse(menuDeadlineAt),
+  );
   const input = {
     kind: "CHANGE",
     expectedVersion: 0,
     requestKey: crypto.randomUUID(),
     reason: "",
     holdConfirmed: true,
-    proposal: { ...original, startsAt: "2099-06-04T09:00:00.000Z" },
+    proposal: { ...proposed, startsAt: "2099-06-04T09:00:00.000Z" },
     expiresAt: "2099-06-03T09:00:00.000Z",
   };
   const schema = replySchema(original);
+  assert.equal(
+    schema.safeParse({
+      ...input,
+      proposal: { ...proposed, startsAt: "2099-06-01T09:00:00.000Z" },
+      expiresAt: "2099-05-31T10:00:00.000Z",
+    }).error?.issues[0]?.path[0],
+    "expiresAt",
+  );
   assert.equal(schema.safeParse(input).error?.issues[0]?.path[0], "expiresAt");
   assert.equal(
     schema.safeParse({ ...input, expiresAt: "2099-06-01T09:00:00.000Z" })
@@ -335,5 +352,132 @@ test("closed inquiry links show why the seat hold ended", async () => {
     } finally {
       await result.unmount();
     }
+  }
+});
+
+test("owner and link show the saved first reply and keep the submission key across a network retry", async (t) => {
+  for (const accessKind of ["owner", "link"] as const) {
+    await t.test(accessKind, async (t) => {
+      const inquiry = merchantInquiryFixture();
+      const writes: Record<string, unknown>[] = [];
+      const request: SessionRequest = async <T>(
+        _path: string,
+        options?: RequestInit,
+      ) => {
+        if (options?.method !== "POST") return structuredClone(inquiry) as T;
+        const reply = JSON.parse(String(options.body)).reply;
+        writes.push(reply);
+        if (writes.length === 1) throw new ApiError("", 0, "NETWORK_ERROR");
+        inquiry.version = 1;
+        inquiry.response = {
+          kind: "CHANGE",
+          revision: 1,
+          snapshot: {
+            ...inquiry.snapshot,
+            requested: inquiry.snapshot,
+            offered: { ...reply.proposal, menuDeadlineAt: null },
+          },
+          reason: "",
+          createdAt: new Date().toISOString(),
+          expiresAt: reply.expiresAt,
+          state: "PROPOSED",
+        };
+        return { version: inquiry.version, response: inquiry.response } as T;
+      };
+      t.mock.method(
+        globalThis,
+        "fetch",
+        async (_url: unknown, options?: RequestInit) =>
+          Response.json(
+            await request("/api/v1/merchant-replies/test", options),
+          ),
+      );
+      const access =
+        accessKind === "owner"
+          ? { kind: accessKind, accountId: merchantAccount.id, request }
+          : {
+              kind: accessKind,
+              access: "test-capability",
+              scope: "test-first-reply",
+              accessExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+              linkExpiresAt: inquiry.linkExpiresAt!,
+            };
+      const screen = () =>
+        createElement(ReplyWorkspace, { targetId: inquiry.targetId, access });
+      const view = await render(screen());
+      try {
+        await until(() =>
+          assert.match(view.container.textContent!, /조건 변경 제안/),
+        );
+        await click(view.container, "조건 변경 제안");
+        assert.match(
+          view.container.textContent!,
+          /답변을 보내면 수정할 수 없어요. 예약 조건을 확인해 주세요./,
+        );
+        assert.equal(
+          view.container.querySelector('[name="proposal.menuDeadlineAt"]'),
+          null,
+        );
+        await fill(view.container, "proposal.expectedGuests", "18");
+        await fill(view.container, "proposal.usageTime.minutes", "90");
+        await fill(view.container, "proposal.separateFee", "30000");
+        await act(async () =>
+          view.container
+            .querySelector<HTMLInputElement>('[name="holdConfirmed"]')!
+            .click(),
+        );
+        await submit(view.container);
+        await until(() => {
+          assert.equal(writes.length, 1);
+          assert.equal(
+            view.container.querySelector<HTMLButtonElement>(
+              'button[type="submit"]',
+            )?.disabled,
+            false,
+          );
+        });
+        await submit(view.container);
+        await until(() =>
+          assert.match(view.container.textContent!, /이미 답변을 보냈어요/),
+        );
+        assert.equal(writes.length, 2);
+        assert.deepEqual(writes[1], writes[0]);
+        const sent = writes[0].proposal as Record<string, unknown>;
+        assert(!Object.hasOwn(sent, "menuDeadlineAt"));
+        assert.equal(sent.separateFee, 30000);
+        assert.deepEqual(sent.usageTime, { kind: "MINUTES", minutes: 90 });
+        assert.equal(view.container.querySelector("form"), null);
+        assert.doesNotMatch(view.container.textContent!, /답변 수정하기/);
+      } finally {
+        await view.unmount();
+      }
+      const reopened = await render(screen());
+      try {
+        await until(() =>
+          assert.match(reopened.container.textContent!, /이미 답변을 보냈어요/),
+        );
+        assert.match(reopened.container.textContent!, /30,000원/);
+        assert.match(reopened.container.textContent!, /90분/);
+        assert.match(reopened.container.textContent!, /전화해 주세요/);
+        assert.equal(reopened.container.querySelector("form"), null);
+      } finally {
+        await reopened.unmount();
+      }
+      Object.assign(inquiry, { closedState: "EXPIRED" });
+      const expired = await render(screen());
+      try {
+        await until(() =>
+          assert.match(expired.container.textContent!, /이미 답변을 보냈어요/),
+        );
+        assert.match(
+          expired.container.textContent!,
+          /총무의 선택 기한이 지났어요/,
+        );
+        assert.match(expired.container.textContent!, /30,000원/);
+        assert.equal(expired.container.querySelector("form"), null);
+      } finally {
+        await expired.unmount();
+      }
+    });
   }
 });

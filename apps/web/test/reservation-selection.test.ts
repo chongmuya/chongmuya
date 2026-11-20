@@ -100,6 +100,7 @@ function selected(q: ReservationRequest): ReservationRequest {
 
 test("selection retries keep the seen revision and key; refresh shows the saved preparation state", async () => {
   let q = fixture();
+  q.targets[0].response!.snapshot.offered!.separateFee = 30000;
   const writes: Record<string, unknown>[] = [];
   const request: SessionRequest = async <T>(
     _path: string,
@@ -125,6 +126,11 @@ test("selection retries keep the seen revision and key; refresh shows the saved 
   );
   try {
     await until(() => assert.match(view.container.textContent!, /제안 매장/));
+    const venueFee = Array.from(view.container.querySelectorAll("dt")).find(
+      (term) => term.textContent === "별도 대관료",
+    );
+    assert.equal(venueFee?.nextElementSibling?.textContent, "30,000원");
+    assert.equal(venueFee?.closest("details"), null);
     await click(view.container, "수락");
     q = { ...q, version: 3 };
     await act(async () => {

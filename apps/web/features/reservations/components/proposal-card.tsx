@@ -117,6 +117,10 @@ export function ProposalCard({
           )}
           <dl className="space-y-4 text-xs [&>div]:grid [&>div]:grid-cols-[5rem_minmax(0,1fr)] [&>div]:gap-3 [&_dt]:text-muted [&_dd]:break-words">
             <div>
+              <dt>별도 대관료</dt>
+              <dd>{p.separateFee == null ? "미확인" : money(p.separateFee)}</dd>
+            </div>
+            <div>
               <dt>예약금</dt>
               <dd>
                 {p.deposit.kind === "PER_RESERVATION"
@@ -162,10 +166,6 @@ export function ProposalCard({
                     ? "미확인"
                     : `${p.minimumQuantity}개`}
                 </dd>
-              </div>
-              <div>
-                <dt>별도 대관료</dt>
-                <dd>{money(p.separateFee)}</dd>
               </div>
               <div>
                 <dt>메뉴 전달 기한</dt>
