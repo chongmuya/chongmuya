@@ -1,4 +1,6 @@
 import { serviceArea } from "@/shared/lib/service-area";
+import { fromKoreanDateInput, koreanDateInput } from "@/shared/lib/korean-date";
+import { guestCountSchema } from "@/shared/lib/guest-count";
 import { z } from "zod";
 import type { Account } from "@/features/auth/types";
 import type { InquiryConditions } from "../types/inquiry.types";
@@ -9,10 +11,7 @@ export const conditionsSchema = z
     time: z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "시작 시간을 입력해 주세요."),
-    expectedGuests: z
-      .string()
-      .regex(/^[1-9]\d{0,5}$/, "1명 이상의 정수로 입력해 주세요.")
-      .refine((v) => Number(v) <= 100000, "100,000명 이하로 입력해 주세요."),
+    expectedGuests: guestCountSchema,
     seating: z.enum(["CLOSE", "SEPARATED", "ANY"]),
     space: z.enum(["HALL", "ROOM", "FLOOR", "WHOLE", "ANY"]),
     seatingImportance: z.enum(["REQUIRED", "PREFERRED"]),
@@ -43,22 +42,31 @@ export const conditionsSchema = z
       ),
   })
   .refine(
-    (v) => new Date(`${v.date}T${v.time}:00+09:00`).getTime() > Date.now(),
+    (v) =>
+      Date.parse(fromKoreanDateInput(`${v.date}T${v.time}`) ?? "") > Date.now(),
     { path: ["date"], message: "미래 날짜와 시작 시간으로 입력해 주세요." },
   );
 export type ConditionsValues = z.infer<typeof conditionsSchema>;
+function conditionSchedule(startsAt: string | null) {
+  const local = koreanDateInput(startsAt);
+  return { date: local.slice(0, 10), time: local.slice(11, 16) };
+}
+
+export function savedInquirySchedule(startsAt: string | null) {
+  if (!startsAt || Date.parse(startsAt) <= Date.now()) return null;
+  const schedule = conditionSchedule(startsAt);
+  const minute = fromKoreanDateInput(`${schedule.date}T${schedule.time}`);
+  return minute && Date.parse(minute) > Date.now()
+    ? { ...schedule, startsAt }
+    : null;
+}
+
 export function initialConditions(
   account: Account,
   scheduledAt: string | null,
 ): ConditionsValues {
-  const local = scheduledAt
-    ? new Date(
-        new Date(scheduledAt).getTime() + 9 * 60 * 60 * 1000,
-      ).toISOString()
-    : "";
   return {
-    date: local.slice(0, 10),
-    time: local.slice(11, 16),
+    ...conditionSchedule(scheduledAt),
     expectedGuests: "",
     seating: "ANY",
     space: "ANY",
@@ -72,9 +80,13 @@ export function initialConditions(
     contactPhone: account.phone ?? "",
   };
 }
-export function inquiryConditions(v: ConditionsValues): InquiryConditions {
+export function inquiryConditions(
+  v: ConditionsValues,
+  savedStartsAt?: string,
+): InquiryConditions {
   return {
-    startsAt: new Date(`${v.date}T${v.time}:00+09:00`).toISOString(),
+    startsAt:
+      savedStartsAt ?? new Date(`${v.date}T${v.time}:00+09:00`).toISOString(),
     expectedGuests: Number(v.expectedGuests),
     region: serviceArea.label,
     seating: v.seating,

@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { BottomSheet } from "@/shared/ui/bottom-sheet";
@@ -15,6 +16,7 @@ import { RestaurantDetail } from "./restaurant-detail";
 import { RestaurantMap, type MapViewport } from "./restaurant-map";
 
 import { serviceArea } from "@/shared/lib/service-area";
+import { cn } from "@/shared/lib/cn";
 export function RestaurantBrowser({
   selected,
   restaurantId,
@@ -146,20 +148,42 @@ export function RestaurantBrowser({
           ) : (
             <>
               {!list.data.items.length ? (
-                <section className="rounded-control bg-surface px-5 py-10 text-center">
+                <section className="rounded-control bg-surface px-5 pt-12 pb-7 text-center shadow-card">
+                  <Image
+                    src="/images/restaurants/search-empty.svg"
+                    alt=""
+                    width={41}
+                    height={41}
+                    loading="eager"
+                    className="mx-auto mb-3"
+                  />
                   <h2 className="text-lg font-bold">
-                    {expectedGuests
-                      ? `이 지역에 ${expectedGuests}명 규모의 매장이 없어요`
+                    {onEditConditions
+                      ? "조건에 맞는 매장이 없어요"
                       : "이 지역에 등록된 매장이 없어요"}
                   </h2>
                   {onEditConditions && (
-                    <Button className="mt-6 w-full" onClick={onEditConditions}>
-                      문의 조건 수정
-                    </Button>
+                    <>
+                      <p className="mx-auto mt-2 max-w-[235px] text-xs text-muted">
+                        {serviceArea.label}에서 예상 인원을 조정해 다시
+                        찾아보세요.
+                      </p>
+                      <Button
+                        className="mt-5 w-full"
+                        onClick={onEditConditions}
+                      >
+                        조건 넓혀서 다시 찾기
+                      </Button>
+                    </>
                   )}
                 </section>
               ) : (
-                <div className="space-y-5 pb-28">
+                <div
+                  className={cn(
+                    "pb-28",
+                    onEditConditions ? "space-y-7" : "space-y-5",
+                  )}
+                >
                   {list.data.items.map((r, index) => {
                     const added = selected.includes(r.id);
                     const facts = [
@@ -192,12 +216,24 @@ export function RestaurantBrowser({
                           <RestaurantPhoto
                             src={r.photoPath}
                             alt=""
-                            height={150}
+                            height={onEditConditions ? 122 : 150}
                             eager={index === 0}
                           />
+                          {onEditConditions && (
+                            <span
+                              className={cn(
+                                "absolute top-3 right-4 rounded-pill px-3 py-1.5 text-sm font-medium",
+                                r.inquiryAvailable
+                                  ? "bg-accent text-brand-ink"
+                                  : "bg-choice text-copy",
+                              )}
+                            >
+                              {r.inquiryAvailable ? "문의 가능" : "문의 불가"}
+                            </span>
+                          )}
                         </button>
-                        <div className="p-4">
-                          <div className="flex items-start justify-between gap-2">
+                        <div className={onEditConditions ? "px-4 py-3" : "p-4"}>
+                          <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0">
                               <button
                                 onClick={() => open(r.id)}
@@ -206,14 +242,17 @@ export function RestaurantBrowser({
                                 {r.name}
                               </button>
                               {facts.length > 0 && (
-                                <p className="mt-2 text-xs text-secondary">
+                                <p className="mt-1 text-xs text-secondary">
                                   {facts.join(" · ")}
                                 </p>
                               )}
                             </div>
                             <Button
                               variant={added ? "brand-outline" : "outline"}
-                              className="shrink-0 px-3 text-xs"
+                              className={cn(
+                                "shrink-0 px-3 text-xs",
+                                onEditConditions && "rounded-control",
+                              )}
                               disabled={
                                 !added &&
                                 (!r.inquiryAvailable || selected.length === 3)
@@ -221,6 +260,16 @@ export function RestaurantBrowser({
                               aria-pressed={added}
                               onClick={() => toggle(r.id)}
                             >
+                              {onEditConditions &&
+                                !added &&
+                                r.inquiryAvailable && (
+                                  <Image
+                                    src="/images/restaurants/add.svg"
+                                    alt=""
+                                    width={13}
+                                    height={13}
+                                  />
+                                )}
                               {added
                                 ? "담기 취소"
                                 : r.inquiryAvailable
@@ -282,7 +331,11 @@ export function RestaurantBrowser({
       )}
       {sheet && (
         <BottomSheet
-          title={`선택한 매장 ${selected.length}/3`}
+          title={
+            onEditConditions
+              ? "문의할 매장"
+              : `선택한 매장 ${selected.length}/3`
+          }
           onClose={() => setSheet(false)}
           footer={
             <Button
@@ -293,10 +346,21 @@ export function RestaurantBrowser({
                 onInquiry(selected);
               }}
             >
-              선택한 매장으로 계속
+              {onEditConditions ? "보낼 내용 확인하기" : "선택한 매장으로 계속"}
             </Button>
           }
         >
+          {onEditConditions && (
+            <p className="mb-2 text-right text-xs font-medium text-secondary">
+              <span className="sr-only">3곳 중 {selected.length}곳 선택</span>
+              <span
+                aria-hidden="true"
+                className="rounded border border-field px-2 py-0.5"
+              >
+                {selected.length}/3
+              </span>
+            </p>
+          )}
           {!selected.length && (
             <p className="py-5 text-sm text-muted">선택한 매장이 없어요.</p>
           )}
@@ -319,10 +383,24 @@ export function RestaurantBrowser({
                 </div>
                 <Button
                   variant="outline"
+                  className={
+                    onEditConditions
+                      ? "size-control border-transparent px-0"
+                      : undefined
+                  }
                   aria-label={`${chosen[i]?.data?.name ?? "매장"} 선택 해제`}
                   onClick={() => toggle(id)}
                 >
-                  제거
+                  {onEditConditions ? (
+                    <Image
+                      src="/images/restaurants/remove.svg"
+                      alt=""
+                      width={13}
+                      height={13}
+                    />
+                  ) : (
+                    "제거"
+                  )}
                 </Button>
               </li>
             ))}
