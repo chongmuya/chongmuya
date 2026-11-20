@@ -119,13 +119,15 @@ export function GroupManagement({
           </div>
         )}
       </div>
-      {groupHandoverEnabled && (
+      {(groupHandoverEnabled || pending) && (
         <details
           open={pending ? true : undefined}
           className="space-y-4 rounded-card bg-surface p-5 shadow-card"
         >
           <summary className="cursor-pointer text-lg font-semibold text-brand">
-            다음 총무에게 넘기기
+            {groupHandoverEnabled
+              ? "다음 총무에게 넘기기"
+              : "기존 인수인계 요청 확인"}
           </summary>
           <p className="text-sm text-muted">
             모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요.
@@ -133,7 +135,11 @@ export function GroupManagement({
           <TransferScope scope={preview.data.scope} />
           {pending ? (
             <div>
-              <p>수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요.</p>
+              <p>
+                {groupHandoverEnabled
+                  ? "수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요."
+                  : "신규 인수인계는 준비 중이에요. 기존 요청은 취소할 수 있으며 현재 관리권한은 유지돼요."}
+              </p>
               <Button
                 variant="outline"
                 disabled={busy || unresolved}

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -271,25 +271,46 @@ function NoticeDetail({
   onEdit: (n: Notice) => void;
 }) {
   const [message, setMessage] = useState("");
+  const [sharing, setSharing] = useState(false);
+  const sharingRef = useRef(false);
   const active = useActiveScreen();
   const q = useQuery(noticeQuery(a, id));
   if (q.error instanceof ApiError && [401, 403, 404].includes(q.error.status))
     return <p role="alert">정산문에 접근할 수 없습니다.</p>;
   const n = q.data;
   const reviewRequired = needsReview || n?.needsReview;
-  const sharingBlocked = reviewRequired || q.isFetching || !!q.error;
+  const sharingBlocked = reviewRequired || q.isFetching || !!q.error || sharing;
   const copy = async () => {
+    if (!n || sharingBlocked || sharingRef.current) return;
+    sharingRef.current = true;
+    setSharing(true);
+    setMessage("");
     try {
-      await navigator.clipboard.writeText(n!.text);
+      await navigator.clipboard.writeText(n.text);
       if (active.current) setMessage("복사했습니다.");
     } catch {
       if (active.current)
         setMessage("복사하지 못했습니다. 브라우저 권한을 확인해 주세요.");
+    } finally {
+      sharingRef.current = false;
+      if (active.current) setSharing(false);
     }
   };
   return (
     <section className="space-y-4">
-      {q.error && <p role="alert">{safeErrorMessage(q.error)}</p>}
+      {q.isPending && <p role="status">정산문을 불러오는 중입니다.</p>}
+      {q.error && (
+        <div className="space-y-3">
+          <p role="alert">{safeErrorMessage(q.error)}</p>
+          <Button
+            variant="outline"
+            disabled={q.isFetching}
+            onClick={() => void q.refetch()}
+          >
+            정산문 다시 조회
+          </Button>
+        </div>
+      )}
       {n && (
         <>
           <p className="text-xs leading-relaxed text-secondary">
@@ -322,12 +343,16 @@ function NoticeDetail({
             <Button
               disabled={sharingBlocked}
               onClick={async () => {
+                if (sharingBlocked || sharingRef.current) return;
                 if (!navigator.share) {
                   setMessage(
                     "이 브라우저는 시스템 공유를 지원하지 않습니다. 복사하기를 이용해 주세요.",
                   );
                   return;
                 }
+                sharingRef.current = true;
+                setSharing(true);
+                setMessage("");
                 try {
                   await navigator.share({ title: n.title, text: n.text });
                   if (active.current)
@@ -341,6 +366,9 @@ function NoticeDetail({
                         ? "공유를 취소했습니다."
                         : "공유하지 못했습니다. 복사하기를 이용해 주세요.",
                     );
+                } finally {
+                  sharingRef.current = false;
+                  if (active.current) setSharing(false);
                 }
               }}
             >
@@ -362,6 +390,7 @@ function NoticeDetail({
           </div>
         </>
       )}
+      {sharing && <p role="status">복사·공유 작업을 처리하고 있습니다.</p>}
       {message && <p role="status">{message}</p>}
     </section>
   );
