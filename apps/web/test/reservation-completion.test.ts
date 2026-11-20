@@ -195,6 +195,7 @@ test("latest rejection is visible outside history and does not claim that the re
   const view = await render(
     createElement(ChangeResult, {
       data,
+      latest: data.changes[0],
       organizer: true,
       onReview() {},
       onDetails() {
