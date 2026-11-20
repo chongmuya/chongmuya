@@ -1,6 +1,5 @@
 import "reflect-metadata";
 import { config } from "dotenv";
-import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../dist/app.module.js";
@@ -11,6 +10,7 @@ import {
   operationId,
   requireOperator,
   printOperationError,
+  privateInput,
 } from "./merchant-cli.mjs";
 config({ quiet: true });
 let app;
@@ -31,7 +31,7 @@ try {
   });
   if (v.help)
     console.log(
-      "reservation:completion --action inspect|guidance|receipt|resolve|change-propose|change-reject|apply-agreement|refund-plan|refund|link --reservation UUID --actor 기록자 --confirmer 실제확인자 --method PHONE|SMS --confirmed-at ISO --reason 확인근거 [--input 로컬JSON파일] [--execute]\n기본 dry-run. 쓰기 JSON에 requestKey와 expectedVersion 필수. apply-agreement는 organizerConfirmer, merchantConfirmer, agreementEvidence도 필수. 실제 송금·환불은 실행하지 않습니다. 링크/계좌/원문 입력은 출력하지 않습니다.",
+      "reservation:completion --action inspect|guidance|receipt|resolve|change-propose|change-reject|apply-agreement|refund-plan|refund|link --reservation UUID --actor 기록자 --confirmer 실제확인자 --method PHONE|SMS --confirmed-at ISO --reason 확인근거 [--input 비공개JSON파일] [--execute]\n기본 dry-run. 쓰기 JSON에 requestKey와 expectedVersion 필수. link 복구는 operation: ISSUE와 notifications 조회의 heldEventKey 또는 heldMessageId를 지정합니다. apply-agreement는 organizerConfirmer, merchantConfirmer, agreementEvidence도 필수. 실제 송금·환불은 실행하지 않습니다. 링크/계좌/원문 입력은 출력하지 않습니다.",
     );
   else {
     requireOperator(v);
@@ -68,7 +68,7 @@ try {
     let result = current;
     if (v.action !== "inspect") {
       if (!v.input) throw new Error("INPUT_REQUIRED");
-      const input = JSON.parse(await readFile(v.input, "utf8"));
+      const input = await privateInput(v.input);
       operationId(input.requestKey);
       if (!v.execute && input.expectedVersion !== current.version)
         throw new Error("VERSION_CONFLICT");

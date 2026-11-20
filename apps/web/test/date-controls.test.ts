@@ -1,7 +1,8 @@
 import "./support/dom";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { act, createElement, useState } from "react";
+import { act, createElement, StrictMode, useState } from "react";
+import { Dialog } from "../shared/ui/dialog";
 import {
   isDateOnly,
   fromKoreanDateInput,
@@ -13,6 +14,75 @@ import { DatePicker } from "../shared/ui/date-picker";
 import { TimePicker } from "../shared/ui/time-picker";
 import { render, click } from "./support/form-dom";
 import { chooseDate, chooseTime } from "./support/date-controls";
+
+for (const original of ["", "auto", "hidden"]) {
+  test(`nested date dialogs restore original body overflow after simultaneous removal (${original || "unset"})`, async () => {
+    document.body.style.overflow = original;
+    function Form() {
+      const props = {
+        labelledBy: "edit-title",
+        onClose: () => {},
+        children: createElement(DatePicker, {
+          name: "nested-date",
+          value: "2026-12-05",
+          onChange: () => {},
+        }),
+      };
+      return createElement(Dialog, props);
+    }
+    const view = await render(
+      createElement(StrictMode, null, createElement(Form)),
+    );
+    try {
+      assert.equal(document.body.style.overflow, "hidden");
+      const open = () =>
+        act(async () =>
+          view.container
+            .querySelector<HTMLButtonElement>('button[name="nested-date"]')!
+            .click(),
+        );
+      await open();
+      assert.equal(view.container.querySelectorAll("dialog[open]").length, 2);
+      await click(view.container, "취소");
+      assert.equal(view.container.querySelectorAll("dialog[open]").length, 1);
+      assert.equal(document.body.style.overflow, "hidden");
+      await open();
+    } finally {
+      await view.unmount();
+    }
+    try {
+      assert.equal(document.body.style.overflow, original);
+    } finally {
+      document.body.style.overflow = "";
+    }
+  });
+}
+
+test("independent dialogs can close out of order and restore an important overflow rule", async () => {
+  document.body.style.setProperty("overflow", "scroll", "important");
+  const props = {
+    labelledBy: "dialog-title",
+    onClose: () => {},
+    children: "dialog",
+  };
+  const first = await render(createElement(Dialog, props));
+  const second = await render(createElement(Dialog, props));
+  try {
+    await first.unmount();
+    assert.equal(document.body.style.overflow, "hidden");
+  } finally {
+    await second.unmount();
+  }
+  try {
+    assert.equal(document.body.style.overflow, "scroll");
+    assert.equal(
+      document.body.style.getPropertyPriority("overflow"),
+      "important",
+    );
+  } finally {
+    document.body.style.removeProperty("overflow");
+  }
+});
 
 test("date-only validity and explicit Korean instants survive host timezone, leap day, midnight and year boundaries", () => {
   for (const value of [

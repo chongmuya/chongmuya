@@ -7,13 +7,24 @@ import { guidanceFields, buildGuidance } from "../lib/guidance-fields";
 // Keep a previously opened command mounted while its eligibility changes.
 function RetainedCommand({
   available,
+  disclosure,
   ...props
-}: ComponentProps<typeof CommandForm> & { available: boolean }) {
+}: ComponentProps<typeof CommandForm> & {
+  available: boolean;
+  disclosure?: string;
+}) {
   const [seen, setSeen] = useState(available);
   if (available && !seen) setSeen(true);
-  return seen || available ? (
-    <CommandForm {...props} available={available} />
-  ) : null;
+  if (!seen && !available) return null;
+  const form = <CommandForm {...props} available={available} />;
+  return disclosure ? (
+    <details className="space-y-4">
+      <summary className="cursor-pointer font-semibold">{disclosure}</summary>
+      {form}
+    </details>
+  ) : (
+    form
+  );
 }
 export function PaymentForms({
   data: q,
@@ -69,20 +80,16 @@ export function PaymentForms({
     );
   return (
     <div className="space-y-5">
-      <details className="space-y-4">
-        <summary className="cursor-pointer font-semibold">
-          예약금·계좌·변경 조건 안내
-        </summary>
-        <RetainedCommand
-          available={!q.cancellation && !q.confirmation}
-          {...props}
-          action="guidance"
-          title="안내 전달"
-          description="웹 공개는 동의한 경우만 선택해 주세요. 문자를 선택하면 총무 화면에는 계좌가 표시되지 않아요. 안내 변경은 총무의 재확인이 필요해요."
-          fields={guidanceFields}
-          build={buildGuidance}
-        />
-      </details>
+      <RetainedCommand
+        disclosure="예약금·계좌·변경 조건 안내"
+        available={!q.cancellation && !q.confirmation}
+        {...props}
+        action="guidance"
+        title="안내 전달"
+        description="웹 공개는 동의한 경우만 선택해 주세요. 문자를 선택하면 총무 화면에는 계좌가 표시되지 않아요. 안내 변경은 총무의 재확인이 필요해요."
+        fields={guidanceFields}
+        build={buildGuidance}
+      />
       <RetainedCommand
         available={!q.cancellation && q.guidance.kind === "REQUIRED"}
         {...props}

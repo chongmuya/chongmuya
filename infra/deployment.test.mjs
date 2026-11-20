@@ -610,6 +610,7 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     payload,
     migrationPayload,
     restaurantId: sql("SELECT id FROM restaurants ORDER BY id LIMIT 1"),
+    sql,
     run,
     ok,
     t,

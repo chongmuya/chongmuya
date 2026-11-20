@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import type { CalendarData, Schedule, ScheduleInput } from "../types/calendar";
 import { monthRange } from "../lib/dates";
+import { isAccessError } from "@/shared/http/access-error";
 export const calendarKey = (id: string) => ["user", id, "calendar"] as const;
 export const calendarQuery = (
   id: string,
@@ -9,6 +10,7 @@ export const calendarQuery = (
   month: string,
   group?: string,
   restaurant?: string,
+  visible = true,
 ) =>
   queryOptions({
     queryKey: [
@@ -26,6 +28,11 @@ export const calendarQuery = (
     },
     retry: false,
     staleTime: 0,
+    enabled: (query) => visible && !isAccessError(query.state.error),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 export const scheduleQuery = (
   id: string,

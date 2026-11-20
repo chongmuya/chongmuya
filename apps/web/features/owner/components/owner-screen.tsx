@@ -138,9 +138,9 @@ function OwnerHome({
     context.data?.restaurants.find((r) => r.id === selectedId) ??
     context.data?.restaurants[0];
   return (
-    <main className="mx-auto flex min-h-svh max-w-[402px] flex-col px-5 pt-[clamp(24px,8.77svh,83px)] pb-0">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="min-w-0 flex-1 text-xl font-bold">
+    <main className="mx-auto flex min-h-svh max-w-[402px] flex-col px-5 pt-[max(clamp(24px,7.7svh,73px),env(safe-area-inset-top))] pb-0">
+      <header className="mb-[30px] flex min-h-11 items-center justify-between gap-3">
+        <h1 className="min-w-0 flex-1 text-xl font-semibold">
           {context.data && context.data.restaurants.length > 1 ? (
             <select
               aria-label="매장 선택"
@@ -158,14 +158,22 @@ function OwnerHome({
             (restaurant?.name ?? "내 매장")
           )}
         </h1>
-        <NotificationBadge accountId={account.id} request={request} />
-        <Link
-          href="/mypage"
-          aria-label="마이페이지"
-          className="flex size-11 items-center justify-center"
-        >
-          <Image src="/images/home/profile.svg" alt="" width={36} height={36} />
-        </Link>
+        <div className="-mr-1 flex shrink-0 items-center gap-1.5">
+          <NotificationBadge accountId={account.id} request={request} icon />
+          <Link
+            href="/mypage"
+            aria-label="마이페이지"
+            className="flex size-11 items-center justify-center"
+          >
+            <Image
+              src="/images/calendar/profile.svg"
+              alt=""
+              width={36}
+              height={36}
+              style={{ height: "auto" }}
+            />
+          </Link>
+        </div>
       </header>
       {context.isError ? (
         <ErrorState retry={() => void context.refetch()} />
@@ -175,15 +183,8 @@ function OwnerHome({
         <div className="flex flex-1 flex-col gap-5">
           {restaurant && (
             <>
-              <div className="mb-3">
-                <h2 className="text-2xl font-bold">
-                  우리 매장 예약을 확인해요
-                </h2>
-                <p className="mt-2 text-sm text-secondary">
-                  받은 문의와 예약 준비 상태를 한눈에 확인하세요.
-                </p>
-              </div>
               <MerchantSummary
+                key={restaurant.id}
                 accountId={account.id}
                 restaurantId={restaurant.id}
                 request={request}

@@ -5,6 +5,33 @@ import { cn } from "../lib/cn";
 import Image from "next/image";
 import { IconButton } from "./icon-button";
 
+const scrollLocks = new WeakMap<
+  HTMLElement,
+  { tokens: Set<symbol>; overflow: string; priority: string }
+>();
+
+function lockScroll(body: HTMLElement) {
+  let lock = scrollLocks.get(body);
+  if (!lock) {
+    lock = {
+      tokens: new Set(),
+      overflow: body.style.getPropertyValue("overflow"),
+      priority: body.style.getPropertyPriority("overflow"),
+    };
+    scrollLocks.set(body, lock);
+  }
+  const token = Symbol();
+  lock.tokens.add(token);
+  body.style.setProperty("overflow", "hidden");
+  return () => {
+    if (!lock.tokens.delete(token) || lock.tokens.size) return;
+    if (lock.overflow)
+      body.style.setProperty("overflow", lock.overflow, lock.priority);
+    else body.style.removeProperty("overflow");
+    scrollLocks.delete(body);
+  };
+}
+
 // showModal supplies the top layer, background inertness and native Tab containment.
 export function Dialog({
   children,
@@ -31,13 +58,12 @@ export function Dialog({
   useEffect(() => {
     const dialog = ref.current!;
     const previousFocus = document.activeElement;
-    const overflow = document.body.style.overflow;
     dialog.showModal();
-    document.body.style.overflow = "hidden";
+    const unlockScroll = lockScroll(document.body);
     initialFocusRef?.current?.focus();
     return () => {
       dialog.close();
-      document.body.style.overflow = overflow;
+      unlockScroll();
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
         previousFocus.focus({ preventScroll: true });
     };
