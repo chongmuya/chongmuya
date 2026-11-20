@@ -12,7 +12,7 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
-/apps/api/src/database/seeds/data/*.private.json
+**/*.private.json
 node_modules
 
 # Local demo capabilities (never commit response URLs)

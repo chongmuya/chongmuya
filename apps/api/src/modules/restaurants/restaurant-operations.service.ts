@@ -4,13 +4,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { IsNull, Not } from "typeorm";
-import { z } from "zod";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { AuthService } from "../auth/auth.service.js";
 import { Restaurant } from "./entities/restaurant.entity.js";
-import { RestaurantContact } from "./entities/restaurant-contact.entity.js";
 import { RestaurantOperation } from "./entities/restaurant-operation.entity.js";
 import { Geocoder } from "./providers/geocoder.js";
 import {
@@ -112,104 +109,6 @@ export class RestaurantOperationsService {
         selectedAddress: matches[0].baseAddress,
         detailAddress: input.detailAddress,
       };
-    });
-  }
-  async recordContact(
-    restaurantId: string,
-    input: unknown,
-    actor: string,
-    reason: string,
-    dryRun: boolean,
-  ) {
-    const parsed = z
-      .object({
-        id: z.uuid(),
-        name: z.string().trim().min(1).max(80),
-        phone: z.string().regex(/^01[016789]\d{7,8}$/),
-        requestConsentAt: z.iso.datetime({ offset: true }).nullable(),
-        consentNote: z.string().trim().min(1).max(500),
-        primary: z.boolean().optional(),
-      })
-      .strict()
-      .safeParse(input);
-    if (
-      !parsed.success ||
-      !actor.trim() ||
-      !reason.trim() ||
-      (parsed.data.requestConsentAt &&
-        Date.parse(parsed.data.requestConsentAt) > Date.now())
-    )
-      throw new DomainHttpException("VALIDATION_FAILED");
-    const data = parsed.data;
-    const db = await this.database.connect();
-    return db.transaction(async (m) => {
-      const restaurant = await m.findOne(Restaurant, {
-        where: { id: restaurantId },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!restaurant) throw new NotFoundException();
-      const existing = await m.findOneBy(RestaurantContact, { id: data.id });
-      if (
-        existing &&
-        (existing.restaurantId !== restaurantId ||
-          existing.phone !== data.phone)
-      )
-        throw new DomainHttpException("VALIDATION_FAILED");
-      const consentAt = data.requestConsentAt
-        ? new Date(data.requestConsentAt)
-        : null;
-      if (data.primary && !consentAt)
-        throw new DomainHttpException("VALIDATION_FAILED");
-      const primary =
-        !!consentAt &&
-        (data.primary ??
-          (existing?.isPrimary ||
-            !(await m.existsBy(RestaurantContact, {
-              restaurantId,
-              id: Not(data.id),
-              active: true,
-              requestConsentAt: Not(IsNull()),
-            }))));
-      if (
-        existing &&
-        existing.isPrimary === primary &&
-        existing.active === !!consentAt &&
-        existing.requestConsentAt?.getTime() === consentAt?.getTime() &&
-        existing.consentNote === data.consentNote &&
-        existing.name === data.name
-      ) {
-        return { restaurantId, contactId: existing.id, existing: true, dryRun };
-      }
-      if (!dryRun) {
-        if (primary)
-          await m.update(
-            RestaurantContact,
-            { restaurantId, isPrimary: true },
-            { isPrimary: false },
-          );
-        await m.save(RestaurantContact, {
-          id: data.id,
-          restaurantId,
-          name: data.name,
-          phone: data.phone,
-          active: !!consentAt,
-          requestConsentAt: consentAt,
-          consentNote: data.consentNote,
-          isPrimary: primary,
-        });
-        restaurant.version++;
-        await m.save(restaurant);
-        await m.save(RestaurantOperation, {
-          id: randomUUID(),
-          restaurantId,
-          actor,
-          reason,
-          action: "CONTACT_RECORDED",
-          details: { contactId: data.id },
-          createdAt: new Date(),
-        });
-      }
-      return { restaurantId, contactId: data.id, dryRun };
     });
   }
   // Only the explicit server-side CLI invokes these operations; never exposed as owner HTTP routes.

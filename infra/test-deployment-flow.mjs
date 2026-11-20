@@ -245,7 +245,7 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       [],
       [
         "-c",
-        `flock '${root}/deploy.lock' bash -c 'for args in "deploy ${digest("a")}" "rollback ${firstId} --confirm-compatibility" "seed-restaurants"; do if bash ${bundle}/deploy.sh $args; then exit 1; fi; done'`,
+        `flock '${root}/deploy.lock' bash -c 'for args in "deploy ${digest("a")}" "rollback ${firstId} --confirm-compatibility" "data-restaurants show"; do if bash ${bundle}/deploy.sh $args; then exit 1; fi; done'`,
       ],
     ),
   );
@@ -311,7 +311,7 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       .some(
         (args) =>
           args.includes("migrate") ||
-          args.includes("seed-restaurants") ||
+          args.includes("data-restaurants") ||
           args.includes("build"),
       ),
   );
@@ -329,17 +329,30 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       "--confirm-compatibility",
     ]),
   );
-  ok(invoke(["seed-restaurants"]));
+  ok(invoke(["data-restaurants", "show"]));
   ok(invoke(["operations", "--help"]));
   const contactFile = join(directory, "operator-contact.json");
   writeFileSync(
     contactFile,
     JSON.stringify({
-      id: "00000000-0000-4000-8000-000000000099",
-      name: "테스트 담당자",
-      phone: "01000000001",
-      requestConsentAt: "2026-01-01T00:00:00Z",
-      consentNote: "NEVER_LOG_CONSENT",
+      restaurants: [
+        {
+          id: restaurantId,
+          expectedVersion: 1,
+          changes: {
+            contact: {
+              phone: "01000000001",
+              requestConsentAt: "2026-01-01T00:00:00Z",
+              consentNote: "NEVER_LOG_CONSENT",
+            },
+            spacePhotos: Array.from({ length: 90 }, (_, position) => ({
+              path: "/images/restaurants/demo-1.png",
+              description: "x".repeat(400),
+              position,
+            })),
+          },
+        },
+      ],
     }),
     { mode: 0o600 },
   );
@@ -351,14 +364,14 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
       "-c",
       `
 set -euo pipefail
-file=$1; script=$2; restaurant=$3
+file=$1; script=$2
 chown 0:0 "$file"
 chmod 600 "$file"
 before=$(sha256sum "$file")
-OPERATOR_INPUT_FILE="$file" bash "$script" operations --action record-contact --restaurant "$restaurant" --input /run/input.json --actor deployment-test --reason dry-run-fixture
+RESTAURANT_INPUT_FILE="$file" bash "$script" data-restaurants update --actor deployment-test --reason dry-run-fixture
 [[ $(stat -c '%u:%g:%a' "$file") == 0:0:600 && $(sha256sum "$file") == "$before" ]]
 chmod 644 "$file"
-if OPERATOR_INPUT_FILE="$file" bash "$script" operations --action record-contact --restaurant "$restaurant" --input /run/input.json --actor deployment-test --reason dry-run-fixture; then exit 1; fi
+if RESTAURANT_INPUT_FILE="$file" bash "$script" data-restaurants update --actor deployment-test --reason dry-run-fixture; then exit 1; fi
 [[ $(stat -c '%u:%g:%a' "$file") == 0:0:644 && $(sha256sum "$file") == "$before" ]]
 `,
       "operator-file-test",
@@ -367,8 +380,8 @@ if OPERATOR_INPUT_FILE="$file" bash "$script" operations --action record-contact
       restaurantId,
     ],
   );
-  assert.match(ok(operatorRun), /record-contact: 변경 전 확인/);
-  assert.match(operatorRun.stderr, /Private operator input rejected/);
+  assert.match(ok(operatorRun), /"mode":"PREVIEW"/);
+  assert.match(operatorRun.stderr, /Private restaurant input rejected/);
   assert.doesNotMatch(
     operatorRun.stdout + operatorRun.stderr,
     /01000000001|NEVER_LOG_CONSENT/,

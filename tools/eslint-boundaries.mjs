@@ -226,7 +226,7 @@ export default {
               !/^modules\/auth\/utils\/password\.[cm]?[jt]s$/.test(
                 targetPath,
               ) &&
-              !/^modules\/restaurants\/lib\/restaurant-policy\.[cm]?[jt]s$/.test(
+              !/^modules\/restaurants\/(?:lib\/(?:restaurant-policy|restaurant-data-id)|types\/restaurant-data)\.[cm]?[jt]s$/.test(
                 targetPath,
               ) &&
               !/^modules\/reservations\/lib\/(merchant-link-codec|message-delivery)\.[cm]?[jt]s$/.test(

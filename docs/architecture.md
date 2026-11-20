@@ -256,7 +256,7 @@ TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수
 
 ### 시드 실행 경계
 
-`src/database/seeds`의 독립 CLI는 Entity·최소 DB/링크 설정·읽기 전용 migration 상태 조회와 명시적으로 허용한 무부작용 password/merchant-link/message-delivery codec만 참조하며 AppModule·업무 Service·발송 provider를 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않도록 ESLint로 검사한다. 공개 JSON만 빌드하고 `*.private.json`은 명시적 파일 옵션으로만 읽는다. 로컬 실행은 [README](../README.md#매장-시드), 공개 식당만 추가하는 별도 운영 진입점과 잠금은 [배포 안내](deployment.md)를 따른다. 운영 이미지에는 데모 시드 진입점·가상 계정 fixture를 포함하지 않는다.
+`src/database/seeds`는 로컬 개발 fixture와 시나리오 전용이다. Entity·최소 DB/링크 설정·허용한 무부작용 codec(입력 스키마·고정 ID·정책 변환 포함)만 사용하고 AppModule·업무 Service·발송 provider를 실행하지 않는다. 운영 데이터 업무는 `modules/restaurants/restaurant-data.service.ts`가 처리하며, `scripts/restaurant-data.mjs`는 DB만 구성해 해당 서비스를 실행한다. 이 CLI의 허용 import는 ESLint로 제한한다. HTTP 서버·문자 발송·스케줄러를 시작하지 않는다. 실제 JSON은 명시적 외부 파일만 읽으며, 개발 시드와 reset·fixture도 Docker build context에서 제외한다. 명령·입력 계약·EC2 사용법은 [매장 데이터 관리](restaurant-data.md)를 따른다.
 
 ## 의존 경계 검사와 CI
 
@@ -264,7 +264,7 @@ ESLint 로컬 규칙으로 의존 경계를 검사합니다. 상대 경로·웹 
 
 - 앱 간 직접 소스 import 금지.
 - 웹 shared → features/app, features → app 역방향 금지. app과 다른 feature는 client/types/server 공개 진입점만 사용하며, feature 간 순환 의존은 타입 참조까지 검사한다.
-- API common/config/database 실행 코드 → 업무 modules 금지. 독립 실행하는 database/seeds만 Entity·최소 설정·허용한 무부작용 codec만 참조하며, 서버 코드 → seeds 및 seeds → 업무 Service·AppModule 참조는 금지. 업무 module에서 bootstrap·app.module 역참조 금지.
+- API common/config/database 실행 코드 → 업무 modules 금지. 독립 실행하는 database/seeds는 Entity·최소 설정·허용한 무부작용 codec만 참조하며, 서버 코드 → seeds 및 seeds → 업무 Service·AppModule 참조는 금지. 운영 scripts/restaurant-data.mjs의 restaurants 데이터 서비스 조립 예외는 해당 CLI에만 허용한다. 업무 module에서 bootstrap·app.module 역참조 금지.
 - API 업무 모듈 간 `.module` 및 명시적 공개 Service·Guard·타입·데코레이터 import를 허용합니다. `tools/eslint-boundaries.mjs`의 `apiPublicImports` 목록은 실제 Nest exports와 함께 관리합니다. 모든 `*.service`를 무조건 공개하지 않으며 내부 Repository·Entity·미공개 Service와 module 재수출을 차단합니다. 소스 정적 import/export 그래프의 순환은 테스트에서 검사하고, 실제 DI 연결은 HTTP/통합 테스트로 검증합니다. 편의상 forwardRef·전역 모듈을 추가하지 않습니다.
 
 계산된 dynamic import, 새로 추가한 별칭, 런타임 DI 의존 관계는 정적 규칙이 모두 검사하지 못합니다. 우회 경로를 만들지 않고 새 별칭 도입 시 규칙과 테스트를 함께 수정합니다. 타입 전용 import도 같은 경계를 지킵니다. ESLint 오류는 내부 파일 직접 참조, feature 순환 의존, 클라이언트의 서버 전용 참조를 구분해 표시합니다.

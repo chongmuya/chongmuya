@@ -1,5 +1,6 @@
 import {
   parseDatabaseEnvironment,
+  developmentDatabaseEnvironmentSchema,
   parseDeploymentDatabase,
   validateDeploymentDatabasePair,
 } from "../src/config/database-environment.js";
@@ -10,6 +11,40 @@ import { test } from "node:test";
 import { parseEnvironment as parse } from "../src/config/environment.js";
 
 const authSecret = "test-secret-with-at-least-32-characters";
+test("development seed/reset allows only the named loopback development or isolated test DB", () => {
+  for (const [NODE_ENV, DATABASE_URL] of [
+    ["development", "postgresql://chongmuya:fake@127.0.0.1:15432/chongmuya"],
+    ["test", "postgresql://chongmuya:fake@localhost:25436/chongmuya_test_seed"],
+  ])
+    assert(
+      developmentDatabaseEnvironmentSchema.safeParse({ NODE_ENV, DATABASE_URL })
+        .success,
+    );
+  for (const [NODE_ENV, DATABASE_URL] of [
+    ["production", "postgresql://chongmuya:fake@127.0.0.1:15432/chongmuya"],
+    ["development", "postgresql://chongmuya:fake@127.0.0.1:5432/chongmuya"],
+    [
+      "development",
+      "postgresql://chongmuya_app:fake@localhost:15432/chongmuya",
+    ],
+    [
+      "development",
+      "postgresql://chongmuya:fake@remote.example.test:15432/chongmuya",
+    ],
+    ["test", "postgresql://chongmuya:fake@localhost:15432/chongmuya"],
+    ["test", "postgresql://chongmuya:fake@localhost:25436/production"],
+    [
+      "test",
+      "postgresql://chongmuya:fake@localhost:25436/chongmuya_test?host=remote",
+    ],
+  ])
+    assert(
+      !developmentDatabaseEnvironmentSchema.safeParse({
+        NODE_ENV,
+        DATABASE_URL,
+      }).success,
+    );
+});
 const webOrigin = "http://localhost:3000";
 const parseEnvironment = (env: NodeJS.ProcessEnv) =>
   parse({ AUTH_SECRET: authSecret, WEB_ORIGIN: webOrigin, ...env });

@@ -22,7 +22,9 @@
 - 업무 오류는 명시적 DomainHttpException의 허용 코드·문구만 전달하고 DTO fieldErrors에는 안전한 필드 경로·검증 코드만 넣는다. 웹은 오류 형식·코드를 검증하고 알려진 필드는 RHF setError, 그 외는 폼 오류로 표시한다. 서버 message·validator 원문·입력을 그대로 출력하지 않는다.
 - 예상한 입력·권한·중복 오류는 해당 HTTP 예외로, 알려진 DB 가용성 장애는 공통 필터에서 503으로, 그 외 코드·스키마 오류는 500으로 처리한다. 모든 예외를 503으로 감싸지 않는다. 오류 응답·인증 코드 계약을 유지하고 서버 로그에는 requestId와 허용된 오류 분류·코드·소스 위치만 남긴다. 예외 원문·원본 stack·SQL/파라미터·비밀번호·토큰·쿠키·DB URL을 기록하지 않는다.
 - DB는 PostgreSQL, ORM은 TypeORM이다. Entity는 API modules/<업무>/entities/*.entity.ts, 연결 설정과 마이그레이션은 src/database에 둔다. API DTO와 Entity를 구분하고 Next.js에서 업무 DB를 직접 수정하지 않는다.
-- 시드는 src/database/seeds에 실행 진입점·매장 시드·가상 시드·data를 분리한다. 시드만 Entity와 공통 DB 옵션을 참조하며 업무 Service·AppModule을 실행하지 않는다. 서버 코드에서 시드 코드·데이터를 import하지 않는다. 공개 JSON만 빌드에 포함하고 실제 연락처 *.private.json은 Git·빌드에서 제외하여 명시적 파일 옵션으로만 읽는다. 마이그레이션·시드는 별도 명령으로 실행하며 재실행 시 운영 변경·문의 참조를 보존한다.
+- 개발 fixture는 src/database/seeds에 두며 Entity·최소 DB 설정·명시적으로 허용한 무부작용 codec만 참조한다. 업무 Service·AppModule·외부 공급자는 실행하지 않는다. 실제 입력 JSON은 Git·빌드·이미지에서 제외하고 개발 JSON과 seed/reset 실행 코드도 운영 이미지에서 제외한다.
+- 운영 데이터 import/update의 업무 규칙은 restaurants 모듈의 RestaurantDataService와 공유 검증·연락처 함수에 둔다. scripts/restaurant-data.mjs만 최소 DB 구성과 해당 서비스를 직접 조립할 수 있다. CLI는 인자·비공개 파일·안전한 출력만 처리한다. AppModule·발송기·스케줄러를 부팅하지 않으며 기본 미리보기, --execute와 실행 단위 actor/reason으로만 반영한다. 이 예외를 database/common이나 다른 업무 모듈의 Entity 직접 참조 허용으로 확대하지 않는다.
+- 개발 seed/reset은 허용된 loopback 호스트·DB 이름·계정·포트와 fake 공급자 조건을 확인한다. 운영 데이터 변경은 app DB 권한, migration은 migrator 권한을 사용한다. 배포·API 시작 시 데이터 import/update를 자동 실행하지 않는다.
 - API는 네이티브 ESM이다. NodeNext를 유지하고 상대 import에 .js 확장자를 쓴다. Entity와 마이그레이션은 컴파일한 JS만 로드한다. synchronize·migrationsRun·dropSchema는 false로 유지한다. 컴파일·마이그레이션 생성·적용을 구분한다. install/build/서버 시작에 마이그레이션을 자동 적용하지 않는다. 운영 DB reset/drop을 수행하지 않는다.
 - DB CLI는 공통 최소 DB schema만 검증하며 런타임 환경은 이를 조합한다. 로컬 시드는 Entity와 ESLint에 명시한 무부작용 codec만 사용하고 AppModule·업무 Service·외부 공급자를 부팅하지 않는다. 공급자는 Nest 조립 지점에서 선택하고 업무 서비스에는 정규화한 결과를 전달한다.
 - API 환경변수는 Zod로 시작 시 검증한다. false 문자열을 참으로 강제 변환하지 않고 오류에는 변수 이름만 노출한다. HTTP DTO 검증은 class-validator를 사용한다.

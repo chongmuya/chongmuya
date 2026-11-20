@@ -1,0 +1,308 @@
+{
+  "restaurants": [
+    {
+      "key": "demo-ongi-hall",
+      "name": "온기홀",
+      "address": "서울 광진구 늘봄길 1",
+      "region": "건대입구",
+      "category": "한식",
+      "latitude": 37.543,
+      "longitude": 127.07,
+      "maxCapacity": 40,
+      "photoPath": "/images/restaurants/demo-1.png",
+      "operatingHours": "17:00~23:00",
+      "facilities": "화장실",
+      "bookingPolicy": "최소 1일 전 문의",
+      "depositPolicy": "예약금은 문의 후 협의",
+      "menuPolicy": "일반 메뉴 주문 · 확정 기한은 문의 후 확인",
+      "cancellationPolicy": null,
+      "published": true,
+      "verifiedAt": "2026-11-18T00:00:00Z",
+      "spaces": [
+        {
+          "key": "hall",
+          "label": "일반 홀",
+          "kind": "HALL",
+          "availability": "AVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 40,
+          "minGuests": 0,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "다른 손님과 함께 사용하는 일반 홀입니다."
+        },
+        {
+          "key": "floor",
+          "label": "2층 단독 대관",
+          "kind": "FLOOR",
+          "availability": "UNAVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 40,
+          "minGuests": 20,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        },
+        {
+          "key": "whole",
+          "label": "전체 대관",
+          "kind": "WHOLE",
+          "availability": "UNAVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 40,
+          "minGuests": 0,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        }
+      ],
+      "menus": [
+        {
+          "key": "daily-meal",
+          "name": "오늘의 정식",
+          "kind": "REGULAR",
+          "price": 12000,
+          "unit": "1인분",
+          "available": true,
+          "position": 0
+        }
+      ],
+      "contact": {
+        "phone": "00000000000",
+        "requestConsentAt": "2026-11-18T00:00:00Z",
+        "consentNote": "개발 테스트 대역. 실제 연락·수신 동의 아님. 실제 발송 금지."
+      },
+      "spacePhotos": [
+        {
+          "path": "/images/restaurants/demo-2.png",
+          "description": "홀 안쪽 공간",
+          "position": 2
+        },
+        {
+          "path": "/images/restaurants/demo-1.png",
+          "description": "입구 쪽 공간",
+          "position": 1
+        }
+      ]
+    },
+    {
+      "key": "demo-hancheung-table",
+      "name": "한층식탁",
+      "address": "서울 광진구 늘봄길 2",
+      "region": "세종대",
+      "category": "한식",
+      "latitude": 37.544,
+      "longitude": 127.071,
+      "maxCapacity": 60,
+      "photoPath": "/images/restaurants/demo-2.png",
+      "operatingHours": "17:00~23:00",
+      "facilities": "화장실",
+      "bookingPolicy": "최소 1일 전 문의",
+      "depositPolicy": "예약금은 문의 후 협의",
+      "menuPolicy": "일반 메뉴 주문 · 확정 기한은 문의 후 확인",
+      "cancellationPolicy": null,
+      "published": true,
+      "verifiedAt": "2026-11-18T00:00:00Z",
+      "spaces": [
+        {
+          "key": "hall",
+          "label": "일반 홀",
+          "kind": "HALL",
+          "availability": "AVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 40,
+          "minGuests": 0,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "다른 손님과 함께 사용하는 일반 홀입니다."
+        },
+        {
+          "key": "floor",
+          "label": "2층 단독 대관",
+          "kind": "FLOOR",
+          "availability": "AVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 25,
+          "minGuests": 20,
+          "minSpend": 600000,
+          "separateFee": 0,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        },
+        {
+          "key": "whole",
+          "label": "전체 대관",
+          "kind": "WHOLE",
+          "availability": "UNAVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 40,
+          "minGuests": 0,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        }
+      ],
+      "menus": [
+        {
+          "key": "daily-meal",
+          "name": "오늘의 정식",
+          "kind": "REGULAR",
+          "price": 12000,
+          "unit": "1인분",
+          "available": true,
+          "position": 0
+        }
+      ],
+      "contact": {
+        "phone": "00000000000",
+        "requestConsentAt": "2026-11-18T00:00:00Z",
+        "consentNote": "개발 테스트 대역. 실제 연락·수신 동의 아님. 실제 발송 금지."
+      }
+    },
+    {
+      "key": "demo-sodam",
+      "name": "소담식당",
+      "address": "서울 광진구 늘봄길 3",
+      "region": "건대입구",
+      "category": "한식",
+      "latitude": 37.545,
+      "longitude": 127.072,
+      "maxCapacity": null,
+      "photoPath": null,
+      "operatingHours": null,
+      "facilities": null,
+      "bookingPolicy": null,
+      "depositPolicy": null,
+      "menuPolicy": null,
+      "cancellationPolicy": null,
+      "published": true,
+      "verifiedAt": null,
+      "spaces": [
+        {
+          "key": "hall",
+          "label": "일반 홀",
+          "kind": "HALL",
+          "availability": "UNKNOWN",
+          "togetherSeating": "UNKNOWN",
+          "capacity": null,
+          "minGuests": null,
+          "minSpend": null,
+          "separateFee": null,
+          "conditions": "다른 손님과 함께 사용하는 일반 홀입니다."
+        },
+        {
+          "key": "floor",
+          "label": "2층 단독 대관",
+          "kind": "FLOOR",
+          "availability": "UNKNOWN",
+          "togetherSeating": "UNKNOWN",
+          "capacity": null,
+          "minGuests": null,
+          "minSpend": null,
+          "separateFee": null,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        },
+        {
+          "key": "whole",
+          "label": "전체 대관",
+          "kind": "WHOLE",
+          "availability": "UNKNOWN",
+          "togetherSeating": "UNKNOWN",
+          "capacity": null,
+          "minGuests": null,
+          "minSpend": null,
+          "separateFee": null,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        }
+      ],
+      "menus": [
+        {
+          "key": "daily-meal",
+          "name": "오늘의 정식",
+          "kind": "REGULAR",
+          "price": null,
+          "unit": "1인분",
+          "available": true,
+          "position": 0
+        }
+      ],
+      "contact": {
+        "phone": "00000000000",
+        "requestConsentAt": null,
+        "consentNote": "개발 테스트 대역. 실제 연락·수신 동의 아님. 실제 발송 금지."
+      }
+    },
+    {
+      "key": "demo-maru",
+      "name": "마루식탁",
+      "address": "서울 광진구 늘봄길 4",
+      "region": "세종대",
+      "category": "한식",
+      "latitude": null,
+      "longitude": null,
+      "maxCapacity": 20,
+      "photoPath": null,
+      "operatingHours": "17:00~23:00",
+      "facilities": "화장실",
+      "bookingPolicy": "최소 1일 전 문의",
+      "depositPolicy": "예약금은 문의 후 협의",
+      "menuPolicy": "일반 메뉴 주문 · 확정 기한은 문의 후 확인",
+      "cancellationPolicy": null,
+      "published": true,
+      "verifiedAt": "2026-11-18T00:00:00Z",
+      "spaces": [
+        {
+          "key": "hall",
+          "label": "일반 홀",
+          "kind": "HALL",
+          "availability": "AVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 20,
+          "minGuests": 0,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "다른 손님과 함께 사용하는 일반 홀입니다."
+        },
+        {
+          "key": "floor",
+          "label": "2층 단독 대관",
+          "kind": "FLOOR",
+          "availability": "UNAVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 20,
+          "minGuests": 20,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        },
+        {
+          "key": "whole",
+          "label": "전체 대관",
+          "kind": "WHOLE",
+          "availability": "UNAVAILABLE",
+          "togetherSeating": "YES",
+          "capacity": 20,
+          "minGuests": 0,
+          "minSpend": null,
+          "separateFee": 0,
+          "conditions": "단독 사용 여부와 날짜별 가능 여부는 별도 확인합니다."
+        }
+      ],
+      "menus": [
+        {
+          "key": "daily-meal",
+          "name": "오늘의 정식",
+          "kind": "REGULAR",
+          "price": 12000,
+          "unit": "1인분",
+          "available": true,
+          "position": 0
+        }
+      ],
+      "contact": {
+        "phone": "00000000000",
+        "requestConsentAt": "2026-11-18T00:00:00Z",
+        "consentNote": "개발 테스트 대역. 실제 연락·수신 동의 아님. 실제 발송 금지."
+      }
+    }
+  ]
+}
