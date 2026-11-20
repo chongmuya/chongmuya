@@ -5,7 +5,7 @@ import { act, createElement } from "react";
 import { AuthProvider } from "../features/auth/components/auth-provider";
 import { RestaurantDetail } from "../features/restaurants/components/restaurant-detail";
 import { restaurantQuery } from "../features/restaurants/api/restaurants.api";
-import { render, until, click } from "./support/form-dom";
+import { render, until, click, deferred } from "./support/form-dom";
 
 const restaurant = {
   id: "restaurant",
@@ -28,12 +28,17 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
   let available = true;
   let removed = 0;
   let inquiries = 0;
-  globalThis.fetch = async (input) =>
-    String(input).includes("/restaurants/")
-      ? failed
-        ? Response.json({}, { status: 503 })
-        : Response.json({ ...restaurant, inquiryAvailable: available })
-      : Response.json({ authenticated: false, account: null });
+  let reads = 0;
+  let pending: ReturnType<typeof deferred<Response>> | undefined;
+  globalThis.fetch = async (input) => {
+    if (!String(input).includes("/restaurants/"))
+      return Response.json({ authenticated: false, account: null });
+    reads++;
+    if (pending) return pending.promise;
+    return failed
+      ? Response.json({}, { status: 503 })
+      : Response.json({ ...restaurant, inquiryAvailable: available });
+  };
   const view = await render(
     createElement(
       AuthProvider,
@@ -79,9 +84,33 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
     assert.equal(proceed.disabled, true);
     await act(async () => proceed.click());
     assert.equal(inquiries, 0);
-    failed = false;
-    await click(view.container, "다시 시도");
+    pending = deferred<Response>();
+    const retry = [...view.container.querySelectorAll("button")].find(
+      (b) => b.textContent === "다시 시도",
+    )!;
+    const readsBeforeRetry = reads;
+    await act(async () => {
+      retry.focus();
+      retry.click();
+      retry.click();
+    });
+    assert.equal(reads, readsBeforeRetry + 1);
+    assert.equal(document.activeElement, retry);
+    await until(() =>
+      assert.equal(retry.getAttribute("aria-disabled"), "true"),
+    );
+    await act(async () => {
+      pending!.resolve(
+        Response.json({ ...restaurant, inquiryAvailable: true }),
+      );
+      pending = undefined;
+      failed = false;
+    });
     await until(() => assert.equal(proceed.disabled, false));
+    assert.equal(
+      document.activeElement,
+      view.container.querySelector("#restaurant-detail-title"),
+    );
     assert.equal(removed, 0);
     available = false;
     await act(async () => {
@@ -101,8 +130,18 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
       ),
       false,
     );
-    await click(view.container, "문의 담기 취소");
+    const deselect = [...view.container.querySelectorAll("button")].find(
+      (b) => b.textContent === "문의 담기 취소",
+    )!;
+    await act(async () => {
+      deselect.focus();
+      deselect.click();
+    });
     assert.equal(removed, 1);
+    assert.match(
+      document.activeElement?.textContent ?? "",
+      /현재는 문의를 접수할 수 없어요/,
+    );
   } finally {
     await view.unmount();
     globalThis.fetch = original;
