@@ -147,8 +147,7 @@ export async function seedDemo(
     const freshRestaurant = !(await m.existsBy(Restaurant, {
       id: demoRestaurantIds[0]!,
     }));
-    if (bootstrap)
-      await seedDemoRestaurantRows(m, true, demoAccounts[3]!.phone);
+    if (bootstrap) await seedDemoRestaurantRows(m, demoAccounts[3]!.phone);
     else
       for (const id of demoRestaurantIds) {
         if (!(await m.existsBy(Restaurant, { id, isDemo: true })))

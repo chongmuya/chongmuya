@@ -14,6 +14,8 @@
 !apps/api/scripts/
 !apps/api/scripts/merchant-operations.mjs
 !apps/api/scripts/merchant-cli.mjs
+!apps/api/scripts/restaurant-data.mjs
+!apps/api/scripts/restaurant-data-input.mjs
 !apps/api/scripts/normalize-restaurant-address.mjs
 !apps/api/scripts/deployment-config.mjs
 !apps/api/scripts/migrate.mjs
@@ -25,3 +27,6 @@
 **/node_modules
 **/dist
 **/*.log
+
+# Development fixtures and reset entry points never enter production builds.
+apps/api/src/database/seeds/

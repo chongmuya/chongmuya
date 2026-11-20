@@ -21,29 +21,39 @@ export function requireOperator(v) {
     throw new Error("INVALID_OPERATOR");
 }
 
-async function privateInputBytes(file) {
+export async function readPrivateInputBytes(file, limit = 32768) {
   if (!file) throw new Error("INPUT_REQUIRED");
   const handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK);
   try {
     const info = await handle.stat();
-    if (!info.isFile() || info.size > 32768 || info.mode & 0o077)
+    if (!info.isFile() || info.size > limit || info.mode & 0o077)
       throw new Error("PRIVATE_INPUT_REQUIRED");
-    const bytes = await handle.readFile();
-    if (bytes.length > 32768) throw new Error("PRIVATE_INPUT_REQUIRED");
-    return bytes;
+    const bytes = Buffer.alloc(limit + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const { bytesRead } = await handle.read(
+        bytes,
+        length,
+        bytes.length - length,
+      );
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    if (length > limit) throw new Error("PRIVATE_INPUT_REQUIRED");
+    return bytes.subarray(0, length);
   } finally {
     await handle.close();
   }
 }
 
 export async function privateInput(file) {
-  return JSON.parse((await privateInputBytes(file)).toString("utf8"));
+  return JSON.parse((await readPrivateInputBytes(file)).toString("utf8"));
 }
 
 // Validate the source before copying; a public source must never become valid
 // merely because the container's copy has private permissions.
 export async function copyPrivateInput(source, destination) {
-  await writeFile(destination, await privateInputBytes(source), {
+  await writeFile(destination, await readPrivateInputBytes(source), {
     mode: 0o600,
     flag: "wx",
   });
@@ -120,9 +130,6 @@ export function printOperation(action, result, v) {
       publish: v.unpublish
         ? "매장을 비공개로 변경했습니다."
         : "매장을 공개했습니다.",
-      "record-contact": result.existing
-        ? "이미 등록된 연락처를 확인했습니다."
-        : "담당 연락처를 등록했습니다. 과거 문의 수신자는 바뀌지 않습니다.",
       "change-recipient": result.existing
         ? "기존 수신자 전환 기록을 반환했습니다. 발송 상태를 확인하세요."
         : "문의 수신자를 전환했습니다. 새 발송은 대기 상태이며 retry로 별도 실행합니다.",

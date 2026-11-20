@@ -18,14 +18,14 @@
     "test:compile": "node scripts/compile-tests.mjs",
     "test": "pnpm test:compile && node --test dist-test/test/*.test.js",
     "test:integration": "pnpm test:compile && node --test --test-concurrency=1 dist-test/test/integration/*.test.js",
-    "db:seed:restaurants": "node dist/database/seeds/run-seed.js restaurants",
-    "db:seed:restaurants:production": "node dist/database/seeds/run-production-restaurants.js",
     "reservation:operations": "node scripts/reservation-operations.mjs",
     "merchant:operations": "node scripts/merchant-operations.mjs",
-    "db:seed:demo": "node dist/database/seeds/run-demo.js seed",
     "db:demo:links": "node dist/database/seeds/run-demo.js links",
     "reservation:completion": "node scripts/reservation-completion.mjs",
-    "calendar:reminders": "node scripts/calendar-reminders.mjs"
+    "calendar:reminders": "node scripts/calendar-reminders.mjs",
+    "db:seed": "node dist/database/seeds/run-demo.js seed",
+    "db:reset": "node dist/database/seeds/run-demo.js reset",
+    "data:restaurants": "node scripts/restaurant-data.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1171.0",

@@ -27,7 +27,8 @@ import { SelectedReservation } from "../../src/modules/reservations/entities/sel
 import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
 import { RestaurantOperation } from "../../src/modules/restaurants/entities/restaurant-operation.entity.js";
-import { RestaurantOperationsService } from "../../src/modules/restaurants/restaurant-operations.service.js";
+import { RestaurantDataService } from "../../src/modules/restaurants/restaurant-data.service.js";
+import { DatabaseService } from "../../src/database/database.service.js";
 import { NotificationsService } from "../../src/modules/notifications/notifications.service.js";
 import { ReservationNotificationsService } from "../../src/modules/reservations/reservation-notifications.service.js";
 import {
@@ -1340,7 +1341,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     async () => {
       let v = await fixture();
       v = await post(v.id, "menu-submit", menu(v));
-      const service = app.get(RestaurantOperationsService);
+      const service = new RestaurantDataService(app.get(DatabaseService));
       const before = await service.menus(v.restaurantId);
       const chosen = before.menus[0];
       const owner = (
@@ -1553,7 +1554,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
             eventKey: fact.eventKey,
           }),
         );
-        const service = app.get(RestaurantOperationsService);
+        const service = new RestaurantDataService(app.get(DatabaseService));
         const before = await service.menus(original.id);
         const chosen = before.menus[0];
         const [ownerResult, operatorResult] = await Promise.allSettled([

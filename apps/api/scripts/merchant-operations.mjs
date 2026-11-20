@@ -46,10 +46,8 @@ async function run() {
   });
   if (v.help) {
     console.log(`merchant:operations --action <작업> [옵션]
-메뉴: menus --restaurant UUID, menu-prices --restaurant UUID --input JSON (expectedVersion, evidence, items[{id,price}])
 조회: deliveries [--status ${deliveryStates.join("|")}] [--page N | --delivery UUID] (최신순, 50건씩)
-매장 관리: publish --restaurant UUID [--unpublish], owner-link --restaurant UUID --account UUID,
-           record-contact --restaurant UUID --input 비공개JSON
+매장 관리: publish --restaurant UUID [--unpublish], owner-link --restaurant UUID --account UUID
 발송 복구: retry --delivery UUID, reconcile --delivery UUID
 예외 처리: regenerate-link --target UUID, change-recipient --target UUID --contact UUID,
            record-reply --target UUID --input 비공개JSON
@@ -67,9 +65,6 @@ async function run() {
     "regenerate-link",
     "change-recipient",
     "record-reply",
-    "record-contact",
-    "menus",
-    "menu-prices",
   ];
   if (!actions.includes(v.action)) throw new Error("INVALID_ACTION");
   if (
@@ -88,17 +83,8 @@ async function run() {
     throw new Error("INVALID_PAGE");
   if (v.action === "deliveries" && v.output && !v.page && !v.delivery)
     throw new Error("EXPORT_SCOPE_REQUIRED");
-  if (!["deliveries", "menus"].includes(v.action)) requireOperator(v);
-  if (
-    [
-      "owner-link",
-      "publish",
-      "record-contact",
-      "menus",
-      "menu-prices",
-    ].includes(v.action)
-  )
-    uuid(v.restaurant);
+  if (v.action !== "deliveries") requireOperator(v);
+  if (["owner-link", "publish"].includes(v.action)) uuid(v.restaurant);
   if (v.action === "owner-link") uuid(v.account);
   if (["retry", "reconcile"].includes(v.action) || v.delivery) uuid(v.delivery);
   if (
@@ -124,28 +110,6 @@ async function run() {
         : { published: !v.unpublish }),
       dryRun: !v.execute,
     });
-  else if (v.action === "menus")
-    result = await app.get(RestaurantOperationsService).menus(v.restaurant);
-  else if (v.action === "menu-prices")
-    result = await app
-      .get(RestaurantOperationsService)
-      .patchMenuPrices(
-        v.restaurant,
-        await privateInput(v.input),
-        v.actor,
-        v.reason,
-        !v.execute,
-      );
-  else if (v.action === "record-contact")
-    result = await app
-      .get(RestaurantOperationsService)
-      .recordContact(
-        v.restaurant,
-        await privateInput(v.input),
-        v.actor,
-        v.reason,
-        !v.execute,
-      );
   else if (v.action === "deliveries")
     result = await deliveries.listForOperations({
       status: v.status,
@@ -216,9 +180,7 @@ async function run() {
     printDeliveries(result, Boolean(v.delivery));
     if (!v.delivery && result.length === 50)
       console.log(`다음 페이지 조회: --page ${page + 1}`);
-  } else if (["menus", "menu-prices"].includes(v.action))
-    console.log(JSON.stringify(result));
-  else printOperation(v.action, result, v);
+  } else printOperation(v.action, result, v);
 }
 try {
   await run();

@@ -324,23 +324,83 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     join(directory, "tools-override.yml"),
     `networks:\n  default:\n    external: true\n    name: ${name}\n`,
   );
+  const fixture = JSON.parse(
+    readFileSync(
+      resolve("apps/api/src/database/seeds/data/restaurants.local.json"),
+      "utf8",
+    ),
+  );
+  fixture.restaurants.forEach((r, i) => {
+    r.key = `deployment-${i}`;
+    r.contact =
+      i === 0
+        ? {
+            phone: "01000000001",
+            requestConsentAt: "2026-01-01T00:00:00Z",
+            consentNote: "synthetic consent",
+          }
+        : null;
+  });
+  const firstMenu = fixture.restaurants[0].menus[0];
+  fixture.restaurants[0].menus = Array.from({ length: 400 }, (_, i) => ({
+    ...firstMenu,
+    key: `menu-${i}`,
+    name: `가상 대용량 검증 메뉴 ${i}`,
+    position: i,
+  }));
+  const sourceInput = join(directory, "source.private.json"),
+    dataInput = join(directory, "data-input.json");
+  writeFileSync(sourceInput, JSON.stringify(fixture), { mode: 0o600 });
+  assert(Buffer.byteLength(JSON.stringify(fixture)) > 32768);
+  ok(
+    run("docker", [
+      "run",
+      "--rm",
+      "--user",
+      "0",
+      "-v",
+      `${directory}:/work`,
+      image,
+      "sh",
+      "-ec",
+      'node --input-type=module -e \'import { copyRestaurantInput } from "./scripts/restaurant-data-input.mjs"; await copyRestaurantInput("/work/source.private.json", "/work/data-input.json")\'; chown node:node /work/data-input.json',
+    ]),
+  );
+  writeFileSync(
+    join(directory, "compose.env"),
+    `DATA_INPUT_FILE=${dataInput}\n`,
+    { flag: "a" },
+  );
   const seed = (...args) =>
     run("docker", [
       ...toolCompose,
       "run",
       "--rm",
       "--no-deps",
-      "seed-restaurants",
+      "restaurant-data",
       "node",
-      "dist/database/seeds/run-production-restaurants.js",
+      "scripts/restaurant-data.mjs",
+      "import",
+      "--file",
+      "/run/input.json",
+      "--actor",
+      "deployment-test",
+      "--reason",
+      "synthetic fixture",
       ...args,
     ]);
+  writeFileSync(join(directory, "db.env"), `DATABASE_URL=${databaseUrl}\n`, {
+    mode: 0o600,
+  });
   assert.notEqual(seed().status, 0, "seed must reject pending migrations");
   assert.equal(
     sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'"),
     "0",
     "pending check must not create migration history",
   );
+  writeFileSync(join(directory, "db.env"), `DATABASE_URL=${migrationUrl}\n`, {
+    mode: 0o600,
+  });
   ok(run("docker", [...toolCompose, "run", "--rm", "--no-deps", "migrate"]));
   assert.match(
     ok(run("docker", [...toolCompose, "run", "--rm", "--no-deps", "migrate"])),
@@ -398,28 +458,22 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "chongmuya_app",
   );
   sql("DROP TABLE default_grant_probe", "chongmuya_migrator");
-  // Production seed needs DML only and uses a freshly loaded app URL, never master.
+  // Production data import needs DML only and uses a freshly loaded app URL, never master.
   writeFileSync(join(directory, "db.env"), `DATABASE_URL=${databaseUrl}\n`, {
     mode: 0o600,
   });
-  const fixture = JSON.parse(
-    readFileSync(
-      resolve("apps/api/src/database/seeds/data/restaurants.json"),
-      "utf8",
-    ),
-  );
   const preview = JSON.parse(ok(seed()));
-  assert.equal(preview.mode, "DRY_RUN");
-  assert.equal(preview.restaurants.created, fixture.restaurants.length);
+  assert.equal(preview.mode, "PREVIEW");
+  assert.equal(preview.created, fixture.restaurants.length);
   assert.equal(sql("SELECT count(*) FROM restaurants"), "0");
-  const inserted = JSON.parse(ok(seed("--execute")));
+  assert.equal(JSON.parse(ok(seed("--execute"))).created, 4);
   assert.equal(
-    inserted.menus.created,
+    Number(sql("SELECT count(*) FROM restaurant_menus")),
     fixture.restaurants.reduce((n, r) => n + r.menus.length, 0),
   );
   assert.equal(
     sql(
-      "SELECT (SELECT count(*) FROM accounts)+(SELECT count(*) FROM restaurant_contacts)+(SELECT count(*) FROM restaurants WHERE is_demo)",
+      "SELECT (SELECT count(*) FROM accounts)+(SELECT count(*) FROM restaurants WHERE is_demo)",
     ),
     "0",
   );
@@ -433,9 +487,9 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       ),
     );
   const before = fingerprint();
-  assert.equal(JSON.parse(ok(seed())).restaurants.created, 0);
+  assert.equal(JSON.parse(ok(seed())).created, 0);
   assert.deepEqual(fingerprint(), before);
-  assert.equal(JSON.parse(ok(seed("--execute"))).restaurants.created, 0);
+  assert.equal(JSON.parse(ok(seed("--execute"))).created, 0);
   assert.deepEqual(fingerprint(), before);
   ok(
     run("docker", [
@@ -447,7 +501,7 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "node",
       "--input-type=module",
       "-e",
-      "import fs from 'node:fs';import assert from 'node:assert/strict';assert.notEqual(process.getuid(),0);assert.equal(JSON.parse(fs.readFileSync('package.json')).type,'module');assert(fs.existsSync('dist/database/seeds/data/restaurants.json'));assert(fs.existsSync('dist/database/seeds/run-production-restaurants.js'));for(const name of ['demo.seed.js','run-demo.js','restaurants-demo.seed.js','demo-scenarios.seed.js'])assert(!fs.existsSync('dist/database/seeds/'+name));await import('pg');await import('typeorm');await assert.rejects(import('typescript'),{code:'ERR_MODULE_NOT_FOUND'})",
+      "import fs from 'node:fs';import assert from 'node:assert/strict';assert.notEqual(process.getuid(),0);assert.equal(JSON.parse(fs.readFileSync('package.json')).type,'module');assert(!fs.existsSync('dist/database/seeds'));assert(fs.existsSync('scripts/restaurant-data.mjs'));assert(!fs.existsSync('src'));assert(fs.existsSync('dist/modules/restaurants/restaurant-data.service.js'));await import('pg');await import('typeorm');await assert.rejects(import('typescript'),{code:'ERR_MODULE_NOT_FOUND'})",
     ]),
   );
   ok(
@@ -562,8 +616,8 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
   });
   assert.equal(
     sql("SELECT count(*) FROM restaurant_contacts"),
-    "0",
-    "record-contact dry-run must not insert contacts",
+    "1",
+    "data update preview must not insert contacts",
   );
 });
 

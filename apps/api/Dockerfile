@@ -12,12 +12,8 @@ RUN pnpm install --filter @chongmuya/api... --frozen-lockfile --ignore-scripts
 COPY apps/api/tsconfig*.json apps/api/nest-cli.json ./apps/api/
 COPY apps/api/src ./apps/api/src
 RUN pnpm --filter @chongmuya/api build
-# Ship the public production seed only; local demo accounts/entry points stay out.
-RUN mkdir /production-seeds \
-    && cp apps/api/dist/database/seeds/restaurants.seed.* apps/api/dist/database/seeds/claim-contact.seed.* apps/api/dist/database/seeds/run-production-restaurants.* /production-seeds/ \
-    && cp -R apps/api/dist/database/seeds/data /production-seeds/ \
-    && rm -rf apps/api/dist/database/seeds \
-    && mv /production-seeds apps/api/dist/database/seeds
+# .dockerignore excludes all local fixture/reset code before compilation.
+RUN test ! -d apps/api/dist/database/seeds
 
 FROM dependencies AS production-dependencies
 RUN pnpm install --filter @chongmuya/api... --prod --frozen-lockfile --ignore-scripts
@@ -30,7 +26,7 @@ COPY --from=production-dependencies /app/node_modules /app/node_modules
 COPY --from=production-dependencies /app/apps/api/node_modules ./node_modules
 COPY apps/api/package.json ./package.json
 COPY --from=build /app/apps/api/dist ./dist
-COPY apps/api/scripts/merchant-operations.mjs apps/api/scripts/merchant-cli.mjs apps/api/scripts/normalize-restaurant-address.mjs apps/api/scripts/deployment-config.mjs apps/api/scripts/migrate.mjs ./scripts/
+COPY apps/api/scripts/merchant-operations.mjs apps/api/scripts/merchant-cli.mjs apps/api/scripts/restaurant-data.mjs apps/api/scripts/restaurant-data-input.mjs apps/api/scripts/normalize-restaurant-address.mjs apps/api/scripts/deployment-config.mjs apps/api/scripts/migrate.mjs ./scripts/
 USER node
 EXPOSE 3001
 CMD ["node", "dist/main.js"]

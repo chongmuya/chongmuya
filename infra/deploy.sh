@@ -10,9 +10,11 @@ action=${1:-}; target=${2:-}
 case "$action" in
   deploy) [[ $# == 2 ]] || die 'Usage: deploy.sh deploy ECR_IMAGE@sha256:DIGEST' ;;
   rollback) [[ $# == 3 && $3 == --confirm-compatibility ]] || die 'Usage: deploy.sh rollback RELEASE_ID --confirm-compatibility (review DB schema first)' ;;
-  seed-restaurants) [[ $# == 1 || ( $# == 2 && $target == --execute ) ]] || die 'Usage: deploy.sh seed-restaurants [--execute]' ;;
+  data-restaurants)
+    [[ $# -ge 2 && ( $target == import || $target == update || $target == show ) ]] || die 'Usage: deploy.sh data-restaurants import|update|show [options]'
+    data_args=("${@:2}") ;;
   operations) operation_args=("${@:2}") ;;
-  *) die 'Commands: deploy | rollback | seed-restaurants | operations' ;;
+  *) die 'Commands: deploy | rollback | data-restaurants | operations' ;;
 esac
 [[ $root =~ ^/[a-zA-Z0-9_./-]+$ && $root != / ]] || die 'Invalid DEPLOY_ROOT.'
 mkdir -p "$root"
@@ -71,7 +73,7 @@ if [[ $action == rollback ]]; then
   [[ $target =~ ^[a-zA-Z0-9_-]+$ ]] || die 'Invalid release ID.'
   bundle=$state/releases/$target
   [[ -f $bundle/successful ]] || die 'No retained successful release. First deployment has no previous version.'
-elif [[ $action == seed-restaurants || $action == operations ]]; then
+elif [[ $action == data-restaurants || $action == operations ]]; then
   [[ -f $current/successful ]] || die 'Deploy a successful release first.'
   bundle=$current
 fi
@@ -92,12 +94,23 @@ phase configuration
 [[ -f $ca && -r $ca ]] || die 'RDS CA file is missing.'
 ca=$(realpath -e "$ca")
 helper=(docker run --rm -i --platform linux/amd64 --user "$(id -u):$(id -g)" --mount "type=bind,src=$work,dst=/work" --mount "type=bind,src=$ca,dst=/run/certs/rds-global-bundle.pem,readonly" "$image" node scripts/deployment-config.mjs)
-if [[ $action == seed-restaurants ]]; then
+if [[ $action == data-restaurants ]]; then
   aws_role ssm get-parameter --name /chongmuya/prod/DATABASE_URL --with-decryption --output json > "$work/parameters.json"
-  "${helper[@]}" seed /work < "$work/parameters.json"
-  phase seed
-  args=(); [[ $target != --execute ]] || args=(--execute)
-  tool seed-restaurants node dist/database/seeds/run-production-restaurants.js "${args[@]}"
+  "${helper[@]}" data /work < "$work/parameters.json"
+  phase restaurant-data
+  export DATA_INPUT_FILE=/dev/null
+  if [[ $target != show ]]; then
+    [[ -n ${RESTAURANT_INPUT_FILE:-} && $RESTAURANT_INPUT_FILE == /* && $RESTAURANT_INPUT_FILE != *:* && -f $RESTAURANT_INPUT_FILE ]] || die 'Use an existing absolute RESTAURANT_INPUT_FILE path.'
+    for argument in "${data_args[@]}"; do [[ $argument != --file && $argument != --file=* ]] || die 'Use RESTAURANT_INPUT_FILE instead of --file on the host.'; done
+    docker run --rm --platform linux/amd64 --user 0 \
+      --mount "type=bind,src=$RESTAURANT_INPUT_FILE,dst=/run/source.json,readonly" \
+      --mount "type=bind,src=$work,dst=/work" "$image" sh -ec \
+      'node --input-type=module -e '\''import { copyRestaurantInput } from "./scripts/restaurant-data-input.mjs"; await copyRestaurantInput("/run/source.json", "/work/input.json").catch(() => { console.error("Private restaurant input rejected."); process.exitCode = 1; });'\''
+       chown node:node /work/input.json'
+    DATA_INPUT_FILE=$work/input.json
+    data_args+=(--file /run/input.json)
+  fi
+  tool restaurant-data node scripts/restaurant-data.mjs "${data_args[@]}"
   report 'RESULT=SUCCESS'
   exit 0
 fi

@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { config } from "dotenv";
 import { z } from "zod";
 import { DataSource } from "typeorm";
-import { localDatabaseEnvironmentSchema } from "../../config/database-environment.js";
+import { developmentDatabaseEnvironmentSchema } from "../../config/database-environment.js";
 import { linkEnvironmentFields } from "../../config/link-environment.js";
 import { databaseOptions } from "../database-options.js";
 import { merchantEncryptionKey } from "../../modules/reservations/lib/merchant-link-codec.js";
@@ -12,7 +12,7 @@ import { passwordPattern } from "../../modules/auth/utils/password.js";
 import { seedDemo, DemoSeedConflict } from "./demo.seed.js";
 import { demoLinks } from "./demo-links.seed.js";
 
-export const demoEnvironmentSchema = localDatabaseEnvironmentSchema.and(
+export const demoEnvironmentSchema = developmentDatabaseEnvironmentSchema.and(
   z
     .object({
       ...linkEnvironmentFields,
@@ -37,9 +37,12 @@ export const demoEnvironmentSchema = localDatabaseEnvironmentSchema.and(
 
 async function run() {
   config({ quiet: true });
-  const [command, ...args] = process.argv.slice(2);
-  if (!["seed", "links"].includes(command ?? ""))
+  const [requestedCommand, ...args] = process.argv.slice(2);
+  if (!["seed", "reset", "links"].includes(requestedCommand ?? ""))
     throw new DemoSeedConflict("INVALID_COMMAND");
+  const reset = requestedCommand === "reset";
+  const command = reset ? "seed" : requestedCommand;
+  if (reset && args.length) throw new DemoSeedConflict("INVALID_ARGUMENTS");
   const parsed = demoEnvironmentSchema.safeParse(process.env);
   if (!parsed.success)
     throw new DemoSeedConflict(
@@ -80,6 +83,14 @@ async function run() {
   const db = new DataSource(databaseOptions({ databaseUrl: env.DATABASE_URL }));
   try {
     await db.initialize();
+    if (reset) {
+      console.log(
+        "허용된 로컬 개발 DB의 기존 데이터를 모두 지우고 migration과 개발 seed를 다시 실행합니다.",
+      );
+      await db.query("DROP SCHEMA public CASCADE");
+      await db.query("CREATE SCHEMA public");
+      await db.runMigrations();
+    }
     if (await db.showMigrations())
       throw new DemoSeedConflict("MIGRATIONS_REQUIRED");
     const key = merchantEncryptionKey({

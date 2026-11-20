@@ -1,3 +1,5 @@
+import { RestaurantDataService } from "../../src/modules/restaurants/restaurant-data.service.js";
+import { DatabaseService } from "../../src/database/database.service.js";
 import { RestaurantOperationsService } from "../../src/modules/restaurants/restaurant-operations.service.js";
 import { In } from "typeorm";
 import { Event } from "../../src/modules/events/entities/event.entity.js";
@@ -981,7 +983,7 @@ test("owner draft/address registration races and ownership; direct delivery, ano
     403,
   );
   // Explicit handover uses a new contact and link, retaining every original snapshot.
-  const newContact = randomUUID();
+  let newContact: string = randomUUID();
   await db.getRepository(RestaurantContact).save({
     id: newContact,
     restaurantId: r.id,
@@ -1003,67 +1005,47 @@ test("owner draft/address registration races and ownership; direct delivery, ano
   );
   await db.getRepository(RestaurantContact).delete(newContact);
   const confirmedContact = {
-    id: newContact,
-    name: "운영 확인 담당자",
     phone: "01033334444",
     requestConsentAt: new Date().toISOString(),
     consentNote: "test only, operator confirmation",
   };
-  const operations = app.get(RestaurantOperationsService);
-  await operations.recordContact(
-    r.id,
-    confirmedContact,
-    "ops",
-    "확인한 연락처 등록",
-    false,
-  );
-  await operations.recordContact(
-    r.id,
-    confirmedContact,
-    "ops",
-    "동일 실행 재시도",
-    false,
-  );
-  assert.equal(
-    await db.getRepository(RestaurantContact).countBy({ id: newContact }),
-    1,
+  const dataOperations = new RestaurantDataService(app.get(DatabaseService));
+  const latest = await db.manager.findOneByOrFail(Restaurant, { id: r.id });
+  const dataInput = {
+    restaurants: [
+      {
+        id: r.id,
+        expectedVersion: latest.version,
+        changes: { contact: confirmedContact },
+      },
+    ],
+  };
+  await dataOperations.update(dataInput, {
+    actor: "ops",
+    reason: "확인한 연락처 등록",
+    execute: true,
+  });
+  await assert.rejects(
+    dataOperations.update(dataInput, {
+      actor: "ops",
+      reason: "동일 실행 재시도",
+      execute: true,
+    }),
+    { code: "RESTAURANT_VERSION_CONFLICT" },
   );
   const contacts = db.getRepository(RestaurantContact);
+  const stored = await contacts.findOneByOrFail({
+    restaurantId: r.id,
+    phone: confirmedContact.phone,
+  });
+  newContact = stored.id;
+  assert.equal(stored.isPrimary, true);
   assert.equal(
-    (await contacts.findOneByOrFail({ id: newContact })).isPrimary,
-    true,
-  );
-  const alternative = {
-    ...confirmedContact,
-    id: randomUUID(),
-    phone: "01000009999",
-  };
-  await operations.recordContact(
-    r.id,
-    alternative,
-    "ops",
-    "추가 연락처 등록",
-    false,
-  );
-  assert.equal(
-    (await contacts.findOneByOrFail({ id: alternative.id })).isPrimary,
-    false,
-  );
-  await operations.recordContact(
-    r.id,
-    { ...alternative, primary: true },
-    "ops",
-    "대표 수신자 변경",
-    false,
-  );
-  assert.equal(
-    (await contacts.findOneByOrFail({ restaurantId: r.id, isPrimary: true }))
-      .id,
-    alternative.id,
-  );
-  assert.equal(
-    (await contacts.findOneByOrFail({ id: newContact })).active,
-    true,
+    await contacts.countBy({
+      restaurantId: r.id,
+      phone: confirmedContact.phone,
+    }),
+    1,
   );
   // Reproduce a server stop before dispatch: the old recipient still has a queued message.
   await db
