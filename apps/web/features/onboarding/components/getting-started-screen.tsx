@@ -89,7 +89,6 @@ function GettingStartedContent({
     <GettingStartedFlow
       key={`${account.id}:${account.accountType}:${returnTo}`}
       accountType={account.accountType}
-      displayName={account.nickname || account.name || undefined}
       returnTo={returnTo}
       onNavigate={(path) => {
         const current = client.getSnapshot();

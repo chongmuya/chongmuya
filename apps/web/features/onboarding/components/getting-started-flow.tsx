@@ -11,12 +11,10 @@ type Usage = "group" | "event";
 
 export function GettingStartedFlow({
   accountType,
-  displayName,
   onNavigate,
   returnTo,
 }: {
   accountType: Account["accountType"];
-  displayName?: string;
   onNavigate: (path: string) => void;
   returnTo: string;
 }) {
@@ -28,12 +26,54 @@ export function GettingStartedFlow({
   useEffect(() => {
     container.current?.querySelector<HTMLElement>("h1")?.focus();
   }, [welcome]);
+  if (owner)
+    return (
+      <div ref={container}>
+        <StepLayout title="" onBack={() => onNavigate(returnTo)}>
+          <div className="px-[17px] pt-[25px]">
+            <div className="relative mb-4 size-[84px] rounded-pill bg-brand">
+              <Image
+                src="/images/enrollment/welcome.svg"
+                alt=""
+                width={67}
+                height={59}
+                style={{ width: 67.1996, height: "auto" }}
+                className="absolute top-[14px] left-[10px]"
+              />
+            </div>
+            <h1
+              tabIndex={-1}
+              className="text-2xl leading-[1.2] font-bold text-brand-ink focus:outline-none"
+            >
+              총무야에 오신 걸 환영해요!
+            </h1>
+            <p className="mt-2 max-w-[227px] text-control text-muted">
+              매장을 등록해 총무들이 단체 예약을 할 수 있게 해주세요.
+            </p>
+          </div>
+          <div className="mt-auto pt-12">
+            <Button
+              className="w-full font-medium"
+              onClick={() =>
+                onNavigate(
+                  returnTo.startsWith("/owner/register")
+                    ? returnTo
+                    : "/owner/register",
+                )
+              }
+            >
+              매장 등록하기
+            </Button>
+          </div>
+        </StepLayout>
+      </div>
+    );
   return (
     <div ref={container}>
       <StepLayout
         title=""
         onBack={() =>
-          welcome && !owner ? setShowWelcome(false) : onNavigate(returnTo)
+          showWelcome ? setShowWelcome(false) : onNavigate(returnTo)
         }
       >
         {!welcome ? (
@@ -127,38 +167,20 @@ export function GettingStartedFlow({
                 총무야에 오신 걸 환영해요!
               </h1>
               <p className="mt-2 text-control text-muted">
-                {owner
-                  ? `${displayName ? `${displayName}님, ` : ""}매장을 등록해 총무들의 단체 예약 문의를 받아보세요.`
-                  : usage === "group"
-                    ? "모임을 등록해 총무야와 함께 행사를 준비해봐요."
-                    : "행사를 등록해 총무야와 함께 준비해봐요."}
+                {usage === "group"
+                  ? "모임을 등록해 총무야와 함께 행사를 준비해봐요."
+                  : "행사를 등록해 총무야와 함께 준비해봐요."}
               </p>
             </div>
             <div className="mt-auto space-y-2 pt-12">
-              {owner && (
-                <Button
-                  className="w-full"
-                  onClick={() =>
-                    onNavigate(
-                      returnTo.startsWith("/owner")
-                        ? returnTo
-                        : "/owner/register",
-                    )
-                  }
-                >
-                  매장 등록하기
-                </Button>
-              )}
-              {!owner && (
-                <Button
-                  className="w-full"
-                  onClick={() =>
-                    onNavigate(usage === "group" ? "/groups/new" : "/events")
-                  }
-                >
-                  {usage === "group" ? "모임 등록하기" : "행사 등록하기"}
-                </Button>
-              )}
+              <Button
+                className="w-full"
+                onClick={() =>
+                  onNavigate(usage === "group" ? "/groups/new" : "/events")
+                }
+              >
+                {usage === "group" ? "모임 등록하기" : "행사 등록하기"}
+              </Button>
               <Button
                 className="w-full"
                 variant="brand-outline"
