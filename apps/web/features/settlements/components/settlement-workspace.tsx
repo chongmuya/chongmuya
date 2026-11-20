@@ -21,6 +21,7 @@ import { ExpenseForm } from "./expense-form";
 import { NoticePanel } from "./notice-panel";
 import { CommandStatus } from "./command-status";
 import { DeadlineReminder } from "./deadline-reminder";
+import { EventFinalization } from "./event-finalization";
 import { confirmationDeadline } from "../lib/confirmation-deadline";
 const validReturnTime = (value: string) =>
   !!value &&
@@ -421,7 +422,8 @@ export function SettlementWorkspace({
   eventId,
   request,
   record = false,
-}: Access & { record?: boolean }) {
+  startExpense = false,
+}: Access & { record?: boolean; startExpense?: boolean }) {
   const a = { accountId, eventId, request },
     q = useQuery(settlementQuery(a));
   if (q.error instanceof ApiError && [401, 403, 404].includes(q.error.status))
@@ -453,7 +455,12 @@ export function SettlementWorkspace({
           잔액보다 큽니다. 연결 지출을 수정한 뒤 새 정산문을 만들어 주세요.
         </p>
       ) : null}
-      <Loaded access={a} data={q.data} record={record} />
+      <Loaded
+        access={a}
+        data={q.data}
+        record={record}
+        startExpense={startExpense}
+      />
     </>
   );
 }
@@ -461,10 +468,12 @@ function Loaded({
   access: a,
   data,
   record,
+  startExpense,
 }: {
   access: Access;
   data: Detail;
   record: boolean;
+  startExpense: boolean;
 }) {
   const deadline = confirmationDeadline(data);
   // Decide once on entry. Closing the reminder or background refreshes must not
@@ -475,7 +484,9 @@ function Loaded({
     Notice["scope"] | null
   >(null);
   const [tab, setTab] = useState("expenses"),
-    [editing, setEditing] = useState<Expense | "new" | null>(null),
+    [editing, setEditing] = useState<Expense | "new" | null>(() =>
+      startExpense && !record && data.summary.status === "EMPTY" ? "new" : null,
+    ),
     [deleting, setDeleting] = useState<{ id: string; version: number } | null>(
       null,
     ),
@@ -693,10 +704,13 @@ function Loaded({
         </div>
       </section>
       {record && (
-        <EventFiles
-          access={a}
-          expenses={data.state.expenses.filter((e) => !e.deletedAt)}
-        />
+        <>
+          <EventFiles
+            access={a}
+            expenses={data.state.expenses.filter((e) => !e.deletedAt)}
+          />
+          <EventFinalization access={a} data={data} />
+        </>
       )}
     </div>
   );

@@ -89,6 +89,7 @@ export type Summary = {
 };
 export type Detail = {
   state: Omit<SettlementState, "notices"> & {
+    finalizedAt?: string | null;
     notices: {
       id: string;
       title: string;

@@ -7,6 +7,7 @@ import {
   featuredEvent,
   homeEventPath,
   homeAction,
+  homeActionPath,
   reservationLabel,
   settlementLabel,
 } from "../features/events/lib/home-event";
@@ -29,9 +30,12 @@ const summary = (
   status: EventSummary["settlement"]["status"] = "EMPTY",
 ): EventSummary => ({
   eventId,
+  finalizedAt: null,
   participantCount: 0,
   roundCount: 0,
   attendingCount: 0,
+  hasAttendanceRecords: false,
+  attendanceComplete: false,
   expectedGuests: null,
   region: null,
   inquiry: null,
@@ -44,6 +48,7 @@ const summary = (
     unconfirmed: 0,
     drafts: 0,
     differences: 0,
+    needsReview: false,
   },
 });
 
@@ -68,42 +73,143 @@ test("home preserves an explicit event; otherwise uses outstanding past work and
   );
 });
 
-test("date is not a completion fact; reservation-free attendance and settlement stay independent", () => {
-  assert.equal(homeAction(undefined).view, undefined);
+test("a new event opens the actual inquiry workspace and an unknown summary does not show a new or finished event", () => {
+  const e = event("past", "2026-11-10T12:00:00Z");
+  assert.equal(homeAction(e).view, undefined);
+  assert.equal(homeAction(e).completed, undefined);
   const empty = summary("past");
-  assert.equal(homeAction(empty).view, "attendance");
-  assert.equal(reservationLabel(empty), "예약 미선택");
+  const next = homeAction(e, empty, now);
+  assert.equal(next.view, "reservation");
+  assert.equal(next.title, "행사에 딱 맞는\n식당을 찾아볼까요?");
   assert.equal(
-    homeAction({ ...empty, roundCount: 1, attendingCount: 0 }).view,
+    homeActionPath(e, empty, next),
+    "/restaurants?event=past&inquiry=1&view=list",
+  );
+  assert.equal(reservationLabel(empty), "예약 미선택");
+});
+
+test("first expense starts on the next Korean calendar day, including an event without a booking", () => {
+  const e = event("event", "2026-11-20T04:00:00Z");
+  const withoutBooking = {
+    ...summary(e.id),
+    roundCount: 1,
+    hasAttendanceRecords: true,
+  };
+  const confirmed: EventSummary = {
+    ...summary(e.id),
+    reservation: {
+      reservationId: "booking",
+      status: "CONFIRMED",
+      progress: "CONFIRMED",
+      restaurantName: null,
+      startsAt: e.scheduledAt!,
+    },
+  };
+  const beforeMidnight = Date.parse("2026-11-20T14:59:59Z");
+  const midnight = Date.parse("2026-11-20T15:00:00Z");
+  for (const facts of [withoutBooking, confirmed]) {
+    assert.equal(homeAction(e, facts, beforeMidnight).view, "attendance");
+    const next = homeAction(e, facts, midnight);
+    assert.equal(next.action, "이제 정산을 시작해볼까요?");
+    assert.equal(
+      homeActionPath(e, facts, next),
+      "/events?event=event&view=settlement&scope=personal&action=expense",
+    );
+    assert.equal(facts.settlement.status, "EMPTY");
+  }
+  assert.equal(
+    homeAction(e, { ...withoutBooking, hasAttendanceRecords: false }, midnight)
+      .view,
     "attendance",
   );
-  assert.equal(homeAction(summary("past", "IN_PROGRESS")).view, "settlement");
-  const done = summary("past", "COMPLETE");
-  assert.equal(homeAction(done).view, "record");
-  const review = {
-    ...done,
-    settlement: { ...done.settlement, needsReview: true },
-  };
-  assert.equal(homeAction(review).view, "settlement");
-  assert.equal(settlementLabel(review), "정산 재확인 필요");
+});
+
+test("settlement and records work promote the second past card without reordering the event list", () => {
+  const next = event("next", "2026-11-21T12:00:00Z");
+  const past = event("past", "2026-11-10T12:00:00Z");
+  const events = [next, past];
+  for (const facts of [
+    { ...summary(past.id), roundCount: 1, hasAttendanceRecords: true },
+    summary(past.id, "IN_PROGRESS"),
+    summary(past.id, "COMPLETE"),
+  ]) {
+    assert.equal(featuredEvent(events, [facts], null, now), past);
+    assert.deepEqual(events, [next, past]);
+  }
+});
+
+test("a saved finalization survives a fresh summary and reopened work takes priority", () => {
+  const past = event("past", "2026-11-10T12:00:00Z");
+  const done = summary(past.id, "COMPLETE");
+  assert.equal(homeAction(past, done, now).view, "record");
   assert.equal(reservationLabel(done), "예약 미선택");
-  const cancelled = {
-    ...done,
-    reservation: {
-      reservationId: "r",
-      status: "CANCELLED",
-      progress: "REFUND_PENDING",
-      restaurantName: null,
-      startsAt: "2026-11-10T12:00:00Z",
-    } as const,
+  const saved = { ...done, finalizedAt: "2026-11-15T05:00:00Z" };
+  const restored = JSON.parse(JSON.stringify(saved)) as EventSummary;
+  const final = homeAction(past, restored, now);
+  assert.equal(final.completed, true);
+  assert.equal(final.title, "이번 행사도 수고했어요!\n다음에도 함께해요.");
+  assert.equal(
+    homeAction(
+      past,
+      {
+        ...restored,
+        settlement: { ...restored.settlement, status: "IN_PROGRESS" },
+      },
+      now,
+    ).view,
+    "settlement",
+  );
+  assert.equal(
+    homeAction(
+      past,
+      {
+        ...restored,
+        settlement: { ...restored.settlement, needsReview: true },
+      },
+      now,
+    ).view,
+    "settlement",
+  );
+  const review = {
+    ...restored,
+    settlement: { ...restored.settlement, needsReview: true },
   };
-  assert.equal(reservationLabel(cancelled), "환불 확인 중");
+  assert.equal(settlementLabel(review), "정산 재확인 필요");
+  assert.equal(homeAction(past, review, now).action, "연결 지출 확인하기");
   assert.equal(
     reservationLabel({
-      ...cancelled,
-      reservation: { ...cancelled.reservation, progress: "CANCELLED" },
+      ...restored,
+      reservation: {
+        reservationId: "r",
+        status: "CANCELLED",
+        progress: "CANCELLED",
+        restaurantName: null,
+        startsAt: past.scheduledAt!,
+      },
     }),
     "예약 취소 완료",
+  );
+  const next = event("next", null);
+  assert.equal(featuredEvent([past, next], [restored], null, now), next);
+  assert.equal(featuredEvent([past, next], [restored], past.id, now), past);
+  assert.equal(featuredEvent([past], [restored], null, now), past);
+  assert.equal(featuredEvent([], [], null, now), undefined);
+  assert.equal(
+    homeAction(
+      past,
+      {
+        ...restored,
+        reservation: {
+          reservationId: "r",
+          status: "CANCELLED",
+          progress: "REFUND_PENDING",
+          restaurantName: null,
+          startsAt: past.scheduledAt!,
+        },
+      },
+      now,
+    ).action,
+    "환불 확인 중",
   );
 });
 
@@ -152,7 +258,7 @@ test("a deadline can require review before another reservation write updates the
     },
   };
   assert.equal(reservationLabel(due), "예약 확인 필요");
-  assert.equal(homeAction(due).action, "예약 확인하기");
+  assert.equal(homeAction(past, due, now).action, "예약 확인하기");
   assert.equal(
     featuredEvent(
       [event("future", "2026-11-21T12:00:00Z"), past],
@@ -202,6 +308,14 @@ test("home and roster return paths preserve only valid selected resource identif
   assert.equal(
     safeReturnPath(homeEventPath(event(id, null), "attendance")),
     `/events?event=${id}&view=attendance&scope=personal`,
+  );
+  assert.match(
+    safeReturnPath(`/events?event=${id}&view=settlement&action=expense`),
+    /action=expense/,
+  );
+  assert.doesNotMatch(
+    safeReturnPath(`/events?event=${id}&view=record&action=expense`),
+    /action=expense/,
   );
 });
 

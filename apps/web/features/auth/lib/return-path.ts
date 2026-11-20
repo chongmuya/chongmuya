@@ -110,6 +110,13 @@ export function safeReturnPath(
   if (url.pathname === "/events" && !params.has("event") && isDateOnly(date))
     params.set("date", date);
   const view = url.searchParams.get("view");
+  if (
+    url.pathname === "/events" &&
+    params.has("event") &&
+    view === "settlement" &&
+    action === "expense"
+  )
+    params.set("action", action);
   if (url.pathname === "/" && view === "personal" && !params.has("group"))
     params.set("view", view);
   if (

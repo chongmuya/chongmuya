@@ -13,6 +13,7 @@ import type { EventDto } from "./dto/response/event.response.dto.js";
 import { EventParticipant } from "./entities/event-participant.entity.js";
 import { AttendanceRound } from "./entities/attendance-round.entity.js";
 import { AttendanceResponse } from "./entities/attendance-response.entity.js";
+import { AttendanceReview } from "./entities/attendance-review.entity.js";
 import { participantDto, responseDto } from "./lib/attendance-rules.js";
 
 const eventDto = (event: Event): EventDto => ({
@@ -204,29 +205,49 @@ export class EventsService {
       .createQueryBuilder(AttendanceRound, "r")
       .select("r.eventId", "eventId")
       .addSelect("COUNT(*)", "count")
+      .addSelect("COUNT(*) FILTER (WHERE r.closed_at IS NOT NULL)", "closed")
       .where("r.eventId IN (:...ids)", { ids })
       .groupBy("r.eventId")
-      .getRawMany<{ eventId: string; count: string }>();
-    const attending = await m
+      .getRawMany<{ eventId: string; count: string; closed: string }>();
+    const finalState =
+      "COALESCE(a.manager_override, a.self_answer, 'UNANSWERED')";
+    const responses = await m
       .createQueryBuilder(AttendanceResponse, "a")
       .select("a.eventId", "eventId")
-      .addSelect("COUNT(DISTINCT a.participant_id)", "count")
-      .where("a.eventId IN (:...ids)", { ids })
-      .andWhere(
-        "COALESCE(a.manager_override, a.self_answer, 'UNANSWERED') = 'ATTENDING'",
+      .addSelect(
+        `COUNT(DISTINCT a.participant_id) FILTER (WHERE ${finalState} = 'ATTENDING')`,
+        "count",
       )
+      .addSelect(`BOOL_OR(${finalState} <> 'UNANSWERED')`, "answered")
+      .where("a.eventId IN (:...ids)", { ids })
       .groupBy("a.eventId")
-      .getRawMany<{ eventId: string; count: string }>();
+      .getRawMany<{ eventId: string; count: string; answered: boolean }>();
+    const pending = await m
+      .createQueryBuilder(AttendanceReview, "r")
+      .select("DISTINCT r.eventId", "eventId")
+      .where("r.eventId IN (:...ids)", { ids })
+      .andWhere("r.status = 'PENDING'")
+      .getRawMany<{ eventId: string }>();
     const counts = (rows: { eventId: string; count: string }[]) =>
       new Map(rows.map((row) => [row.eventId, Number(row.count)]));
     const rosterCounts = counts(participants),
       roundCounts = counts(rounds),
-      attendanceCounts = counts(attending);
+      closedCounts = new Map(rounds.map((r) => [r.eventId, Number(r.closed)])),
+      attendanceCounts = counts(responses),
+      answered = new Set(
+        responses.filter((r) => r.answered).map((r) => r.eventId),
+      ),
+      awaitingReview = new Set(pending.map((r) => r.eventId));
     return ids.map((eventId) => ({
       eventId,
       participantCount: rosterCounts.get(eventId) ?? 0,
       roundCount: roundCounts.get(eventId) ?? 0,
       attendingCount: attendanceCounts.get(eventId) ?? 0,
+      hasAttendanceRecords: answered.has(eventId),
+      attendanceComplete:
+        roundCounts.has(eventId) &&
+        roundCounts.get(eventId) === closedCounts.get(eventId) &&
+        !awaitingReview.has(eventId),
     }));
   }
   async recordPage(
