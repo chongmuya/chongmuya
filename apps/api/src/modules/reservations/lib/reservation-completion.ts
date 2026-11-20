@@ -117,12 +117,18 @@ export function completionIssues(s: ReservationPreparation, now = Date.now()) {
   return issues;
 }
 export function completionStatus(s: ReservationPreparation, now = Date.now()) {
-  if (s.cancellation)
-    return s.refundExpected === null || s.refunded > s.refundExpected
+  if (s.cancellation) {
+    if (s.refundExpected === null) {
+      return s.refunded > 0 || (!s.receipt && !s.transfer)
+        ? "CANCELLED"
+        : "REFUND_REVIEW";
+    }
+    return s.refunded > s.refundExpected
       ? "REFUND_REVIEW"
       : s.refunded < s.refundExpected
         ? "REFUND_PENDING"
         : "CANCELLED";
+  }
   const issues = completionIssues(s, now);
   if (s.confirmation && !issues.length) return "CONFIRMED";
   if (

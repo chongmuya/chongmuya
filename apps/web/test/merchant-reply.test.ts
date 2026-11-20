@@ -45,24 +45,19 @@ test("merchant reply keeps unsaved input through failed refetch and recovery", a
     );
     assert.equal(view.container.querySelector("form"), null);
     await click(view.container, "요청 조건으로 가능");
-    const choose = async (select: HTMLSelectElement, value: string) => {
-      await act(async () => {
-        select.value = value;
-        select.dispatchEvent(new window.Event("change", { bubbles: true }));
-      });
-    };
     const chooseKind = async (label: string) => {
       await click(view.container, "답변 종류 다시 선택");
       await click(view.container, label);
     };
-    await choose(
-      view.container.querySelector('option[value="FIXED"]')!
-        .parentElement as HTMLSelectElement,
-      "FIXED",
-    );
     await fill(view.container, "proposal.deposit.amount", "15000");
     await chooseKind("조건 변경 제안");
-    await fill(view.container, "proposal.expectedGuests", "18");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>(
+          '[name="proposal.space"][value="WHOLE"]',
+        )!
+        .click(),
+    );
     await chooseKind("이 문의는 어려워요");
     await chooseKind("요청 조건으로 가능");
     assert.equal(
@@ -74,9 +69,9 @@ test("merchant reply keeps unsaved input through failed refetch and recovery", a
     await chooseKind("조건 변경 제안");
     assert.equal(
       view.container.querySelector<HTMLInputElement>(
-        '[name="proposal.expectedGuests"]',
-      )!.value,
-      "18",
+        '[name="proposal.space"][value="WHOLE"]',
+      )!.checked,
+      true,
     );
 
     await chooseKind("이 문의는 어려워요");
@@ -149,7 +144,7 @@ function merchantInquiryFixture(): MerchantInquiry {
         seating: "ANY",
         minimumSpend: null,
         separateFee: null,
-        deposit: { kind: "UNKNOWN", amount: null },
+        deposit: { kind: "NONE", amount: 0 },
         menuDeadlineAt: null,
         note: "",
       },
@@ -265,7 +260,7 @@ test("merchant access expiration hides private inquiry and stops writes and focu
   }
 });
 
-test("usage minutes and minimum quantity explain blocked submission accessibly and recover", async () => {
+test("usage hours and deposit explain blocked submission accessibly and recover", async () => {
   const inquiry = merchantInquiryFixture();
   inquiry.defaults.proposal.usageTime = { kind: "MINUTES", minutes: 120 };
   let saves = 0;
@@ -290,13 +285,14 @@ test("usage minutes and minimum quantity explain blocked submission accessibly a
       assert.match(view.container.textContent!, /요청 조건으로 가능/),
     );
     await click(view.container, "요청 조건으로 가능");
-    await fill(view.container, "proposal.usageTime.minutes", "0");
-    await fill(view.container, "proposal.minimumQuantity", "-1");
+    assert.equal(
+      view.container.querySelector('[name="proposal.separateFee"]'),
+      null,
+    );
+    await fill(view.container, "usageHours", "0");
+    await fill(view.container, "proposal.deposit.amount", "");
     await submit(view.container);
-    for (const name of [
-      "proposal.usageTime.minutes",
-      "proposal.minimumQuantity",
-    ]) {
+    for (const name of ["usageHours", "proposal.deposit.amount"]) {
       const input = view.container.querySelector<HTMLInputElement>(
         `[name="${name}"]`,
       )!;
@@ -310,8 +306,8 @@ test("usage minutes and minimum quantity explain blocked submission accessibly a
       );
     }
     assert.equal(saves, 0);
-    await fill(view.container, "proposal.usageTime.minutes", "120");
-    await fill(view.container, "proposal.minimumQuantity", "10");
+    await fill(view.container, "usageHours", "2");
+    await fill(view.container, "proposal.deposit.amount", "10000");
     await act(async () =>
       view.container
         .querySelector<HTMLInputElement>('[name="holdConfirmed"]')!
@@ -410,17 +406,36 @@ test("owner and link show the saved first reply and keep the submission key acro
           assert.match(view.container.textContent!, /조건 변경 제안/),
         );
         await click(view.container, "조건 변경 제안");
-        assert.match(
-          view.container.textContent!,
-          /답변을 보내면 수정할 수 없어요. 예약 조건을 확인해 주세요./,
-        );
+        assert.match(view.container.textContent!, /조건을 바꿔 수락할까요/);
         assert.equal(
           view.container.querySelector('[name="proposal.menuDeadlineAt"]'),
           null,
         );
-        await fill(view.container, "proposal.expectedGuests", "18");
-        await fill(view.container, "proposal.usageTime.minutes", "90");
-        await fill(view.container, "proposal.separateFee", "30000");
+        assert.equal(
+          view.container.querySelector('[name="proposal.separateFee"]'),
+          null,
+        );
+        assert.equal(view.container.querySelector('[name="usageHours"]'), null);
+        await act(async () => {
+          const conditions = view.container.querySelector<HTMLTextAreaElement>(
+            '[aria-label="기타 변경 조건"]',
+          )!;
+          Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype,
+            "value",
+          )!.set!.call(conditions, "입구에서 기다려 주세요.");
+          conditions.dispatchEvent(
+            new window.Event("input", { bubbles: true }),
+          );
+        });
+        await act(async () =>
+          view.container
+            .querySelector<HTMLInputElement>(
+              '[name="proposal.space"][value="WHOLE"]',
+            )!
+            .click(),
+        );
+        await fill(view.container, "proposal.deposit.amount", "15000");
         await act(async () =>
           view.container
             .querySelector<HTMLInputElement>('[name="holdConfirmed"]')!
@@ -438,26 +453,40 @@ test("owner and link show the saved first reply and keep the submission key acro
         });
         await submit(view.container);
         await until(() =>
-          assert.match(view.container.textContent!, /이미 답변을 보냈어요/),
+          assert.match(
+            view.container.textContent!,
+            /이미 변경 제안을 보냈어요/,
+          ),
         );
         assert.equal(writes.length, 2);
         assert.deepEqual(writes[1], writes[0]);
         const sent = writes[0].proposal as Record<string, unknown>;
         assert(!Object.hasOwn(sent, "menuDeadlineAt"));
-        assert.equal(sent.separateFee, 30000);
-        assert.deepEqual(sent.usageTime, { kind: "MINUTES", minutes: 90 });
+        assert.equal(sent.separateFee, null);
+        assert.equal(sent.space, "WHOLE");
+        assert.equal(sent.note, "입구에서 기다려 주세요.");
+        assert.deepEqual(sent.deposit, { kind: "FIXED", amount: 15000 });
         assert.equal(view.container.querySelector("form"), null);
         assert.doesNotMatch(view.container.textContent!, /답변 수정하기/);
       } finally {
         await view.unmount();
       }
+      // Older replies can still contain a venue fee in the saved snapshot.
+      assert(inquiry.response?.snapshot.offered);
+      inquiry.response.snapshot.offered.separateFee = 30000;
       const reopened = await render(screen());
       try {
         await until(() =>
-          assert.match(reopened.container.textContent!, /이미 답변을 보냈어요/),
+          assert.match(
+            reopened.container.textContent!,
+            /이미 변경 제안을 보냈어요/,
+          ),
         );
         assert.match(reopened.container.textContent!, /30,000원/);
-        assert.match(reopened.container.textContent!, /90분/);
+        const details = reopened.container.querySelector("details")!;
+        assert.equal(details.open, false);
+        await act(async () => details.querySelector("summary")!.click());
+        assert(details.textContent?.includes("전체 대관"));
         assert.match(reopened.container.textContent!, /전화해 주세요/);
         assert.equal(reopened.container.querySelector("form"), null);
       } finally {
@@ -467,7 +496,10 @@ test("owner and link show the saved first reply and keep the submission key acro
       const expired = await render(screen());
       try {
         await until(() =>
-          assert.match(expired.container.textContent!, /이미 답변을 보냈어요/),
+          assert.match(
+            expired.container.textContent!,
+            /이미 변경 제안을 보냈어요/,
+          ),
         );
         assert.match(
           expired.container.textContent!,

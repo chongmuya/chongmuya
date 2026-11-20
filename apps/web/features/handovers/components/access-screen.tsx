@@ -14,6 +14,7 @@ import {
 } from "../api/handovers.api";
 import { useCommand } from "../hooks/use-command";
 import { TransferScope } from "./scope";
+import { groupHandoverEnabled } from "../lib/availability";
 export function GroupAccessScreen() {
   const { account, status, client } = useAuth();
   const params = useSearchParams();
@@ -32,11 +33,13 @@ export function GroupAccessScreen() {
     kind = params.get("kind");
   return (
     <StepLayout
-      title={kind === "handover" ? "총무 인수인계 수락" : "모임 참여 수락"}
+      title={kind === "handover" ? "총무 인수인계" : "모임 참여 수락"}
       variant="flow"
       onBack={() => location.assign(new URL("/mypage", location.origin).href)}
     >
-      {status === "loading" ? (
+      {kind === "handover" && !groupHandoverEnabled ? (
+        <p>총무 인수인계는 준비 중이에요.</p>
+      ) : status === "loading" ? (
         <LoadingState>확인 중…</LoadingState>
       ) : !account ? (
         <section>

@@ -46,9 +46,11 @@ export function featuredEvent(
 
 export function reservationLabel(summary?: EventSummary) {
   const reservation = summary?.reservation;
+  if (reservation?.status === "CANCELLED" && reservation.refundedAmount)
+    return "예약 취소 완료";
   if (reservation?.progress === "REFUND_PENDING") return "환불 확인 중";
   if (reservation?.progress === "REFUND_REVIEW") return "환불 협의 중";
-  if (reservation?.status === "CANCELLED") return "예약 취소";
+  if (reservation?.status === "CANCELLED") return "예약 취소 완료";
   if (reservation?.progress === "CHECK_REQUIRED") return "예약 확인 필요";
   if (reservation?.progress === "CONFIRMED") return "예약 확정";
   if (reservation) return "예약 준비 중";
@@ -60,6 +62,7 @@ export function reservationLabel(summary?: EventSummary) {
 
 export function settlementLabel(summary?: EventSummary) {
   if (!summary) return "정산 확인 중";
+  if (summary.settlement.needsReview) return "정산 재확인 필요";
   return summary.settlement.status === "COMPLETE"
     ? "정산 완료"
     : summary.settlement.status === "EMPTY"
@@ -76,6 +79,12 @@ export function homeAction(summary?: EventSummary): {
     return {
       title: "행사 진행 상태를\n확인하고 있어요",
       action: "행사 확인하기",
+    };
+  if (summary.settlement.needsReview)
+    return {
+      title: "정산 재확인이\n필요해요",
+      action: "연결 지출 확인하기",
+      view: "settlement",
     };
   if (summary?.reservation?.progress === "CHECK_REQUIRED")
     return {

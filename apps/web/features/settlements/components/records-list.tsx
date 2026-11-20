@@ -85,13 +85,13 @@ export function RecordsList({
           <div className="flex flex-wrap justify-between gap-2">
             <strong className="break-words">{e.name}</strong>
             <small className="text-brand">
-              {
-                {
-                  EMPTY: "정산 없음",
-                  COMPLETE: "정산 완료",
-                  IN_PROGRESS: "정산 진행 중",
-                }[e.status]
-              }
+              {e.needsReview
+                ? "정산 재확인 필요"
+                : {
+                    EMPTY: "정산 없음",
+                    COMPLETE: "정산 완료",
+                    IN_PROGRESS: "정산 진행 중",
+                  }[e.status]}
             </small>
           </div>
           <p className="text-xs text-secondary">

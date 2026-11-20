@@ -8,7 +8,7 @@ import { EditMember } from "../features/groups/components/edit-member";
 import { ApiError } from "../shared/http/api-error";
 import type { SessionRequest } from "../features/auth/types";
 import { handoverKey } from "../features/handovers/api/handovers.api";
-test("lost handover creation preserves original token, version and request key after background authority refetch", async () => {
+test("pilot group management disables handover and invitation retry preserves the original token and request key", async () => {
   const accountId = crypto.randomUUID(),
     groupId = crypto.randomUUID(),
     targetId = crypto.randomUUID(),
@@ -70,14 +70,13 @@ test("lost handover creation preserves original token, version and request key a
     createElement(GroupManagement, { accountId, groupId, request }),
   );
   try {
-    await until(() => assert(v.container.querySelector("#new-manager")));
-    await act(async () => {
-      const select =
-        v.container.querySelector<HTMLSelectElement>("#new-manager")!;
-      select.value = targetId;
-      select.dispatchEvent(new window.Event("change", { bubbles: true }));
-    });
-    await click(v.container, "인수인계 요청하기");
+    await until(() =>
+      assert.match(v.container.textContent!, /총무 인수인계준비 중/),
+    );
+    assert.equal(v.container.querySelector("#new-manager"), null);
+    assert.doesNotMatch(v.container.textContent!, /인수인계 요청하기/);
+    await fill(v.container, "email", "invitee@example.test");
+    await click(v.container, "참여 초대 링크 만들기");
     await until(() =>
       assert.match(v.container.textContent!, /원래 요청 그대로/),
     );
@@ -90,7 +89,7 @@ test("lost handover creation preserves original token, version and request key a
     await click(v.container, "다시 시도");
     await until(() => assert.equal(writes.length, 2));
     assert.deepEqual(writes[0], writes[1]);
-    assert.equal(writes[1].expectedVersion, 1);
+    assert.equal(writes[1].email, "invitee@example.test");
     await until(() =>
       assert(
         v.container

@@ -5,12 +5,13 @@ import { IconButton } from "@/shared/ui/icon-button";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/shared/ui/button";
-import { DateTimePicker } from "@/shared/ui/date-time-picker";
+import { ReplyDateTime } from "./reply-date-time";
 import { Input } from "@/shared/ui/input";
 import { Select } from "@/shared/ui/select";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
+import { cn } from "@/shared/lib/cn";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import type { ReplyAccess } from "../api/replies.api";
@@ -21,7 +22,7 @@ import {
   type MerchantReplyInput,
 } from "../schemas/reply.schema";
 import type { MerchantInquiry } from "../types/reply.types";
-import { RequestSummary, spaceLabel, seatingLabel } from "./reply-summary";
+import { RequestSummary } from "./reply-summary";
 import {
   fromKoreanDateInput,
   koreanDateInput,
@@ -35,13 +36,27 @@ function newProposal(q: MerchantInquiry) {
   return proposal;
 }
 
+function holdDeadline(q: MerchantInquiry, startsAt: string) {
+  const endsAt = Math.min(
+    Date.parse(startsAt),
+    Date.parse(q.snapshot.startsAt),
+    replyMenuDeadline(q.defaults.proposal, startsAt) ?? Infinity,
+  );
+  const preferred = q.defaults.expiresAt
+    ? Date.parse(q.defaults.expiresAt)
+    : Date.now() + 12 * 3600_000;
+  return Number.isFinite(endsAt)
+    ? new Date(Math.min(preferred, endsAt - 1000)).toISOString()
+    : null;
+}
+
 function initial(q: MerchantInquiry): MerchantReplyInput {
   return {
     requestKey: crypto.randomUUID(),
     expectedVersion: q.version,
     kind: "AVAILABLE",
     proposal: newProposal(q),
-    expiresAt: q.defaults.expiresAt,
+    expiresAt: holdDeadline(q, q.snapshot.startsAt),
     reason: "",
     holdConfirmed: false,
   };
@@ -50,10 +65,12 @@ export function ReplyForm({
   inquiry: q,
   access,
   onAccessFailure,
+  onBack,
 }: {
   inquiry: MerchantInquiry;
   access: ReplyAccess;
   onAccessFailure: () => void;
+  onBack?: () => void;
 }) {
   const form = useForm<MerchantReplyInput>({
     resolver: zodResolver(replySchema(q.defaults.proposal)),
@@ -64,32 +81,38 @@ export function ReplyForm({
     sending = useRef(false);
   const kind = useWatch({ control: form.control, name: "kind" });
   const [editing, setEditing] = useState(false);
+  const [comments, setComments] = useState({ AVAILABLE: "", CHANGE: "" });
+  const [otherChanges, setOtherChanges] = useState("");
+  const [usageHours, setUsageHours] = useState(() => {
+    const minutes = q.defaults.proposal.usageTime?.minutes;
+    return minutes == null ? "" : String(minutes / 60);
+  });
   const offers = useRef<
     Partial<Record<"AVAILABLE" | "CHANGE", MerchantReplyInput["proposal"]>>
   >({});
-  const previousDeadline = useRef(q.defaults.expiresAt);
   const last = useRef<{ fingerprint: string; key: string } | null>(null);
   const offered = useWatch({ control: form.control, name: "proposal" });
-  const deposit = offered?.deposit.kind ?? "UNKNOWN";
   const deadline = useWatch({ control: form.control, name: "expiresAt" });
   const usage = offered?.usageTime?.kind;
-  const menuDeadline = offered
-    ? replyMenuDeadline(q.defaults.proposal, offered.startsAt)
-    : null;
+  const proposalErrors = form.formState.errors.proposal;
+  function setNotes(conditions: string, comment: string) {
+    form.setValue(
+      "proposal.note",
+      [conditions.trim(), comment.trim()].filter(Boolean).join("\n\n"),
+    );
+  }
   function chooseKind(v: MerchantReplyInput["kind"]) {
     if (kind !== v) {
       if (kind !== "DECLINE") {
         offers.current[kind] = structuredClone(form.getValues("proposal"));
-        previousDeadline.current = form.getValues("expiresAt");
       }
       form.setValue("kind", v);
-      form.setValue(
-        "proposal",
-        v === "DECLINE" ? null : (offers.current[v] ?? newProposal(q)),
-      );
+      const proposal =
+        v === "DECLINE" ? null : (offers.current[v] ?? newProposal(q));
+      form.setValue("proposal", proposal);
       form.setValue(
         "expiresAt",
-        v === "DECLINE" ? null : previousDeadline.current,
+        proposal ? holdDeadline(q, proposal.startsAt) : null,
       );
       form.setValue("holdConfirmed", false);
 
@@ -98,9 +121,27 @@ export function ReplyForm({
     setEditing(true);
   }
   return (
-    <>
+    <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background">
       {!editing && (
-        <>
+        <div className="flex flex-1 flex-col px-5 pt-10 pb-6">
+          {onBack && (
+            <IconButton
+              aria-label="받은 문의로 돌아가기"
+              onClick={onBack}
+              className="mb-3 -ml-2 self-start"
+            >
+              <Image src="/images/ui/back.svg" alt="" width={10} height={18} />
+            </IconButton>
+          )}
+          {access.kind === "link" && (
+            <Image
+              src="/images/auth/brand-wordmark-orange.svg"
+              alt="총무야"
+              width={91}
+              height={32}
+              className="mb-6 h-auto"
+            />
+          )}
           <h1 className="text-2xl font-bold">{q.restaurantName} 예약 문의</h1>
           {access.kind === "link" && (
             <p className="my-4 text-xs text-muted">
@@ -139,12 +180,17 @@ export function ReplyForm({
               이 문의는 어려워요
             </button>
           </section>
-        </>
+        </div>
       )}
       {editing && (
         <form
           noValidate
-          className="mx-auto flex w-full max-w-[362px] flex-col gap-5"
+          className={cn(
+            "flex min-h-svh w-full flex-1 flex-col pt-[57px]",
+            kind === "CHANGE"
+              ? "pb-[max(20px,env(safe-area-inset-bottom))]"
+              : "pb-[max(40px,env(safe-area-inset-bottom))]",
+          )}
           onSubmit={(event) =>
             void form.handleSubmit(async (input) => {
               if (sending.current) return;
@@ -175,7 +221,7 @@ export function ReplyForm({
             aria-label="답변 종류 다시 선택"
             onClick={() => setEditing(false)}
             disabled={mutation.isPending}
-            className="-ml-2 self-start"
+            className="mb-[18px] ml-2 self-start"
           >
             <Image
               src="/images/ui/back.svg"
@@ -185,16 +231,22 @@ export function ReplyForm({
             />
             <span className="sr-only">답변 종류 다시 선택</span>
           </IconButton>
-          <fieldset disabled={mutation.isPending} className="space-y-7">
-            <legend className="mb-7 text-2xl font-bold text-brand-ink">
+          <fieldset disabled={mutation.isPending} className="min-w-0">
+            <legend
+              className={
+                kind === "AVAILABLE"
+                  ? "mx-auto w-[calc(100%-48px)] max-w-[334px] text-2xl leading-tight font-bold text-brand-ink"
+                  : "mx-5 text-2xl leading-tight font-bold"
+              }
+            >
               {kind === "DECLINE"
                 ? "어떤 이유로 어려우신가요?"
                 : kind === "CHANGE"
-                  ? "조건을 바꿔 제안할까요?"
+                  ? "조건을 바꿔 수락할까요?"
                   : "총무에게 보낼 답변을 써주세요"}
             </legend>
             {kind === "DECLINE" ? (
-              <label className="block space-y-2">
+              <label className="mx-5 mt-7 block space-y-2">
                 거절 사유 *
                 <textarea
                   {...form.register("reason")}
@@ -206,378 +258,310 @@ export function ReplyForm({
             ) : (
               <>
                 {kind === "CHANGE" && (
-                  <section className="space-y-5 rounded-card bg-surface px-4 py-6 shadow-card">
-                    <h2 className="text-xl font-semibold text-brand-ink">
-                      변경할 조건
-                    </h2>
-                    <details className="text-sm">
-                      <summary className="cursor-pointer font-semibold text-brand">
-                        예약문의 보기
-                      </summary>
-                      <div className="pt-3">
-                        <RequestSummary snapshot={q.snapshot} />
+                  <div className="mx-5">
+                    <p className="mt-2 text-base leading-snug font-medium">
+                      변경한 조건을 총무에게 전달한 뒤 예약을 안내할게요.
+                    </p>
+                    <section className="mt-8 space-y-8 rounded-card bg-surface py-6 pr-3 pl-4 shadow-card">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
+                        <h2 className="text-xl leading-tight font-semibold text-brand-ink">
+                          변경할 조건
+                        </h2>
+                        <details className="text-sm open:w-full">
+                          <summary className="block cursor-pointer text-right font-semibold text-brand">
+                            예약문의 보기
+                          </summary>
+                          <div className="pt-3">
+                            <RequestSummary snapshot={q.snapshot} />
+                          </div>
+                        </details>
                       </div>
-                    </details>
-                    <Controller
-                      name="proposal.startsAt"
-                      control={form.control}
-                      render={({ field }) => (
-                        <div className="block space-y-2">
-                          <label htmlFor="reply-starts-at">
-                            제안 일시 (한국 시간) *
-                          </label>
-                          <DateTimePicker
-                            id="reply-starts-at"
-                            aria-label="제안 일시 (한국 시간)"
-                            aria-describedby="reply-starts-at-error"
-                            onBlur={field.onBlur}
-                            name={field.name}
-                            ref={field.ref}
-                            aria-invalid={
-                              !!form.formState.errors.proposal?.startsAt
-                            }
+                      <Controller
+                        name="proposal.startsAt"
+                        control={form.control}
+                        render={({ field }) => (
+                          <ReplyDateTime
                             value={koreanDateInput(field.value)}
-                            onChange={(value) =>
-                              field.onChange(
-                                fromKoreanDateInput(value) ?? value,
-                              )
-                            }
+                            onChange={(value) => {
+                              const instant = fromKoreanDateInput(value);
+                              field.onChange(instant ?? value);
+                              form.setValue(
+                                "expiresAt",
+                                instant ? holdDeadline(q, instant) : null,
+                              );
+                            }}
+                            invalid={!!proposalErrors?.startsAt}
+                            onBlur={field.onBlur}
                           />
-                        </div>
-                      )}
-                    />
-                    <FormError
-                      id="reply-starts-at-error"
-                      message={
-                        form.formState.errors.proposal?.startsAt?.message
-                      }
-                    />
-                    <label className="block space-y-2">
-                      제안 인원 *
-                      <Input
-                        type="number"
-                        min={1}
-                        {...form.register("proposal.expectedGuests", {
-                          valueAsNumber: true,
-                        })}
+                        )}
                       />
-                    </label>
-                    <FormError
-                      message={
-                        form.formState.errors.proposal?.expectedGuests &&
-                        "제안 인원은 1~100,000명으로 입력해 주세요."
-                      }
-                    />
-                    <label className="block space-y-2">
-                      공간
-                      <Select {...form.register("proposal.space")}>
-                        {Object.entries(spaceLabel).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
-                    <label className="block space-y-2">
-                      착석
-                      <Select {...form.register("proposal.seating")}>
-                        {Object.entries(seatingLabel).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
-                  </section>
-                )}
-                {(q.defaults.bookingDescription ||
-                  q.defaults.depositDescription) && (
-                  <div className="rounded-control bg-surface p-3 text-sm text-muted">
-                    현재 매장 안내:{" "}
-                    {[
-                      q.defaults.bookingDescription,
-                      q.defaults.depositDescription,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                      <FormError
+                        id="reply-starts-at-error"
+                        message={proposalErrors?.startsAt?.message}
+                      />
+                      <div className="space-y-4">
+                        <label className="relative block space-y-3 text-xs">
+                          <span className="block">공간</span>
+                          <Select
+                            {...form.register("proposal.seating")}
+                            className="appearance-none border-placeholder pr-9"
+                          >
+                            <option value="ANY">상관없음</option>
+                            <option value="CLOSE">같은 공간에서 가까이</option>
+                            <option value="SEPARATED">분리 착석</option>
+                          </Select>
+                          <Image
+                            src="/images/calendar/field-arrow.svg"
+                            alt=""
+                            width={8}
+                            height={13}
+                            className="pointer-events-none absolute right-3 bottom-[19px] -rotate-90"
+                          />
+                        </label>
+                        <fieldset className="flex flex-wrap gap-5 text-xs">
+                          <legend className="sr-only">대관 범위</legend>
+                          {(
+                            [
+                              ["WHOLE", "전체 대관"],
+                              ["FLOOR", "한 층 대관"],
+                            ] as const
+                          ).map(([value, label]) => (
+                            <label
+                              key={value}
+                              className="flex items-center gap-2"
+                            >
+                              <span className="relative grid size-6 place-items-center">
+                                <input
+                                  {...form.register("proposal.space")}
+                                  type="radio"
+                                  value={value}
+                                  className="peer size-6 appearance-none rounded-full border border-placeholder checked:border-brand"
+                                />
+                                <Image
+                                  src="/images/merchant-replies/available-check.svg"
+                                  alt=""
+                                  width={24}
+                                  height={24}
+                                  className="pointer-events-none absolute hidden peer-checked:block"
+                                />
+                              </span>
+                              {label}
+                            </label>
+                          ))}
+                        </fieldset>
+                      </div>
+                      <details open className="group space-y-2">
+                        <summary className="flex cursor-pointer items-center gap-2 text-base font-medium text-copy">
+                          기타 변경 조건
+                          <Image
+                            src="/images/calendar/field-arrow.svg"
+                            alt=""
+                            width={8}
+                            height={13}
+                            className="-rotate-90 group-open:rotate-90"
+                          />
+                        </summary>
+                        <textarea
+                          aria-label="기타 변경 조건"
+                          className="block h-20 w-full resize-none rounded-card border border-placeholder bg-surface px-4 py-3.5 leading-normal placeholder:text-placeholder"
+                          maxLength={100}
+                          placeholder="다른 변경 조건이 있다면 입력해주세요."
+                          value={otherChanges}
+                          onChange={(event) => {
+                            setOtherChanges(event.target.value);
+                            setNotes(event.target.value, comments.CHANGE);
+                          }}
+                        />
+                        <p className="text-right text-xs leading-tight text-secondary">
+                          {otherChanges.length}/100
+                        </p>
+                      </details>
+                    </section>
                   </div>
                 )}
-                <label className="block space-y-2">
-                  예약금
-                  <Select
-                    name="proposal.deposit.kind"
-                    value={deposit}
-                    onChange={(e) => {
-                      const v = e.target.value as typeof deposit;
-
-                      form.setValue("proposal.deposit", {
-                        kind: v,
-                        amount: v === "NONE" ? 0 : null,
-                      });
-                    }}
+                <div className="mx-auto mt-9 w-[calc(100%-48px)] max-w-[334px] space-y-9">
+                  <FormField
+                    id="reply-deposit"
+                    label="예약금"
+                    required
+                    labelClassName="text-label leading-tight"
+                    error={proposalErrors?.deposit?.amount?.message}
                   >
-                    <option value="UNKNOWN">미확인</option>
-                    <option value="NONE">없음 (0원)</option>
-                    <option value="FIXED">확정 금액</option>
-                    <option value="PER_RESERVATION">예약별 협의</option>
-                  </Select>
-                </label>
-                {deposit === "FIXED" && (
-                  <Controller
-                    name="proposal.deposit.amount"
-                    control={form.control}
-                    render={({ field }) => (
-                      <label className="block space-y-2">
-                        예약금 (원)
-                        <Input
-                          type="number"
-                          min={1}
-                          name={field.name}
-                          ref={field.ref}
-                          value={field.value ?? ""}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value === ""
-                                ? null
-                                : Number(e.target.value),
-                            )
-                          }
-                        />
-                      </label>
+                    {(attrs) => (
+                      <Input
+                        {...attrs}
+                        variant="pill"
+                        className="shadow-control"
+                        name="proposal.deposit.amount"
+                        type="number"
+                        min={0}
+                        max={2_000_000_000}
+                        placeholder="예) 100,000원"
+                        aria-label="예약금 (원)"
+                        value={offered?.deposit.amount ?? ""}
+                        onChange={(event) => {
+                          const amount =
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value);
+                          form.setValue("proposal.deposit", {
+                            kind:
+                              amount === null
+                                ? "UNKNOWN"
+                                : amount === 0
+                                  ? "NONE"
+                                  : "FIXED",
+                            amount,
+                          });
+                        }}
+                      />
                     )}
-                  />
-                )}
-                <FormField
-                  id="reply-usage-minutes"
-                  label="이용 시간 (분)"
-                  error={
-                    form.formState.errors.proposal?.usageTime?.minutes?.message
-                  }
-                >
-                  {(attrs) => (
-                    <Input
-                      {...attrs}
-                      variant="pill"
-                      type="number"
-                      name="proposal.usageTime.minutes"
-                      min={1}
-                      max={1440}
-                      placeholder="예) 120분"
-                      value={offered?.usageTime?.minutes ?? ""}
-                      disabled={usage === "UNLIMITED"}
-                      onChange={(event) => {
-                        const minutes =
-                          event.target.value === ""
-                            ? null
-                            : Number(event.target.value);
-                        form.setValue("proposal.usageTime", {
-                          kind: minutes === null ? "UNKNOWN" : "MINUTES",
-                          minutes,
-                        });
-                      }}
-                    />
-                  )}
-                </FormField>
-                <label className="flex items-center gap-2">
-                  <span className="relative grid size-6 shrink-0 place-items-center">
-                    <Checkbox
-                      className="peer"
-                      checked={usage === "UNLIMITED"}
-                      onChange={(event) =>
-                        form.setValue("proposal.usageTime", {
-                          kind: event.target.checked ? "UNLIMITED" : "UNKNOWN",
-                          minutes: null,
-                        })
-                      }
-                    />
-                    <Image
-                      src="/images/merchant-replies/available-check.svg"
-                      alt=""
-                      width={24}
-                      height={24}
-                      className="pointer-events-none absolute inset-0 hidden peer-checked:block"
-                    />
-                  </span>
-                  자유롭게 이용 가능해요
-                </label>
-                {(
-                  [
-                    ["separateFee", "별도 대관료 (원)"],
-                    ["minimumSpend", "최소 이용금액 (원)"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <Controller
-                    key={key}
-                    name={`proposal.${key}`}
-                    control={form.control}
-                    render={({ field }) => (
+                  </FormField>
+                  {kind === "AVAILABLE" && (
+                    <div className="space-y-3">
                       <FormField
-                        id={`reply-${key}`}
-                        label={label}
-                        error={
-                          form.formState.errors.proposal?.[key] &&
-                          "0원 이상 20억 원 이하로 입력해 주세요."
-                        }
+                        id="reply-usage-hours"
+                        label="이용 시간"
+                        required
+                        className="gap-3"
+                        labelClassName="text-label leading-tight"
+                        error={proposalErrors?.usageTime?.minutes?.message}
                       >
                         {(attrs) => (
                           <Input
                             {...attrs}
                             variant="pill"
+                            className="shadow-control"
                             type="number"
-                            name={field.name}
-                            ref={field.ref}
+                            step="any"
                             min={0}
-                            value={field.value ?? ""}
-                            onChange={(event) =>
-                              field.onChange(
-                                event.target.value === ""
+                            max={24}
+                            inputMode="decimal"
+                            name="usageHours"
+                            aria-label="이용 시간 (시간 단위)"
+                            placeholder="예) 2시간"
+                            value={usageHours}
+                            disabled={usage === "UNLIMITED"}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setUsageHours(value);
+                              const minutes =
+                                value === ""
                                   ? null
-                                  : Number(event.target.value),
-                              )
-                            }
-                            placeholder="미확인 시 비움, 없으면 0"
+                                  : Math.round(Number(value) * 60);
+                              form.setValue("proposal.usageTime", {
+                                kind: minutes === null ? "UNKNOWN" : "MINUTES",
+                                minutes,
+                              });
+                            }}
                           />
                         )}
                       </FormField>
-                    )}
-                  />
-                ))}
-                <Controller
-                  name="proposal.minimumQuantity"
-                  control={form.control}
-                  render={({ field }) => (
-                    <FormField
-                      id="reply-minimum-quantity"
-                      label="최소 주문 수량 (미확인 시 비움)"
-                      error={
-                        form.formState.errors.proposal?.minimumQuantity?.message
-                      }
-                    >
-                      {(attrs) => (
-                        <Input
-                          {...attrs}
-                          type="number"
-                          min={0}
-                          max={100000}
-                          name={field.name}
-                          ref={field.ref}
-                          value={field.value ?? ""}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value === ""
-                                ? null
-                                : Number(e.target.value),
-                            )
-                          }
-                        />
-                      )}
-                    </FormField>
-                  )}
-                />
-                <label className="block space-y-2">
-                  변경·취소·환불 조건 (미확인 시 비움)
-                  <textarea
-                    {...form.register("proposal.changeCancellationPolicy")}
-                    className="min-h-24 w-full rounded-control border border-field bg-surface p-3"
-                    maxLength={1500}
-                  />
-                </label>
-                <Controller
-                  name="expiresAt"
-                  control={form.control}
-                  render={({ field }) => (
-                    <div className="block space-y-2">
-                      <label htmlFor="reply-expires-at">
-                        제안 선택 기한 (한국 시간) *
+                      <label className="flex items-center gap-2 leading-normal">
+                        <span className="relative grid size-6 shrink-0 place-items-center">
+                          <Checkbox
+                            className="peer"
+                            checked={usage === "UNLIMITED"}
+                            onChange={(event) => {
+                              setUsageHours("");
+                              form.setValue("proposal.usageTime", {
+                                kind: event.target.checked
+                                  ? "UNLIMITED"
+                                  : "UNKNOWN",
+                                minutes: null,
+                              });
+                            }}
+                          />
+                          <Image
+                            src="/images/merchant-replies/available-check.svg"
+                            alt=""
+                            width={24}
+                            height={24}
+                            className="pointer-events-none absolute inset-0 hidden peer-checked:block"
+                          />
+                        </span>
+                        자유롭게 이용 가능해요
                       </label>
-                      <DateTimePicker
-                        id="reply-expires-at"
-                        aria-label="제안 선택 기한 (한국 시간)"
-                        aria-invalid={!!form.formState.errors.expiresAt}
-                        aria-describedby="reply-expires-at-error"
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
-                        value={koreanDateInput(field.value)}
-                        onChange={(value) =>
-                          field.onChange(
-                            value
-                              ? (fromKoreanDateInput(value) ?? value)
-                              : null,
-                          )
-                        }
-                      />
-                      <FormError
-                        id="reply-expires-at-error"
-                        message={form.formState.errors.expiresAt?.message}
-                      />
                     </div>
                   )}
-                />
-                <label className="block space-y-2">
-                  사장님 한마디 (선택)
-                  <textarea
-                    {...form.register("proposal.note")}
-                    className="min-h-24 w-full rounded-control border border-field bg-surface p-3"
-                    maxLength={1500}
-                  />
-                </label>
-                <p className="text-sm text-muted">
-                  메뉴 확정 기한 ·{" "}
-                  {menuDeadline === null
-                    ? "미확인"
-                    : koreanDateLabel(new Date(menuDeadline).toISOString())}
-                </p>
-                <FormError
-                  message={
-                    form.formState.errors.proposal?.note?.message ??
-                    form.formState.errors.proposal?.deposit?.amount?.message
-                  }
-                />
-                <label className="flex items-start gap-3 rounded-control bg-brand/10 p-3.5 text-sm shadow-control">
-                  <span className="relative grid size-5 shrink-0 place-items-center">
-                    <Checkbox
-                      {...form.register("holdConfirmed")}
-                      className="peer size-5 rounded-[6px] checked:shadow-none"
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="reply-merchant-comment"
+                      className="block text-label leading-tight text-copy"
+                    >
+                      사장님 한마디
+                    </label>
+                    <textarea
+                      id="reply-merchant-comment"
+                      name="proposal.note"
+                      className="block h-[100px] w-full resize-none rounded-card bg-surface px-4 py-3.5 leading-normal shadow-control placeholder:text-placeholder"
+                      placeholder={`${offered?.expectedGuests ?? q.snapshot.expectedGuests}명 한 공간으로 준비해 드릴게요.`}
+                      maxLength={100}
+                      value={comments[kind]}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setComments((old) => ({ ...old, [kind]: value }));
+                        setNotes(kind === "CHANGE" ? otherChanges : "", value);
+                      }}
                     />
-                    <Image
-                      src="/images/merchant-replies/hold-check.svg"
-                      alt=""
-                      width={14}
-                      height={14}
-                      className="pointer-events-none absolute hidden peer-checked:block"
+                    <p className="text-right text-xs leading-tight text-secondary">
+                      {comments[kind].length}/100
+                    </p>
+                    <FormError message={proposalErrors?.note?.message} />
+                  </div>
+                  <div>
+                    <label className="flex items-start gap-3 rounded-[10px] bg-[#fef3ec] p-3.5 leading-tight shadow-control">
+                      <span className="relative grid size-5 shrink-0 place-items-center">
+                        <Checkbox
+                          {...form.register("holdConfirmed")}
+                          className="peer size-5 rounded-[6px] checked:bg-brand checked:shadow-none"
+                        />
+                        <Image
+                          src="/images/merchant-replies/hold-check.svg"
+                          alt=""
+                          width={14}
+                          height={14}
+                          className="pointer-events-none absolute hidden peer-checked:block"
+                        />
+                      </span>
+                      <span className="font-medium">
+                        이 날짜·시간에{" "}
+                        {offered?.expectedGuests ?? q.snapshot.expectedGuests}명
+                        자리를 비워둘게요
+                        <span className="mt-1 block text-xs font-normal text-muted">
+                          {deadline && deadline !== q.defaults.expiresAt
+                            ? `${koreanDateLabel(deadline)}까지 다른 예약을 받지 않아요`
+                            : "총무가 정할 때까지(약 12시간) 다른 예약을 받지 않아요"}
+                        </span>
+                      </span>
+                    </label>
+                    <FormError
+                      message={
+                        form.formState.errors.holdConfirmed?.message ??
+                        form.formState.errors.expiresAt?.message
+                      }
                     />
-                  </span>
-                  <span>
-                    이 날짜·시간에{" "}
-                    {offered?.expectedGuests ?? q.snapshot.expectedGuests}명
-                    자리를 비워둘게요.
-                    <span className="mt-1 block text-xs text-muted">
-                      {deadline ? koreanDateLabel(deadline) : "선택 기한"}까지
-                      좌석을 유지해 주세요.
-                    </span>
-                  </span>
-                </label>
-                <FormError
-                  message={form.formState.errors.holdConfirmed?.message}
-                />
+                  </div>
+                </div>
               </>
             )}
           </fieldset>
-
-          <p className="text-sm text-muted">
-            답변을 보내면 수정할 수 없어요. 예약 조건을 확인해 주세요.
-          </p>
-          <FormError
-            message={
-              mutation.error ? safeErrorMessage(mutation.error) : undefined
-            }
-          />
-          <Button type="submit" className="w-full" loading={mutation.isPending}>
-            답변 보내기
-          </Button>
+          <div className="mx-[17px] mt-auto space-y-2 pt-8">
+            <FormError
+              message={
+                mutation.error ? safeErrorMessage(mutation.error) : undefined
+              }
+            />
+            <Button
+              type="submit"
+              className="w-full border-brand bg-brand text-soft"
+              loading={mutation.isPending}
+            >
+              답변 보내기
+            </Button>
+          </div>
         </form>
       )}
-    </>
+    </main>
   );
 }

@@ -12,6 +12,7 @@ type Props = Omit<ComponentProps<"button">, "value" | "onChange" | "type"> & {
   min?: string;
   max?: string;
   label?: string;
+  formatValue?: (value: string) => string;
 };
 export function DatePicker({
   value,
@@ -20,6 +21,7 @@ export function DatePicker({
   min,
   max,
   label = "날짜 선택",
+  formatValue,
   className,
   ...props
 }: Props) {
@@ -54,7 +56,7 @@ export function DatePicker({
         }}
       >
         <span className={cn("min-w-0 truncate", !value && "text-placeholder")}>
-          {value || "날짜 선택"}
+          {value ? (formatValue?.(value) ?? value) : "날짜 선택"}
         </span>
         <span className="flex size-4 shrink-0 items-center justify-center">
           <Image

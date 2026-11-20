@@ -23,10 +23,12 @@ export type EventSummary = {
       | "GUIDANCE_REVIEW"
       | "PAYMENT_CHECKING";
     restaurantName: string | null;
+    refundedAmount?: number;
     startsAt: string;
   } | null;
   settlement: {
     status: "EMPTY" | "IN_PROGRESS" | "COMPLETE";
+    needsReview?: boolean;
     total: number;
     target: number;
     confirmed: number;

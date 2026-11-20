@@ -802,15 +802,19 @@ test("deposit conflicts block new notices while stale historical text remains vi
       button.parentElement!.querySelectorAll("button")[1]!.click(),
     );
     await until(() =>
-      assert.match(
-        view.container.textContent!,
-        /현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요/,
-      ),
+      assert.match(view.container.textContent!, /정산 재확인 필요/),
     );
     assert.match(
       view.container.querySelector("pre")!.textContent!,
       /원래 입금 미확인 잔액: 10,000원/,
     );
+    for (const label of ["복사하기", "공유하기"])
+      assert.equal(
+        [...view.container.querySelectorAll("button")].find(
+          (b) => b.textContent === label,
+        )?.disabled,
+        true,
+      );
   } finally {
     await view.unmount();
   }
@@ -860,6 +864,13 @@ test("new manager editing an inherited notice preserves its text but must enter 
       v.container.querySelector("pre")!.textContent!,
       /당시 계좌 111-222 원문/,
     );
+    for (const label of ["복사하기", "공유하기"])
+      assert.equal(
+        [...v.container.querySelectorAll("button")].find(
+          (button) => button.textContent === label,
+        )?.disabled,
+        false,
+      );
     await click(v.container, "입력 내용 수정본 만들기");
     await until(() => assert(v.container.querySelector("[name=account]")));
     assert.equal(

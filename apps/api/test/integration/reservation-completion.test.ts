@@ -656,6 +656,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       assert.match(sent.at(-1)!, /취소 완료.*전화로/);
       assert.equal(sent.filter((text) => text.includes("취소 완료")).length, 1);
       assert.equal(v.refundExpected, null);
+      assert.equal(v.progress, "REFUND_REVIEW");
       const cancelVersion = v.version;
       const facts = () =>
         db.manager.findBy(NotificationFact, { reservationId: v.id });
@@ -672,6 +673,8 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       });
       assert.equal(v.refundedAmount, 1000);
       assert.equal(v.refundExpected, null);
+      assert.equal(v.progress, "CANCELLED");
+      assert.equal(v.receivedAmount - v.refundedAmount, 9000);
       assert.equal(
         v.history.find((h) => h.action === "REFUND_RECORDED")!.refund!.expected,
         null,
@@ -778,6 +781,32 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       }
       assert.equal(sent.length, 1);
       assert.match(sent[0], /취소 완료/);
+    },
+  );
+
+  await t.test(
+    "cancellation with no deposit or expected refund completes without refund review",
+    async () => {
+      let v = await fixture();
+      v = await post(v.id, "change-request", {
+        ...key(v.version),
+        kind: "CANCEL",
+        subject: "OTHER",
+        reason: "예약금 없는 취소",
+      });
+      v = await changes.propose(v.id, operator, {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        reason: "취소 동의",
+      });
+      v = await post(v.id, "change-accept", {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        confirmed: true,
+      });
+      assert.equal(v.refundExpected, null);
+      assert.equal(v.refundedAmount, 0);
+      assert.equal(v.progress, "CANCELLED");
     },
   );
 
@@ -1616,7 +1645,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
         v = await changes.refund(v.id, operator, command);
         assert.equal(v.refundExpected, plan);
         assert.equal(v.refundedAmount, 6000);
-        assert.equal(v.progress, "REFUND_REVIEW");
+        assert.equal(v.progress, plan === null ? "CANCELLED" : "REFUND_REVIEW");
         await changes.refund(v.id, operator, command);
         assert.equal((await view(v.id)).refundedAmount, 6000);
         const history = await db.manager.findBy(ReservationCompletionHistory, {

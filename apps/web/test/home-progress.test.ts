@@ -8,6 +8,7 @@ import {
   homeEventPath,
   homeAction,
   reservationLabel,
+  settlementLabel,
 } from "../features/events/lib/home-event";
 import { eventSummariesQuery } from "../features/settlements/api/event-summaries.api";
 import { recordsQuery } from "../features/settlements/api/records.api";
@@ -79,6 +80,12 @@ test("date is not a completion fact; reservation-free attendance and settlement 
   assert.equal(homeAction(summary("past", "IN_PROGRESS")).view, "settlement");
   const done = summary("past", "COMPLETE");
   assert.equal(homeAction(done).view, "record");
+  const review = {
+    ...done,
+    settlement: { ...done.settlement, needsReview: true },
+  };
+  assert.equal(homeAction(review).view, "settlement");
+  assert.equal(settlementLabel(review), "정산 재확인 필요");
   assert.equal(reservationLabel(done), "예약 미선택");
   const cancelled = {
     ...done,
@@ -91,6 +98,13 @@ test("date is not a completion fact; reservation-free attendance and settlement 
     } as const,
   };
   assert.equal(reservationLabel(cancelled), "환불 확인 중");
+  assert.equal(
+    reservationLabel({
+      ...cancelled,
+      reservation: { ...cancelled.reservation, progress: "CANCELLED" },
+    }),
+    "예약 취소 완료",
+  );
 });
 
 test("home summaries use bounded batch endpoints with account-scoped keys, without full settlement requests", async () => {

@@ -1011,6 +1011,23 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   assert.deepEqual(v.depositConflicts, []);
   v = await save(notice);
   assert.equal(v.state.notices.length, 2);
+  const beforeReturn = v;
+  const beforeReturnId = v.state.notices.at(-1)!.id;
+  const getNotice = (id: string) =>
+    call(`${path}/notices/${id}`, owner).then((r) =>
+      json<{ text: string; outdated: boolean; needsReview: boolean }>(r),
+    );
+  const beforeReturnNotice = await getNotice(beforeReturnId);
+  const eventSummary = () =>
+    call(`settlements/summaries?eventIds=${e.id}`, owner).then((r) =>
+      json<{ settlement: { needsReview: boolean; status: string } }[]>(r),
+    );
+  const eventRecord = () =>
+    call("records?offset=0", owner).then((r) =>
+      json<{ events: { id: string; needsReview: boolean }[] }>(r),
+    );
+  assert.equal(beforeReturn.summary.status, "COMPLETE");
+  assert.equal(beforeReturnNotice.outdated, false);
   const { ReservationChangesService } =
     await import("../../src/modules/reservations/reservation-changes.service.js");
   const changes = app.get(ReservationChangesService);
@@ -1030,7 +1047,7 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
     expectedVersion: progress.version,
     changeId: progress.changes[0]!.id,
     reason: "일부 반환 합의",
-    refundExpected: 1000,
+    refundExpected: null,
   });
   progress = await json(
     await call(`reservations/${reservationId}/change-accept`, owner, "POST", {
@@ -1051,15 +1068,53 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   });
   v = await json<View>(await call(path, owner));
   assert.equal(v.depositConflicts?.[0]?.remaining, 4000);
+  assert.deepEqual(v.state.expenses, beforeReturn.state.expenses);
+  assert.deepEqual(v.summary, beforeReturn.summary);
+  assert.equal((await eventSummary())[0]!.settlement.needsReview, true);
+  assert.equal(
+    (await eventRecord()).events.find((event) => event.id === e.id)
+      ?.needsReview,
+    true,
+  );
+  const staleNotice = await getNotice(beforeReturnId);
+  assert.equal(staleNotice.text, beforeReturnNotice.text);
+  assert.equal(staleNotice.outdated, true);
+  assert.equal(staleNotice.needsReview, true);
   await save(notice, 409);
+  await json(
+    await call(`events/${e.id}/participants`, owner, "POST", {
+      requestKey: randomUUID(),
+      members: [{ name: "테스트 참가자", newPersonConfirmed: true }],
+      duplicatesConfirmed: true,
+    }),
+    201,
+  );
+  const [payer] = await json<Person[]>(
+    await call(`events/${e.id}/participants`, owner),
+  );
   const activeExpense = v.state.expenses.find((e) => !e.deletedAt)!;
   v = await save({
     ...expense,
     id: activeExpense.id,
     deposit: 4000,
-    support: 6000,
+    support: 5000,
+    payers: [{ id: payer.id, version: payer.version }],
   });
   assert.deepEqual(v.depositConflicts, []);
-  v = await save(notice);
+  assert.equal(v.summary.people[0]?.amount, 1000);
+  assert.equal((await eventSummary())[0]!.settlement.needsReview, false);
+  assert.equal(
+    (await eventRecord()).events.find((event) => event.id === e.id)
+      ?.needsReview,
+    false,
+  );
+  v = await save({
+    ...notice,
+    bank: { bank: "테스트은행", account: "1234", holder: "테스트 총무" },
+  });
   assert.equal(v.state.notices.length, 3);
+  const regenerated = await getNotice(v.state.notices.at(-1)!.id);
+  assert.equal(regenerated.outdated, false);
+  assert.match(regenerated.text, /테스트 참가자.*1,000원/);
+  assert.equal((await getNotice(beforeReturnId)).outdated, true);
 });

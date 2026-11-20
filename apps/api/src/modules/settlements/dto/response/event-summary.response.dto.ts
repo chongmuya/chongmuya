@@ -16,7 +16,7 @@ export type EventSummaryDto = Awaited<
     | "unconfirmed"
     | "drafts"
     | "differences"
-  >;
+  > & { needsReview: boolean };
 };
 
 export type MemberHistoryDto = {

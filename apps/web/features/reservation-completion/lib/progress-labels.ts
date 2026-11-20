@@ -7,5 +7,5 @@ export const progressLabels: Record<string, string> = {
   CONFIRMED: "예약이 확정됐어요",
   REFUND_REVIEW: "예약이 취소됐어요 · 환불 확인 중",
   REFUND_PENDING: "예약이 취소됐어요 · 환불 대기",
-  CANCELLED: "예약 취소 처리가 완료됐어요",
+  CANCELLED: "예약 취소 완료",
 };

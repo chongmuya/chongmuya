@@ -22,6 +22,10 @@ export const messages: Record<
     status: 409,
     message: "모임 권한 또는 요청이 바뀌었어요. 최신 상태를 확인해 주세요.",
   },
+  GROUP_HANDOVER_UNAVAILABLE: {
+    status: 409,
+    message: "총무 인수인계는 준비 중이에요.",
+  },
 
   WORKSPACE_VERSION_CONFLICT: {
     status: 409,

@@ -36,7 +36,7 @@ export function ChangeResult({
         : rejected
           ? `예약 ${kind}${latest.kind === "CANCEL" ? "가" : "이"} 어려워요`
           : q.cancellation
-            ? "예약 취소가 완료됐어요"
+            ? "예약 취소 완료"
             : q.progress === "CONFIRMED"
               ? "예약이 확정됐어요"
               : "변경 내용이 적용됐어요";
@@ -50,7 +50,9 @@ export function ChangeResult({
         : rejected
           ? "기존 예약으로 진행할지 확인해 주세요."
           : q.cancellation
-            ? "환불 여부와 반환 일정은 전화로 협의해 주세요."
+            ? q.refundedAmount > 0 || (!q.receipt && !q.transfer)
+              ? "취소 내역을 확인해 주세요."
+              : "환불 여부·금액·반환 일정은 전화로 협의해 주세요."
             : q.progress === "CONFIRMED"
               ? "예약 변경을 확인했어요. 이제 참석 명단을 준비해볼까요?"
               : "합의한 조건을 적용했어요. 남은 확인이 필요해요.";

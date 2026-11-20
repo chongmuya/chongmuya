@@ -33,9 +33,16 @@ export function merchantSms(
   action: string,
   url: string,
 ) {
-  return `[총무야] ${name} ${smsDate(terms.startsAt)} ${terms.expectedGuests}명\n${action}\n${url}`.normalize(
-    "NFC",
-  );
+  const displayName = [...name.normalize("NFC")]
+    .map((character) =>
+      /^[ -~]$/.test(character) || doubleByteCharacters.has(character)
+        ? character
+        : " ",
+    )
+    .join("")
+    .replace(/ +/g, " ")
+    .trim();
+  return `[총무야] ${displayName || "행사"} ${smsDate(terms.startsAt)} ${terms.expectedGuests}명\n${action.normalize("NFC")}\n${url}`;
 }
 
 // The provider accepts KS X 1001 (EUC-KR). Node's decoder also knows

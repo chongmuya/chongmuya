@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
+import { StepLayout } from "@/shared/ui/step-layout";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import {
   replyQuery,
@@ -42,14 +43,23 @@ export function ReplyWorkspace({
   const notice = isMerchantAccessError(q.error)
     ? safeErrorMessage(q.error)
     : "접근 권한이 만료됐습니다. 문자에 있는 원래 링크를 다시 열어 주세요.";
-  if (blocked) return <p role="alert">{notice}</p>;
+  const statusScreen = (children: ReactNode) =>
+    onDone ? (
+      <StepLayout title="받은 문의" onBack={onDone}>
+        {children}
+      </StepLayout>
+    ) : (
+      <main className="mx-auto max-w-[402px] px-5 py-10">{children}</main>
+    );
+  if (blocked) return statusScreen(<p role="alert">{notice}</p>);
   if (q.isError && !q.data)
-    return (
+    return statusScreen(
       <ErrorState retry={() => void q.refetch()}>
         {safeErrorMessage(q.error)}
-      </ErrorState>
+      </ErrorState>,
     );
-  if (!q.data) return <LoadingState>예약 문의 확인 중…</LoadingState>;
+  if (!q.data)
+    return statusScreen(<LoadingState>예약 문의 확인 중…</LoadingState>);
   if (q.data.response)
     return (
       <SubmittedReply
@@ -58,13 +68,14 @@ export function ReplyWorkspace({
         onDone={onDone}
       />
     );
-  if (q.data.closedState) return <ClosedInquiry state={q.data.closedState} />;
+  if (q.data.closedState)
+    return statusScreen(<ClosedInquiry state={q.data.closedState} />);
   return (
     <>
       {q.isError && (
         <div
           role="alert"
-          className="mb-4 rounded-control border border-field p-4"
+          className="mx-auto mb-4 max-w-[402px] rounded-control border border-field p-4"
         >
           <p>최신 문의를 불러오지 못했어요. 작성 중인 답변은 유지됩니다.</p>
           <Button
@@ -79,6 +90,7 @@ export function ReplyWorkspace({
       <ReplyForm
         inquiry={q.data}
         access={access}
+        onBack={onDone}
         onAccessFailure={() => setDenied(true)}
       />
     </>

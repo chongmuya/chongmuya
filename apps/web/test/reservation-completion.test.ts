@@ -8,6 +8,7 @@ import { ProposalComparison } from "../features/reservation-completion/component
 import { AgreementTerms } from "../features/reservation-completion/components/agreement-terms";
 import {
   CompletionFacts,
+  CompletionSummary,
   GuidanceSummary,
 } from "../features/reservation-completion/components/completion-summary";
 import { ChangeResult } from "../features/reservation-completion/components/change-result";
@@ -697,6 +698,44 @@ test("late reservation write after leaving the account screen cannot repopulate 
     ]),
     undefined,
   );
+});
+
+test("cancelled booking shows the actual return and never labels partial funds as fully refunded", async () => {
+  for (const [refundedAmount, detail] of [
+    [0, "예약금 없음"],
+    [4000, "4,000원"],
+    [10000, "10,000원"],
+  ] as const) {
+    const data = {
+      ...fixture(),
+      status: "CANCELLED" as const,
+      progress: "CANCELLED",
+      cancellation: {
+        at: "2026-01-01T00:00:00Z",
+      } as Completion["cancellation"],
+      receivedAmount: refundedAmount ? 10000 : 0,
+      refundedAmount,
+      refundExpected: null,
+      changes: [],
+    };
+    const view = await render(
+      createElement(CompletionSummary, {
+        data,
+        organizer: true,
+        footer: createElement(CompletionFacts, { data }),
+      }),
+    );
+    try {
+      assert.match(view.container.textContent!, /예약 취소 완료/);
+      assert(view.container.textContent!.includes(detail));
+      assert.doesNotMatch(
+        view.container.textContent!,
+        /환불 완료|환불 확인 중|환불 예정/,
+      );
+    } finally {
+      await view.unmount();
+    }
+  }
 });
 
 test("lost refund response plus newer refetch freezes original command; retry records once and next refund has a new identity", async () => {

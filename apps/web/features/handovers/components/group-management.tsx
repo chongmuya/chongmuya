@@ -18,6 +18,7 @@ import {
 import { invitationSchema, handoverSchema } from "../schemas/forms";
 import { useCommand } from "../hooks/use-command";
 import { accessLink, accessToken } from "../lib/link";
+import { groupHandoverEnabled } from "../lib/availability";
 import { TransferScope } from "./scope";
 export function GroupManagement({
   accountId,
@@ -109,78 +110,90 @@ export function GroupManagement({
               ?.name ?? "기존 관리자"}
           </strong>
         </p>
-      </div>
-      <details
-        open={pending ? true : undefined}
-        className="space-y-4 rounded-card bg-surface p-5 shadow-card"
-      >
-        <summary className="cursor-pointer text-lg font-semibold text-brand">
-          다음 총무에게 넘기기
-        </summary>
-        <p className="text-sm text-muted">
-          모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요.
-        </p>
-        <TransferScope scope={preview.data.scope} />
-        {pending ? (
-          <div>
-            <p>수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요.</p>
-            <Button
-              variant="outline"
-              disabled={busy || unresolved}
-              onClick={() => cancel.send(handoverPath(groupId, pending.id), {})}
-            >
-              인수인계 요청 취소
-            </Button>
+        {!groupHandoverEnabled && (
+          <div className="mt-3 flex items-center gap-3 text-control">
+            <span>총무 인수인계</span>
+            <span className="rounded-sm bg-placeholder px-2.5 py-0.5 text-xs text-white">
+              준비 중
+            </span>
           </div>
-        ) : (
-          <form
-            className="space-y-4"
-            onSubmit={transferForm.handleSubmit((v) => {
-              const t = accessToken();
-              transfer.send(handoverPath(groupId), {
-                ...v,
-                token: t,
-                expectedVersion: preview.data!.group.version,
-                requestKey: crypto.randomUUID(),
-              });
-            })}
-          >
-            <label htmlFor="new-manager" className="text-caption text-muted">
-              새 총무 선택
-            </label>
-            <select
-              id="new-manager"
-              {...transferForm.register("targetId")}
-              disabled={busy || unresolved}
-              aria-invalid={!!transferForm.formState.errors.targetId}
-              aria-describedby="target-error"
-              className="h-12 w-full rounded-control border border-border bg-surface px-3"
-            >
-              <option value="">인수할 계정 멤버 선택</option>
-              {accounts.data.accounts
-                .filter((a) => a.id !== accountId)
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.email})
-                  </option>
-                ))}
-            </select>
-            <p id="target-error" role="alert">
-              {transferForm.formState.errors.targetId?.message}
-            </p>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={busy || unresolved}
-            >
-              인수인계 요청하기
-            </Button>
-            <p className="text-center text-caption text-muted">
-              상대가 수락한 뒤에는 내 권한이 일반 멤버로 바뀌어요.
-            </p>
-          </form>
         )}
-      </details>
+      </div>
+      {groupHandoverEnabled && (
+        <details
+          open={pending ? true : undefined}
+          className="space-y-4 rounded-card bg-surface p-5 shadow-card"
+        >
+          <summary className="cursor-pointer text-lg font-semibold text-brand">
+            다음 총무에게 넘기기
+          </summary>
+          <p className="text-sm text-muted">
+            모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요.
+          </p>
+          <TransferScope scope={preview.data.scope} />
+          {pending ? (
+            <div>
+              <p>수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요.</p>
+              <Button
+                variant="outline"
+                disabled={busy || unresolved}
+                onClick={() =>
+                  cancel.send(handoverPath(groupId, pending.id), {})
+                }
+              >
+                인수인계 요청 취소
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="space-y-4"
+              onSubmit={transferForm.handleSubmit((v) => {
+                const t = accessToken();
+                transfer.send(handoverPath(groupId), {
+                  ...v,
+                  token: t,
+                  expectedVersion: preview.data!.group.version,
+                  requestKey: crypto.randomUUID(),
+                });
+              })}
+            >
+              <label htmlFor="new-manager" className="text-caption text-muted">
+                새 총무 선택
+              </label>
+              <select
+                id="new-manager"
+                {...transferForm.register("targetId")}
+                disabled={busy || unresolved}
+                aria-invalid={!!transferForm.formState.errors.targetId}
+                aria-describedby="target-error"
+                className="h-12 w-full rounded-control border border-border bg-surface px-3"
+              >
+                <option value="">인수할 계정 멤버 선택</option>
+                {accounts.data.accounts
+                  .filter((a) => a.id !== accountId)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.email})
+                    </option>
+                  ))}
+              </select>
+              <p id="target-error" role="alert">
+                {transferForm.formState.errors.targetId?.message}
+              </p>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={busy || unresolved}
+              >
+                인수인계 요청하기
+              </Button>
+              <p className="text-center text-caption text-muted">
+                상대가 수락한 뒤에는 내 권한이 일반 멤버로 바뀌어요.
+              </p>
+            </form>
+          )}
+        </details>
+      )}
       <details className="rounded-card bg-surface p-5 shadow-card">
         <summary className="mb-3 cursor-pointer text-lg font-semibold">
           로그인 계정 멤버 · 참여 초대

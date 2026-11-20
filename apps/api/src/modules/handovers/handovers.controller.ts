@@ -8,6 +8,7 @@ import {
   UseGuards,
   Header,
 } from "@nestjs/common";
+import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { AccessGuard } from "../auth/guards/jwt-access.guard.js";
 import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
@@ -21,6 +22,10 @@ import {
 @Controller("api/v1/handovers")
 export class HandoversController {
   constructor(private readonly handovers: HandoversService) {}
+
+  assertTransferEnabled() {
+    throw new DomainHttpException("GROUP_HANDOVER_UNAVAILABLE");
+  }
   @Get("groups/:id") @Header("Cache-Control", "no-store") preview(
     @CurrentUser() u: AuthUser,
     @Param("id", ParseUUIDPipe) id: string,
@@ -32,6 +37,7 @@ export class HandoversController {
     @Param("id", ParseUUIDPipe) id: string,
     @Body() input: HandoverInput,
   ) {
+    this.assertTransferEnabled();
     return this.handovers.create(u.id, id, input);
   }
   @Post("groups/:groupId/:id/cancel") cancel(
@@ -53,6 +59,7 @@ export class HandoversController {
     @Param("id", ParseUUIDPipe) id: string,
     @Body() input: AcceptHandoverInput,
   ) {
+    this.assertTransferEnabled();
     return this.handovers.accept(u.id, id, input);
   }
 }

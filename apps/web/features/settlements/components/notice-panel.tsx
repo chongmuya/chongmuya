@@ -262,10 +262,12 @@ function NoticeForm({
 function NoticeDetail({
   a,
   id,
+  needsReview,
   onEdit,
 }: {
   a: Access;
   id: string;
+  needsReview: boolean;
   onEdit: (n: Notice) => void;
 }) {
   const [message, setMessage] = useState("");
@@ -274,6 +276,8 @@ function NoticeDetail({
   if (q.error instanceof ApiError && [401, 403, 404].includes(q.error.status))
     return <p role="alert">정산문에 접근할 수 없습니다.</p>;
   const n = q.data;
+  const reviewRequired = needsReview || n?.needsReview;
+  const sharingBlocked = reviewRequired || q.isFetching || !!q.error;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(n!.text);
@@ -293,14 +297,20 @@ function NoticeDetail({
               timeZone: "Asia/Seoul",
             })}{" "}
             생성
-            {n.outdated &&
-              " · 현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요. 당시 계좌는 보존되므로 현재 총무의 계좌를 확인해 주세요."}
+            {reviewRequired
+              ? " · 정산 재확인 필요. 연결 지출을 수정한 뒤 새 정산문을 만들어 주세요."
+              : n.outdated &&
+                " · 현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요. 당시 계좌는 보존되므로 현재 총무의 계좌를 확인해 주세요."}
           </p>
           <pre className="whitespace-pre-wrap break-words rounded-[20px] bg-choice p-5 font-sans text-base leading-relaxed">
             {n.text}
           </pre>
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="brand-outline" onClick={() => void copy()}>
+            <Button
+              variant="brand-outline"
+              disabled={sharingBlocked}
+              onClick={() => void copy()}
+            >
               <Image
                 src="/images/settlements/copy.svg"
                 width={18}
@@ -310,6 +320,7 @@ function NoticeDetail({
               복사하기
             </Button>
             <Button
+              disabled={sharingBlocked}
               onClick={async () => {
                 if (!navigator.share) {
                   setMessage(
@@ -393,21 +404,27 @@ export function NoticePanel({
         }}
       />
     );
-  if (id)
+  if (id) {
+    const needsReview = !!data.depositConflicts?.length;
+    const historical =
+      needsReview || data.state.notices.find((n) => n.id === id)?.outdated;
     return (
       <div className="space-y-8">
         <header className="space-y-2">
           <h2 className="text-2xl font-bold">
-            {created ? "정산문이 생성되었어요" : "정산문"}
+            {created && !historical ? "정산문이 생성되었어요" : "정산문"}
           </h2>
-          <p className="text-secondary">
-            안내 내용을 확인하고 복사하거나 공유해 주세요.
-          </p>
+          {!historical && (
+            <p className="text-secondary">
+              안내 내용을 확인하고 복사하거나 공유해 주세요.
+            </p>
+          )}
         </header>
         <NoticeDetail
           key={id + ":" + data.state.version}
           a={a}
           id={id}
+          needsReview={needsReview}
           onEdit={setEditing}
         />
         <Button
@@ -423,6 +440,7 @@ export function NoticePanel({
         </Button>
       </div>
     );
+  }
   return (
     <div className="space-y-5">
       <Button

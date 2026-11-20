@@ -42,7 +42,9 @@ export function CompletionSummary({
     return (
       <div className="space-y-3">
         <h2 className="text-xl font-bold">
-          {progressLabels[q.progress] ?? "메뉴·송금 안내"}
+          {q.cancellation
+            ? progressLabels.CANCELLED
+            : (progressLabels[q.progress] ?? "메뉴·송금 안내")}
         </h2>
         {q.progress === "GUIDANCE_PENDING" && (
           <p className="text-sm text-secondary">
@@ -57,12 +59,16 @@ export function CompletionSummary({
         <ReservationResultIcon />
         <div className="space-y-4">
           <h2 className="text-2xl leading-[normal] font-bold text-black">
-            {progressLabels[q.progress] ?? "예약 진행 확인"}
+            {q.cancellation
+              ? progressLabels.CANCELLED
+              : (progressLabels[q.progress] ?? "예약 진행 확인")}
           </h2>
           <p className="mx-auto max-w-[162px] text-xs leading-[normal]">
             {q.progress === "CONFIRMED"
               ? "필요한 메뉴·입금 확인이 완료됐어요. 이제 참석 명단을 준비해볼까요?"
-              : "매장에서 예약 내용을 확인하고 있어요."}
+              : q.cancellation
+                ? "취소 내역을 확인해 주세요."
+                : "매장에서 예약 내용을 확인하고 있어요."}
           </p>
           {organizer && q.progress === "CONFIRMED" && (
             <AttendanceLink eventId={q.eventId} />
@@ -146,9 +152,13 @@ export function CompletionFacts({ data: q }: { data: Completion }) {
       width: 18,
       height: 18,
       value: summaryDate(q.agreement.startsAt),
-      label: q.cancellation ? "환불" : "확정 시각",
+      label: q.cancellation ? "실제 반환" : "확정 시각",
       detail: q.cancellation
-        ? `예정 ${won(q.refundExpected)} · 반환 ${won(q.refundedAmount)}`
+        ? q.refundedAmount > 0
+          ? won(q.refundedAmount)
+          : !q.receipt && !q.transfer
+            ? "예약금 없음"
+            : "반환 기록 없음"
         : q.confirmation
           ? summaryDate(q.confirmation.at, true)
           : "확인 중",
@@ -223,7 +233,7 @@ export function DepositSummary({ data: q }: { data: Completion }) {
     [
       "상태",
       q.cancellation
-        ? progressLabels[q.progress]
+        ? progressLabels.CANCELLED
         : q.receipt
           ? `실제 수령 ${won(q.receivedAmount)}`
           : q.transfer
@@ -235,11 +245,11 @@ export function DepositSummary({ data: q }: { data: Completion }) {
   ];
   if (q.guidance.deadline)
     rows.push(["입금 기한", koreanDateLabel(q.guidance.deadline)]);
-  if (q.cancellation)
-    rows.push(
-      ["환불 예정", won(q.refundExpected)],
-      ["실제 반환", won(q.refundedAmount)],
-    );
+  if (q.cancellation && (q.receipt || q.transfer || q.refundedAmount > 0))
+    rows.push([
+      "실제 반환",
+      q.refundedAmount > 0 ? won(q.refundedAmount) : "반환 기록 없음",
+    ]);
   return (
     <section className="space-y-3 rounded-[16px] bg-surface p-4 shadow-card">
       <h3 className="text-sm font-semibold text-secondary">예약금</h3>

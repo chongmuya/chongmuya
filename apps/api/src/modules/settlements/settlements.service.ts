@@ -43,22 +43,19 @@ const depositConflicts = (
   s: SettlementState,
   facts: { reservationId: string; remainingAmount: number }[],
 ) => {
+  const balances = new Map(
+    facts.map((f) => [f.reservationId, f.remainingAmount]),
+  );
   const used = new Map<string, number>();
   for (const e of s.expenses)
     if (!e.deletedAt && e.reservationId)
       used.set(e.reservationId, (used.get(e.reservationId) ?? 0) + e.deposit);
   return [...used]
-    .filter(
-      ([id, amount]) =>
-        amount >
-        (facts.find((f) => f.reservationId === id)?.remainingAmount ?? 0),
-    )
+    .filter(([id, amount]) => amount > (balances.get(id) ?? 0))
     .map(([reservationId, applied]) => ({
       reservationId,
       applied,
-      remaining:
-        facts.find((f) => f.reservationId === reservationId)?.remainingAmount ??
-        0,
+      remaining: balances.get(reservationId) ?? 0,
     }));
 };
 @Injectable()
@@ -88,14 +85,23 @@ export class SettlementsService {
       initialSettlement()
     );
   }
+  private depositBalances(states: Iterable<SettlementState>, m: EntityManager) {
+    const ids = new Set<string>();
+    for (const state of states)
+      for (const expense of state.expenses)
+        if (!expense.deletedAt && expense.reservationId && expense.deposit > 0)
+          ids.add(expense.reservationId);
+    return this.reservations.depositBalances([...ids], m);
+  }
   async get(owner: string, event: string): Promise<SettlementDetailDto> {
     const db = await this.database.connect();
     return db.transaction("REPEATABLE READ", async (m) => {
       await this.events.assertOwned(owner, event, m);
       const s = await this.state(event, m);
       const reservations = await this.reservations.forEvent(owner, event, m);
+      const conflicts = depositConflicts(s, reservations);
       return {
-        depositConflicts: depositConflicts(s, reservations),
+        depositConflicts: conflicts,
         state: {
           ...s,
           notices: s.notices.map((n) => ({
@@ -103,7 +109,8 @@ export class SettlementsService {
             title: n.title,
             createdAt: n.createdAt,
             calculationVersion: n.calculationVersion,
-            outdated: noticeOutdated(n, s) || n.actorId !== owner,
+            outdated:
+              !!conflicts.length || noticeOutdated(n, s) || n.actorId !== owner,
             deadline: n.deadline,
             ownerChanged: n.actorId !== owner,
           })),
@@ -126,6 +133,7 @@ export class SettlementsService {
       const facts = await this.events.progressFacts(owner, eventIds, m);
       const rows = await m.findBy(EventSettlement, { eventId: In(eventIds) });
       const states = new Map(rows.map((row) => [row.eventId, row.state]));
+      const balances = await this.depositBalances(states.values(), m);
       const reservations = await this.reservations.forEvents(
         owner,
         eventIds,
@@ -133,9 +141,8 @@ export class SettlementsService {
       );
       return reservations.map((reservation) => {
         const counts = facts.find((f) => f.eventId === reservation.eventId)!;
-        const summary = calculate(
-          states.get(reservation.eventId) ?? initialSettlement(),
-        );
+        const state = states.get(reservation.eventId) ?? initialSettlement();
+        const summary = calculate(state);
         return {
           ...reservation,
           participantCount: counts.participantCount,
@@ -143,6 +150,7 @@ export class SettlementsService {
           attendingCount: counts.attendingCount,
           settlement: {
             status: summary.status,
+            needsReview: depositConflicts(state, balances).length > 0,
             total: summary.total,
             target: summary.target,
             confirmed: summary.confirmed,
@@ -201,11 +209,19 @@ export class SettlementsService {
   }
   async notice(owner: string, event: string, id: string) {
     const db = await this.database.connect();
-    await this.events.assertOwned(owner, event, db.manager);
-    const s = await this.state(event, db.manager),
-      n = s.notices.find((n) => n.id === id);
-    if (!n) throw new NotFoundException();
-    return { ...n, outdated: noticeOutdated(n, s) || n.actorId !== owner };
+    return db.transaction("REPEATABLE READ", async (m) => {
+      await this.events.assertOwned(owner, event, m);
+      const s = await this.state(event, m);
+      const n = s.notices.find((notice) => notice.id === id);
+      if (!n) throw new NotFoundException();
+      const needsReview =
+        depositConflicts(s, await this.depositBalances([s], m)).length > 0;
+      return {
+        ...n,
+        needsReview,
+        outdated: needsReview || noticeOutdated(n, s) || n.actorId !== owner,
+      };
+    });
   }
   async records(
     owner: string,
@@ -227,6 +243,10 @@ export class SettlementsService {
         ? await m.find(EventSettlement, { where: { eventId: In(ids) } })
         : [];
       const files = await this.files.metadata(owner, ids, m);
+      const balances = await this.depositBalances(
+        states.map((row) => row.state),
+        m,
+      );
       return {
         count: page.count,
         events: page.events.map((e) => {
@@ -239,6 +259,7 @@ export class SettlementsService {
             total: c.total,
             confirmed: c.confirmed,
             status: c.status,
+            needsReview: depositConflicts(s, balances).length > 0,
             files: files.filter((f) => f.eventId === e.id),
           };
         }),
