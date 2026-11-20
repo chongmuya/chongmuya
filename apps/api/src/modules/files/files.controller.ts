@@ -38,7 +38,13 @@ export class FilesController {
   @Header("Cache-Control", "no-store")
   @UseInterceptors(
     FileInterceptor("file", {
-      limits: { fileSize: MAX_FILE_BYTES, files: 1, fields: 1, parts: 2 },
+      limits: {
+        fileSize: MAX_FILE_BYTES,
+        fieldSize: 1024,
+        files: 1,
+        fields: 1,
+        parts: 2,
+      },
     }),
   )
   upload(

@@ -12,6 +12,7 @@ import {
 } from "../features/settlements/api/settlement.api";
 import { CommandStatus } from "../features/settlements/components/command-status";
 import { ExpenseForm } from "../features/settlements/components/expense-form";
+import { NoticePanel } from "../features/settlements/components/notice-panel";
 import { preview } from "../features/settlements/lib/preview";
 import type {
   Detail,
@@ -55,6 +56,100 @@ const fixture = (): Detail => ({
   reservations: [],
   bankDefault: null,
 });
+for (const lostResponse of [false, true]) {
+  test(`notice creation and revision open the exact result immediately (lost response: ${lostResponse})`, async () => {
+    let current = fixture();
+    current.summary.status = "COMPLETE";
+    const notices = new Map<string, Record<string, unknown>>();
+    const writes: Record<string, unknown>[] = [];
+    const reads: string[] = [];
+    const a: Access = {
+      accountId: "notice-owner",
+      eventId: "notice-event",
+      request: async <T>(path: string, options?: RequestInit) => {
+        if (path.includes("/notices/")) {
+          const id = path.split("/").at(-1)!;
+          reads.push(id);
+          return notices.get(id) as T;
+        }
+        if (options?.method !== "POST") return structuredClone(current) as T;
+        const c = JSON.parse(String(options.body)).command;
+        writes.push(c);
+        if (!notices.has(c.requestKey)) {
+          const notice = {
+            ...c,
+            id: c.requestKey,
+            actorId: a.accountId,
+            text: `생성된 정산문 ${notices.size + 1}`,
+            createdAt: "2026-11-20T01:00:00Z",
+            calculationVersion: 1,
+            outdated: false,
+          };
+          notices.set(c.requestKey, notice);
+          current = {
+            ...current,
+            state: {
+              ...current.state,
+              version: current.state.version + 1,
+              notices: [...current.state.notices, notice],
+            },
+          };
+        }
+        if (lostResponse && writes.length === 1)
+          throw new TypeError("response lost");
+        return {
+          ...structuredClone(current),
+          createdNoticeId: c.requestKey,
+        } as T;
+      },
+    };
+    function Screen() {
+      const q = useQuery(settlementQuery(a));
+      return q.data
+        ? createElement(NoticePanel, { access: a, data: q.data })
+        : null;
+    }
+    const v = await render(createElement(Screen));
+    try {
+      await until(() =>
+        assert.match(v.container.textContent!, /새 정산문 만들기/),
+      );
+      await click(v.container, "새 정산문 만들기");
+      await submit(v.container);
+      if (lostResponse) {
+        await until(() =>
+          assert.match(v.container.textContent!, /같은 요청 재시도/),
+        );
+        await click(v.container, "같은 요청 재시도");
+        await until(() => assert.equal(writes.length, 2));
+        assert.deepEqual(writes[0], writes[1]);
+      }
+      await until(() =>
+        assert.match(
+          v.container.querySelector("pre")?.textContent ?? "",
+          /생성된 정산문 1/,
+        ),
+      );
+      assert.equal(notices.size, 1);
+      assert.equal(reads.at(-1), writes[0].requestKey);
+      assert.match(v.container.textContent!, /복사하기/);
+      assert.match(v.container.textContent!, /공유하기/);
+      await click(v.container, "입력 내용 수정본 만들기");
+      await submit(v.container);
+      await until(() =>
+        assert.match(
+          v.container.querySelector("pre")?.textContent ?? "",
+          /생성된 정산문 2/,
+        ),
+      );
+      assert.equal(writes.at(-1)!.replaces, writes[0].requestKey);
+      assert.equal(reads.at(-1), writes.at(-1)!.requestKey);
+      assert.equal(notices.size, 2);
+    } finally {
+      await v.unmount();
+    }
+  });
+}
 test("web preview follows integer examples including support and outside remainder", () => {
   assert.equal(preview(500000, 100000, true, 0, 3, true).target, 500000);
   assert.equal(preview(500000, 100000, false, 50000, 3, true).target, 350000);
@@ -439,12 +534,13 @@ test("zero-request notice defaults omit payment requests and preserve direct edi
       if (target === 0) assert.doesNotMatch(message().value, /입금 부탁/);
       else {
         assert.match(message().value, /입금 부탁/);
-        const scope =
-          view.container.querySelector<HTMLSelectElement>('[name="scope"]')!;
-        await act(async () => {
-          scope.value = "UNCONFIRMED";
-          scope.dispatchEvent(new window.Event("change", { bubbles: true }));
-        });
+        await act(async () =>
+          view.container
+            .querySelector<HTMLInputElement>(
+              '[name="scope"][value="UNCONFIRMED"]',
+            )!
+            .click(),
+        );
         await until(() => assert.doesNotMatch(message().value, /입금 부탁/));
         await act(async () => {
           Object.getOwnPropertyDescriptor(
@@ -453,10 +549,11 @@ test("zero-request notice defaults omit payment requests and preserve direct edi
           )!.set!.call(message(), "직접 쓴 안내");
           message().dispatchEvent(new window.Event("input", { bubbles: true }));
         });
-        await act(async () => {
-          scope.value = "ALL";
-          scope.dispatchEvent(new window.Event("change", { bubbles: true }));
-        });
+        await act(async () =>
+          view.container
+            .querySelector<HTMLInputElement>('[name="scope"][value="ALL"]')!
+            .click(),
+        );
         assert.equal(message().value, "직접 쓴 안내");
       }
     } finally {

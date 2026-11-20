@@ -556,3 +556,55 @@ test("profile saves do not hide session revocation, another account or newer pro
     assert.equal(clears, result === "fresh" ? 0 : 1);
   }
 });
+
+test("file timeout survives refresh and account switch still rejects the late response", async () => {
+  const timeouts: (number | undefined)[] = [];
+  let refreshed = false;
+  const client = new SessionClient(() => {}, (async (
+    path: string,
+    _options: RequestInit,
+    timeout?: number,
+  ) => {
+    if (path.endsWith("restore")) return session;
+    if (path.endsWith("me")) throw expired();
+    if (path.endsWith("refresh")) {
+      refreshed = true;
+      return session;
+    }
+    timeouts.push(timeout);
+    if (!refreshed) throw expired();
+    return "file";
+  }) as typeof requestJson);
+  await client.restore();
+  assert.equal(
+    await client.request("/api/v1/events/e/files/f/download", {}, 120000),
+    "file",
+  );
+  assert.deepEqual(timeouts, [120000, 120000]);
+  let release!: (value: unknown) => void;
+  const delayed = new Promise((resolve) => {
+    release = resolve;
+  });
+  let switched = false;
+  const changing = new SessionClient(() => {}, (async (path: string) => {
+    if (path.endsWith("restore")) return session;
+    if (path.endsWith("me")) throw expired();
+    if (path.endsWith("refresh")) {
+      switched = true;
+      return { ...session, account: { ...session.account!, id: "b" } };
+    }
+    if (path.endsWith("switch")) throw expired();
+    return delayed;
+  }) as typeof requestJson);
+  await changing.restore();
+  const file = changing.request(
+    "/api/v1/events/e/files/f/download",
+    {},
+    120000,
+  );
+  const rejected = assert.rejects(file);
+  await assert.rejects(changing.request("/api/v1/switch"));
+  assert(switched);
+  release(new Blob(["old-account"]));
+  await rejected;
+});
