@@ -338,4 +338,40 @@ export const messages: Record<
     status: 500,
     message: "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
   },
+  SETTLEMENT_INVALID: {
+    status: 400,
+    message:
+      "금액·부담자·잔액 담당자를 확인해 주세요. 차감액은 전체 금액을 넘을 수 없습니다.",
+  },
+  SETTLEMENT_DRAFT: {
+    status: 409,
+    message:
+      "미완성 지출의 부담자와 잔액 담당자를 확인한 뒤 정산문을 만들어 주세요.",
+  },
+  SETTLEMENT_CONFLICT: {
+    status: 409,
+    message:
+      "정산 또는 명단이 변경되었습니다. 최신 내용과 입력을 비교한 뒤 다시 적용해 주세요.",
+  },
+  SETTLEMENT_REQUEST_CONFLICT: {
+    status: 409,
+    message: "같은 요청 키에 다른 입력을 사용할 수 없습니다.",
+  },
+  FILE_INVALID: {
+    status: 400,
+    message:
+      "10MB 이하의 JPEG·PNG·WebP·PDF·XLS·XLSX 파일을 선택해 주세요. HEIC는 변환이 필요합니다.",
+  },
+  FILE_UNAVAILABLE: {
+    status: 503,
+    message: "파일 저장소를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  },
+  FILE_LIMIT: {
+    status: 409,
+    message: "행사의 파일 개수 또는 용량 한도에 도달했습니다.",
+  },
+  FILE_BUSY: {
+    status: 409,
+    message: "파일 작업이 진행 중입니다. 상태를 다시 확인해 주세요.",
+  },
 };

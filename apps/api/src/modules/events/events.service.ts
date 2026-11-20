@@ -10,6 +10,11 @@ import type { EventInput } from "./dto/request/create-event.request.dto.js";
 import type { UpdateEventInput } from "./dto/request/update-event.request.dto.js";
 import type { EventDto } from "./dto/response/event.response.dto.js";
 
+import { EventParticipant } from "./entities/event-participant.entity.js";
+import { AttendanceRound } from "./entities/attendance-round.entity.js";
+import { AttendanceResponse } from "./entities/attendance-response.entity.js";
+import { participantDto, responseDto } from "./lib/attendance-rules.js";
+
 const eventDto = (event: Event): EventDto => ({
   id: event.id,
   ownerId: event.ownerId,
@@ -27,6 +32,91 @@ export class EventsService {
     private readonly groups: GroupsService,
   ) {}
 
+  async settlementFacts(ownerId: string, id: string, m: EntityManager) {
+    await this.assertOwned(ownerId, id, m);
+    const participants = await m.find(EventParticipant, {
+      where: { eventId: id },
+      order: { position: "ASC" },
+    });
+    const rounds = await m.find(AttendanceRound, {
+      where: { eventId: id },
+      order: { position: "ASC" },
+    });
+    const responses = await m.find(AttendanceResponse, {
+      where: { eventId: id },
+    });
+    const attending = responses.filter(
+      (r) => responseDto(r).finalState === "ATTENDING",
+    );
+    return {
+      participants: participants.map(participantDto),
+      rounds: rounds.map((r) => ({
+        id: r.id,
+        title: r.title,
+        attendingIds: attending
+          .filter((a) => a.roundId === r.id)
+          .map((a) => a.participantId),
+      })),
+      attendingCount: new Set(attending.map((r) => r.participantId)).size,
+    };
+  }
+  async recordPage(
+    ownerId: string,
+    m: EntityManager,
+    options: {
+      groupId?: string;
+      search?: string;
+      before?: string;
+      after?: string;
+      offset: number;
+    },
+  ) {
+    if (options.groupId)
+      await this.groups.assertOwned(ownerId, options.groupId, m);
+    const q = m
+      .getRepository(Event)
+      .createQueryBuilder("e")
+      .where("e.ownerId = :ownerId", { ownerId });
+    if (options.groupId)
+      q.andWhere("e.groupId = :groupId", { groupId: options.groupId });
+    if (options.search)
+      q.andWhere("position(lower(:search) in lower(e.name)) > 0", {
+        search: options.search,
+      });
+    if (options.before)
+      q.andWhere("e.scheduledAt <= :before", { before: options.before });
+    if (options.after)
+      q.andWhere("e.scheduledAt >= :after", { after: options.after });
+    const [rows, count] = await q
+      .orderBy("e.scheduledAt", "DESC", "NULLS LAST")
+      .addOrderBy("e.id", "DESC")
+      .skip(options.offset)
+      .take(20)
+      .getManyAndCount();
+    const ids = rows.map((e) => e.id);
+    const attendance = ids.length
+      ? await m
+          .getRepository(AttendanceResponse)
+          .createQueryBuilder("a")
+          .select("a.eventId", "eventId")
+          .addSelect("COUNT(DISTINCT a.participant_id)", "count")
+          .where("a.eventId IN (:...ids)", { ids })
+          .andWhere(
+            "COALESCE(a.manager_override, a.self_answer, 'UNANSWERED') = 'ATTENDING'",
+          )
+          .groupBy("a.eventId")
+          .getRawMany<{ eventId: string; count: string }>()
+      : [];
+    return {
+      count,
+      events: rows.map((e) => ({
+        ...eventDto(e),
+        attendingCount: Number(
+          attendance.find((a) => a.eventId === e.id)?.count ?? 0,
+        ),
+      })),
+    };
+  }
   async assertOwned(
     ownerId: string,
     id: string,

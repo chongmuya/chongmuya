@@ -11,8 +11,9 @@ export async function requestJson<T>(
     throw new ApiError("잘못된 API 경로입니다.", 0, "INVALID_PATH");
   const timeout = AbortSignal.timeout(timeoutMs);
   const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-  if (options.body) headers.set("Content-Type", "application/json");
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  if (options.body && !(options.body instanceof FormData))
+    headers.set("Content-Type", "application/json");
   if (options.method && options.method !== "GET")
     headers.set("X-CSRF-Protection", "1");
   try {
@@ -41,6 +42,8 @@ export async function requestJson<T>(
         response.headers.get("x-request-id") ?? undefined,
       );
     }
+    if (headers.get("Accept") === "application/octet-stream")
+      return (await response.blob()) as T;
     if (response.status === 204) return undefined as T;
     try {
       return (await response.json()) as T;

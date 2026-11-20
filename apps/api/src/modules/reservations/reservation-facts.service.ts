@@ -1,3 +1,4 @@
+import { RequestTarget } from "./entities/request-target.entity.js";
 import { Injectable } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import { EventsService } from "../events/events.service.js";
@@ -23,6 +24,9 @@ export class ReservationFactsService {
             ?.state ?? initialPreparation(r);
         return {
           reservationId: r.id,
+          restaurantName:
+            (await m.findOneBy(RequestTarget, { id: r.targetId }))
+              ?.restaurantName ?? null,
           eventId,
           status: r.status,
           progress: completionStatus(s),
