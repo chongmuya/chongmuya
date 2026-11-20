@@ -8,7 +8,10 @@ import { Injectable } from "@nestjs/common";
 import { In, type EntityManager } from "typeorm";
 import { EventsService } from "../events/events.service.js";
 import { SelectedReservation } from "./entities/selected-reservation.entity.js";
-import { ReservationProgress } from "./entities/reservation-progress.entity.js";
+import {
+  ReservationCompletionHistory,
+  ReservationProgress,
+} from "./entities/reservation-progress.entity.js";
 import {
   initialPreparation,
   completionStatus,
@@ -314,5 +317,22 @@ export class ReservationFactsService {
       reservationId,
       remainingAmount: (state.receipt?.amount ?? 0) - state.refunded,
     }));
+  }
+
+  async hasRefundRecordedAfter(
+    reservationIds: string[],
+    createdAt: string,
+    m: EntityManager,
+  ) {
+    if (!reservationIds.length) return false;
+    // Use the server's UTC record time. A transfer can be entered retroactively.
+    return m
+      .createQueryBuilder(ReservationCompletionHistory, "history")
+      .where("history.reservationId IN (:...reservationIds)", {
+        reservationIds,
+      })
+      .andWhere("history.action = :action", { action: "REFUND_RECORDED" })
+      .andWhere("history.audit->>'recordedAt' > :createdAt", { createdAt })
+      .getExists();
   }
 }

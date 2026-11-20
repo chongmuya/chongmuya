@@ -227,10 +227,18 @@ export class SettlementsService {
           .filter((r) => r.refundedAmount > 0)
           .map((r) => r.reservationId),
       );
-      const refundRequiresRegeneration = depositConflicts(
+      const affectedReservations = depositConflicts(
         { expenses: n.snapshot?.expenses ?? [] },
         reservations,
-      ).some((conflict) => refunded.has(conflict.reservationId));
+      )
+        .map(({ reservationId }) => reservationId)
+        .filter((reservationId) => refunded.has(reservationId));
+      const refundRequiresRegeneration =
+        await this.reservations.hasRefundRecordedAfter(
+          affectedReservations,
+          n.createdAt,
+          m,
+        );
       return {
         ...n,
         needsReview,
