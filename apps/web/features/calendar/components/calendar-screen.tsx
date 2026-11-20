@@ -26,6 +26,7 @@ import {
 import { Calendar } from "@/shared/ui/calendar";
 import { kstDate } from "../lib/dates";
 import { ScheduleForm } from "./schedule-form";
+import { usePageVisible } from "@/shared/hooks/use-page-visible";
 export function CalendarScreen() {
   const { account, status, client } = useAuth(),
     params = useSearchParams();
@@ -61,6 +62,7 @@ function CalendarContent({
 }) {
   const router = useRouter();
   const today = kstDate();
+  const visible = usePageVisible();
   const [month, setMonth] = useState(today.slice(0, 7)),
     [selected, setSelected] = useState(today),
     [adding, setAdding] = useState(false),
@@ -79,7 +81,8 @@ function CalendarContent({
       owner ? undefined : groupId,
       owner ? restaurant : undefined,
     ),
-    enabled: !owner || !!restaurant,
+    enabled: (q) =>
+      visible && (!owner || !!restaurant) && !isAccessError(q.state.error),
   });
   const detail = useQuery({
     ...scheduleQuery(accountId, request, scheduleId ?? "none"),

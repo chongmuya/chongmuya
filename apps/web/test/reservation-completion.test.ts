@@ -40,6 +40,72 @@ const fixture = () =>
     receivedAmount: 0,
     refundedAmount: 0,
   }) as Completion;
+
+test("confirmed and cancelled reservations never render an empty guidance disclosure", async () => {
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "owner",
+    request: async <T>() => ({}) as T,
+  };
+  for (const state of ["confirmation", "cancellation"] as const) {
+    const data = { ...fixture(), issues: [], [state]: {} } as Completion;
+    const view = await render(createElement(PaymentForms, { data, access }));
+    try {
+      assert.equal(view.container.querySelector("details"), null);
+      assert.doesNotMatch(
+        view.container.textContent!,
+        /예약금·계좌·변경 조건 안내/,
+      );
+    } finally {
+      await view.unmount();
+    }
+  }
+});
+
+test("guidance draft and its disclosure survive a background confirmation with submission disabled", async () => {
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "owner",
+    request: async <T>() => ({}) as T,
+  };
+  function Screen() {
+    const [data, setData] = useState<Completion>({ ...fixture(), issues: [] });
+    return createElement(
+      "div",
+      null,
+      createElement(PaymentForms, { data, access }),
+      createElement(
+        "button",
+        {
+          onClick: () =>
+            setData({
+              ...data,
+              version: 2,
+              confirmation: {} as NonNullable<Completion["confirmation"]>,
+            }),
+        },
+        "다른 화면에서 확정",
+      ),
+    );
+  }
+  const view = await render(createElement(Screen));
+  try {
+    await act(async () => {
+      view.container.querySelector("summary")!.click();
+    });
+    const form = view.container.querySelector("form")!;
+    const field = form.querySelector<HTMLInputElement>('input[type="number"]');
+    assert(field);
+    await fill(view.container, field.name, "12345");
+    await click(view.container, "다른 화면에서 확정");
+    assert(view.container.querySelector("details")?.open);
+    assert.equal(field.value, "12345");
+    assert(form.querySelector("fieldset")?.disabled);
+    assert.match(form.textContent!, /최신|바뀌|진행할 수/);
+  } finally {
+    await view.unmount();
+  }
+});
 for (const lostResponse of [false, true]) {
   test(`receipt correction keeps the saved amount and time for the next correction (lost response: ${lostResponse})`, async () => {
     let current: Completion = {

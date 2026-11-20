@@ -13,6 +13,8 @@
 !apps/api/src/**
 !apps/api/scripts/
 !apps/api/scripts/merchant-operations.mjs
+!apps/api/scripts/reservation-operations.mjs
+!apps/api/scripts/reservation-completion.mjs
 !apps/api/scripts/merchant-cli.mjs
 !apps/api/scripts/restaurant-data.mjs
 !apps/api/scripts/restaurant-data-input.mjs

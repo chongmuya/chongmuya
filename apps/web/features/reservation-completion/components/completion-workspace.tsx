@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { focusManager, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { usePageVisible } from "@/shared/hooks/use-page-visible";
 import { koreanDateLabel } from "@/shared/lib/korean-date";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
@@ -71,11 +72,7 @@ function CompletionContent({
   access: CompletionAccess;
   onAccessLost: (lost: boolean) => void;
 }) {
-  const visible = useSyncExternalStore(
-    focusManager.subscribe,
-    () => focusManager.isFocused(),
-    () => true,
-  );
+  const visible = usePageVisible();
   const query = useQuery(completionQuery(id, access, visible));
   const denied = isAccessError(query.error);
   useEffect(() => {

@@ -26,7 +26,7 @@ COPY --from=production-dependencies /app/node_modules /app/node_modules
 COPY --from=production-dependencies /app/apps/api/node_modules ./node_modules
 COPY apps/api/package.json ./package.json
 COPY --from=build /app/apps/api/dist ./dist
-COPY apps/api/scripts/merchant-operations.mjs apps/api/scripts/merchant-cli.mjs apps/api/scripts/restaurant-data.mjs apps/api/scripts/restaurant-data-input.mjs apps/api/scripts/normalize-restaurant-address.mjs apps/api/scripts/deployment-config.mjs apps/api/scripts/migrate.mjs ./scripts/
+COPY apps/api/scripts/merchant-operations.mjs apps/api/scripts/reservation-operations.mjs apps/api/scripts/reservation-completion.mjs apps/api/scripts/merchant-cli.mjs apps/api/scripts/restaurant-data.mjs apps/api/scripts/restaurant-data-input.mjs apps/api/scripts/normalize-restaurant-address.mjs apps/api/scripts/deployment-config.mjs apps/api/scripts/migrate.mjs ./scripts/
 USER node
 EXPOSE 3001
 CMD ["node", "dist/main.js"]

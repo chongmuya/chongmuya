@@ -43,6 +43,9 @@ export function useCompletionCommand(id: string, access: CompletionAccess) {
       cache.setQueryData(completionKey(id, access), data);
       if (access.kind !== "link") {
         void cache.invalidateQueries({
+          queryKey: ["user", access.accountId, "calendar"],
+        });
+        void cache.invalidateQueries({
           queryKey: ["user", access.accountId, "events"],
         });
         void cache.invalidateQueries({

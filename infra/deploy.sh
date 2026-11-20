@@ -11,9 +11,18 @@ case "$action" in
   deploy) [[ $# == 2 ]] || die 'Usage: deploy.sh deploy ECR_IMAGE@sha256:DIGEST' ;;
   rollback) [[ $# == 3 && $3 == --confirm-compatibility ]] || die 'Usage: deploy.sh rollback RELEASE_ID --confirm-compatibility (review DB schema first)' ;;
   data-restaurants)
-    [[ $# -ge 2 && ( $target == import || $target == update || $target == show ) ]] || die 'Usage: deploy.sh data-restaurants import|update|show [options]'
+    [[ $# -ge 2 && ( $target == import || $target == update || $target == show || $target == menus || $target == menu-prices ) ]] || die 'Usage: deploy.sh data-restaurants import|update|show|menus|menu-prices [options]'
     data_args=("${@:2}") ;;
-  operations) operation_args=("${@:2}") ;;
+  operations)
+    operation_script=merchant-operations.mjs
+    operation_args=("${@:2}")
+    case "$target" in
+      merchant) operation_args=("${@:3}") ;;
+      reservations) operation_script=reservation-operations.mjs; operation_args=("${@:3}") ;;
+      completion) operation_script=reservation-completion.mjs; operation_args=("${@:3}") ;;
+      --*|'') ;; # Preserve the existing merchant operations invocation.
+      *) die 'Usage: deploy.sh operations [merchant|reservations|completion] [options]' ;;
+    esac ;;
   *) die 'Commands: deploy | rollback | data-restaurants | operations' ;;
 esac
 [[ $root =~ ^/[a-zA-Z0-9_./-]+$ && $root != / ]] || die 'Invalid DEPLOY_ROOT.'
@@ -99,7 +108,7 @@ if [[ $action == data-restaurants ]]; then
   "${helper[@]}" data /work < "$work/parameters.json"
   phase restaurant-data
   export DATA_INPUT_FILE=/dev/null
-  if [[ $target != show ]]; then
+  if [[ $target != show && $target != menus ]]; then
     [[ -n ${RESTAURANT_INPUT_FILE:-} && $RESTAURANT_INPUT_FILE == /* && $RESTAURANT_INPUT_FILE != *:* && -f $RESTAURANT_INPUT_FILE ]] || die 'Use an existing absolute RESTAURANT_INPUT_FILE path.'
     for argument in "${data_args[@]}"; do [[ $argument != --file && $argument != --file=* ]] || die 'Use RESTAURANT_INPUT_FILE instead of --file on the host.'; done
     docker run --rm --platform linux/amd64 --user 0 \
@@ -138,7 +147,7 @@ if [[ $action == operations ]]; then
        chown node:node /work/input.json'
     mounts=(--volume "$work/input.json:/run/input.json:ro")
   fi
-  compose run --rm --no-deps -T "${mounts[@]}" api node scripts/merchant-operations.mjs "${operation_args[@]}"
+  compose run --rm --no-deps -T "${mounts[@]}" api node "scripts/$operation_script" "${operation_args[@]}"
   report 'RESULT=SUCCESS'
   exit 0
 fi

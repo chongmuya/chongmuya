@@ -10,6 +10,7 @@ import {
   existsSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
 export async function verifyDeploymentFlow({
   directory,
@@ -19,6 +20,7 @@ export async function verifyDeploymentFlow({
   payload,
   migrationPayload,
   restaurantId,
+  sql,
   run,
   ok,
   t,
@@ -331,6 +333,156 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
   );
   ok(invoke(["data-restaurants", "show"]));
   ok(invoke(["operations", "--help"]));
+  const jsonOutput = (result) =>
+    JSON.parse(
+      ok(result)
+        .split("\n")
+        .find((line) => line.startsWith("{") || line.startsWith("[")),
+    );
+  const menus = jsonOutput(
+    invoke(["data-restaurants", "menus", "--id", restaurantId]),
+  );
+  assert(menus.menus.length > 0, "menus is a file-free query");
+  const priceFile = join(directory, "menu-prices.private.json");
+  writeFileSync(
+    priceFile,
+    JSON.stringify({
+      expectedVersion: menus.version,
+      evidence: "synthetic price verification",
+      items: [{ id: menus.menus[0].id, price: 23456 }],
+    }),
+    { mode: 0o600 },
+  );
+  const priceRun = invoke(
+    [],
+    [
+      "-c",
+      'RESTAURANT_INPUT_FILE="$1" bash "$2" data-restaurants menu-prices --id "$3" --actor deployment-test --reason preview-price',
+      "price-preview",
+      priceFile,
+      join(bundle, "deploy.sh"),
+      restaurantId,
+    ],
+  );
+  assert.equal(jsonOutput(priceRun).dryRun, true);
+  assert.deepEqual(
+    jsonOutput(invoke(["data-restaurants", "menus", "--id", restaurantId])),
+    menus,
+    "menu price preview must leave version and prices unchanged",
+  );
+
+  for (const kind of ["reservations", "completion"]) {
+    assert.match(
+      ok(invoke(["operations", kind, "--help"])),
+      new RegExp(
+        `reservation:${kind === "reservations" ? "operations" : kind}`,
+      ),
+    );
+  }
+  const reservationId = randomUUID(),
+    eventId = randomUUID(),
+    requestId = randomUUID(),
+    targetId = randomUUID(),
+    organizerId = randomUUID();
+  const heldEventKey = `${reservationId}:GUIDANCE:1`;
+  // Disposable SQL fixtures exercise the real production entry points without shipping seed code.
+  const contact = JSON.parse(
+    sql("SELECT row_to_json(c) FROM restaurant_contacts c LIMIT 1"),
+  );
+  const literal = (value) => `'${String(value).replaceAll("'", "''")}'`;
+  const offered = {
+    startsAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+    expectedGuests: 20,
+    seating: "ANY",
+    space: "ANY",
+    minimumSpend: null,
+    separateFee: null,
+    deposit: { kind: "NONE", amount: 0 },
+    menuDeadlineAt: null,
+    note: "",
+    changeCancellationPolicy: "test",
+  };
+  sql(`
+    UPDATE restaurants SET published=true WHERE id='${contact.restaurant_id}';
+    INSERT INTO accounts(id,email,"createdAt") VALUES ('${organizerId}','operations@example.test',now());
+    INSERT INTO events(id,owner_id,creator_id,name,created_at) VALUES ('${eventId}','${organizerId}','${organizerId}','synthetic operations',now());
+    INSERT INTO reservation_requests(id,event_id,request_key,digest,snapshot,contact_name,contact_phone,created_at,state) VALUES ('${requestId}','${eventId}','${randomUUID()}','test','{"eventName":"synthetic operations"}','synthetic organizer','01000000002',now(),'SELECTED');
+    INSERT INTO reservation_request_targets(id,request_id,restaurant_id,restaurant_name,address,is_demo,contact_id,contact_name,contact_phone,consent_at,delivery_status,candidate_state) VALUES ('${targetId}','${requestId}','${contact.restaurant_id}','synthetic restaurant','synthetic address',false,'${contact.id}','synthetic recipient',${literal(contact.phone)},now(),'DELIVERED','SELECTED');
+    INSERT INTO selected_reservations(id,event_id,request_id,target_id,revision,snapshot,selected_by,selected_at) VALUES ('${reservationId}','${eventId}','${requestId}','${targetId}',1,${literal(JSON.stringify({ offered }))},'${organizerId}',now());
+    INSERT INTO notification_facts(event_key,kind,event_id,request_id,reservation_id,target_id,revision,occurred_at,merchant_hold) VALUES ('${heldEventKey}','RESERVATION_UPDATED','${eventId}','${requestId}','${reservationId}','${targetId}',1,now(),'{"reason":"MANAGEMENT_LINK_MISSING"}');
+  `);
+  const recoveryTables = [
+    "selected_reservations",
+    "reservation_progress",
+    "reservation_completion_history",
+    "reservation_management_links",
+    "notification_facts",
+    "notification_messages",
+  ];
+  const recoveryState = () =>
+    recoveryTables.map((table) =>
+      sql(
+        `SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text)::text,'[]') FROM ${table} r`,
+      ),
+    );
+  const beforeRecovery = recoveryState();
+  const held = jsonOutput(
+    invoke(["operations", "reservations", "--action", "notifications"]),
+  );
+  assert(held.some((row) => row.id === heldEventKey && row.status === "HELD"));
+  const auditArgs = [
+    "--reservation",
+    reservationId,
+    "--actor",
+    "deployment-test",
+    "--confirmer",
+    "synthetic-owner",
+    "--method",
+    "PHONE",
+    "--confirmed-at",
+    new Date().toISOString(),
+    "--reason",
+    "synthetic-recovery",
+  ];
+  assert.equal(
+    jsonOutput(
+      invoke(["operations", "completion", "--action", "inspect", ...auditArgs]),
+    ).reservation,
+    reservationId,
+  );
+  const recoveryFile = join(directory, "recovery.private.json");
+  writeFileSync(
+    recoveryFile,
+    JSON.stringify({
+      requestKey: randomUUID(),
+      expectedVersion: 1,
+      operation: "ISSUE",
+      contactId: contact.id,
+      heldEventKey,
+    }),
+    { mode: 0o600 },
+  );
+  const recovery = invoke(
+    [],
+    [
+      "-c",
+      'file=$1; script=$2; shift 2; OPERATOR_INPUT_FILE="$file" bash "$script" operations completion --action link --input /run/input.json "$@"',
+      "recovery-preview",
+      recoveryFile,
+      join(bundle, "deploy.sh"),
+      ...auditArgs,
+    ],
+  );
+  assert.equal(jsonOutput(recovery).dryRun, true);
+  assert.deepEqual(
+    recoveryState(),
+    beforeRecovery,
+    "recovery dry-run must roll back links, notices, versions and audit records",
+  );
+  assert.doesNotMatch(
+    recovery.stdout + recovery.stderr,
+    /0100000000[12]|encryptedToken|reservation-manage\?|postgresql:/,
+  );
   const contactFile = join(directory, "operator-contact.json");
   writeFileSync(
     contactFile,
