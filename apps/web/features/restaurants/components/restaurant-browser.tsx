@@ -50,6 +50,7 @@ export function RestaurantBrowser({
   const loading = chosen.some((r) => r.isPending);
   const failed = chosen.some((r) => r.isError);
   const unavailable = chosen.some((r) => r.data && !r.data.inquiryAvailable);
+  const selectionBlocked = loading || failed || unavailable;
   const toggle = (id: string) =>
     onSelect(
       selected.includes(id)
@@ -87,6 +88,7 @@ export function RestaurantBrowser({
           id={restaurantId}
           selected={selected.includes(restaurantId)}
           full={selected.length === 3}
+          selectionBlocked={selectionBlocked}
           targetCount={
             selected.includes(restaurantId)
               ? selected.length
@@ -273,7 +275,7 @@ export function RestaurantBrowser({
           </button>
           <Button
             className="shrink-0 text-sm"
-            disabled={loading || failed || unavailable}
+            disabled={selectionBlocked}
             onClick={() => onInquiry(selected)}
           >
             문의 조건 확인
@@ -287,7 +289,7 @@ export function RestaurantBrowser({
           footer={
             <Button
               className="w-full"
-              disabled={!selected.length || loading || failed || unavailable}
+              disabled={!selected.length || selectionBlocked}
               onClick={() => {
                 setSheet(false);
                 onInquiry(selected);

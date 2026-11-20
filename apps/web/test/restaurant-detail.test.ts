@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement } from "react";
 import { AuthProvider } from "../features/auth/components/auth-provider";
+import { RestaurantBrowser } from "../features/restaurants/components/restaurant-browser";
 import { RestaurantDetail } from "../features/restaurants/components/restaurant-detail";
 import { restaurantQuery } from "../features/restaurants/api/restaurants.api";
 import { render, until, click, deferred } from "./support/form-dom";
@@ -47,6 +48,7 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
         id: restaurant.id,
         selected: true,
         full: false,
+        selectionBlocked: false,
         targetCount: 1,
         onSelect: () => {
           removed++;
@@ -142,6 +144,67 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
       document.activeElement?.textContent ?? "",
       /현재는 문의를 접수할 수 없어요/,
     );
+  } finally {
+    await view.unmount();
+    globalThis.fetch = original;
+  }
+});
+
+test("detail cannot continue while another selected restaurant is unverified", async () => {
+  const original = globalThis.fetch;
+  const firstRead = deferred<Response>();
+  const other = { ...restaurant, id: "other", name: "다른 매장" };
+  let otherResponse = () => firstRead.promise;
+  let inquiries = 0;
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith("/restaurants/other")) return otherResponse();
+    if (path.endsWith("/restaurants/restaurant"))
+      return Response.json(restaurant);
+    return Response.json({ authenticated: false, account: null });
+  };
+  const view = await render(
+    createElement(
+      AuthProvider,
+      null,
+      createElement(RestaurantBrowser, {
+        selected: [restaurant.id, other.id],
+        restaurantId: restaurant.id,
+        view: "detail",
+        page: 1,
+        onSelect() {},
+        onNavigate() {},
+        onInquiry() {
+          inquiries++;
+        },
+      }),
+    ),
+  );
+  const otherQuery = restaurantQuery(other.id).queryKey;
+  try {
+    await until(() => assert.match(view.container.textContent!, /검수 매장/));
+    const proceed = [...view.container.querySelectorAll("button")].find(
+      (b) => b.textContent === "선택한 2곳으로 계속",
+    )!;
+    assert.equal(proceed.disabled, true);
+
+    await act(async () =>
+      firstRead.resolve(Response.json({}, { status: 503 })),
+    );
+    await until(() =>
+      assert.equal(view.cache.getQueryState(otherQuery)?.status, "error"),
+    );
+    assert.equal(proceed.disabled, true);
+
+    for (const inquiryAvailable of [false, true]) {
+      otherResponse = async () => Response.json({ ...other, inquiryAvailable });
+      await act(async () => {
+        await view.cache.refetchQueries({ queryKey: otherQuery });
+      });
+      await until(() => assert.equal(proceed.disabled, !inquiryAvailable));
+      await act(async () => proceed.click());
+      assert.equal(inquiries, inquiryAvailable ? 1 : 0);
+    }
   } finally {
     await view.unmount();
     globalThis.fetch = original;

@@ -14,6 +14,7 @@ export function RestaurantDetail({
   id,
   selected,
   full,
+  selectionBlocked,
   targetCount,
   onSelect,
   onInquiry,
@@ -22,6 +23,7 @@ export function RestaurantDetail({
   id: string;
   selected: boolean;
   full: boolean;
+  selectionBlocked: boolean;
   targetCount: number;
   onSelect: () => void;
   onInquiry: () => void;
@@ -284,7 +286,9 @@ export function RestaurantDetail({
               {r.inquiryAvailable ? (
                 <Button
                   className="w-full"
-                  disabled={result.isError || (!selected && full)}
+                  disabled={
+                    selectionBlocked || result.isError || (!selected && full)
+                  }
                   onClick={onInquiry}
                 >
                   {!selected && full
@@ -300,6 +304,12 @@ export function RestaurantDetail({
                 >
                   문의 수신 확인 전인 매장이에요. 현재는 문의를 접수할 수
                   없어요.
+                </p>
+              )}
+              {selectionBlocked && r.inquiryAvailable && !result.isError && (
+                <p role="status" className="text-sm text-muted">
+                  선택한 매장을 모두 확인해야 계속할 수 있어요. 매장 목록에서
+                  선택을 확인해 주세요.
                 </p>
               )}
             </div>
