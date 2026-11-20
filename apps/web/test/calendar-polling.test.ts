@@ -7,7 +7,8 @@ import { AuthProvider } from "../features/auth/components/auth-provider";
 import { OwnerScreen } from "../features/owner/components/owner-screen";
 import { CalendarScreen } from "../features/calendar/components/calendar-screen";
 import { MerchantSummary } from "../features/calendar/components/merchant-summary";
-import { kstDate, moveMonth } from "../features/calendar/lib/dates";
+import { monthRange } from "../features/calendar/lib/dates";
+import { koreanDateOnly } from "../shared/lib/korean-date";
 import type { CalendarData } from "../features/calendar/types/calendar";
 import type { SessionRequest } from "../features/auth/types";
 import { useCompletionCommand } from "../features/reservation-completion/hooks/use-completion-command";
@@ -15,7 +16,7 @@ import { render, until, click, deferred, client } from "./support/form-dom";
 
 const accountId = "10000000-0000-4000-8000-000000000001";
 const restaurantId = "20000000-0000-4000-8000-000000000001";
-const today = kstDate();
+const today = koreanDateOnly();
 const reservation = (id = "reservation", date = today) => ({
   id,
   title: `가상 예약 ${id}`,
@@ -182,7 +183,7 @@ test("owner home calendar selects days, shows more than five bookings and isolat
   const calls: string[] = [];
   const late = deferred<CalendarData>();
   let signal: AbortSignal | undefined;
-  const next = moveMonth(today.slice(0, 7), 1);
+  const next = monthRange(today.slice(0, 7)).to.slice(0, 7);
   const request: SessionRequest = async <T>(
     path: string,
     options?: RequestInit,

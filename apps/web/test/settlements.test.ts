@@ -599,7 +599,9 @@ test("deposit conflicts block new notices while stale historical text remains vi
       view.container.textContent!,
       /지출 보완 전 새 정산문을 발행할 수 없습니다/,
     );
-    button.parentElement!.querySelectorAll("button")[1]!.click();
+    await act(async () =>
+      button.parentElement!.querySelectorAll("button")[1]!.click(),
+    );
     await until(() =>
       assert.match(
         view.container.textContent!,

@@ -618,28 +618,32 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     "-d",
     "--wait",
     "--wait-timeout",
-    "12",
+    // Allow the real healthcheck to become unhealthy: 10s start + 12 × 5s.
+    // Older Compose versions can report a wait timeout as success.
+    "120",
     "api",
   ]);
-  if (badReady.status === 0) {
-    const running = ok(run("docker", [...compose, "ps", "-q", "api"])).trim();
-    console.log(
-      ok(
-        run("docker", [
-          "exec",
-          running,
-          "node",
-          "--input-type=module",
-          "-e",
-          "console.log(new URL(process.env.DATABASE_URL).hostname);console.log((await fetch('http://127.0.0.1:3001/ready')).status)",
-        ]),
-      ),
-    );
-  }
   assert.notEqual(
     badReady.status,
     0,
     "bad TLS hostname must fail API readiness",
+  );
+  const unreadyApi = ok(run("docker", [...compose, "ps", "-q", "api"])).trim();
+  assert.equal(
+    ok(
+      run("docker", ["inspect", "-f", "{{.State.Health.Status}}", unreadyApi]),
+    ).trim(),
+    "unhealthy",
+  );
+  ok(
+    run("docker", [
+      "exec",
+      unreadyApi,
+      "node",
+      "--input-type=module",
+      "-e",
+      "import assert from 'node:assert/strict';const get=path=>fetch('http://127.0.0.1:3001/'+path,{signal:AbortSignal.timeout(3000)});assert.equal((await get('health')).status,200);assert((await get('ready')).status>=500)",
+    ]),
   );
   ok(run("docker", [...compose, "down", "--remove-orphans"]));
   await verifyDeploymentFlow({

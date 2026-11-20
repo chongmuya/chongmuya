@@ -24,7 +24,7 @@ import {
   scheduleQuery,
 } from "../api/calendar.api";
 import { Calendar } from "@/shared/ui/calendar";
-import { kstDate } from "../lib/dates";
+import { koreanDateOnly } from "@/shared/lib/korean-date";
 import { ScheduleForm } from "./schedule-form";
 import { usePageVisible } from "@/shared/hooks/use-page-visible";
 export function CalendarScreen() {
@@ -61,7 +61,7 @@ function CalendarContent({
   scheduleId?: string;
 }) {
   const router = useRouter();
-  const today = kstDate();
+  const today = koreanDateOnly();
   const visible = usePageVisible();
   const [month, setMonth] = useState(today.slice(0, 7)),
     [selected, setSelected] = useState(today),
@@ -109,7 +109,7 @@ function CalendarContent({
         })),
         ...data.events.map((e) => ({
           id: e.id,
-          date: kstDate(new Date(e.scheduledAt)),
+          date: koreanDateOnly(new Date(e.scheduledAt)),
           order: Date.parse(e.scheduledAt),
           title: e.name,
           kind: "event" as const,
@@ -119,7 +119,7 @@ function CalendarContent({
         })),
         ...(data.reservations ?? []).map((r) => ({
           id: r.id,
-          date: kstDate(new Date(r.startsAt)),
+          date: koreanDateOnly(new Date(r.startsAt)),
           order: Date.parse(r.startsAt),
           title: r.title,
           kind: "reservation" as const,

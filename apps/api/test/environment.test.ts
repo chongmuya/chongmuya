@@ -6,9 +6,27 @@ import {
 } from "../src/config/database-environment.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { parseEnvironment as parse } from "../src/config/environment.js";
+import {
+  environmentVariableNames,
+  parseEnvironment as parse,
+} from "../src/config/environment.js";
+
+test("Turbo forwards every API runtime setting without exposing it to the web task", () => {
+  const { tasks } = JSON.parse(
+    readFileSync(new URL("../../../../turbo.json", import.meta.url), "utf8"),
+  ) as { tasks: Record<string, { passThroughEnv?: string[] }> };
+  const api = new Set(tasks["@chongmuya/api#dev"]!.passThroughEnv);
+  for (const name of environmentVariableNames) {
+    assert(api.has(name), `API dev drops ${name}`);
+    assert(
+      !(tasks.dev!.passThroughEnv ?? []).includes(name) || name === "NODE_ENV",
+      `API setting leaked to the shared dev task: ${name}`,
+    );
+  }
+});
 
 const authSecret = "test-secret-with-at-least-32-characters";
 test("development seed/reset allows only the named loopback development or isolated test DB", () => {

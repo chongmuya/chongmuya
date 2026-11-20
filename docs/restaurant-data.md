@@ -4,17 +4,19 @@
 
 ## 명령
 
-| 실행 위치   | 명령                                                                                                  | 역할                                                                              |
-| ----------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| 저장소 루트 | `pnpm db:seed`                                                                                        | API 컴파일 후 가짜 매장·계정·모임·행사·문의 생성. 재실행 시 기존 수정 보존        |
-| 저장소 루트 | `pnpm db:reset`                                                                                       | 허용된 로컬 DB의 public 스키마 데이터 삭제 → migration → 개발 seed                |
-| 저장소 루트 | `pnpm --filter @chongmuya/api db:demo:links`                                                          | 기존 개발용 참석·매장 답변 링크 조회                                              |
-| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants show`                                                  | 최대 100개 매장의 ID·version 조회                                                 |
-| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants show --key <고정키>`                                   | 해당 매장의 ID/version·공간/메뉴/연락처 ID와 정책 표시 확인. `--id <UUID>`도 지원 |
-| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants import --file <경로> --actor <실행자> --reason <사유>` | 통합 JSON의 신규 매장 등록 미리보기                                               |
-| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants update --file <경로> --actor <실행자> --reason <사유>` | version을 확인하는 지정 항목 수정 미리보기                                        |
+| 실행 위치   | 명령                                                                                                                   | 역할                                                                              |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 저장소 루트 | `pnpm db:seed`                                                                                                         | API 컴파일 후 가짜 매장·계정·모임·행사·문의 생성. 재실행 시 기존 수정 보존        |
+| 저장소 루트 | `pnpm db:reset`                                                                                                        | 허용된 로컬 DB의 public 스키마 데이터 삭제 → migration → 개발 seed                |
+| 저장소 루트 | `pnpm --filter @chongmuya/api db:demo:links`                                                                           | 기존 개발용 참석·매장 답변 링크 조회                                              |
+| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants show`                                                                   | 최대 100개 매장의 ID·version 조회                                                 |
+| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants show --key <고정키>`                                                    | 해당 매장의 ID/version·공간/메뉴/연락처 ID와 정책 표시 확인. `--id <UUID>`도 지원 |
+| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants import --file <경로> --actor <실행자> --reason <사유>`                  | 통합 JSON의 신규 매장 등록 미리보기                                               |
+| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants update --file <경로> --actor <실행자> --reason <사유>`                  | version을 확인하는 지정 항목 수정 미리보기                                        |
+| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants menus --id <UUID>`                                                      | 현재 메뉴 ID·가격·매장 version 조회                                               |
+| 저장소 루트 | `pnpm --filter @chongmuya/api data:restaurants menu-prices --id <UUID> --file <경로> --actor <실행자> --reason <사유>` | 근거를 남기는 지정 메뉴 가격 수정 미리보기                                        |
 
-import/update는 `--execute`가 있어야 반영한다. actor/reason은 실행 단위로 한 번 입력한다. 입력 파일은 일반 파일·권한 0600·최대 1MiB여야 한다. 번호·동의 메모·SQL·DB URL은 출력하지 않는다. 실패 시 허용 코드와 안전한 필드 위치만 출력한다. 기본 미리보기는 읽기 전용 트랜잭션이며, 실제 실행 시 상태와 version을 다시 확인한다. 실행 전체는 한 트랜잭션이다.
+import/update/menu-prices는 `--execute`가 있어야 반영한다. actor/reason은 실행 단위로 한 번 입력한다. 입력 파일은 일반 파일·권한 0600·최대 1MiB여야 한다. 번호·동의 메모·SQL·DB URL은 출력하지 않는다. 실패 시 허용 코드와 안전한 필드 위치만 출력한다. 기본 미리보기는 읽기 전용 트랜잭션이며, 실제 실행 시 상태와 version을 다시 확인한다. 실행 전체는 한 트랜잭션이다.
 
 ## 로컬 준비
 
@@ -27,6 +29,18 @@ pnpm --filter @chongmuya/api build
 pnpm --filter @chongmuya/api db:migration:run
 pnpm db:seed
 ```
+
+demo 계정의 최초 비밀번호는 `Demo1234!`다. `DEMO_SEED_PASSWORD`로 최초 생성 비밀번호를 바꿀 수 있으며 기존 비밀번호는 재실행해도 유지한다. 외부 인증 없이 다음 이메일로 일반 로그인할 수 있다.
+
+| 계정                           | 시나리오                      |
+| ------------------------------ | ----------------------------- |
+| `organizer.a@example.test`     | 모임·행사·참석·답변 대기/비교 |
+| `organizer.b@example.test`     | 별도 총무의 모임·행사         |
+| `organizer.empty@example.test` | 빈 총무 화면                  |
+| `owner.a@example.test`         | 소유 매장 정보·메뉴·문의 관리 |
+| `owner.empty@example.test`     | 사장님 등록 시작              |
+
+개발 시드의 인증·동의는 합성 자료이며 실제 메일·문자 전송을 하지 않는다. 로컬 API도 fake 문자·지도 공급자를 사용한다. 대화형 터미널은 demo 행사·참석·매장 답변 링크를 표시하고 비대화형 실행은 비밀 링크를 출력하지 않는다. 파일이 필요하면 `db:demo:links --output ../../.local/demo.links.json`으로 새 0600 파일에 저장한다.
 
 일반 개발 seed/reset은 loopback 호스트, `chongmuya` DB 계정, 포트 `15432`, DB 이름 `chongmuya`만 허용한다. NODE_ENV가 production이면 거부한다. 자동 테스트는 NODE_ENV=test, 동일 계정·loopback과 `chongmuya_test` 또는 `chongmuya_test_*` 이름의 격리 DB만 허용한다. NODE_ENV만 바꿔 원격/운영 DB를 초기화할 수 없다. `synchronize`, `migrationsRun`, `dropSchema`는 false다.
 
@@ -42,6 +56,8 @@ pnpm db:reset
 pnpm db:seed --set second
 pnpm --filter @chongmuya/api db:demo:links
 ```
+
+재실행은 기존 계정·명단·매장 수정과 삭제·동의 철회·소유권 해제를 보존하며 링크 만료를 연장하지 않는다. 새 `--set`은 공용 계정·매장을 재사용하고 행사 시나리오만 추가한다. 특정 세트만 다시 만들려면 `pnpm db:seed --set second --recreate`를 사용한다. 이 명령은 해당 세트의 행사·참석·문의 수정을 삭제한다.
 
 로컬 부분 수정도 아래 운영 도구의 update를 사용할 수 있다. 개발용 000 번호를 운영 import/update에 전달하지 않는다. 개발 fixture의 고정 c021/c022/c023 ID는 `show --id`로 확인하고 자원 ID로 수정한다.
 
@@ -111,6 +127,10 @@ import는 기존 UUIDv5 namespace와 `key`, `매장key/공간key`, `매장key/�
 
 changes는 초기 등록의 표시 필드를 지원한다. 주소 변경은 latitude와 longitude도 함께 전달해야 하며, 더 이상 맞지 않는 구조화 주소는 비운다. 이름·주소 변경도 기존 중복 제약을 따른다. 서버 소유권·정규화 필드·잠금 version은 changes에 넣지 않는다.
 
+기존 주소의 표준화 검토가 필요한 경우에는 별도 [주소 정규화 도구](../apps/api/scripts/normalize-restaurant-address.mjs)를 사용한다. `pnpm --filter @chongmuya/api exec node scripts/normalize-restaurant-address.mjs --list`로 대상을 확인하고, 수정은 매장 ID·현재 version·검색 결과·actor/reason을 명시한 dry-run 이후 `--execute`로 반영한다. 이 도구는 런타임 설정과 주소 공급자를 사용한다.
+
+일괄 수정은 파일 순서대로 앞선 항목의 변경 예정 이름·주소를 반영한다. 미리보기와 실행 모두 DB의 동일한 정규화 기준으로 중복을 검사한다. 두 매장을 같은 이름·주소로 바꾸는 배치는 거부하고, 앞선 수정이 비운 조합은 뒤 항목이 사용할 수 있다. 실행 중 한 항목이라도 실패하면 전체를 롤백한다.
+
 정책은 `policies`에 저장한다. 최초 설명 필드 5개는 catalogPolicies로 `sourceDescriptions`에 보관한다. update의 `policies`는 `hours`, `holidays`, `advance`, `minimumOrder`, `menuDeadline`, `guestDeadline`, `usage`, `deposit` 중 변경할 단위를 기존 구조 그대로 받는다. 해당 단위의 내부 필드는 모두 제공한다. `weeklyHours`는 요일 7개와 note를 받으며 null은 요일 설정만 제거한다. 기존 사장님 수정·descriptionOverrides·다른 정책은 보존한다. 사장님 구조화 값이나 요일 설정이 이미 표시를 결정하는 설명 필드에 원문만 덮어쓰려 하면 `POLICY_DESCRIPTION_OVERRIDDEN`으로 거부한다. 이 경우 표시되는 `policies` 값을 수정한다. 내부 sourceDescriptions/descriptionOverrides 자체를 입력하지 않는다.
 
 기존 매장에 연락처만 보완하거나 번호를 바꾸는 형식은 같다.
@@ -142,6 +162,20 @@ pnpm --filter @chongmuya/api data:restaurants update --file /안전한경로/upd
 pnpm --filter @chongmuya/api data:restaurants update --file /안전한경로/update.private.json --actor operator --reason '확인한 변경 반영' --execute
 ```
 
+## 메뉴 가격만 수정
+
+메뉴 ID와 현재 version을 `data:restaurants menus --id <매장-UUID>`로 조회한 뒤 다음 형식의 비공개 파일을 준비한다. 아래 UUID는 형식 예시다.
+
+```json
+{
+  "expectedVersion": 3,
+  "evidence": "확인한 메뉴판 가격",
+  "items": [{ "id": "c0230000-0000-4000-8000-000000000001", "price": 12000 }]
+}
+```
+
+`data:restaurants menu-prices --id <매장-UUID> --file <경로> --actor <실행자> --reason <사유>`로 미리보기하고 `--execute`로 반영한다. 지정한 메뉴 가격만 수정하며 실제 변경이 있으면 매장 version을 한 번 올린다. 이전·새 가격과 evidence를 기록하고 과거 주문 금액은 바꾸지 않는다. 이 명령은 정수 가격만 받는다. 미확인 가격 null로 되돌리거나 이름·판매 여부 등을 바꾸려면 일반 update를 사용한다.
+
 ## EC2: 파일 준비와 일회성 실행
 
 이 코드·CLI·Compose를 포함하는 **첫 배포는 필요하다**. 이후 JSON 내용 변경은 현재 성공한 릴리스 이미지로 실행하므로 재빌드·재배포가 필요 없다. 기존 배포/롤백/migration 순서는 변경하지 않는다.
@@ -156,6 +190,7 @@ sudo env RESTAURANT_INPUT_FILE=/안전한경로/restaurants.production.private.j
 # 위 결과 확인 후 같은 명령 끝에 --execute
 
 sudo bash /opt/chongmuya/deployment/current/deploy.sh data-restaurants show --key example-restaurant
+sudo bash /opt/chongmuya/deployment/current/deploy.sh data-restaurants menus --id <매장-UUID>
 sudo env RESTAURANT_INPUT_FILE=/안전한경로/update.private.json \
   bash /opt/chongmuya/deployment/current/deploy.sh data-restaurants update \
   --actor operator --reason '담당 연락처 보완' --execute
@@ -165,8 +200,4 @@ sudo env RESTAURANT_INPUT_FILE=/안전한경로/update.private.json \
 
 root 복사 도우미가 원본 권한·1MiB 상한을 확인하고 임시 복사본만 node 소유 0600으로 만든다. 컨테이너에는 읽기 전용으로 마운트한다. 정상·실패·신호 종료 후 임시 입력·환경변수 파일을 지운다. 기존 API를 중단하거나 포트를 열지 않는다. 작은 장애 복구 입력의 32KB 제한은 유지한다.
 
-## 대체한 경로와 보존한 기능
-
-옛 공개 `restaurants.json`, `restaurants.seed.ts`, `run-seed.ts`, `run-production-restaurants.ts`, 분리 연락처 `--contacts-file`, `db:seed:restaurants`, `db:seed:restaurants:production`, `db:seed:demo`, 서버 `seed-restaurants`, 운영 `record-contact`를 새 경로로 통합했다. 실제 첨부 원본을 삭제하거나 Git 이력을 재작성하지 않는다. `claim-contact.seed`와 기존 receipt 테이블은 개발 시드의 삭제/참조 보호에 사용하므로 유지한다.
-
-기존 사장님 전체 저장·전화 인증, 소유권 연결·공개 변경·주소 정규화, 문의 수신자 변경·문자 장애 복구, demo 링크 조회는 유지한다. 운영 부분 수정을 사장님 전체 저장 메서드에 전달하거나 가짜 AuthUser를 만들지 않는다. 새 관리 테이블·외부 라이브러리·워크플로·관리 웹·S3 입력 전송 시스템은 추가하지 않았다.
+호스트도 `menu-prices --id <매장-UUID>`를 지원하며 가격 파일은 동일한 `RESTAURANT_INPUT_FILE`로 전달한다. 새 명령을 포함한 릴리스가 배포되어 있어야 한다. 문의 문자·예약 링크 복구는 [운영](operations.md)의 별도 업무 도구를 사용한다.
