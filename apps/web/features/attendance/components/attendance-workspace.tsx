@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import { StepLayout } from "@/shared/ui/step-layout";
 import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { BottomSheet } from "@/shared/ui/bottom-sheet";
+import { ApiError } from "@/shared/http/api-error";
 import { isAccessError } from "@/shared/http/access-error";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
@@ -170,28 +171,69 @@ function CreateRound({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
-  const [requestKey] = useState(() => crypto.randomUUID()),
-    action = useAttendanceAction(props.accountId, props.eventId, props.request),
+  const action = useAttendanceAction(
+      props.accountId,
+      props.eventId,
+      props.request,
+    ),
     active = useActiveScreen();
   const form = useForm({
     resolver: zodResolver(titleSchema),
     defaultValues: { title: defaultTitle },
   });
+  const pending = useRef<{
+    kind: "create";
+    requestKey: string;
+    title: string;
+  } | null>(null);
+  const submitting = useRef(false);
+  const [uncertain, setUncertain] = useState(false);
+  const busy = action.isPending || uncertain;
+  useEffect(() => {
+    if (!busy) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [busy]);
+  const save = (title: string) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    pending.current ??= {
+      kind: "create",
+      requestKey: crypto.randomUUID(),
+      title,
+    };
+    action.mutate(pending.current, {
+      onSuccess: (result) => {
+        if (!active.current || !("id" in result)) return;
+        pending.current = null;
+        onCreated(result.id);
+      },
+      onError: (error) => {
+        if (!active.current) return;
+        const unknown =
+          !(error instanceof ApiError) ||
+          error.status < 400 ||
+          error.status >= 500;
+        setUncertain(unknown);
+        if (!unknown) pending.current = null;
+      },
+      onSettled: () => {
+        submitting.current = false;
+      },
+    });
+  };
   return (
-    <BottomSheet title="차수 만들기" busy={action.isPending} onClose={onClose}>
+    <BottomSheet title="차수 만들기" busy={busy} onClose={onClose}>
       <form
         noValidate
         className="space-y-4"
-        onSubmit={form.handleSubmit((values) =>
-          action.mutate(
-            { kind: "create", requestKey, title: values.title },
-            {
-              onSuccess: (result) => {
-                if (active.current && "id" in result) onCreated(result.id);
-              },
-            },
-          ),
-        )}
+        onSubmit={(event) => {
+          void form.handleSubmit((values) => save(values.title))(event);
+        }}
       >
         <FormField
           id="round-title"
@@ -199,24 +241,47 @@ function CreateRound({
           error={form.formState.errors.title?.message}
         >
           {(attributes) => (
-            <Input {...attributes} {...form.register("title")} variant="pill" />
+            <Input
+              {...attributes}
+              {...form.register("title")}
+              variant="pill"
+              disabled={busy}
+            />
           )}
         </FormField>
         <FormError
-          message={action.error ? safeErrorMessage(action.error) : undefined}
+          message={
+            action.error
+              ? uncertain
+                ? "차수 생성 결과를 확인하지 못했어요. 제목과 요청을 유지하고 다시 확인해 주세요."
+                : safeErrorMessage(action.error)
+              : undefined
+          }
         />
         <div className="flex gap-2">
           <Button
             className="flex-1"
             variant="outline"
-            disabled={action.isPending}
+            disabled={busy}
             onClick={onClose}
           >
             취소
           </Button>
-          <Button className="flex-1" type="submit" loading={action.isPending}>
-            만들기
-          </Button>
+          {uncertain ? (
+            <Button
+              className="flex-1"
+              loading={action.isPending}
+              onClick={() => {
+                if (pending.current) save(pending.current.title);
+              }}
+            >
+              같은 요청 다시 확인
+            </Button>
+          ) : (
+            <Button className="flex-1" type="submit" loading={action.isPending}>
+              만들기
+            </Button>
+          )}
         </div>
       </form>
     </BottomSheet>
