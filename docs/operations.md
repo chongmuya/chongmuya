@@ -22,12 +22,18 @@
 
 SOLAPI의 공개 callback은 `POST /api/v1/webhooks/solapi`이며 `SOLAPI_WEBHOOK_SECRET`과 원문 본문의 `X-Solapi-Signature`로 검증한다. `SINGLE-REPORT` 연결, 등록 발신번호·잔액·송신 IP·권한은 실제 환경에서 확인한다. `ACCEPTED`는 공급자 접수이며 휴대폰 전달 완료가 아니다.
 
-정상 문의는 저장 후 발송한다. 운영 도구는 장애·예외 처리용이다. 빌드된 API에서 다음 도움말로 정확한 인자를 확인한다.
+정상 예약 처리와 문자 발송은 서버가 수행한다. CLI는 필요할 때 실행하는 조회·관리·장애·대리 기록 수단이다. 로컬에서는 API를 빌드한 뒤 다음처럼 실행한다. 세부 옵션은 각 명령의 `--help`로 확인한다.
 
 ```sh
-pnpm --filter @chongmuya/api merchant:operations --help
-pnpm --filter @chongmuya/api reservation:operations --help
-pnpm --filter @chongmuya/api reservation:completion --help
+# 최초 문의 문자 / 예약 후속 알림 / 예약 진행 상태 조회
+pnpm --filter @chongmuya/api merchant:operations --action deliveries
+pnpm --filter @chongmuya/api reservation:operations --action notifications
+pnpm --filter @chongmuya/api reservation:completion --action inspect --reservation <예약_UUID>
+# 특정 문의 문자 결과 재확인·반영 (재발송 아님)
+pnpm --filter @chongmuya/api merchant:operations --action reconcile --delivery <발송_UUID> --actor <실행자> --reason <사유> --execute
+# 실제 변경: 기본 확인 후 같은 명령에 --execute를 붙여 적용
+pnpm --filter @chongmuya/api merchant:operations --action publish --restaurant <매장_UUID> --actor <실행자> --reason <사유>
+pnpm --filter @chongmuya/api merchant:operations --action publish --restaurant <매장_UUID> --actor <실행자> --reason <사유> --execute
 ```
 
 | 도구                     | 주요 작업                                                                                                                         |
@@ -36,7 +42,9 @@ pnpm --filter @chongmuya/api reservation:completion --help
 | `reservation:operations` | `notifications` 후속 알림 조회, `retry-notification`, `reconcile-notification`, `dispatch`, `expire`, `close-unanswered`          |
 | `reservation:completion` | `inspect`, 안내·실입금·예외 확인, 변경 제안·양측 합의 적용, 환불 예정 제안·반환 기록, `link` 관리                                 |
 
-변경 명령은 기본 미리보기이며 `--actor`, `--reason`, 실제 반영 시 `--execute`가 필요하다. 예약 대리 기록은 `--confirmer`, `--method PHONE|SMS`, `--confirmed-at`도 요구한다. 일반 completion 미리보기는 권한·현재 상태·버전·확인자 검사이며 전체 업무 검증은 실행 트랜잭션에서 수행한다. 매장 데이터 import/update의 전체 미리보기 검증과 혼동하지 않는다.
+조회(`deliveries`, `notifications`, `inspect`)는 실행자·확인 정보나 `--execute`가 필요 없다. 변경 명령은 기본 미리보기이며 `--actor`, `--reason`, 실제 반영 시 `--execute`가 필요하다. completion의 조회 외 작업은 비공개 `--input`과 `--confirmer`, `--method PHONE|SMS`, `--confirmed-at`도 요구한다. 실행자·사유 입력은 로그인 인증이 아니다.
+
+일반 completion 미리보기는 입력 파일·요청 키·현재 버전·확인 정보를 검사하며 전체 업무 변경을 시뮬레이션하지 않는다. 전체 업무 검증은 실제 실행 시 수행하고, `link`는 별도의 검증·롤백 경로를 사용한다. 후속 문자 결과 재확인은 `reservation:operations --action reconcile-notification --delivery <알림_UUID> --actor <실행자> --reason <사유> --execute`로 실행한다. 공급자 조회·결과 반영에도 `--execute`가 필요하다.
 
 `PENDING` 또는 명확한 `SUBMISSION` 실패만 현재 수신자·동의·링크를 재검사한 뒤 재시도한다. `UNKNOWN`·`PROCESSING`은 `reconcile`로 결과를 먼저 확인하며 링크 재발급·수신자 변경으로 우회 발송하지 않는다. 실제 `DELIVERY` 실패도 무조건 재전송하지 않는다. 자동 문자 복구 워커는 없다.
 
@@ -51,6 +59,7 @@ pnpm --filter @chongmuya/api reservation:completion --help
 ```sh
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations merchant --action deliveries
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations reservations --action notifications
+sudo bash /opt/chongmuya/deployment/current/deploy.sh operations completion --action inspect --reservation <예약_UUID>
 ```
 
 입력 파일이 필요한 예약 대리 명령은 EC2에 0600 파일을 먼저 준비하고, 호스트에는 `OPERATOR_INPUT_FILE`, CLI에는 마운트된 `/run/input.json`을 지정한다. 아래는 미리보기이며 모든 대괄호 자리 값을 실제 확인한 값으로 바꾼다.

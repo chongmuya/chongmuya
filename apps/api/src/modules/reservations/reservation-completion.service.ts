@@ -24,6 +24,7 @@ import {
 import { commandSchema } from "./types/reservation-completion.js";
 import type {
   ReservationPrincipal,
+  ReservationReadPrincipal,
   ReservationPreparation,
   ReservationAudit,
   RefundFact,
@@ -60,9 +61,9 @@ export class ReservationCompletionService {
     const now = new Date().toISOString();
     if (p.kind === "operator") {
       if (
-        !p.actor.trim() ||
-        !p.confirmer.trim() ||
-        !p.reason.trim() ||
+        !p.actor?.trim() ||
+        !p.confirmer?.trim() ||
+        !p.reason?.trim() ||
         !["PHONE", "SMS"].includes(p.method) ||
         !Number.isFinite(Date.parse(p.confirmedAt)) ||
         Date.parse(p.confirmedAt) > Date.now()
@@ -94,6 +95,15 @@ export class ReservationCompletionService {
     m: EntityManager,
     write = false,
   ): Promise<CompletionContext> {
+    const context = await this.readContext(id, p, m, write);
+    return { ...context, audit: this.audit(p), notifications: [] };
+  }
+  private async readContext(
+    id: string,
+    p: ReservationReadPrincipal,
+    m: EntityManager,
+    write = false,
+  ): Promise<Omit<CompletionContext, "audit" | "notifications">> {
     let selection = await m.findOneBy(SelectedReservation, { id });
     if (!selection) throw new NotFoundException();
     if (write) {
@@ -116,7 +126,6 @@ export class ReservationCompletionService {
         throw new DomainHttpException("OWNER_REQUIRED");
       await this.restaurants.assertOwned(p.user.id, target.restaurantId, m);
     } else if (p.kind === "link") await this.access.authorize(id, p.access, m);
-    const audit = this.audit(p);
     const stored = await m.findOneBy(ReservationProgress, {
       reservationId: id,
     });
@@ -126,14 +135,12 @@ export class ReservationCompletionService {
       target,
       request,
       state: stored?.state ?? initialPreparation(selection),
-      audit,
-      notifications: [],
     };
   }
-  async get(id: string, p: ReservationPrincipal) {
+  async get(id: string, p: ReservationReadPrincipal) {
     const db = await this.database.connect();
     return db.transaction("REPEATABLE READ", async (m) =>
-      this.view(await this.context(id, p, m), p),
+      this.view(await this.readContext(id, p, m), p),
     );
   }
   async list(p: ReservationPrincipal) {
@@ -152,7 +159,10 @@ export class ReservationCompletionService {
     });
     return Promise.all(selections.map((s) => this.get(s.id, p)));
   }
-  async view(c: CompletionContext, p: ReservationPrincipal) {
+  async view(
+    c: Omit<CompletionContext, "audit" | "notifications">,
+    p: ReservationReadPrincipal,
+  ) {
     const { m, selection: r, state: s, target, request } = c;
     const organizer = p.kind === "organizer";
     const safeGuidance = (source: ReservationPreparation["guidance"]) => {

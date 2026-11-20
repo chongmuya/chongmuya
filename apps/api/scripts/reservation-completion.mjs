@@ -29,11 +29,15 @@ try {
     },
   });
   if (v.help)
-    console.log(
-      "reservation:completion --action inspect|guidance|receipt|resolve|change-propose|change-reject|apply-agreement|refund-plan|refund|link --reservation UUID --actor 기록자 --confirmer 실제확인자 --method PHONE|SMS --confirmed-at ISO --reason 확인근거 [--input 비공개JSON파일] [--execute]\n기본 dry-run. 쓰기 JSON에 requestKey와 expectedVersion 필수. link 복구는 operation: ISSUE와 notifications 조회의 heldEventKey 또는 heldMessageId를 지정합니다. apply-agreement는 organizerConfirmer, merchantConfirmer, agreementEvidence도 필수. 실제 송금·환불은 실행하지 않습니다. 링크/계좌/원문 입력은 출력하지 않습니다.",
-    );
+    console.log(`reservation:completion --action <작업> --reservation UUID [옵션]
+조회: --action inspect --reservation UUID (확인 정보·입력 파일 불필요)
+전화·문자 확인 사실의 대리 기록: guidance|receipt|resolve|change-propose|change-reject|apply-agreement|refund-plan|refund
+관리 링크 복구·폐기: link
+조회 외 작업: --input 비공개JSON파일 --actor 기록자 --reason 확인근거 --confirmer 실제확인자 --method PHONE|SMS --confirmed-at ISO [--execute]
+기본 미리보기는 입력 파일·requestKey·현재 expectedVersion·확인 정보를 검사합니다. 전체 업무 검증은 실제 실행 시 수행하며, link는 별도 검증·롤백 경로를 사용합니다.
+쓰기 JSON에 requestKey와 expectedVersion 필수. --execute로 적용합니다. link 복구는 operation: ISSUE와 notifications 조회의 heldEventKey 또는 heldMessageId를 지정합니다. apply-agreement는 organizerConfirmer, merchantConfirmer, agreementEvidence도 필수.
+실제 송금·환불은 실행하지 않습니다. 링크/계좌/원문 입력은 출력하지 않습니다.`);
   else {
-    requireOperator(v);
     operationId(v.reservation);
     if (
       ![
@@ -50,17 +54,21 @@ try {
       ].includes(v.action)
     )
       throw new Error("INVALID_ACTION");
-    const principal = {
-      kind: "operator",
-      actor: v.actor,
-      confirmer: v.confirmer ?? "",
-      method: v.method,
-      confirmedAt: v["confirmed-at"] ?? "",
-      reason: v.reason,
-    };
+    if (v.action !== "inspect") requireOperator(v);
+    const principal =
+      v.action === "inspect"
+        ? { kind: "operator" }
+        : {
+            kind: "operator",
+            actor: v.actor,
+            confirmer: v.confirmer,
+            method: v.method,
+            confirmedAt: v["confirmed-at"],
+            reason: v.reason,
+          };
     app = await createOperationsApplication();
     const completion = app.get(ReservationCompletionService);
-    completion.audit(principal);
+    if (v.action !== "inspect") completion.audit(principal);
     const current = await completion.get(v.reservation, principal);
     let result = current;
     if (v.action !== "inspect") {

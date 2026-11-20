@@ -37,6 +37,7 @@ import {
   NotificationMessage,
 } from "../../src/modules/notifications/entities/notification.entity.js";
 import type { ReservationRequestDto } from "../../src/modules/reservations/dto/response/reservation-request.response.dto.js";
+import type { ReservationPrincipal } from "../../src/modules/reservations/types/reservation-completion.js";
 const json = async <T>(r: Response, status = 200) => {
   const b = await r.json();
   assert.equal(r.status, status, JSON.stringify(b));
@@ -169,6 +170,71 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     policy: "합의 후 환불",
     webConsent: channel === "WEB",
   });
+  await t.test(
+    "operator reads omit evidence but cannot authorize mutations",
+    async () => {
+      let v = await fixture("UNKNOWN");
+      v = await payments.guidance(v.id, operator, guide(v));
+      const snapshot = async () => ({
+        selection: await db.manager.findOneByOrFail(SelectedReservation, {
+          id: v.id,
+        }),
+        progress: await db.manager.findOneByOrFail(ReservationProgress, {
+          reservationId: v.id,
+        }),
+        history: await db.manager.findBy(ReservationCompletionHistory, {
+          reservationId: v.id,
+        }),
+        link: await db.manager.findOneByOrFail(ReservationManagementLink, {
+          reservationId: v.id,
+        }),
+        facts: await db.manager.findBy(NotificationFact, {
+          reservationId: v.id,
+        }),
+        messages: await app.get(NotificationsService).messages(
+          (
+            await db.manager.findOneByOrFail(SelectedReservation, {
+              id: v.id,
+            })
+          ).requestId,
+          db.manager,
+        ),
+      });
+      const before = await snapshot();
+      const read = { kind: "operator" as const };
+      assert.deepEqual(
+        await completion.get(v.id, read),
+        await completion.get(v.id, operator),
+      );
+      const incomplete = [
+        read,
+        ...["actor", "reason", "confirmer", "method", "confirmedAt"].map(
+          (field) => ({ ...operator, [field]: undefined }),
+        ),
+      ];
+      for (const principal of incomplete) {
+        // Exercise the runtime boundary used by the untyped CLI, bypassing TS deliberately.
+        const invalid = principal as ReservationPrincipal;
+        await assert.rejects(payments.guidance(v.id, invalid, guide(v)), {
+          code: "VALIDATION_FAILED",
+        });
+        for (const preview of [false, true])
+          await assert.rejects(
+            completion.manageLink(
+              v.id,
+              invalid,
+              {
+                ...key(v.version),
+                operation: "REVOKE",
+              },
+              preview,
+            ),
+            { code: "VALIDATION_FAILED" },
+          );
+      }
+      assert.deepEqual(await snapshot(), before);
+    },
+  );
   for (const amount of [0, 5000]) {
     await t.test(
       `agreed refund remains 10000 until the organizer accepts ${amount}, including retries`,

@@ -187,6 +187,25 @@ try {
       );
     return result;
   };
+  const reservationFingerprint = async () => {
+    const result = [];
+    for (const table of [
+      "selected_reservations",
+      "reservation_progress",
+      "reservation_completion_history",
+      "reservation_changes",
+      "reservation_management_links",
+      "notification_facts",
+      "notifications",
+      "notification_messages",
+    ])
+      result.push(
+        await db.query(
+          `SELECT to_jsonb(r) AS row FROM ${table} r ORDER BY to_jsonb(r)::text`,
+        ),
+      );
+    return result;
+  };
   const clock = join(directory, "clock.mjs");
   await writeFile(
     clock,
@@ -204,21 +223,29 @@ try {
     NODE_OPTIONS: `--import=${clock}`,
     TZ: "UTC",
   };
-  const cli = (script, args = [], pnpm = false) => {
+  const cli = (script, args = [], pnpm = false, expectedStatus = 0) => {
     const result = spawnSync(
       pnpm ? "pnpm" : process.execPath,
       // The isolated fixture reuses frozen-installed node_modules by symlink.
       // It has no workspace lockfile, so pnpm must not reinstall those modules.
       pnpm
-        ? ["--config.verify-deps-before-run=false", "run", script, ...args]
+        ? [
+            "--config.verify-deps-before-run=false",
+            "--filter",
+            "@chongmuya/api",
+            "run",
+            script,
+            ...args,
+          ]
         : [`scripts/${script}.mjs`, ...args],
       { cwd: process.cwd(), env, encoding: "utf8", timeout: 30000 },
     );
     assert.equal(
       result.status,
-      0,
+      expectedStatus,
       `${script}: ${result.stderr}\n${result.stdout}`,
     );
+    return result.stdout.trim();
   };
   const operator = ["--actor", "test", "--reason", "격리 검증"];
   const completion = [
@@ -233,6 +260,33 @@ try {
     now,
   ];
   const before = await fingerprint();
+  const reservationBefore = await reservationFingerprint();
+  const inspect = ["--action", "inspect", "--reservation", reservation];
+  const inspected = JSON.parse(cli("reservation-completion", inspect));
+  assert.deepEqual(
+    Object.keys(inspected).sort(),
+    [
+      "action",
+      "dryRun",
+      "reservation",
+      "version",
+      "progress",
+      "issues",
+      "receivedAmount",
+      "refundedAmount",
+      "refundExpected",
+      "changes",
+    ].sort(),
+  );
+  assert.equal(inspected.reservation, reservation);
+  assert.equal(inspected.version, 1);
+  assert.deepEqual(await reservationFingerprint(), reservationBefore);
+  for (const [script, query] of [
+    ["merchant-operations", /조회: deliveries/],
+    ["reservation-operations", /조회: notifications \(추가 옵션 불필요\)/],
+    ["reservation-completion", /조회: --action inspect --reservation UUID/],
+  ])
+    assert.match(cli(script, ["--help"]), query);
   for (const [script, args] of [
     ["merchant-operations", ["--action", "deliveries"]],
     [
@@ -257,8 +311,48 @@ try {
   }
   if (process.env.REMINDER_PROBE_PNPM === "true") {
     cli("merchant:operations", ["--action", "deliveries"], true);
+    cli("reservation:operations", ["--action", "notifications"], true);
+    const output = cli("reservation:completion", inspect, true);
+    assert.equal(
+      JSON.parse(output.split("\n").at(-1)).reservation,
+      reservation,
+    );
     assert.deepEqual(await fingerprint(), before);
   }
+  // JS entrypoints must reject missing write evidence in preview and execute alike.
+  await writeFile(
+    input,
+    JSON.stringify({
+      requestKey: randomUUID(),
+      expectedVersion: 1,
+      kind: "NONE",
+      amount: 0,
+      deadline: null,
+      channel: "WEB",
+      bank: "",
+      account: "",
+      holder: "",
+      policy: "테스트",
+      webConsent: true,
+    }),
+  );
+  const writeArgs = ["--action", "guidance", ...completion, "--input", input];
+  for (const option of [
+    "--actor",
+    "--reason",
+    "--confirmer",
+    "--method",
+    "--confirmed-at",
+    "--input",
+  ]) {
+    const missing = writeArgs.filter(
+      (_, i) =>
+        i !== writeArgs.indexOf(option) && i !== writeArgs.indexOf(option) + 1,
+    );
+    for (const execution of [[], ["--execute"]])
+      cli("reservation-completion", [...missing, ...execution], false, 1);
+  }
+  assert.deepEqual(await reservationFingerprint(), reservationBefore);
   process.env.REMINDERS_ENABLED = "true";
   for (let restart = 0; restart < 3; restart++) {
     const api = await NestFactory.create(AppModule, {
