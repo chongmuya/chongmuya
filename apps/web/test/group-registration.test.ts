@@ -230,6 +230,53 @@ test("registration retains edits across back, excludes invalid rows, confirms du
   }
 });
 
+test("pasted spreadsheet numbers missing their leading zero preview and save only the last four digits", async () => {
+  const writes: { members: unknown[] }[] = [];
+  const view = await setup(async <T>(_path: string, options?: RequestInit) => {
+    writes.push(JSON.parse(String(options?.body)));
+    return {
+      id: "sheet",
+      name: "시트 모임",
+      groupType: "동아리",
+      memberCount: 2,
+    } as T;
+  });
+  try {
+    await fill(view.container, "name", "시트 모임");
+    await fill(view.container, "groupType", "동아리");
+    await submit(view.container);
+    await fill(
+      view.container,
+      "source",
+      "김민수\t1029762915\n이서연\t1012340012",
+    );
+    await submit(view.container);
+    assert.equal(
+      view.container.querySelector('[aria-label="명단 열 선택"]'),
+      null,
+    );
+    for (const [index, value] of ["2915", "0012"].entries()) {
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          `[name="members.${index}.phoneLast4"]`,
+        )!.value,
+        value,
+      );
+    }
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /모임이 만들어졌어요/),
+    );
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].members, [
+      { name: "김민수", phoneLast4: "2915", label: null },
+      { name: "이서연", phoneLast4: "0012", label: null },
+    ]);
+  } finally {
+    await view.close();
+  }
+});
+
 test("TXT upload validates encoding/type and corrected import errors can be saved", async () => {
   const writes: unknown[] = [];
   const view = await setup(async <T>(_path: string, options?: RequestInit) => {

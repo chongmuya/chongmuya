@@ -17,6 +17,23 @@ for (const key of [
 }
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
+Object.defineProperty(dom.window, "matchMedia", {
+  configurable: true,
+  writable: true,
+  value: (media: string) => ({
+    media,
+    matches: false,
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {
+      return true;
+    },
+  }),
+});
+
 Object.defineProperty(globalThis, "self", {
   configurable: true,
   value: dom.window,

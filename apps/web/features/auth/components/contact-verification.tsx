@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import type { VerificationState } from "../types/verification.types";
+import { PhoneVerificationQr } from "./phone-verification-qr";
 
 export function ContactVerification({
   state,
@@ -51,24 +51,7 @@ export function ContactVerification({
         status !== "verified" && (
           <div className="space-y-4 rounded-panel border border-border p-4">
             {state.qrCode && (
-              <div className="space-y-3 text-center [@media(hover:none)_and_(pointer:coarse)]:hidden">
-                <p className="text-control font-semibold">
-                  휴대폰으로 QR을 스캔해 주세요
-                </p>
-                <Image
-                  src={state.qrCode}
-                  alt="휴대폰 문자 앱을 여는 QR 코드"
-                  width={200}
-                  height={200}
-                  unoptimized
-                  className="mx-auto rounded-control bg-white p-3"
-                />
-                <p className="text-caption text-muted">
-                  입력한 번호의 휴대폰 카메라로 스캔한 뒤,
-                  <br />
-                  열린 문자 앱에서 전송해 주세요.
-                </p>
-              </div>
+              <PhoneVerificationQr key={state.id} qrCode={state.qrCode} />
             )}
             <div className="hidden space-y-3 [@media(hover:none)_and_(pointer:coarse)]:block">
               <p className="text-caption text-muted">

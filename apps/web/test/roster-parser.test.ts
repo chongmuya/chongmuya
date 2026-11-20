@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseRoster, rosterTable } from "../features/roster/lib/parse-roster";
+import {
+  parseRoster,
+  phoneSuffix,
+  rosterTable,
+} from "../features/roster/lib/parse-roster";
 import { rosterRowSchema } from "../features/roster/schemas/roster.schema";
 const simple = (source: string) =>
   parseRoster(source).map((row) => ({
@@ -100,4 +104,64 @@ test("mixed roster cases normalize full mobile numbers only and preserve cell bo
   });
   assert.equal(manual.phoneLast4, "0012");
   assert(!JSON.stringify(manual).includes("010"));
+});
+
+test("spreadsheet mobile numbers without the leading zero preserve their last four digits", () => {
+  for (const source of [
+    "김민수\t1029762915\n이서연\t1012340012",
+    "이름\t전화번호\r\n김민수\t1029762915\r\n이서연\t1012340012",
+    "김민수,1029762915\n이서연,1012340012",
+    "김민수 1029762915\n이서연1012340012",
+  ]) {
+    assert.deepEqual(
+      simple(source),
+      [
+        { name: "김민수", phoneLast4: "2915" },
+        { name: "이서연", phoneLast4: "0012" },
+      ],
+      source,
+    );
+    for (const row of parseRoster(source))
+      assert.equal(rosterRowSchema.safeParse(row).success, true, source);
+    if (source.includes("\t")) assert(rosterTable(source)?.inferred);
+  }
+
+  const mapped = parseRoster("20230001\t1029762915\t김민수", {
+    name: 2,
+    phone: 1,
+    header: false,
+  });
+  assert.equal(mapped[0].name, "김민수");
+  assert.equal(mapped[0].phoneLast4, "2915");
+  assert.equal(
+    rosterRowSchema.parse({ ...mapped[0], phoneLast4: "1012340012" })
+      .phoneLast4,
+    "0012",
+  );
+});
+
+test("missing-zero support does not turn ambiguous numbers into phone suffixes", () => {
+  for (const value of [
+    "20230001",
+    "2023-01-01",
+    "102976291",
+    "10297629150",
+    "21029762915",
+    "1.029762915E+9",
+    "12",
+  ]) {
+    assert.equal(phoneSuffix(value), value);
+    assert.equal(rosterTable(`김민수\t${value}`)?.inferred, null, value);
+    assert.equal(
+      rosterRowSchema.safeParse(parseRoster(`김민수\t${value}`)[0]).success,
+      false,
+      value,
+    );
+  }
+  for (const source of ["김민수10297629150", "김민수 1029762915 01012340012"]) {
+    assert.equal(
+      rosterRowSchema.safeParse(parseRoster(source)[0]).success,
+      false,
+    );
+  }
 });
