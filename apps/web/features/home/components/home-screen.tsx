@@ -5,35 +5,50 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   AuthEntryScreen,
   SplashScreen,
+  authEntryPath,
   postLoginPath,
   useAuth,
 } from "@/features/auth/client";
+import { LoadingState } from "@/shared/ui/states";
 import { AccountHome } from "./account-home";
+import { useHomeEntry } from "./home-entry-provider";
 
-// The root is the entry screen until a session is restored. Public browsing
-// starts explicitly from StartScreen; a second anonymous dashboard is unnecessary.
 export function HomeScreen() {
   const { account, status, client } = useAuth();
+  const { phase, complete } = useHomeEntry();
   const router = useRouter();
   const params = useSearchParams();
-  const destination = account
-    ? account.accountType === "owner"
-      ? "/owner"
-      : postLoginPath(account, params.size ? `/?${params}` : "/")
-    : null;
+  const rootPath = params.size ? `/?${params}` : "/";
+  const destination =
+    status === "anonymous" && phase === "ready"
+      ? authEntryPath("/intro", params.get("next") ?? rootPath)
+      : status === "authenticated" && account
+        ? account.accountType === "owner"
+          ? "/owner"
+          : postLoginPath(account, rootPath)
+        : null;
+  const redirectTo = destination?.split("?")[0] === "/" ? null : destination;
+
   useEffect(() => {
-    if (
-      status === "authenticated" &&
-      destination &&
-      !destination.startsWith("/?") &&
-      destination !== "/"
-    )
-      router.replace(destination);
-  }, [status, destination, router]);
+    if (phase === "splash") return;
+    if (redirectTo) router.replace(redirectTo);
+    else if (phase === "ready" && status === "authenticated") complete();
+  }, [phase, redirectTo, status, router, complete]);
+
+  if (
+    phase === "splash" ||
+    status === "loading" ||
+    (phase === "ready" && redirectTo)
+  )
+    return <SplashScreen />;
+  if (redirectTo)
+    return (
+      <main className="app-page">
+        <LoadingState>내 화면으로 이동 중…</LoadingState>
+      </main>
+    );
   if (status !== "authenticated" || !account)
     return <AuthEntryScreen screen="start" />;
-  if (destination !== "/" && !destination?.startsWith("/?"))
-    return <SplashScreen />;
   return (
     <AccountHome
       key={account.id}
