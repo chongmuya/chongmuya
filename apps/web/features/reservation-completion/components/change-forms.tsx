@@ -486,6 +486,7 @@ function ProposalForm({
       build={(v, b) => ({
         changeId,
         reason: v.reason,
+        refundExpected: null,
         ...(!cancel
           ? {
               agreement: proposalAgreement(v, b.agreement),
