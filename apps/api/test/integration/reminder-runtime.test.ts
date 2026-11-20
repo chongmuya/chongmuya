@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cp, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+} from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,11 +31,13 @@ test("compiled CLI entrypoints with eligible reminders isolate inherited true; A
     new URL("../../../package.json", import.meta.url),
     join(directory, "package.json"),
   );
-  await symlink(
-    fileURLToPath(new URL("../../../node_modules", import.meta.url)),
-    join(directory, "node_modules"),
-    "dir",
+  // Filtered pnpm runs need a real node_modules directory for their task state.
+  const modules = fileURLToPath(
+    new URL("../../../node_modules", import.meta.url),
   );
+  await mkdir(join(directory, "node_modules"));
+  for (const name of await readdir(modules))
+    await symlink(join(modules, name), join(directory, "node_modules", name));
   const probe = await readFile(
     new URL("../../../../../infra/reminder-runtime-probe.mjs", import.meta.url),
     "utf8",

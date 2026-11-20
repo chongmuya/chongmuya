@@ -47,12 +47,13 @@ async function run() {
     console.log(`merchant:operations --action <작업> [옵션]
 조회: deliveries [--status ${deliveryStates.join("|")}] [--page N | --delivery UUID] (최신순, 50건씩)
 매장 관리: publish --restaurant UUID [--unpublish], owner-link --restaurant UUID --account UUID
-발송 복구: retry --delivery UUID, reconcile --delivery UUID
-예외 처리: regenerate-link --target UUID, change-recipient --target UUID --contact UUID,
-           record-reply --target UUID --input 비공개JSON
+문자 장애 확인·복구: reconcile --delivery UUID, retry --delivery UUID,
+                    regenerate-link --target UUID, change-recipient --target UUID --contact UUID
+전화·문자 확인 사실의 대리 기록: record-reply --target UUID --input 비공개JSON (method, confirmedAt, reply 필수)
 변경 작업은 --actor 실행자 --reason 사유가 필수이며 기본은 dry-run입니다. --execute로 적용합니다.
 조회는 마스킹된 표로 출력합니다. 이력 파일은 --page N 또는 --delivery UUID와 함께 --output 새파일을 지정하세요(0600, 덮어쓰기 금지).
-정상 문의 문자는 서버가 자동 발송합니다. 이 도구는 매장 관리와 장애 확인용입니다.`);
+reconcile의 공급자 결과 조회·반영은 --execute가 필요합니다. retry·record-reply 미리보기는 전체 업무 검증을 수행하지 않습니다.
+정상 문의 문자는 서버가 자동 발송합니다. 이 도구는 매장 관리와 장애·예외 처리용입니다.`);
     return;
   }
   const actions = [

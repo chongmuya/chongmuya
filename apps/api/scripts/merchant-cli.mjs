@@ -12,6 +12,7 @@ export function operationId(value) {
 }
 
 export function requireOperator(v) {
+  // Supplied recorder/reason validation, not login authentication.
   if (
     !v.actor?.trim() ||
     !v.reason?.trim() ||

@@ -12,6 +12,9 @@ export type ReservationPrincipal =
       confirmedAt: string;
       reason: string;
     };
+// CLI reads need no recording evidence; mutations still require ReservationPrincipal.
+export type ReservationReadPrincipal =
+  ReservationPrincipal | { kind: "operator" };
 export type ReservationAudit = {
   kind: string;
   recorder: string;

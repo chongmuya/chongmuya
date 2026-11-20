@@ -446,7 +446,14 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
   ];
   assert.equal(
     jsonOutput(
-      invoke(["operations", "completion", "--action", "inspect", ...auditArgs]),
+      invoke([
+        "operations",
+        "completion",
+        "--action",
+        "inspect",
+        "--reservation",
+        reservationId,
+      ]),
     ).reservation,
     reservationId,
   );
