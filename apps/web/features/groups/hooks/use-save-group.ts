@@ -5,7 +5,8 @@ import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { renameGroup } from "../api/groups.api";
 import { groupKeys } from "../api/groups.queries";
-import type { Group, CreateGroupInput } from "../types/group.types";
+import type { Group } from "../types/group.types";
+import type { GroupInput } from "../schemas/group.schema";
 
 export function useSaveGroup(
   accountId: string,
@@ -17,8 +18,7 @@ export function useSaveGroup(
   const active = useActiveScreen();
   return useMutation({
     mutationKey: [...groupKeys.list(accountId), groupId, "save"],
-    mutationFn: (input: CreateGroupInput) =>
-      renameGroup(request, groupId, input),
+    mutationFn: (input: GroupInput) => renameGroup(request, groupId, input),
     retry: false,
     onSuccess: async (group) => {
       if (!active.current) return;

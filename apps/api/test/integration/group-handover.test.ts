@@ -1,4 +1,6 @@
 import { ReservationHandoverService } from "../../src/modules/reservations/reservation-handover.service.js";
+import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
+import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
 import { ReservationProgress } from "../../src/modules/reservations/entities/reservation-progress.entity.js";
 import { SelectedReservation } from "../../src/modules/reservations/entities/selected-reservation.entity.js";
 import { EventSettlement } from "../../src/modules/settlements/entities/settlement.entity.js";
@@ -846,6 +848,21 @@ test("reservation selection race, current merchant contact, pending SMS replanni
   const originalRequest = await db.manager.findOneByOrFail(ReservationRequest, {
     id: inquiry.id,
   });
+  const originalDelivery = await db.manager.findOneByOrFail(MessageDelivery, {
+    targetId: inquiry.targets[0].id,
+  });
+  const [beforeExport] = await app
+    .get(MessageDeliveryService)
+    .listForOperations({ deliveryId: originalDelivery.id });
+  assert.equal(
+    beforeExport!.organizer_name,
+    beforeExport!.current_organizer_name,
+  );
+  assert.equal(
+    beforeExport!.organizer_phone,
+    beforeExport!.current_organizer_phone,
+  );
+
   const notices = app.get(NotificationsService);
   const facts: string[] = [];
   for (const status of ["PENDING", "UNKNOWN", "ACCEPTED", "PENDING"]) {
@@ -983,6 +1000,16 @@ test("reservation selection race, current merchant contact, pending SMS replanni
   assert.equal(updated.currentContactAccountId, bb.id);
   assert.equal(updated.currentContactPhone, "01000009999");
   assert.equal(updated.contactChanges.length, 1);
+  const delivery = await db.manager.findOneByOrFail(MessageDelivery, {
+    targetId: inquiry.targets[0].id,
+  });
+  const [exported] = await app
+    .get(MessageDeliveryService)
+    .listForOperations({ deliveryId: delivery.id });
+  assert.equal(exported!.organizer_name, originalRequest.contactName);
+  assert.equal(exported!.organizer_phone, originalRequest.contactPhone);
+  assert.equal(exported!.current_organizer_name, "새 합성 총무");
+  assert.equal(exported!.current_organizer_phone, "01000009999");
   const merchant = await app
     .get(MerchantRepliesService)
     .get(inquiry.targets[0].id, operator);

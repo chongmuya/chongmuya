@@ -83,6 +83,11 @@ async function fill(container: HTMLElement, name: string, value: string) {
   );
   assert(input, name);
   await act(async () => {
+    if (input.tagName === "SELECT") {
+      input.value = value;
+      input.dispatchEvent(new window.Event("change", { bubbles: true }));
+      return;
+    }
     const prototype =
       input.tagName === "TEXTAREA"
         ? window.HTMLTextAreaElement.prototype

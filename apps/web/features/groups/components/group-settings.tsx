@@ -38,25 +38,28 @@ export function GroupSettings({
           onClose={() => setSwitching(false)}
         />
       )}
-      <p className="mb-4 text-sm text-muted">
-        모임 유형: {selected.groupType ?? "미지정"}
-      </p>
+      <h2 className="mb-3 text-xl font-semibold">기본 정보</h2>
       <GroupForm
         accountId={accountId}
         request={request}
         group={selected}
-        title="모임 이름 수정"
-      />
-      <GroupRoster
-        accountId={accountId}
-        groupId={selected.id}
-        request={request}
+        title="모임 정보 저장"
       />
       <GroupManagement
         accountId={accountId}
         groupId={selected.id}
         request={request}
       />
+      <details className="mt-7 rounded-card bg-surface p-5 shadow-card">
+        <summary className="cursor-pointer font-semibold">
+          기본 명단 관리 · {selected.memberCount}명
+        </summary>
+        <GroupRoster
+          accountId={accountId}
+          groupId={selected.id}
+          request={request}
+        />
+      </details>
       <Link href="/groups/new" className={buttonStyles({ className: "mt-6" })}>
         모임 추가
       </Link>

@@ -324,7 +324,15 @@ export class GroupsService {
     const db = await this.database.connect();
     await db.transaction(async (m) => {
       await this.assertOwned(ownerId, id, m);
-      await m.update(Group, { id }, { name: input.name });
+      await m.update(
+        Group,
+        { id },
+        {
+          name: input.name,
+          groupType: input.groupType,
+          version: () => "version + 1",
+        },
+      );
     });
     return this.get(ownerId, id);
   }

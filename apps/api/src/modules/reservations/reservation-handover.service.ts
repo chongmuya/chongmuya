@@ -7,6 +7,7 @@ import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { SelectedReservation } from "./entities/selected-reservation.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
+import type { NotificationInput } from "../notifications/types/notification.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 @Injectable()
@@ -71,6 +72,7 @@ export class ReservationHandoverService {
       order: { id: "ASC" },
       lock: { mode: "pessimistic_write" },
     });
+    const notifications: NotificationInput[] = [];
     for (const r of rows) {
       const at = new Date().toISOString();
       r.contactChanges = [
@@ -114,7 +116,7 @@ export class ReservationHandoverService {
             destination: `/owner/inquiries?target=${t.id}`,
           });
       }
-      await this.notices.record(m, {
+      notifications.push({
         eventKey: `handover:${handoverId}:${r.id}`,
         kind: "RESERVATION_UPDATED",
         eventId: r.eventId,
@@ -124,6 +126,7 @@ export class ReservationHandoverService {
         messages: [],
       });
     }
+    await this.notices.recordBatch(m, notifications);
     return rows.map((r) => r.id);
   }
   async dispatch(requests: string[]) {

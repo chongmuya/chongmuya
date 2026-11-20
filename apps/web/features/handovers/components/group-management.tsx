@@ -9,10 +9,10 @@ import { Input } from "@/shared/ui/input";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import {
-  query,
-  handoverKey,
-  type Preview,
-  type Accounts,
+  groupPreviewQuery,
+  groupAccountsQuery,
+  invitationPath,
+  handoverPath,
   type Receipt,
 } from "../api/handovers.api";
 import { invitationSchema, handoverSchema } from "../schemas/forms";
@@ -31,20 +31,8 @@ export function GroupManagement({
   const cache = useQueryClient();
   const [link, setLink] = useState("");
   const [copied, setCopied] = useState(false);
-  const preview = useQuery(
-    query<Preview>(
-      request,
-      handoverKey(accountId, groupId),
-      `/api/v1/handovers/groups/${groupId}`,
-    ),
-  );
-  const accounts = useQuery(
-    query<Accounts>(
-      request,
-      ["user", accountId, "group-accounts", groupId],
-      `/api/v1/groups/${groupId}/accounts`,
-    ),
-  );
+  const preview = useQuery(groupPreviewQuery(request, accountId, groupId));
+  const accounts = useQuery(groupAccountsQuery(request, accountId, groupId));
   const inviteForm = useForm({
     resolver: zodResolver(invitationSchema),
     defaultValues: { email: "" },
@@ -98,21 +86,105 @@ export function GroupManagement({
   );
   return (
     <section className="mt-8 space-y-6" aria-label="계정 멤버와 인수인계">
-      <div className="rounded-control bg-surface p-4">
-        <h2 className="text-lg font-semibold">모임 현황 · 관리 권한</h2>
-        <p>
-          등록된 행사 {preview.data.scope.events}개 · 기본 명단{" "}
-          {preview.data.scope.roster}명
-        </p>
-        <p>
-          현재 총무:{" "}
-          {accounts.data.accounts.find((a) => a.id === accounts.data.ownerId)
-            ?.name ?? "기존 관리자"}{" "}
-          · 관리자 1명
+      <div className="grid grid-cols-2 divide-x divide-border rounded-card bg-surface py-6 text-center shadow-card">
+        <div>
+          <p className="text-sm text-secondary">모임 인원</p>
+          <strong className="mt-2 block text-2xl">
+            {preview.data.scope.roster}명
+          </strong>
+        </div>
+        <div>
+          <p className="text-sm text-secondary">등록된 행사</p>
+          <strong className="mt-2 block text-2xl">
+            {preview.data.scope.events}개
+          </strong>
+        </div>
+      </div>
+      <div className="rounded-card bg-surface p-5 shadow-card">
+        <h2 className="mb-4 text-xl font-semibold">관리 권한</h2>
+        <p className="flex justify-between text-sm">
+          <span>관리자 1명</span>
+          <strong>
+            {accounts.data.accounts.find((a) => a.id === accounts.data.ownerId)
+              ?.name ?? "기존 관리자"}
+          </strong>
         </p>
       </div>
-      <div>
-        <h2 className="mb-3 text-lg font-semibold">로그인 계정 멤버</h2>
+      <details
+        open={pending ? true : undefined}
+        className="space-y-4 rounded-card bg-surface p-5 shadow-card"
+      >
+        <summary className="cursor-pointer text-lg font-semibold text-brand-action">
+          다음 총무에게 넘기기
+        </summary>
+        <p className="text-sm text-muted">
+          모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요.
+        </p>
+        <TransferScope scope={preview.data.scope} />
+        {pending ? (
+          <div>
+            <p>수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요.</p>
+            <Button
+              variant="outline"
+              disabled={busy || unresolved}
+              onClick={() => cancel.send(handoverPath(groupId, pending.id), {})}
+            >
+              인수인계 요청 취소
+            </Button>
+          </div>
+        ) : (
+          <form
+            className="space-y-4"
+            onSubmit={transferForm.handleSubmit((v) => {
+              const t = accessToken();
+              transfer.send(handoverPath(groupId), {
+                ...v,
+                token: t,
+                expectedVersion: preview.data!.group.version,
+                requestKey: crypto.randomUUID(),
+              });
+            })}
+          >
+            <label htmlFor="new-manager" className="text-caption text-muted">
+              새 총무 선택
+            </label>
+            <select
+              id="new-manager"
+              {...transferForm.register("targetId")}
+              disabled={busy || unresolved}
+              aria-invalid={!!transferForm.formState.errors.targetId}
+              aria-describedby="target-error"
+              className="h-12 w-full rounded-control border border-border bg-surface px-3"
+            >
+              <option value="">인수할 계정 멤버 선택</option>
+              {accounts.data.accounts
+                .filter((a) => a.id !== accountId)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.email})
+                  </option>
+                ))}
+            </select>
+            <p id="target-error" role="alert">
+              {transferForm.formState.errors.targetId?.message}
+            </p>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={busy || unresolved}
+            >
+              인수인계 요청하기
+            </Button>
+            <p className="text-center text-caption text-muted">
+              상대가 수락한 뒤에는 내 권한이 일반 멤버로 바뀌어요.
+            </p>
+          </form>
+        )}
+      </details>
+      <details className="rounded-card bg-surface p-5 shadow-card">
+        <summary className="mb-3 cursor-pointer text-lg font-semibold">
+          로그인 계정 멤버 · 참여 초대
+        </summary>
         <p className="text-caption text-muted">
           기본 명단과 별개예요. 가입 수락만으로 관리권한을 주지 않아요.
         </p>
@@ -127,7 +199,7 @@ export function GroupManagement({
           className="mt-3 space-y-2"
           onSubmit={inviteForm.handleSubmit((v) => {
             const t = accessToken();
-            invite.send(`/api/v1/groups/${groupId}/invitations`, {
+            invite.send(invitationPath(groupId), {
               ...v,
               token: t,
               requestKey: crypto.randomUUID(),
@@ -165,89 +237,13 @@ export function GroupManagement({
               <Button
                 variant="outline"
                 disabled={busy || unresolved}
-                onClick={() =>
-                  cancel.send(
-                    `/api/v1/groups/${groupId}/invitations/${r.id}/cancel`,
-                    {},
-                  )
-                }
+                onClick={() => cancel.send(invitationPath(groupId, r.id), {})}
               >
                 {r.targetLabel} 초대 취소
               </Button>
             </p>
           ))}
-      </div>
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold">다음 총무에게 넘기기</h2>
-        <p className="text-sm text-muted">
-          모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요.
-        </p>
-        <TransferScope scope={preview.data.scope} />
-        {pending ? (
-          <div>
-            <p>수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요.</p>
-            <Button
-              variant="outline"
-              disabled={busy || unresolved}
-              onClick={() =>
-                cancel.send(
-                  `/api/v1/handovers/groups/${groupId}/${pending.id}/cancel`,
-                  {},
-                )
-              }
-            >
-              인수인계 요청 취소
-            </Button>
-          </div>
-        ) : (
-          <form
-            className="space-y-4"
-            onSubmit={transferForm.handleSubmit((v) => {
-              const t = accessToken();
-              transfer.send(`/api/v1/handovers/groups/${groupId}`, {
-                ...v,
-                token: t,
-                expectedVersion: preview.data!.group.version,
-                requestKey: crypto.randomUUID(),
-              });
-            })}
-          >
-            <label htmlFor="new-manager" className="text-caption text-muted">
-              새 총무 선택
-            </label>
-            <select
-              id="new-manager"
-              {...transferForm.register("targetId")}
-              disabled={busy || unresolved}
-              aria-invalid={!!transferForm.formState.errors.targetId}
-              aria-describedby="target-error"
-              className="h-12 w-full rounded-control border border-border bg-input px-3"
-            >
-              <option value="">인수할 계정 멤버 선택</option>
-              {accounts.data.accounts
-                .filter((a) => a.id !== accountId)
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.email})
-                  </option>
-                ))}
-            </select>
-            <p id="target-error" role="alert">
-              {transferForm.formState.errors.targetId?.message}
-            </p>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={busy || unresolved}
-            >
-              인수인계 요청하기
-            </Button>
-            <p className="text-center text-caption text-muted">
-              상대가 수락한 뒤에는 내 권한이 일반 멤버로 바뀌어요.
-            </p>
-          </form>
-        )}
-      </div>
+      </details>
       {link && (
         <div className="space-y-2">
           <p>

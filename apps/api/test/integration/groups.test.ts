@@ -13,6 +13,7 @@ test("group onboarding, validation and ownership for two accounts", async (t) =>
     { name: " " },
     { name: "x".repeat(101) },
     { name: "모임", ownerId: randomUUID() },
+    { name: "모임", groupType: "자유 유형" },
   ]) {
     assert.equal((await call("groups", a, "POST", body)).status, 400);
   }
@@ -47,6 +48,31 @@ test("group onboarding, validation and ownership for two accounts", async (t) =>
     memberCount: 0,
   });
   assert.equal((await call(`groups/${randomUUID()}`, a)).status, 404);
+  for (const groupType of [
+    "동아리",
+    "학생회",
+    "학회",
+    "친목 모임",
+    "기타",
+    null,
+  ]) {
+    const updated = await call(`groups/${g1.id}`, a, "PATCH", {
+      name: "수정 모임",
+      groupType,
+    });
+    assert.equal(updated.status, 200);
+    assert.equal((await updated.json()).groupType, groupType);
+  }
+  assert.equal(
+    (
+      await call(`groups/${g1.id}`, a, "PATCH", {
+        name: "수정 모임",
+        groupType: "자유 입력",
+      })
+    ).status,
+    400,
+  );
+
   assert.equal((await call("auth/logout", a, "POST")).status, 204);
   assert.equal((await call("groups", a)).status, 401);
 });

@@ -20,6 +20,7 @@ import {
   type GroupRegistrationValues,
 } from "../schemas/group-registration.schema";
 import { useRegisterGroup } from "../hooks/use-register-group";
+import { GROUP_TYPES } from "../types/group-type";
 import type {
   Group,
   GroupMember,
@@ -199,12 +200,18 @@ export function GroupRegistration({
                 error={form.formState.errors.groupType?.message}
               >
                 {(attributes) => (
-                  <Input
+                  <select
                     {...attributes}
                     {...form.register("groupType")}
-                    variant="pill"
-                    placeholder="예) 동아리"
-                  />
+                    className="min-h-12 w-full rounded-pill border border-field bg-surface px-4"
+                  >
+                    <option value="">모임 유형 선택</option>
+                    {GROUP_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
                 )}
               </FormField>
             </div>

@@ -1,13 +1,17 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/features/auth/client";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { StepLayout } from "@/shared/ui/step-layout";
-import { command, type Preview, type Receipt } from "../api/handovers.api";
+import {
+  accessPath,
+  accessPreviewQuery,
+  type Receipt,
+} from "../api/handovers.api";
 import { useCommand } from "../hooks/use-command";
 import { TransferScope } from "./scope";
 export function GroupAccessScreen() {
@@ -80,22 +84,10 @@ function Accept({
   const { client } = useAuth();
   const [done, setDone] = useState(false);
   const cache = useQueryClient();
-  const base =
-    kind === "handover"
-      ? (`/api/v1/handovers/${id}` as const)
-      : (`/api/v1/groups/invitations/${id}` as const);
-  const body = useMemo(() => ({ token }), [token]);
+  const base = accessPath(kind, id);
   const preview = useQuery({
-    queryKey: ["user", accountId, "group-access", kind, id],
-    queryFn: () =>
-      command<Preview & { groupName?: string; status?: string }>(
-        request,
-        `${base}/preview`,
-        body,
-      ),
-    retry: false,
+    ...accessPreviewQuery(request, accountId, kind, id, token),
     enabled: !done,
-    staleTime: 0,
   });
   const accept = useCommand<Receipt>(request, () => {
     setDone(true);
