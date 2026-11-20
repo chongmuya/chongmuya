@@ -1,6 +1,6 @@
 # 총무야 (chongmuya)
 
-개인·모임 행사, 참석, 매장 문의·예약, 지출·정산·증빙을 관리하는 웹앱입니다. 캘린더·알림함·모임 인수인계와 사장님 매장 관리도 제공합니다. 모임 없이 개인 행사를 사용할 수 있습니다.
+개인·모임 행사, 참석, 매장 문의·예약, 지출·정산·증빙을 관리하는 웹앱입니다. 캘린더·알림함·모임 관리와 사장님 매장 관리도 제공합니다. 파일럿에서는 신규 인수인계 요청과 수락을 보류합니다. 모임 없이 개인 행사를 사용할 수 있습니다.
 
 ## 로컬 시작
 
@@ -29,7 +29,7 @@ pnpm dev
 | <http://localhost:3000/events>        | 개인 행사 생성; `?group=<UUID>`는 모임 행사, `?event=<UUID>`는 상세 |
 | <http://localhost:3000/calendar>      | 행사·기타 일정, 사장님 매장 일정                                    |
 | <http://localhost:3000/notifications> | 알림함                                                              |
-| <http://localhost:3000/mypage>        | 프로필·모임 관리·인수인계                                           |
+| <http://localhost:3000/mypage>        | 프로필·모임 관리·기존 인수인계 요청 확인 및 취소                    |
 | <http://localhost:3001/health>        | DB와 독립된 liveness                                                |
 | <http://localhost:3001/ready>         | 실제 DB 연결 확인                                                   |
 | <http://localhost:3001/docs>          | 개발용 Swagger                                                      |

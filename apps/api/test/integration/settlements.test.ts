@@ -996,10 +996,12 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   assert.equal(v.depositConflicts?.[0]?.applied, 10000);
   assert.equal(v.depositConflicts?.[0]?.remaining, 5000);
   await save(notice, 409);
-  const unchanged = await json<{ text: string }>(
-    await call(`${path}/notices/${oldNoticeId}`, owner),
-  );
+  const unchanged = await json<{
+    text: string;
+    refundRequiresRegeneration: boolean;
+  }>(await call(`${path}/notices/${oldNoticeId}`, owner));
   assert.equal(unchanged.text, oldNotice.text);
+  assert.equal(unchanged.refundRequiresRegeneration, false);
   for (const e of v.state.expenses.filter((e) => !e.deletedAt))
     v = await save({ action: "DELETE_EXPENSE", id: e.id });
   v = await save({
@@ -1015,7 +1017,12 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   const beforeReturnId = v.state.notices.at(-1)!.id;
   const getNotice = (id: string) =>
     call(`${path}/notices/${id}`, owner).then((r) =>
-      json<{ text: string; outdated: boolean; needsReview: boolean }>(r),
+      json<{
+        text: string;
+        outdated: boolean;
+        needsReview: boolean;
+        refundRequiresRegeneration: boolean;
+      }>(r),
     );
   const beforeReturnNotice = await getNotice(beforeReturnId);
   const eventSummary = () =>
@@ -1080,6 +1087,7 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   assert.equal(staleNotice.text, beforeReturnNotice.text);
   assert.equal(staleNotice.outdated, true);
   assert.equal(staleNotice.needsReview, true);
+  assert.equal(staleNotice.refundRequiresRegeneration, true);
   await save(notice, 409);
   await json(
     await call(`events/${e.id}/participants`, owner, "POST", {
@@ -1108,13 +1116,20 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
       ?.needsReview,
     false,
   );
+  const beforeRegeneration = await getNotice(beforeReturnId);
+  assert.equal(beforeRegeneration.needsReview, false);
+  assert.equal(beforeRegeneration.outdated, true);
+  assert.equal(beforeRegeneration.refundRequiresRegeneration, true);
+  assert.equal(beforeRegeneration.text, beforeReturnNotice.text);
   v = await save({
     ...notice,
+    replaces: beforeReturnId,
     bank: { bank: "테스트은행", account: "1234", holder: "테스트 총무" },
   });
   assert.equal(v.state.notices.length, 3);
   const regenerated = await getNotice(v.state.notices.at(-1)!.id);
   assert.equal(regenerated.outdated, false);
+  assert.equal(regenerated.refundRequiresRegeneration, false);
   assert.match(regenerated.text, /테스트 참가자.*1,000원/);
-  assert.equal((await getNotice(beforeReturnId)).outdated, true);
+  assert.deepEqual(await getNotice(beforeReturnId), beforeRegeneration);
 });

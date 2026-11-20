@@ -279,7 +279,12 @@ function NoticeDetail({
     return <p role="alert">정산문에 접근할 수 없습니다.</p>;
   const n = q.data;
   const reviewRequired = needsReview || n?.needsReview;
-  const sharingBlocked = reviewRequired || q.isFetching || !!q.error || sharing;
+  const sharingBlocked =
+    reviewRequired ||
+    n?.refundRequiresRegeneration ||
+    q.isFetching ||
+    !!q.error ||
+    sharing;
   const copy = async () => {
     if (!n || sharingBlocked || sharingRef.current) return;
     sharingRef.current = true;
@@ -320,8 +325,10 @@ function NoticeDetail({
             생성
             {reviewRequired
               ? " · 정산 재확인 필요. 연결 지출을 수정한 뒤 새 정산문을 만들어 주세요."
-              : n.outdated &&
-                " · 현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요. 당시 계좌는 보존되므로 현재 총무의 계좌를 확인해 주세요."}
+              : n.refundRequiresRegeneration
+                ? " · 예약금 반환으로 이 정산문을 다시 만들어야 해요. 현재 내역으로 만든 정산문을 복사하거나 공유해 주세요."
+                : n.outdated &&
+                  " · 현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요. 당시 계좌는 보존되므로 현재 총무의 계좌를 확인해 주세요."}
           </p>
           <pre className="whitespace-pre-wrap break-words rounded-[20px] bg-choice p-5 font-sans text-base leading-relaxed">
             {n.text}

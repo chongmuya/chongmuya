@@ -20,10 +20,13 @@ export const noticeQuery = (a: Access, id: string) =>
   queryOptions({
     queryKey: [...settlementKey(a), "notice", id],
     queryFn: ({ signal }) =>
-      a.request<Notice & { outdated: boolean; needsReview?: boolean }>(
-        `${settlementPath(a)}/notices/${id}`,
-        { signal },
-      ),
+      a.request<
+        Notice & {
+          outdated: boolean;
+          needsReview?: boolean;
+          refundRequiresRegeneration: boolean;
+        }
+      >(`${settlementPath(a)}/notices/${id}`, { signal }),
     retry: false,
     staleTime: 0,
   });

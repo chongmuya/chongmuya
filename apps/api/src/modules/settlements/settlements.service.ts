@@ -40,7 +40,7 @@ const noticeOutdated = (n: Notice, s: SettlementState) =>
           .sort(),
       ));
 const depositConflicts = (
-  s: SettlementState,
+  s: Pick<SettlementState, "expenses">,
   facts: { reservationId: string; remainingAmount: number }[],
 ) => {
   const balances = new Map(
@@ -220,12 +220,26 @@ export class SettlementsService {
       const s = await this.state(event, m);
       const n = s.notices.find((notice) => notice.id === id);
       if (!n) throw new NotFoundException();
-      const needsReview =
-        depositConflicts(s, await this.depositBalances([s], m)).length > 0;
+      const reservations = await this.reservations.forEvent(owner, event, m);
+      const needsReview = depositConflicts(s, reservations).length > 0;
+      const refunded = new Set(
+        reservations
+          .filter((r) => r.refundedAmount > 0)
+          .map((r) => r.reservationId),
+      );
+      const refundRequiresRegeneration = depositConflicts(
+        { expenses: n.snapshot?.expenses ?? [] },
+        reservations,
+      ).some((conflict) => refunded.has(conflict.reservationId));
       return {
         ...n,
         needsReview,
-        outdated: needsReview || noticeOutdated(n, s) || n.actorId !== owner,
+        refundRequiresRegeneration,
+        outdated:
+          needsReview ||
+          refundRequiresRegeneration ||
+          noticeOutdated(n, s) ||
+          n.actorId !== owner,
       };
     });
   }
