@@ -302,3 +302,65 @@ test("round creation blocks duplicate submits and permits corrected input after 
     await view.unmount();
   }
 });
+
+test("a roster detail with lost access retains the route back to the event roster", async () => {
+  const eventId = crypto.randomUUID();
+  const request: SessionRequest = async <T>(path: string) => {
+    if (path.endsWith("/participants"))
+      throw new ApiError("", 403, "FORBIDDEN");
+    return { id: eventId, ownerId: "a", version: 1 } as T;
+  };
+  for (const params of ["action=add", `participant=${crypto.randomUUID()}`]) {
+    const view = await render(
+      createElement(
+        SearchParamsContext.Provider,
+        { value: new URLSearchParams(params) },
+        createElement(EventRoster, { accountId: "a", eventId, request }),
+      ),
+    );
+    try {
+      await until(() =>
+        assert.match(view.container.textContent!, /명단에 접근할 수 없어요/),
+      );
+      assert.equal(view.container.querySelector("form"), null);
+      await click(view.container, "이전 단계로 돌아가기");
+      assert.deepEqual(view.navigations, [
+        `/events?event=${eventId}&view=roster`,
+      ]);
+    } finally {
+      await view.unmount();
+    }
+  }
+});
+
+test("an already processed review offers a return to the round without a write action", async () => {
+  const eventId = crypto.randomUUID();
+  const roundId = crypto.randomUUID();
+  const reviewId = crypto.randomUUID();
+  const request: SessionRequest = async <T>() =>
+    ({ reviews: [{ id: reviewId, status: "LINKED" }], participants: [] }) as T;
+  const view = await render(
+    createElement(
+      SearchParamsContext.Provider,
+      { value: new URLSearchParams({ review: reviewId }) },
+      createElement(AttendanceWorkspace, {
+        accountId: "a",
+        eventId,
+        roundId,
+        request,
+      }),
+    ),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /이미 처리한 응답이에요/),
+    );
+    assert.doesNotMatch(view.container.textContent!, /처리 확정/);
+    await click(view.container, "이전 단계로 돌아가기");
+    assert.deepEqual(view.navigations, [
+      `/events?event=${eventId}&view=attendance&round=${roundId}`,
+    ]);
+  } finally {
+    await view.unmount();
+  }
+});

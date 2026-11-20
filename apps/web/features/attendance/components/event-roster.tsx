@@ -40,27 +40,19 @@ export function EventRoster(props: OwnerProps) {
     active = useActiveScreen();
   const [notice, setNotice] = useState<string>();
   const fallback = (content: ReactNode) =>
-    importing ? (
+    adding || importing || editingId ? (
       <StepLayout title="" onBack={close}>
         {content}
       </StepLayout>
     ) : (
       content
     );
-  if ((!roster.data && roster.isError) || (!event.data && event.isError))
-    return fallback(
-      <ErrorState
-        retry={() => {
-          void roster.refetch();
-          void event.refetch();
-        }}
-      />,
-    );
-  if (!roster.data || !event.data)
-    return fallback(<LoadingState>행사 명단 확인 중…</LoadingState>);
   const denied = isAccessError(roster.error) || isAccessError(event.error);
-  const editing = roster.data.find((person) => person.id === editingId);
-  if (denied)
+  if (
+    denied ||
+    (!roster.data && roster.isError) ||
+    (!event.data && event.isError)
+  )
     return fallback(
       <ErrorState
         retry={() => {
@@ -68,9 +60,12 @@ export function EventRoster(props: OwnerProps) {
           void event.refetch();
         }}
       >
-        이 행사 명단에 접근할 수 없어요.
+        {denied ? "이 행사 명단에 접근할 수 없어요." : undefined}
       </ErrorState>,
     );
+  if (!roster.data || !event.data)
+    return fallback(<LoadingState>행사 명단 확인 중…</LoadingState>);
+  const editing = roster.data.find((person) => person.id === editingId);
   if (importing && event.data.groupId)
     return (
       <ImportGroupRoster
@@ -90,13 +85,9 @@ export function EventRoster(props: OwnerProps) {
     );
   if (adding)
     return (
-      <fieldset disabled={denied} className="min-w-0">
+      <fieldset className="min-w-0">
         {(roster.isError || event.isError) && (
-          <p role="alert">
-            {denied
-              ? "명단을 수정할 권한이 없어요."
-              : "최신 명단 조회에 실패했어요. 입력은 유지됩니다."}
-          </p>
+          <p role="alert">최신 명단 조회에 실패했어요. 입력은 유지됩니다.</p>
         )}
         <RosterAddition {...props} existing={roster.data} onClose={close} />
       </fieldset>
@@ -114,7 +105,7 @@ export function EventRoster(props: OwnerProps) {
             최신 명단을 확인하지 못했어요. 입력은 유지됩니다.
           </ErrorState>
         )}
-        <fieldset disabled={denied} className="min-w-0">
+        <fieldset className="min-w-0">
           {editing ? (
             <EditParticipant
               key={editing.id}
@@ -132,15 +123,10 @@ export function EventRoster(props: OwnerProps) {
     <section className="space-y-5">
       {(roster.isError || event.isError) && (
         <p role="alert">
-          {isAccessError(roster.error) || isAccessError(event.error)
-            ? "이 행사 명단을 수정할 권한이 없어요."
-            : "최신 명단을 불러오지 못했어요. 작성 중인 입력은 유지됩니다."}
+          최신 명단을 불러오지 못했어요. 작성 중인 입력은 유지됩니다.
         </p>
       )}
-      <fieldset
-        disabled={isAccessError(roster.error) || isAccessError(event.error)}
-        className="min-w-0 space-y-5"
-      >
+      <fieldset className="min-w-0 space-y-5">
         <div>
           <h2 className="text-xl font-bold">
             명단 관리 · {roster.data.length}명

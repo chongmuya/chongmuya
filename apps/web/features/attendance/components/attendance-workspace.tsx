@@ -308,60 +308,62 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
       managerOverride: value,
     });
   }
-  if (query.isError && (!query.data || isAccessError(query.error)))
-    return <ErrorState retry={() => void query.refetch()} />;
-  if (!query.data) return <LoadingState>차수 확인 중…</LoadingState>;
-  const round = query.data;
   const reviewId = params.get("review");
-  const review = round.reviews.find((r) => r.id === reviewId);
+  const closeReview = () =>
+    router.replace(
+      `/events?event=${props.eventId}&view=attendance&round=${roundId}`,
+    );
+  const failure = query.isError && (!query.data || isAccessError(query.error));
+  if (failure || !query.data) {
+    const state = failure ? (
+      <ErrorState retry={() => void query.refetch()}>
+        {isAccessError(query.error)
+          ? "이 행사를 관리할 권한이 없어요."
+          : undefined}
+      </ErrorState>
+    ) : (
+      <LoadingState>차수 확인 중…</LoadingState>
+    );
+    return reviewId ? (
+      <StepLayout title="제출한 사람 연결 확인" onBack={closeReview}>
+        {state}
+      </StepLayout>
+    ) : (
+      state
+    );
+  }
+  const round = query.data;
+  const review = round.reviews.find((item) => item.id === reviewId);
   if (reviewId)
     return (
-      <StepLayout
-        title="제출한 사람 연결 확인"
-        onBack={() =>
-          router.replace(
-            `/events?event=${props.eventId}&view=attendance&round=${roundId}`,
-          )
-        }
-      >
+      <StepLayout title="제출한 사람 연결 확인" onBack={closeReview}>
         {query.isError && (
           <ErrorState retry={() => void query.refetch()}>
             최신 응답을 확인하지 못했어요. 입력은 유지됩니다.
           </ErrorState>
         )}
-        <fieldset disabled={isAccessError(query.error)} className="min-w-0">
-          {review ? (
-            <ResolveReviewPage
-              key={review.id}
-              {...props}
-              roundId={roundId}
-              review={review}
-              people={round.participants}
-              onClose={() =>
-                router.replace(
-                  `/events?event=${props.eventId}&view=attendance&round=${roundId}`,
-                )
-              }
-            />
-          ) : (
-            <p>확인 건을 찾을 수 없어요.</p>
-          )}
-        </fieldset>
+        {review?.status === "PENDING" ? (
+          <ResolveReviewPage
+            key={review.id}
+            {...props}
+            roundId={roundId}
+            review={review}
+            people={round.participants}
+            onClose={closeReview}
+          />
+        ) : (
+          <p>
+            {review ? "이미 처리한 응답이에요." : "확인 건을 찾을 수 없어요."}
+          </p>
+        )}
       </StepLayout>
     );
   return (
     <div className="space-y-5">
       {query.isError && (
-        <p role="alert">
-          {isAccessError(query.error)
-            ? "이 행사를 관리할 권한이 없어요."
-            : "최신 정보를 불러오지 못했어요. 입력은 유지됩니다."}
-        </p>
+        <p role="alert">최신 정보를 불러오지 못했어요. 입력은 유지됩니다.</p>
       )}
-      <fieldset
-        disabled={isAccessError(query.error)}
-        className="min-w-0 space-y-5"
-      >
+      <fieldset className="min-w-0 space-y-5">
         <div className="rounded-control bg-surface p-5 shadow-card">
           <Counts counts={round.counts} />
         </div>
