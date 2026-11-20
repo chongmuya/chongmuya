@@ -7,6 +7,7 @@ import { EventsService } from "../events/events.service.js";
 import { ReservationLocksService } from "./reservation-locks.service.js";
 import { ReservationAccessService } from "./reservation-access.service.js";
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
+import type { NotificationInput } from "../notifications/types/notification.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
@@ -84,6 +85,7 @@ export class ReservationSelectionService {
       )
         throw new DomainHttpException("RESERVATION_PROPOSAL_UNAVAILABLE");
       let selection: SelectedReservation | undefined;
+      const notifications: NotificationInput[] = [];
       if (action === "SELECT") {
         if (
           await m.existsBy(SelectedReservation, {
@@ -125,7 +127,7 @@ export class ReservationSelectionService {
             revision: other.replyVersion,
           });
           const state = candidateState(other, oldReply, now);
-          await this.close(
+          const notice = await this.close(
             m,
             request,
             other,
@@ -138,6 +140,7 @@ export class ReservationSelectionService {
             null,
             now,
           );
+          if (notice) notifications.push(notice);
         }
         await this.events.setReservationSchedule(
           eventId,
@@ -145,23 +148,26 @@ export class ReservationSelectionService {
           true,
           m,
         );
-        await this.notices.merchant(
-          m,
-          request,
-          target,
-          "STORE_SELECTED",
-          selection.id,
+        notifications.push(
+          await this.notices.merchantInput(
+            m,
+            request,
+            target,
+            "STORE_SELECTED",
+            selection.id,
+          ),
         );
-        await this.notices.organizer(
-          m,
-          request,
-          target,
-          "STORE_SELECTED",
-          reply.revision,
-          selection.id,
+        notifications.push(
+          this.notices.organizerInput(
+            request,
+            target,
+            "STORE_SELECTED",
+            reply.revision,
+            selection.id,
+          ),
         );
-      } else
-        await this.close(
+      } else {
+        const notice = await this.close(
           m,
           request,
           target,
@@ -170,6 +176,9 @@ export class ReservationSelectionService {
           null,
           now,
         );
+        if (notice) notifications.push(notice);
+      }
+      await this.notices.recordBatch(m, notifications);
       request.version++;
       await m.save(request);
       await m.insert(ReservationDecision, {
@@ -201,7 +210,7 @@ export class ReservationSelectionService {
     target.closureReason = reason;
     await m.save(target);
     if (state !== "MERCHANT_DECLINED")
-      await this.notices.merchant(
+      return this.notices.merchantInput(
         m,
         request,
         target,
@@ -226,6 +235,7 @@ export class ReservationSelectionService {
     )
       throw new DomainHttpException("RESERVATION_REINQUIRY_BLOCKED");
     const now = new Date();
+    const notifications: NotificationInput[] = [];
     for (const target of targets) {
       const reply = await m.findOneBy(MerchantReplyRevision, {
         targetId: target.id,
@@ -234,8 +244,8 @@ export class ReservationSelectionService {
       const state = candidateState(target, reply, now);
       if (!terminalCandidate(state))
         throw new DomainHttpException("RESERVATION_REINQUIRY_BLOCKED");
-      if (target.candidateState === "OPEN")
-        await this.close(
+      if (target.candidateState === "OPEN") {
+        const notice = await this.close(
           m,
           request,
           target,
@@ -244,7 +254,10 @@ export class ReservationSelectionService {
           null,
           now,
         );
+        if (notice) notifications.push(notice);
+      }
     }
+    await this.notices.recordBatch(m, notifications);
     request.state = "CLOSED";
     request.closedAt ??= now;
     request.version++;
@@ -257,6 +270,7 @@ export class ReservationSelectionService {
       if (request.state !== "ACTIVE") return;
       const now = new Date();
       let changed = false;
+      const notifications: NotificationInput[] = [];
       for (const target of targets) {
         const reply = await m.findOneBy(MerchantReplyRevision, {
           targetId: target.id,
@@ -266,11 +280,21 @@ export class ReservationSelectionService {
           target.candidateState === "OPEN" &&
           candidateState(target, reply, now) === "EXPIRED"
         ) {
-          await this.close(m, request, target, "EXPIRED", "SYSTEM", null, now);
+          const notice = await this.close(
+            m,
+            request,
+            target,
+            "EXPIRED",
+            "SYSTEM",
+            null,
+            now,
+          );
+          if (notice) notifications.push(notice);
           changed = true;
         }
       }
       if (changed) {
+        await this.notices.recordBatch(m, notifications);
         request.version++;
         await m.save(request);
       }
@@ -311,7 +335,7 @@ export class ReservationSelectionService {
       )
         throw new DomainHttpException("RESERVATION_PROPOSAL_UNAVAILABLE");
       if (!dryRun) {
-        await this.close(
+        const notice = await this.close(
           m,
           request,
           target,
@@ -320,6 +344,7 @@ export class ReservationSelectionService {
           reason,
           new Date(),
         );
+        if (notice) await this.notices.recordBatch(m, [notice]);
         request.version++;
         await m.save(request);
       }

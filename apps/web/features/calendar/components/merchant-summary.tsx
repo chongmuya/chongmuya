@@ -5,6 +5,7 @@ import type { SessionRequest } from "@/features/auth/types";
 import { isAccessError } from "@/shared/http/access-error";
 import { ErrorState } from "@/shared/ui/states";
 import { calendarQuery } from "../api/calendar.api";
+import { ReservationFacts } from "./reservation-facts";
 import { kstDate } from "../lib/dates";
 export function MerchantSummary({
   accountId,
@@ -30,10 +31,28 @@ export function MerchantSummary({
       {q.isError && <ErrorState retry={() => void q.refetch()} />}{" "}
       {rows && (
         <>
-          <h3 className="font-semibold">이번 달 문의·예약 {rows.length}건</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-semibold">
+              우리 매장 문의·예약{" "}
+              <span className="ml-2 text-sm text-brand-action">
+                {rows.length}
+              </span>
+            </h3>
+            <Link
+              href={`/calendar?restaurant=${restaurantId}`}
+              aria-label="이번 달 문의·예약 전체 보기"
+            >
+              전체 보기 ›
+            </Link>
+          </div>
+          {!rows.length && (
+            <p className="rounded-card bg-surface p-5 text-sm text-secondary">
+              이번 달 문의·예약이 아직 없어요.
+            </p>
+          )}
           {rows.slice(0, 5).map((r) => (
             <Link
-              className="block rounded-control bg-field p-3 text-sm"
+              className="block rounded-card bg-surface p-5 text-sm shadow-card"
               href={r.destination}
               key={r.id}
             >
@@ -56,6 +75,7 @@ export function MerchantSummary({
                         ? "확인 필요"
                         : "문의·제안 상태 확인"}
               </span>
+              <ReservationFacts reservation={r} />
             </Link>
           ))}
         </>

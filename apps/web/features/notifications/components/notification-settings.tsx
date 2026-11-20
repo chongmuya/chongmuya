@@ -1,11 +1,8 @@
 "use client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
-import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
-import { preferencesQuery, savePreferences } from "../api/notifications.api";
-import type { Preferences } from "../types/notifications";
+import { useNotificationSettings } from "../hooks/use-notification-settings";
 export function NotificationSettings({
   accountId,
   request,
@@ -13,20 +10,7 @@ export function NotificationSettings({
   accountId: string;
   request: SessionRequest;
 }) {
-  const options = preferencesQuery(accountId, request),
-    q = useQuery(options),
-    cache = useQueryClient(),
-    active = useActiveScreen();
-  const mutation = useMutation({
-    mutationFn: (p: Preferences) => savePreferences(request, p),
-    onSuccess: (result) => {
-      if (active.current) cache.setQueryData(options.queryKey, result);
-    },
-    onError: () => {
-      if (active.current) void q.refetch();
-    },
-    retry: false,
-  });
+  const { q, mutation } = useNotificationSettings(accountId, request);
   const data = isAccessError(q.error) ? undefined : q.data;
   return (
     <section className="my-8 space-y-4">

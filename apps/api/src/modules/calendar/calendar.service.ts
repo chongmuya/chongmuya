@@ -11,6 +11,7 @@ import {
   CalendarCommand,
 } from "./entities/calendar-schedule.entity.js";
 import { calendarRange, koreanDate, validDate } from "./lib/calendar-time.js";
+import { scheduleDto } from "./dto/response/schedule.response.dto.js";
 import type {
   CalendarQuery,
   ScheduleInput,
@@ -63,7 +64,21 @@ export class CalendarService {
       range.to,
       db.manager,
     );
-    return { schedules, events };
+    const places = await this.reservations.calendarPlaces(
+      ownerId,
+      events.map((e) => e.id),
+      db.manager,
+    );
+    const placeByEvent = new Map(
+      places.map((p) => [p.eventId, p.restaurantName]),
+    );
+    return {
+      schedules: schedules.map(scheduleDto),
+      events: events.map((e) => ({
+        ...e,
+        restaurantName: placeByEvent.get(e.id) ?? null,
+      })),
+    };
   }
   async owned(ownerId: string, id: string, m: EntityManager, lock = false) {
     const row = await m.findOne(CalendarSchedule, {
@@ -78,7 +93,7 @@ export class CalendarService {
     const db = await this.database.connect();
     const row = await this.owned(ownerId, id, db.manager);
     if (row.deletedAt) throw new NotFoundException();
-    return row;
+    return scheduleDto(row);
   }
   async save(ownerId: string, input: ScheduleInput, id?: string) {
     const title = input.title.trim(),
@@ -119,22 +134,25 @@ export class CalendarService {
         if (old) {
           if (old.creationDigest !== digest)
             throw new DomainHttpException("WORKSPACE_VERSION_CONFLICT");
-          return old;
+          await this.owned(ownerId, old.id, m);
+          return scheduleDto(old);
         }
         if (input.expectedVersion !== 0)
           throw new DomainHttpException("WORKSPACE_VERSION_CONFLICT");
-        return m.save(CalendarSchedule, {
-          ...data,
-          id: randomUUID(),
-          ownerId,
-          creationKey: input.requestKey,
-          creationDigest: digest,
-          version: 1,
-          scheduleRevision: 1,
-          scheduleUpdatedAt: new Date(),
-          updatedAt: new Date(),
-          deletedAt: null,
-        });
+        return scheduleDto(
+          await m.save(CalendarSchedule, {
+            ...data,
+            id: randomUUID(),
+            ownerId,
+            creationKey: input.requestKey,
+            creationDigest: digest,
+            version: 1,
+            scheduleRevision: 1,
+            scheduleUpdatedAt: new Date(),
+            updatedAt: new Date(),
+            deletedAt: null,
+          }),
+        );
       }
       const row = await this.owned(ownerId, id, m, true);
       const commandDigest = createHash("sha256")
@@ -149,7 +167,7 @@ export class CalendarService {
       if (receipt) {
         if (receipt.digest !== commandDigest)
           throw new DomainHttpException("WORKSPACE_VERSION_CONFLICT");
-        return receipt.snapshot;
+        return scheduleDto(receipt.snapshot);
       }
 
       if (
@@ -176,7 +194,7 @@ export class CalendarService {
         digest: commandDigest,
         snapshot: row,
       });
-      return row;
+      return scheduleDto(row);
     });
   }
   async remove(ownerId: string, id: string, version: number) {

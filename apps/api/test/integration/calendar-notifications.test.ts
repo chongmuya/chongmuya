@@ -46,6 +46,21 @@ test("calendar ownership, retry, reminder concurrency/restart, settings and inbo
   const s = await json<{ id: string; version: number }>(r1, 201),
     retry = await json<{ id: string }>(r2, 201);
   assert.equal(s.id, retry.id);
+  for (const response of [
+    s,
+    retry,
+    await json(await call(`calendar/${s.id}`, a)),
+  ]) {
+    for (const field of [
+      "creationKey",
+      "creationDigest",
+      "scheduleRevision",
+      "scheduleUpdatedAt",
+      "creatorId",
+      "ownerId",
+    ])
+      assert.equal(field in (response as object), false, field);
+  }
   assert.equal(
     (await call("calendar", a, "POST", { ...input, title: "다른 입력" }))
       .status,
@@ -498,7 +513,9 @@ test("title and memo edits preserve event and other-schedule reminder recovery g
     name: "원본 행사",
     scheduledAt: "2031-04-02T03:00:00Z",
   });
-  const original = schedule.scheduleUpdatedAt.getTime();
+  const original = (
+    await db.manager.findOneByOrFail(CalendarSchedule, { id: schedule.id })
+  ).scheduleUpdatedAt.getTime();
   t.mock.timers.enable({
     apis: ["Date"],
     now: new Date("2031-04-01T00:01:00Z"),
@@ -519,8 +536,11 @@ test("title and memo edits preserve event and other-schedule reminder recovery g
       expectedVersion: event.version,
       name: "수정한 행사",
     });
-    assert.equal(schedule.scheduleUpdatedAt.getTime(), original);
-    assert.equal(schedule.scheduleRevision, 1);
+    const stored = await db.manager.findOneByOrFail(CalendarSchedule, {
+      id: schedule.id,
+    });
+    assert.equal(stored.scheduleUpdatedAt.getTime(), original);
+    assert.equal(stored.scheduleRevision, 1);
     await reminders.run();
     assert.equal((await notifications.inbox(me.id)).items.length, 2);
     await calendar.save(
