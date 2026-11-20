@@ -87,6 +87,7 @@ export function KakaoConnection({ accountId }: { accountId: string }) {
               type="checkbox"
               {...form.register("consent")}
               disabled={action.isPending}
+              aria-invalid={!!form.formState.errors.consent}
               aria-describedby="kakao-link-consent-error"
             />
             현재 계정에 카카오 로그인을 연결하는 데 동의합니다.

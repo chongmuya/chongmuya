@@ -182,7 +182,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                         {...attributes}
                         {...form.register("name")}
                         variant="pill"
-                        className="min-h-[46px] border-0 shadow-control aria-invalid:border"
+                        className="min-h-[46px] border-0 shadow-control"
                         autoComplete="off"
                         placeholder="이름을 입력해 주세요"
                       />
@@ -201,7 +201,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                         {...attributes}
                         {...form.register("phoneLast4")}
                         variant="pill"
-                        className="min-h-[46px] border-0 shadow-control aria-invalid:border"
+                        className="min-h-[46px] border-0 shadow-control"
                         inputMode="numeric"
                         maxLength={4}
                         autoComplete="off"

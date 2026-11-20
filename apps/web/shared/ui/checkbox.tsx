@@ -10,7 +10,7 @@ export function Checkbox({
       {...props}
       type="checkbox"
       className={cn(
-        "size-6 shrink-0 appearance-none rounded-pill border border-placeholder cursor-pointer checked:border-brand checked:bg-brand checked:shadow-[inset_0_0_0_5px_var(--color-surface)] disabled:cursor-not-allowed disabled:opacity-60",
+        "size-6 shrink-0 appearance-none rounded-pill border border-placeholder cursor-pointer checked:border-brand checked:bg-brand checked:shadow-[inset_0_0_0_5px_var(--color-surface)] aria-invalid:checked:border-danger aria-invalid:checked:bg-danger disabled:cursor-not-allowed disabled:opacity-60",
         className,
       )}
     />

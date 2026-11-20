@@ -8,7 +8,7 @@ import { EmailVerification } from "./email-verification";
 import { ContactVerification } from "../contact-verification";
 import { StepHeading } from "@/shared/ui/step-layout";
 
-const enrollmentInputClass = "shadow-control aria-invalid:bg-brand/10";
+const enrollmentInputClass = "shadow-control aria-invalid:bg-danger/10";
 export function SignupInformation({
   phone,
   email,
@@ -127,7 +127,7 @@ export function SignupInformation({
                     {...attributes}
                     {...register("phone", { onChange: phone.reset })}
                     variant="pill"
-                    className="min-w-0 shadow-control aria-invalid:bg-brand/10 max-[374px]:px-3 max-[374px]:placeholder:text-sm"
+                    className="min-w-0 shadow-control aria-invalid:bg-danger/10 max-[374px]:px-3 max-[374px]:placeholder:text-sm"
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"

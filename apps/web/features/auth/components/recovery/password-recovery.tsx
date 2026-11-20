@@ -131,7 +131,7 @@ export function RecoveryEmail({
                   {...attributes}
                   {...register("email")}
                   variant="pill"
-                  className="shadow-control aria-invalid:bg-brand/10"
+                  className="shadow-control aria-invalid:bg-danger/10"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
@@ -275,7 +275,7 @@ function RecoveryPasswordForm({
                   {...attributes}
                   {...register("password")}
                   variant="pill"
-                  className="shadow-control aria-invalid:bg-brand/10"
+                  className="shadow-control aria-invalid:bg-danger/10"
                   autoComplete="new-password"
                   placeholder="비밀번호를 입력해 주세요"
                   required
@@ -295,7 +295,7 @@ function RecoveryPasswordForm({
                   {...attributes}
                   {...register("passwordConfirm")}
                   variant="pill"
-                  className="shadow-control aria-invalid:bg-brand/10"
+                  className="shadow-control aria-invalid:bg-danger/10"
                   autoComplete="new-password"
                   placeholder="비밀번호를 다시 입력해 주세요"
                   required

@@ -66,7 +66,7 @@ export function EmailVerification({
               {...attributes}
               {...register("email", { onChange: email.reset })}
               variant="pill"
-              className="min-w-0 shadow-control aria-invalid:bg-brand/10 max-[374px]:px-3 max-[374px]:placeholder:text-sm"
+              className="min-w-0 shadow-control aria-invalid:bg-danger/10 max-[374px]:px-3 max-[374px]:placeholder:text-sm"
               type="email"
               inputMode="email"
               autoComplete="email"
