@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useAuth,
   AuthScreen,
@@ -11,7 +11,8 @@ import {
   safeReturnPath,
 } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
-import { EventPicker, useEvent } from "@/features/events/client";
+import { EventPicker, eventKeys, useEvent } from "@/features/events/client";
+import { useGroups } from "@/features/groups/client";
 import {
   RestaurantBrowser,
   useSelectedRestaurants,
@@ -27,6 +28,7 @@ import {
   initialConditions,
   inquiryConditions,
   conditionsSchema,
+  savedInquirySchedule,
 } from "../schemas/conditions.schema";
 import { ConditionsForm } from "./conditions-form";
 import { ConditionSummary } from "./condition-summary";
@@ -223,6 +225,7 @@ function InquiryFlow({
   const router = useRouter();
   const params = useSearchParams();
   const event = useEvent(account.id, eventId, request);
+  const groups = useGroups(account.id, request);
   const existing = useQuery({
     ...inquiryQuery(account.id, eventId, request),
     refetchInterval: 15_000,
@@ -291,6 +294,9 @@ function InquiryFlow({
         void existing.refetch();
       }}
       account={account}
+      groupType={
+        groups.data?.find((group) => group.id === event.data.groupId)?.groupType
+      }
       event={{
         id: eventId,
         version: event.data.version,
@@ -308,6 +314,7 @@ function InquiryDraft({
   unavailable,
   retry,
   account,
+  groupType,
   event,
   request,
   browse,
@@ -316,6 +323,7 @@ function InquiryDraft({
   unavailable: boolean;
   retry: () => void;
   account: Account;
+  groupType?: string | null;
   event: {
     id: string;
     version: number;
@@ -328,7 +336,11 @@ function InquiryDraft({
   const router = useRouter();
   const params = useSearchParams();
   const active = useActiveScreen();
-  const [values, setValues] = useState(() => {
+  const cache = useQueryClient();
+  const savedSchedule = previous
+    ? null
+    : savedInquirySchedule(event.scheduledAt);
+  const [draftValues, setValues] = useState(() => {
     const initial = initialConditions(
       account,
       previous?.snapshot.startsAt ?? event.scheduledAt,
@@ -347,8 +359,17 @@ function InquiryDraft({
           alcohol: p.alcohol ?? ("UNKNOWN" as const),
           additionalRequests: p.additionalRequests ?? "",
         }
-      : initial;
+      : {
+          ...initial,
+          expectedGuests:
+            cache.getQueryData<string>(
+              eventKeys.guestEstimate(account.id, event.id),
+            ) ?? "",
+        };
   });
+  const values = savedSchedule
+    ? { ...draftValues, date: savedSchedule.date, time: savedSchedule.time }
+    : draftValues;
   const [scheduleConfirmed, setScheduleConfirmed] = useState(false);
   const scheduleChanged =
     !!previous &&
@@ -421,7 +442,7 @@ function InquiryDraft({
       expectedRequestVersion: previous?.version,
       updateEventSchedule: scheduleConfirmed,
       restaurantIds: browse.selected,
-      conditions: inquiryConditions(parsed.data),
+      conditions: inquiryConditions(parsed.data, savedSchedule?.startsAt),
       contact: {
         name: parsed.data.contactName,
         phone: parsed.data.contactPhone,
@@ -454,13 +475,11 @@ function InquiryDraft({
       title={
         step === "review"
           ? "문의 보내기"
-          : step === "conditions"
-            ? "문의 조건"
-            : browse.view === "map"
-              ? "매장 지도"
-              : browse.view === "detail"
-                ? "매장 상세"
-                : "매장 선택"
+          : step === "browse" && browse.view === "map"
+            ? "매장 지도"
+            : step === "browse" && browse.view === "detail"
+              ? "매장 상세"
+              : ""
       }
       busy={create.isPending}
       onBack={() => {
@@ -472,7 +491,9 @@ function InquiryDraft({
     >
       {(step !== "browse" || browse.view === "list") && (
         <StepHeading
-          className="mb-7"
+          className={
+            step === "conditions" || step === "browse" ? "mb-5" : "mb-7"
+          }
           title={
             step === "conditions"
               ? "매장에 어떤 조건을 전달할까요?"
@@ -480,7 +501,13 @@ function InquiryDraft({
                 ? `${browse.selected.length}곳에 문의를 보낼까요?`
                 : "우리 모임에 맞는 매장을 찾아요"
           }
-          description={event.name}
+          description={
+            step === "browse"
+              ? "선택한 매장에 문자로 문의를 보내요. 답변이 오면 알려드려요. 매장을 최대 3곳 선택할 수 있어요."
+              : step === "review"
+                ? event.name
+                : undefined
+          }
         />
       )}
       {unavailable && (
@@ -507,7 +534,10 @@ function InquiryDraft({
       )}
       {step === "conditions" ? (
         <ConditionsForm
+          key={savedSchedule?.startsAt ?? "editable"}
           initial={values}
+          savedStartsAt={savedSchedule?.startsAt}
+          groupType={groupType}
           onChange={setValues}
           nextLabel={
             browse.selected.length ? "보낼 내용 확인하기" : "매장 선택하기"
@@ -525,7 +555,8 @@ function InquiryDraft({
         />
       ) : step === "review" ? (
         <InquiryReview
-          values={values}
+          conditions={inquiryConditions(values, savedSchedule?.startsAt)}
+          contact={{ name: values.contactName, phone: values.contactPhone }}
           browse={browse}
           targets={targets}
           targetState={targetState}
@@ -540,7 +571,9 @@ function InquiryDraft({
         <>
           {browse.view === "list" && (
             <div className="mb-6">
-              <ConditionSummary conditions={inquiryConditions(values)} />
+              <ConditionSummary
+                conditions={inquiryConditions(values, savedSchedule?.startsAt)}
+              />
             </div>
           )}
           <RestaurantBrowser

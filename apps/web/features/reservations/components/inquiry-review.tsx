@@ -3,15 +3,13 @@ import type { useSelectedRestaurants } from "@/features/restaurants/client";
 import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
-import {
-  inquiryConditions,
-  type ConditionsValues,
-} from "../schemas/conditions.schema";
+import type { InquiryConditions } from "../types/inquiry.types";
 import { ConditionSummary } from "./condition-summary";
 import { InquiryDetails } from "./reservation-progress";
 
 export function InquiryReview({
-  values,
+  conditions,
+  contact,
   browse,
   targets,
   targetState,
@@ -20,7 +18,8 @@ export function InquiryReview({
   onSubmit,
   error,
 }: {
-  values: ConditionsValues;
+  conditions: InquiryConditions;
+  contact: { name: string; phone: string };
   browse: Pick<BrowseNavigation, "selected" | "onNavigate">;
   targets: ReturnType<typeof useSelectedRestaurants>;
   targetState: "ready" | "loading" | "error" | "unavailable";
@@ -29,7 +28,6 @@ export function InquiryReview({
   onSubmit: () => void;
   error?: string;
 }) {
-  const conditions = inquiryConditions(values);
   return (
     <div className="space-y-6">
       <ConditionSummary conditions={conditions} />
@@ -82,10 +80,7 @@ export function InquiryReview({
           주세요.
         </p>
       )}
-      <InquiryDetails
-        conditions={conditions}
-        contact={{ name: values.contactName, phone: values.contactPhone }}
-      />
+      <InquiryDetails conditions={conditions} contact={contact} />
       <Button
         variant="outline"
         className="w-full"

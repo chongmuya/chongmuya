@@ -4,6 +4,7 @@ import { spaceCost } from "../features/restaurants/lib/space-cost";
 import {
   conditionsSchema,
   inquiryConditions,
+  savedInquirySchedule,
 } from "../features/reservations/schemas/conditions.schema";
 test("unknown, zero and positive costs remain distinct", () => {
   for (const label of ["최소 이용금액", "별도 대관료"]) {
@@ -34,4 +35,11 @@ test("room choice and importance survive form validation and inquiry conversion"
   assert.equal(inquiry.space, "ROOM");
   assert.equal(inquiry.spaceImportance, "REQUIRED");
   assert.equal(inquiry.expectedGuests, 20);
+
+  const startsAt = "2099-01-01T09:00:45.000Z";
+  const saved = savedInquirySchedule(startsAt);
+  assert.deepEqual(saved, { date: values.date, time: values.time, startsAt });
+  assert.equal(inquiryConditions(values, saved?.startsAt).startsAt, startsAt);
+  assert.equal(savedInquirySchedule(null), null);
+  assert.equal(savedInquirySchedule("2000-01-01T09:00:00.000Z"), null);
 });
