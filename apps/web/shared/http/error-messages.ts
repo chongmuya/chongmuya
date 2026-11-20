@@ -383,6 +383,14 @@ export const messages: Record<
     status: 409,
     message: "같은 요청 키에 다른 입력을 사용할 수 없습니다.",
   },
+  EVENT_FINALIZATION_BLOCKED: {
+    status: 409,
+    message: "정산에서 확인이 필요한 내용을 먼저 처리해 주세요.",
+  },
+  EVENT_FINALIZATION_CONFIRMATION_REQUIRED: {
+    status: 400,
+    message: "정산할 비용이 없음을 확인해 주세요.",
+  },
   FILE_INVALID: {
     status: 400,
     message:

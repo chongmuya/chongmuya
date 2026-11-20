@@ -3,6 +3,7 @@ import { eventSummariesQuery } from "@/features/settlements/client";
 import { isAccessError } from "@/shared/http/access-error";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { ActiveEventBanner, EventBanner } from "./event-banner";
 import { EventCard } from "./event-card";
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +25,16 @@ export function EventSummary({
   personal?: boolean;
 }) {
   const params = useSearchParams();
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    const timer = window.setInterval(update, 60_000);
+    window.addEventListener("focus", update);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+    };
+  }, []);
   const events = useQuery(eventsQueryOptions(accountId, request, groupId));
   const visible = isAccessError(events.error)
     ? undefined
@@ -43,7 +54,13 @@ export function EventSummary({
     summaries.data?.map((summary) => [summary.eventId, summary]),
   );
   const featured =
-    shown && featuredEvent(shown, summaries.data ?? [], params.get("event"));
+    shown &&
+    featuredEvent(
+      shown,
+      summaries.isError ? [] : (summaries.data ?? []),
+      params.get("event"),
+      now,
+    );
   const createPath = groupId
     ? `/events?group=${groupId}`
     : personal
@@ -55,11 +72,15 @@ export function EventSummary({
         (featured ? (
           <ActiveEventBanner
             event={featured}
-            summary={summaryById.get(featured.id)}
+            summary={
+              summaries.isError ? undefined : summaryById.get(featured.id)
+            }
             summaryUnavailable={summaries.isError}
+            createPath={createPath}
+            now={now}
           />
         ) : (
-          <EventBanner href={createPath} />
+          !events.isError && <EventBanner href={createPath} />
         ))}
       <div className="flex items-center justify-between gap-3 pt-4">
         <h2 className="text-label text-copy">

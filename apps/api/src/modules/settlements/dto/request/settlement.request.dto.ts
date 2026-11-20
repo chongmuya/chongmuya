@@ -76,6 +76,13 @@ export const commandSchema = z.discriminatedUnion("action", [
   z
     .object({
       ...base,
+      action: z.literal("FINALIZE_EVENT"),
+      noExpenses: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
       action: z.literal("NOTICE"),
       replaces: z.uuid().nullable(),
       title: z.string().trim().min(1).max(100),

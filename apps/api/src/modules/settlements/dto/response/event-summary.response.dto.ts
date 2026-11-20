@@ -4,9 +4,12 @@ import type { SettlementSummaryDto } from "./settlement.response.dto.js";
 export type EventSummaryDto = Awaited<
   ReturnType<ReservationFactsService["forEvents"]>
 >[number] & {
+  finalizedAt: string | null;
   participantCount: number;
   roundCount: number;
   attendingCount: number;
+  hasAttendanceRecords: boolean;
+  attendanceComplete: boolean;
   settlement: Pick<
     SettlementSummaryDto,
     | "status"

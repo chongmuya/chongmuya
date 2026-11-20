@@ -1,8 +1,11 @@
 export type EventSummary = {
   eventId: string;
+  finalizedAt: string | null;
   participantCount: number;
   roundCount: number;
   attendingCount: number;
+  hasAttendanceRecords: boolean;
+  attendanceComplete: boolean;
   expectedGuests: number | null;
   region: string | null;
   inquiry: {

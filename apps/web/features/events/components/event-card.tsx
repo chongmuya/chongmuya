@@ -5,7 +5,7 @@ import type { EventSummary } from "@/features/settlements/types";
 import type { Event } from "../types/event.types";
 import {
   compactEventDate,
-  homeAction,
+  eventCardView,
   homeEventPath,
   reservationLabel,
   settlementLabel,
@@ -26,7 +26,7 @@ export function EventCard({
   return (
     <article className="rounded-[4px] bg-surface shadow-card">
       <Link
-        href={homeEventPath(event, homeAction(summary).view)}
+        href={homeEventPath(event, eventCardView(summary))}
         className="block rounded-[inherit] px-5 py-4"
       >
         <div className="flex items-start justify-between gap-3">

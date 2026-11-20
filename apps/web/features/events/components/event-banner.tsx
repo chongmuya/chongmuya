@@ -4,7 +4,7 @@ import { cn } from "@/shared/lib/cn";
 import type { EventSummary } from "@/features/settlements/types";
 import type { Event } from "../types/event.types";
 import {
-  compactEventDate,
+  homeActionPath,
   homeEventPath,
   homeAction,
   reservationLabel,
@@ -14,26 +14,42 @@ import {
 const background =
   "rounded-control bg-[radial-gradient(ellipse_at_bottom_right,#fac253_0%,#f7923b_42%,#f46224_84%)] text-white shadow-card";
 
-export function EventBanner({ href }: { href: string }) {
+export function EventBanner({
+  href,
+  completion,
+}: {
+  href: string;
+  completion?: { title: string; action: string };
+}) {
   return (
     <Link
       href={href}
       className={cn("relative block h-[270px] overflow-hidden p-5", background)}
     >
-      <span className="block text-2xl leading-tight font-bold">
-        행사 준비,
-        <br />
-        총무야와 시작해요!
+      <span className="block text-2xl leading-tight font-bold whitespace-pre-line">
+        {completion?.title ?? "행사 준비,\n총무야와 시작해요!"}
       </span>
-      <Image
-        src="/images/home/calendar-art.svg"
-        alt=""
-        width={182.217}
-        height={126.716}
-        className="absolute top-[93px] right-9"
-      />
-      <span className="absolute right-7 bottom-5 left-7 flex min-h-11 items-center justify-between gap-3 text-control">
-        새 행사를 계획해 볼까요?
+      {completion ? (
+        <div className="absolute top-[84px] right-[15px] flex h-[145.444px] w-[170.281px] items-center justify-center">
+          <Image
+            src="/images/home/event-celebration.svg"
+            alt=""
+            width={162.489}
+            height={135.387}
+            className="flex-none -scale-y-100 rotate-[175.3deg]"
+          />
+        </div>
+      ) : (
+        <Image
+          src="/images/home/calendar-art.svg"
+          alt=""
+          width={182.217}
+          height={126.716}
+          className="absolute top-[93px] right-9"
+        />
+      )}
+      <span className="absolute right-9 bottom-3 left-7 flex min-h-11 items-center justify-between gap-3 text-control">
+        {completion?.action ?? "새 행사를 계획해 볼까요?"}
         <Image
           src="/images/home/banner-next.svg"
           width={11.6213}
@@ -50,12 +66,18 @@ export function ActiveEventBanner({
   event,
   summary,
   summaryUnavailable = false,
+  createPath,
+  now,
 }: {
   event: Event;
   summary?: EventSummary;
   summaryUnavailable?: boolean;
+  createPath: string;
+  now: number;
 }) {
-  const next = homeAction(summary);
+  const next = homeAction(event, summary, now);
+  if (next.completed)
+    return <EventBanner href={createPath} completion={next} />;
   const steps = [
     {
       view: "reservation",
@@ -77,6 +99,7 @@ export function ActiveEventBanner({
           ? `${summary.attendingCount}명 참석`
           : "명단 준비"
         : "확인 중",
+      complete: summary?.attendanceComplete,
     },
     {
       view: "settlement",
@@ -96,8 +119,9 @@ export function ActiveEventBanner({
       width: 28.54,
       height: 26.5402,
       state: "기록 보기",
+      complete: false,
     },
-  ];
+  ] as const;
   return (
     <section
       aria-label={`${event.name} 진행 안내`}
@@ -118,60 +142,66 @@ export function ActiveEventBanner({
         />
       </div>
       <p className="mt-2 text-xs leading-[1.2] break-words">
-        {event.name} · {compactEventDate(event.scheduledAt)}
+        {event.name} ·{" "}
+        {event.scheduledAt
+          ? bannerDate.format(new Date(event.scheduledAt))
+          : "일정 미정"}
       </p>
-      <nav
-        aria-label="대표 행사 바로가기"
-        className="relative mt-8 grid grid-cols-4 gap-1 before:absolute before:right-0 before:bottom-2 before:left-0 before:border-b before:border-dotted before:border-white/60"
-      >
-        {steps.map((step, index) => (
-          <Link
-            key={step.view}
-            href={homeEventPath(event, step.view)}
-            aria-label={`${step.label}: ${step.state}`}
-            className="relative flex h-[73px] min-w-0 flex-col items-center gap-1 text-center"
-          >
-            <span className="flex h-[30px] items-center">
-              <Image
-                src={`/images/home/step-${step.icon}.svg`}
-                width={step.width}
-                height={step.height}
-                alt=""
-              />
-            </span>
-            <span
-              className={cn(
-                "text-xs",
-                next.view === step.view ? "font-semibold" : "text-white/60",
-              )}
+      {summary && (
+        <nav
+          aria-label="대표 행사 바로가기"
+          className="relative mt-8 grid grid-cols-4 gap-1 before:absolute before:-inset-x-1.5 before:bottom-[7.5px] before:h-px before:bg-[url(/images/home/progress-line.svg)] before:bg-center before:bg-repeat-x"
+        >
+          {steps.map((step, index) => (
+            <Link
+              key={step.view}
+              href={homeEventPath(event, step.view)}
+              aria-current={next.view === step.view ? "step" : undefined}
+              aria-label={`${step.label}: ${step.state}${step.complete ? " · 완료" : ""}`}
+              className="relative flex h-[73px] min-w-0 flex-col items-center gap-1 text-center"
             >
-              {step.label}
-            </span>
-            <span
-              aria-hidden="true"
-              className="mt-auto flex size-4 items-center justify-center"
-            >
-              {next.view === step.view ? (
-                <span className="flex size-4 items-center justify-center rounded-full bg-secondary text-xs leading-none text-white">
-                  {index + 1}
-                </span>
-              ) : step.complete ? (
+              <span className="flex h-[30px] items-center">
                 <Image
-                  src="/images/home/step-complete.svg"
-                  width={15.6}
-                  height={15.6}
+                  src={`/images/home/step-${step.icon}${step.icon === "settlement" ? (next.view === step.view ? "" : "-inactive") : next.view === step.view ? "-active" : ""}.svg`}
+                  width={step.width}
+                  height={step.height}
                   alt=""
                 />
-              ) : (
-                <span className="size-1.5 rounded-full bg-white" />
-              )}
-            </span>
-          </Link>
-        ))}
-      </nav>
+              </span>
+              <span
+                className={cn(
+                  "text-xs",
+                  next.view === step.view ? "font-semibold" : "text-white/60",
+                )}
+              >
+                {step.label}
+              </span>
+              <span
+                aria-hidden="true"
+                className="mt-auto flex size-4 items-center justify-center"
+              >
+                {next.view === step.view ? (
+                  <span className="flex size-4 items-center justify-center rounded-full bg-secondary text-xs leading-none text-white">
+                    {index + 1}
+                  </span>
+                ) : step.complete ? (
+                  <Image
+                    src="/images/home/step-complete.svg"
+                    width={15.6}
+                    height={15.6}
+                    alt=""
+                  />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-white" />
+                )}
+              </span>
+            </Link>
+          ))}
+        </nav>
+      )}
       <Link
-        href={homeEventPath(event, next.view)}
-        className="mt-2 flex min-h-11 items-center justify-between gap-3 px-2 text-base font-medium"
+        href={homeActionPath(event, summary, next)}
+        className="mt-2 flex min-h-11 items-center justify-between gap-3 pl-2 pr-4 text-base font-medium"
       >
         {next.action}
         <Image
@@ -185,3 +215,9 @@ export function ActiveEventBanner({
     </section>
   );
 }
+
+const bannerDate = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  month: "long",
+  day: "numeric",
+});

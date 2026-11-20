@@ -107,6 +107,10 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       eventId={params.get("event")}
       mode={mode}
       view={params.get("view")}
+      startExpense={
+        params.get("action") === "expense" &&
+        params.get("view") === "settlement"
+      }
       personal={params.get("scope") === "personal" && !params.get("group")}
       roundId={params.get("round")}
       detailPage={detailPage}
@@ -194,6 +198,7 @@ export function WorkspaceContent({
   initialDate,
   detailPage = false,
   personal = false,
+  startExpense = false,
 }: {
   accountId: string;
   request: SessionRequest;
@@ -204,6 +209,7 @@ export function WorkspaceContent({
   roundId?: string | null;
   detailPage?: boolean;
   personal?: boolean;
+  startExpense?: boolean;
   initialDate?: string;
 }) {
   return (
@@ -272,6 +278,7 @@ export function WorkspaceContent({
               eventId={eventId}
               request={request}
               record={view === "record"}
+              startExpense={startExpense}
             />
           ) : view === "attendance" ? (
             <AttendanceWorkspace

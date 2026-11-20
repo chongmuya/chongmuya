@@ -4,7 +4,8 @@ import type { calculate } from "../../lib/calculate.js";
 import type { SettlementState, Bank } from "../../types/settlement.js";
 export type SettlementSummaryDto = ReturnType<typeof calculate>;
 export type SettlementDetailDto = {
-  state: Omit<SettlementState, "notices"> & {
+  state: Omit<SettlementState, "notices" | "finalizedAt"> & {
+    finalizedAt: string | null;
     notices: {
       id: string;
       title: string;

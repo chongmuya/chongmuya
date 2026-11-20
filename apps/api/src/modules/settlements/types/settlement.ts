@@ -64,6 +64,7 @@ export type Notice = {
 export type SettlementState = {
   version: number;
   calculationVersion: number;
+  finalizedAt?: string | null;
   expenses: Expense[];
   payments: Payment[];
   notices: Notice[];

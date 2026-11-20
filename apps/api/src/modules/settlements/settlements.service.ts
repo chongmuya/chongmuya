@@ -65,7 +65,9 @@ export class SettlementsService {
       ? await m.findBy(EventSettlement, { eventId: In(events) })
       : [];
     return {
-      settlements: rows.length,
+      settlements: rows.filter(
+        ({ state }) => !state.finalizedAt || state.version > 0,
+      ).length,
       incompleteSettlements: rows.filter(
         (r) => calculate(r.state).status === "IN_PROGRESS",
       ).length,
@@ -104,6 +106,7 @@ export class SettlementsService {
         depositConflicts: conflicts,
         state: {
           ...s,
+          finalizedAt: s.finalizedAt ?? null,
           notices: s.notices.map((n) => ({
             id: n.id,
             title: n.title,
@@ -145,9 +148,12 @@ export class SettlementsService {
         const summary = calculate(state);
         return {
           ...reservation,
+          finalizedAt: state.finalizedAt ?? null,
           participantCount: counts.participantCount,
           roundCount: counts.roundCount,
           attendingCount: counts.attendingCount,
+          hasAttendanceRecords: counts.hasAttendanceRecords,
+          attendanceComplete: counts.attendanceComplete,
           settlement: {
             status: summary.status,
             needsReview: depositConflicts(state, balances).length > 0,
@@ -293,7 +299,8 @@ export class SettlementsService {
       } catch {
         throw invalid();
       }
-      s.version++;
+      // Finalizing changes home guidance without invalidating open record edits.
+      if (c.action !== "FINALIZE_EVENT") s.version++;
       const summary = calculate(s);
       const completed =
         summary.status === "COMPLETE" && beforeSummary.status !== "COMPLETE";
@@ -346,6 +353,19 @@ export class SettlementsService {
     const now = new Date().toISOString();
     if (c.action === "MEMO") {
       s.memo = c.memo;
+      return;
+    }
+    if (c.action === "FINALIZE_EVENT") {
+      if (
+        calculate(s).status === "IN_PROGRESS" ||
+        depositConflicts(s, await this.depositBalances([s], m)).length
+      )
+        throw new DomainHttpException("EVENT_FINALIZATION_BLOCKED");
+      if (!s.expenses.some((e) => !e.deletedAt) && !c.noExpenses)
+        throw new DomainHttpException(
+          "EVENT_FINALIZATION_CONFIRMATION_REQUIRED",
+        );
+      s.finalizedAt ??= now;
       return;
     }
     if (c.action === "EXPENSE") {
