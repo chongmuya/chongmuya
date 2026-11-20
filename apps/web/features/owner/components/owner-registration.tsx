@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import {
   FormProvider,
-  useFieldArray,
   useForm,
   useWatch,
   type FieldPath,
@@ -30,17 +30,24 @@ import {
   type RegistrationData,
 } from "../schemas/registration.schema";
 import type { RestaurantDraft, DuplicateResult } from "../types/owner.types";
-import { OwnerChoice, OwnerField, OwnerCheck } from "./owner-fields";
+import { OwnerChoice, OwnerField } from "./owner-fields";
 import { OwnerPolicyFields } from "./owner-policy-fields";
-import { OwnerSummary } from "./owner-summary";
+import { OwnerSummary, OwnerCompletionSummary } from "./owner-summary";
+import { OwnerSpaceFields } from "./owner-space-fields";
 
 const titles = [
   "사장님, 매장을 등록해 주세요!",
   "손님을 얼마나 받을 수 있나요?",
   "예약 조건을 알려주세요",
-  "메뉴 확정·인원 변경 조건을 알려주세요",
+  "변경 및 취소 정책을 알려주세요",
   "입력한 내용을 확인해 주세요",
 ];
+const descriptions = [
+  "정확한 매장 정보를 입력하면 단체 예약 문의를 더 편리하게 받을 수 있어요.",
+  "매장의 수용 인원과 공간별 이용 조건을 알려주세요.",
+  "단체 손님을 받을 때 적용되는 기본 조건을 설정해 주세요. 나중에 수정할 수도 있어요.",
+];
+const headingSpacing = ["mb-7", "mb-12", "mb-7", "mb-[74px]", "mb-11"];
 export function OwnerRegistration({
   account,
   request,
@@ -58,15 +65,20 @@ export function OwnerRegistration({
   });
   const context = useQuery(contextQuery(account.id, request));
   const data = useWatch({ control: form.control }) as RegistrationData;
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "spaces",
-    keyName: "rowKey",
-  });
   const [step, setStep] = useState(Math.min(draft.step, 4)),
     [complete, setComplete] = useState(
       draft.submitted ? draft.restaurantId : null,
     );
+  const [capacityUnknown, setCapacityUnknown] = useState(
+    () =>
+      draft.data.maxCapacity === null &&
+      (draft.step > 1 || !!draft.restaurantId),
+  );
+  const heading = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (window.scrollY > 0) window.scrollTo(0, 0);
+    heading.current?.querySelector("h1")?.focus({ preventScroll: true });
+  }, [step, complete]);
   const identity = useDraftIdentity(request, draft);
   const {
     addresses,
@@ -141,6 +153,13 @@ export function OwnerRegistration({
       const issues = registrationIssues(values, unchangedContact).filter(
         (issue) => step === 4 || issue.step === step,
       );
+      if (step === 1 && values.maxCapacity === null && !capacityUnknown)
+        issues.unshift({
+          path: "maxCapacity",
+          step: 1,
+          message:
+            "수용 인원을 입력하거나 아직 정확한 인원을 모른다고 표시해 주세요.",
+        });
       if (issues.length) {
         form.clearErrors();
         for (const issue of issues)
@@ -203,57 +222,65 @@ export function OwnerRegistration({
       (r) => r.id === complete,
     );
     return (
-      <StepLayout title="등록 완료" onBack={() => onNavigate("/owner")}>
-        <div className="py-12 text-center">
-          <div className="mx-auto mb-8 flex size-12 items-center justify-center rounded-full bg-brand text-3xl text-white">
-            ✓
-          </div>
-          <h1 className="text-2xl font-bold">
+      <StepLayout
+        title=""
+        className="pb-[max(16px,env(safe-area-inset-bottom))]"
+        onBack={() => onNavigate("/owner")}
+      >
+        <div
+          ref={heading}
+          className="px-[17px] pt-[clamp(48px,9.8svh,93px)] text-center"
+        >
+          <Image
+            src="/images/owner-registration/complete.svg"
+            width={48}
+            height={48}
+            alt=""
+            className="mx-auto mb-9"
+          />
+          <h1
+            tabIndex={-1}
+            className="text-2xl leading-[1.2] font-bold text-brand-ink focus:outline-none"
+          >
             {draft.restaurantId
               ? "매장 정보를 수정했어요"
               : "매장 등록이 완료되었어요"}
           </h1>
-          <p className="mt-3 text-muted">
-            {savedRestaurant
-              ? savedRestaurant.published
-                ? "공개 중"
-                : "공개 대기"
-              : context.isError
-                ? "공개 상태를 확인하지 못했어요"
-                : "공개 상태 확인 중"}
+          <p className="mx-auto mt-2 max-w-[225px] text-control leading-6 text-muted">
+            메뉴를 등록하면 총무가 더 빠르게 예약을 진행할 수 있어요
           </p>
+          {savedRestaurant && !savedRestaurant.published && (
+            <p className="mt-3 text-xs text-muted">
+              매장 정보는 공개 대기 중이에요.
+            </p>
+          )}
+          {context.isError && (
+            <p className="mt-3 text-xs text-muted">
+              공개 상태를 확인하지 못했어요.
+            </p>
+          )}
         </div>
-        <section className="space-y-3">
-          <h2 className="font-semibold">등록 요약</h2>
-          <details className="rounded-control bg-surface p-5 shadow-card">
-            <summary className="cursor-pointer text-sm">
-              <strong>
-                {submitted.name}
-                {submitted.branchName ? ` (${submitted.branchName})` : ""}
-              </strong>{" "}
-              · 자세히 보기
-            </summary>
-            <div className="mt-5">
-              <OwnerSummary data={submitted} />
-            </div>
-          </details>
-        </section>
-        <div className="mt-8 space-y-3">
-          <Link
-            className={buttonStyles({ className: "w-full" })}
-            href={`/owner/menus?restaurant=${complete}`}
-          >
-            메뉴 등록하기
-          </Link>
-          <Link
-            className={buttonStyles({
-              variant: "brand-outline",
-              className: "w-full",
-            })}
-            href="/owner"
-          >
-            사장님 홈으로 가기
-          </Link>
+        <div className="mt-auto pt-[clamp(44px,13.7svh,130px)]">
+          <OwnerCompletionSummary data={submitted} />
+          <div className="space-y-2 pt-5">
+            <Link
+              className={buttonStyles({
+                className: "w-full font-medium",
+              })}
+              href={`/owner/menus?restaurant=${complete}`}
+            >
+              메뉴 등록하기
+            </Link>
+            <Link
+              className={buttonStyles({
+                variant: "brand-outline",
+                className: "w-full border-2 font-medium",
+              })}
+              href="/owner"
+            >
+              홈으로 가기
+            </Link>
+          </div>
         </div>
       </StepLayout>
     );
@@ -261,20 +288,35 @@ export function OwnerRegistration({
   return (
     <FormProvider {...form}>
       <StepLayout
-        title={draft.restaurantId ? "매장 정보 수정" : "매장 등록"}
-        progress={{ value: step + 1, max: 5 }}
+        variant="owner"
+        title={
+          step === 4 ? "" : draft.restaurantId ? "매장 정보 수정" : "매장 등록"
+        }
+        progress={step < 4 ? { value: step + 1, max: 4 } : undefined}
         onBack={() => {
           if (step) void persist(step - 1).catch(() => undefined);
           else
             void persist(0)
               .then(() => {
-                if (active.current) onNavigate("/owner");
+                if (active.current)
+                  onNavigate(
+                    draft.restaurantId
+                      ? "/owner"
+                      : "/getting-started?next=%2Fowner&guide=1",
+                  );
               })
               .catch(() => undefined);
         }}
         busy={busy}
       >
-        <StepHeading title={titles[step]} className="mb-8 px-4" />
+        <div ref={heading}>
+          <StepHeading
+            title={titles[step]}
+            description={descriptions[step]}
+            className={`px-[17px] text-brand-ink ${headingSpacing[step]}`}
+            descriptionClassName={`mt-2 text-control leading-[1.2] ${step === 0 ? "max-w-64" : ""}`}
+          />
+        </div>
         {save.conflict && (
           <section
             role="alert"
@@ -317,6 +359,9 @@ export function OwnerRegistration({
         )}
         <form
           className="flex flex-1 flex-col"
+          onChange={() => {
+            if (typeof error === "string") setError(null);
+          }}
           onSubmit={(event) =>
             void form.handleSubmit(
               () => void next(),
@@ -333,13 +378,14 @@ export function OwnerRegistration({
           }
           noValidate
         >
-          <fieldset disabled={busy} className="space-y-8 px-4">
+          <fieldset disabled={busy} className="space-y-9 px-[17px]">
             {step === 0 && (
               <>
                 <OwnerField
                   path="name"
-                  label="매장명 *"
-                  placeholder="매장명을 입력해 주세요"
+                  label="매장명"
+                  required
+                  placeholder="예) 총무식당"
                 />
                 <OwnerField
                   path="branchName"
@@ -354,8 +400,9 @@ export function OwnerRegistration({
                       setAddressId(undefined);
                       setSearchNotice("");
                     }}
-                    label="매장 주소 *"
-                    placeholder="도로명·지번 주소를 검색해 주세요"
+                    label="매장 주소"
+                    required
+                    placeholder="주소를 검색해 주세요"
                   />
                   {searchNotice && (
                     <p role="status" className="text-sm text-muted">
@@ -393,10 +440,17 @@ export function OwnerRegistration({
                     </BottomSheet>
                   )}
                 </div>
-                <OwnerField path="detailAddress" label="상세주소 (층·호수)" />
+                {(addressId || data.detailAddress) && (
+                  <OwnerField
+                    path="detailAddress"
+                    label="상세주소 (선택)"
+                    placeholder="층·호수"
+                  />
+                )}
                 <OwnerChoice
                   path="category"
-                  label="음식 종류 *"
+                  label="음식 종류"
+                  required
                   options={[
                     ...(["한식", "호프·주점", "기타 음식점"].includes(
                       draft.data.category,
@@ -414,22 +468,12 @@ export function OwnerRegistration({
                   ]}
                 />
                 <OwnerField
-                  path="publicPhone"
-                  label="고객용 매장 대표번호 (선택)"
-                  placeholder="02-1234-5678"
-                />
-                <p className="text-xs text-muted">
-                  예약한 총무에게 안내할 번호예요. 비워 두면 미확인으로
-                  표시해요.
-                </p>
-                <OwnerField
                   path="phone"
-                  label={
-                    draft.restaurantId
-                      ? "예약 문의 연락처"
-                      : "예약 문의 연락처 *"
-                  }
-                  placeholder="01012345678"
+                  label="예약 문의 연락처"
+                  required={!draft.restaurantId}
+                  inputMode="tel"
+                  placeholder="연락처를 입력해 주세요"
+                  hint="예약 요청과 진행 상황을 안내받을 번호에요."
                 />
                 {data.phone &&
                 (verifiedPhone === data.phone ||
@@ -473,131 +517,46 @@ export function OwnerRegistration({
                     )}
                   </div>
                 ) : null}
-                <OwnerCheck
-                  checked={data.receiveConsent}
-                  onChange={(e) =>
-                    form.setValue("receiveConsent", e.target.checked)
-                  }
-                >
-                  이 연락처로 단체 예약 문의 문자를 받는 데 동의합니다. (선택)
-                </OwnerCheck>
-                <p className="text-xs text-muted">
-                  동의하지 않아도 등록할 수 있으며, 이 번호에는 문의 문자를
-                  보내지 않아요.
-                </p>
               </>
             )}
             {step === 1 && (
-              <>
-                <OwnerField
-                  numeric
-                  path="maxCapacity"
-                  label="매장 전체 수용 인원 (미확인 시 비워 두세요)"
-                />
-                {fields.map((field, i) => (
-                  <section
-                    key={field.rowKey}
-                    className="space-y-4 rounded-control bg-surface p-4 shadow-card"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h2 className="font-bold">공간 {i + 1}</h2>
-                      {!field.id && (
-                        <Button variant="outline" onClick={() => remove(i)}>
-                          입력 취소
-                        </Button>
-                      )}
-                    </div>
-                    <OwnerChoice
-                      path={`spaces.${i}.kind`}
-                      label="공간 유형"
-                      options={[
-                        ["HALL", "일반 홀"],
-                        ["WHOLE", "전체 대관"],
-                        ["FLOOR", "한 층 대관"],
-                        ["ROOM", "룸"],
-                      ]}
-                    />
-                    <OwnerField
-                      path={`spaces.${i}.label`}
-                      label="공간 이름 *"
-                      placeholder="예: 룸 A"
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <OwnerField
-                        numeric
-                        path={`spaces.${i}.capacity`}
-                        label="수용 인원"
-                      />
-                      <OwnerField
-                        numeric
-                        path={`spaces.${i}.minGuests`}
-                        label="최소 인원"
-                      />
-                    </div>
-                    <OwnerField
-                      numeric
-                      path={`spaces.${i}.minSpend`}
-                      label="최소 이용금액 (원, 없음은 0)"
-                    />
-                    <OwnerField
-                      numeric
-                      path={`spaces.${i}.separateFee`}
-                      label="별도 대관료 (원, 없음은 0)"
-                    />
-                    <OwnerChoice
-                      path={`spaces.${i}.togetherSeating`}
-                      label="함께 착석"
-                      options={[
-                        ["UNKNOWN", "확인 필요"],
-                        ["YES", "가능"],
-                        ["NO", "분리 착석"],
-                      ]}
-                    />
-                    <OwnerChoice
-                      path={`spaces.${i}.availability`}
-                      label="운영 상태"
-                      options={[
-                        ["UNKNOWN", "확인 필요"],
-                        ["AVAILABLE", "운영 중"],
-                        ["UNAVAILABLE", "이용 중단"],
-                      ]}
-                    />
-                    <OwnerField
-                      path={`spaces.${i}.conditions`}
-                      label="추가 조건"
-                    />
-                  </section>
-                ))}
-                <Button
-                  variant="brand-outline"
-                  className="w-full"
-                  onClick={() =>
-                    append({
-                      label: "",
-                      kind: "HALL",
-                      availability: "UNKNOWN",
-                      togetherSeating: "UNKNOWN",
-                      capacity: null,
-                      minGuests: null,
-                      minSpend: null,
-                      separateFee: null,
-                      conditions: "",
-                    })
-                  }
-                >
-                  공간 추가
-                </Button>
-              </>
+              <OwnerSpaceFields
+                capacityUnknown={capacityUnknown}
+                onCapacityUnknownChange={setCapacityUnknown}
+              />
             )}
             {(step === 2 || step === 3) && <OwnerPolicyFields step={step} />}
             {step === 4 && (
               <OwnerSummary
                 data={data}
                 onEdit={(n) => void persist(n).catch(() => undefined)}
+                onConsentChange={(checked) =>
+                  form.setValue("receiveConsent", checked)
+                }
+                contactSettings={
+                  <details
+                    className="mt-3"
+                    open={form.formState.errors.publicPhone ? true : undefined}
+                  >
+                    <summary className="cursor-pointer text-sm text-muted">
+                      고객용 매장 대표번호 (선택)
+                    </summary>
+                    <div className="mt-3">
+                      <OwnerField
+                        path="publicPhone"
+                        label="고객용 매장 대표번호"
+                        hideLabel
+                        placeholder="02-1234-5678"
+                        inputMode="tel"
+                        hint="예약한 총무에게 안내할 번호예요."
+                      />
+                    </div>
+                  </details>
+                }
               />
             )}
           </fieldset>
-          <div className="mt-auto space-y-3 pt-10">
+          <div className="mt-auto space-y-3 pt-7">
             {save.pending && (
               <p className="text-center text-xs text-muted" role="status">
                 초안 저장 중…
@@ -622,7 +581,11 @@ export function OwnerRegistration({
             <Button
               type="submit"
               variant={step === 4 ? "solid" : "brand-outline"}
-              className="w-full"
+              className={
+                step === 4
+                  ? "w-full font-medium"
+                  : "w-full border-2 font-medium"
+              }
               loading={busy}
               disabled={!!save.conflict}
             >

@@ -313,6 +313,15 @@ test("owner next saves one draft version and unchanged mount/step does not autos
     }),
   );
   try {
+    const phone = view.container.querySelector<HTMLInputElement>(
+      'input[name="phone"]',
+    )!;
+    assert.equal(phone.getAttribute("aria-required"), "true");
+    assert.equal(
+      phone.labels?.item(0)?.querySelector(".text-brand")?.textContent,
+      "*",
+    );
+    assert.equal(view.container.querySelector('[name="receiveConsent"]'), null);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     });
@@ -325,6 +334,162 @@ test("owner next saves one draft version and unchanged mount/step does not autos
     assert.equal(writes.length, 1);
     assert.equal(writes[0].advance, true);
     assert.equal(writes[0].version, 1);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("registration review leaves inquiry SMS off unless the owner chooses it", async () => {
+  let stored: RestaurantDraft = {
+    id: crypto.randomUUID(),
+    restaurantId: null,
+    version: 1,
+    step: 4,
+    selectedAddress: null,
+    verifiedPhone: merchantAccount.phone!,
+    submitted: false,
+    data: {
+      ...emptyRegistration(),
+      name: "수신 동의 테스트",
+      addressQuery: "서울 테스트길 1",
+      phone: merchantAccount.phone!,
+      spaces: [
+        {
+          kind: "HALL",
+          label: "홀",
+          availability: "UNKNOWN",
+          togetherSeating: "UNKNOWN",
+          capacity: null,
+          minGuests: null,
+          minSpend: null,
+          separateFee: null,
+          conditions: "",
+        },
+      ],
+    },
+  };
+  let submitted = false;
+  const request: SessionRequest = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    if (path.endsWith("/context"))
+      return { restaurants: [], drafts: [], supportEmail: null } as T;
+    if (options?.method === "PUT") {
+      stored = {
+        ...stored,
+        data: JSON.parse(String(options.body)).data,
+        version: stored.version + 1,
+      };
+      return structuredClone(stored) as T;
+    }
+    assert.equal(options?.method, "POST");
+    submitted = true;
+    return { restaurantId: crypto.randomUUID(), submitted: true } as T;
+  };
+  const view = await render(
+    createElement(OwnerRegistration, {
+      account: merchantAccount,
+      request,
+      draft: structuredClone(stored),
+      onNavigate() {},
+    }),
+  );
+  try {
+    const consent = view.container.querySelector<HTMLInputElement>(
+      'input[name="receiveConsent"]',
+    )!;
+    assert.equal(consent.checked, false);
+    assert.equal(consent.required, false);
+    await act(async () => consent.click());
+    await until(() => assert.equal(stored.data.receiveConsent, true));
+    await act(async () => consent.click());
+    await click(view.container, "등록 완료하기");
+    await until(() => assert.equal(submitted, true));
+    assert.equal(stored.data.receiveConsent, false);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("owner registration saves representative hours including midnight and overnight", async () => {
+  let draft: RestaurantDraft = {
+    id: crypto.randomUUID(),
+    restaurantId: null,
+    version: 1,
+    selectedAddress: null,
+    verifiedPhone: null,
+    submitted: false,
+    step: 2,
+    data: emptyRegistration(),
+  };
+  const request: SessionRequest = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    if (path.endsWith("/context"))
+      return { restaurants: [], drafts: [], supportEmail: null } as T;
+    if (options?.method === "PUT") {
+      const next = JSON.parse(String(options.body));
+      draft = {
+        ...draft,
+        version: draft.version + 1,
+        step: next.step,
+        data: next.data,
+      };
+    }
+    return structuredClone(draft) as T;
+  };
+  const view = await render(
+    createElement(OwnerRegistration, {
+      account: merchantAccount,
+      request,
+      draft: structuredClone(draft),
+      onNavigate() {},
+    }),
+  );
+  try {
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /영업시간 입력|시간 지우기/,
+    );
+    await fill(view.container, "policies.hours.start", "1700");
+    await fill(view.container, "policies.hours.end", "25:00");
+    await click(view.container, "다음");
+    await until(() =>
+      assert.match(
+        view.container.textContent!,
+        /종료 시각과 익일 여부를 확인해 주세요/,
+      ),
+    );
+    assert.equal(draft.step, 2);
+    await fill(view.container, "policies.hours.end", "2400");
+    await click(view.container, "다음");
+    await until(() => assert.equal(draft.step, 3));
+    assert.deepEqual(draft.data.policies.hours, {
+      start: "17:00",
+      end: "24:00",
+      endDayOffset: 0,
+    });
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="이전 단계로 돌아가기"]',
+        )!
+        .click(),
+    );
+    await until(() => assert.equal(draft.step, 2));
+    await fill(view.container, "policies.hours.end", "0200");
+    await until(() =>
+      assert.match(view.container.textContent!, /다음 날 02:00/),
+    );
+    await click(view.container, "다음");
+    await until(() => assert.equal(draft.step, 3));
+    assert.deepEqual(draft.data.policies.hours, {
+      start: "17:00",
+      end: "02:00",
+      endDayOffset: 1,
+    });
   } finally {
     await view.unmount();
   }

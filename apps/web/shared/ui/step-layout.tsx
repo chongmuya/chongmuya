@@ -11,20 +11,23 @@ export function StepLayout({
   action,
   children,
   variant = "default",
+  className,
 }: {
-  variant?: "default" | "flow";
+  variant?: "default" | "flow" | "owner";
   title: string;
   onBack: () => void;
   busy?: boolean;
   progress?: { value: number; max: number };
   action?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   return (
     <main
       className={cn(
         "mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-[17px] pt-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))] pb-[max(40px,env(safe-area-inset-bottom))]",
         variant === "flow" && "px-5 text-copy",
+        className,
       )}
     >
       <header
@@ -50,13 +53,16 @@ export function StepLayout({
         {progress ? (
           <progress
             aria-label={title || "등록 진행"}
-            className="ml-[35px] h-1.5 w-[calc(100%-52px)] overflow-hidden rounded-pill border-0 bg-placeholder/20 [&::-webkit-progress-bar]:bg-placeholder/20 [&::-webkit-progress-value]:rounded-pill [&::-webkit-progress-value]:bg-brand [&::-moz-progress-bar]:bg-brand"
+            className={cn(
+              "ml-[35px] h-1.5 w-[calc(100%-52px)] overflow-hidden rounded-pill border-0 bg-placeholder/20 [&::-webkit-progress-bar]:bg-placeholder/20 [&::-webkit-progress-value]:rounded-pill [&::-webkit-progress-value]:bg-brand [&::-moz-progress-bar]:bg-brand",
+              variant === "owner" && "mr-[17px] w-auto flex-1",
+            )}
             value={progress.value}
             max={progress.max}
           />
-        ) : (
+        ) : title ? (
           <p className="px-12 text-center text-label">{title}</p>
-        )}
+        ) : null}
         {action && <div className="absolute -right-2">{action}</div>}
       </header>
       {children}
@@ -68,10 +74,12 @@ export function StepHeading({
   title,
   description,
   className,
+  descriptionClassName,
 }: {
   title: string;
   description?: string;
   className?: string;
+  descriptionClassName?: string;
 }) {
   return (
     <div className={cn("mb-12", className)}>
@@ -82,7 +90,14 @@ export function StepHeading({
         {title}
       </h1>
       {description && (
-        <p className="mt-1 text-xs leading-normal text-muted">{description}</p>
+        <p
+          className={cn(
+            "mt-1 text-xs leading-normal text-muted",
+            descriptionClassName,
+          )}
+        >
+          {description}
+        </p>
       )}
     </div>
   );

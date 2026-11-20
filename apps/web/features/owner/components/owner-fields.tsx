@@ -1,24 +1,36 @@
 "use client";
 import { Controller, useFormContext, type FieldPath } from "react-hook-form";
+import Image from "next/image";
 import { useId, type ComponentProps, type ReactNode } from "react";
 import { IconButton } from "@/shared/ui/icon-button";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { Input } from "@/shared/ui/input";
+import { cn } from "@/shared/lib/cn";
 import type { RegistrationData } from "../schemas/registration.schema";
 export function OwnerField({
   path,
   label,
+  required,
+  hint,
   numeric = false,
+  inputMode,
+  disabled,
   placeholder,
+  hideLabel = false,
   changed,
   onEnter,
 }: {
   path: FieldPath<RegistrationData>;
   label: string;
+  required?: boolean;
+  hint?: string;
   numeric?: boolean;
+  inputMode?: ComponentProps<typeof Input>["inputMode"];
+  disabled?: boolean;
   placeholder?: string;
+  hideLabel?: boolean;
   changed?: () => void;
   onEnter?: () => void;
 }) {
@@ -32,14 +44,22 @@ export function OwnerField({
         <FormField
           id={id}
           label={label}
-          labelClassName="font-semibold text-control"
+          required={required}
+          hint={hint}
+          className="gap-2 [&>p]:text-xs"
+          labelClassName={hideLabel ? "sr-only" : "text-label text-copy/80"}
           error={fieldState.error?.message}
         >
           {(attributes) => (
             <div className="relative">
               <Input
                 variant="pill"
-                className={onEnter ? "pr-14 shadow-control" : "shadow-control"}
+                className={cn(
+                  "shadow-control",
+                  onEnter && "pr-14",
+                  numeric &&
+                    "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none",
+                )}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && onEnter) {
                     e.preventDefault();
@@ -57,7 +77,8 @@ export function OwnerField({
                 }
                 type={numeric ? "number" : "text"}
                 min={numeric ? 0 : undefined}
-                inputMode={numeric ? "numeric" : undefined}
+                inputMode={numeric ? "numeric" : inputMode}
+                disabled={disabled}
                 placeholder={placeholder ?? (numeric ? "미확인" : undefined)}
                 onChange={(e) => {
                   field.onChange(
@@ -77,11 +98,12 @@ export function OwnerField({
                   className="absolute right-1 top-1/2 -translate-y-1/2"
                   onClick={onEnter}
                 >
-                  <span
-                    aria-hidden
-                    className="relative block size-4 rounded-full border-2 border-secondary after:absolute after:top-full after:left-full after:h-1.5 after:w-0.5 after:-translate-x-px after:-translate-y-px after:-rotate-45 after:bg-secondary"
+                  <Image
+                    src="/images/groups/search.svg"
+                    width={20}
+                    height={20}
+                    alt=""
                   />
-                  <span className="sr-only">주소 검색</span>
                 </IconButton>
               )}
             </div>
@@ -94,13 +116,21 @@ export function OwnerField({
 export function OwnerChoice({
   path,
   label,
+  required,
   options,
   changed,
+  inline = false,
+  compactUnknown = false,
+  legendClassName,
 }: {
   path: FieldPath<RegistrationData>;
   label: string;
+  required?: boolean;
   options: readonly (readonly [string, string])[];
   changed?: (value: string) => void;
+  inline?: boolean;
+  compactUnknown?: boolean;
+  legendClassName?: string;
 }) {
   const id = useId();
   const { control } = useFormContext<RegistrationData>();
@@ -110,29 +140,57 @@ export function OwnerChoice({
       name={path}
       render={({ field, fieldState }) => (
         <fieldset
-          className="space-y-3 text-control"
+          className="text-control"
           aria-invalid={!!fieldState.error}
           aria-describedby={fieldState.error ? id : undefined}
         >
-          <legend className="mb-3 font-semibold">{label}</legend>
-          {options.map(([key, text], index) => (
-            <label className="flex min-h-8 items-center gap-3" key={key}>
-              <input
-                className="size-6 accent-brand"
-                type="radio"
-                onBlur={field.onBlur}
-                ref={index === 0 ? field.ref : undefined}
-                name={field.name}
-                value={key}
-                checked={field.value === key}
-                onChange={() => {
-                  field.onChange(key);
-                  changed?.(key);
+          <legend
+            className={cn("mb-3 text-label text-copy/80", legendClassName)}
+          >
+            {label}
+            {required && (
+              <span aria-hidden="true" className="text-brand">
+                *
+              </span>
+            )}
+          </legend>
+          <div className="flex items-end justify-between gap-2">
+            <div
+              className={cn(
+                "min-w-0",
+                inline ? "flex flex-wrap gap-x-9 gap-y-2" : "grid gap-2",
+              )}
+            >
+              {options
+                .filter(([key]) => !compactUnknown || key !== "UNKNOWN")
+                .map(([key, text], index) => (
+                  <OwnerRadio
+                    key={key}
+                    onBlur={field.onBlur}
+                    ref={index === 0 ? field.ref : undefined}
+                    name={field.name}
+                    value={key}
+                    required={required}
+                    checked={field.value === key}
+                    onChange={() => {
+                      field.onChange(key);
+                      changed?.(key);
+                    }}
+                  >
+                    {text}
+                  </OwnerRadio>
+                ))}
+            </div>
+            {compactUnknown && field.value !== "UNKNOWN" && (
+              <OwnerUnknownButton
+                label={label}
+                onClick={() => {
+                  field.onChange("UNKNOWN");
+                  changed?.("UNKNOWN");
                 }}
               />
-              <span>{text}</span>
-            </label>
-          ))}
+            )}
+          </div>
           <FormError id={id} message={fieldState.error?.message} />
         </fieldset>
       )}
@@ -140,14 +198,80 @@ export function OwnerChoice({
   );
 }
 
+export function OwnerUnknownButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`${label} 미확인으로 두기`}
+      className="min-h-6 shrink-0 cursor-pointer rounded-sm text-xs text-muted underline underline-offset-2"
+      onClick={onClick}
+    >
+      미확인으로 두기
+    </button>
+  );
+}
+
 export function OwnerCheck({
   children,
+  tick = false,
   ...props
-}: ComponentProps<typeof Checkbox> & { children: ReactNode }) {
+}: ComponentProps<typeof Checkbox> & { children: ReactNode; tick?: boolean }) {
   return (
-    <label className="flex items-center gap-2 text-sm">
-      <Checkbox {...props} />
+    <label
+      className={cn(
+        "flex items-center gap-2",
+        tick ? "text-control" : "text-sm",
+      )}
+    >
+      {tick ? (
+        <span className="relative size-6 shrink-0">
+          <Checkbox
+            {...props}
+            className={cn("peer checked:shadow-none", props.className)}
+          />
+          <OwnerTick className="hidden peer-checked:block" />
+        </span>
+      ) : (
+        <Checkbox {...props} />
+      )}
       {children}
     </label>
+  );
+}
+
+export function OwnerRadio({
+  children,
+  ...props
+}: Omit<ComponentProps<"input">, "type"> & { children: ReactNode }) {
+  return (
+    <label className="flex min-h-6 cursor-pointer items-center gap-2">
+      <span className="relative size-6 shrink-0">
+        <input
+          {...props}
+          type="radio"
+          className="peer size-6 cursor-pointer appearance-none rounded-full border border-placeholder checked:border-brand checked:bg-brand"
+        />
+        <OwnerTick className="hidden peer-checked:block" />
+      </span>
+      {children}
+    </label>
+  );
+}
+
+export function OwnerTick({ className }: { className?: string }) {
+  return (
+    <Image
+      src="/images/merchant-replies/available-check.svg"
+      width={24}
+      height={24}
+      alt=""
+      className={cn("pointer-events-none absolute inset-0", className)}
+    />
   );
 }

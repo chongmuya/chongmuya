@@ -529,14 +529,15 @@ test("post-signup choices preserve selection on back, allow skipping and route g
   try {
     assert.match(
       owner.container.textContent!,
-      /매장을 등록해 총무들의 단체 예약 문의/,
+      /매장을 등록해 총무들이 단체 예약을 할 수 있게/,
     );
     assert.equal(
       owner.container.querySelectorAll('input[name="usage"]').length,
       0,
     );
-    await click(owner.container, "나중에 시작하기");
-    assert.deepEqual(paths, ["/events"]);
+    await click(owner.container, "매장 등록하기");
+    await click(owner.container, "이전 단계로 돌아가기");
+    assert.deepEqual(paths, ["/owner/register", "/events"]);
   } finally {
     await owner.unmount();
   }

@@ -115,7 +115,7 @@ export function registrationIssues(
   check(
     !publicPhone || /^(?:0\d{8,11}|1[568]\d{6})$/.test(publicPhone),
     "publicPhone",
-    0,
+    4,
     "대표번호를 확인해 주세요. 숫자, 공백, 하이픈을 사용할 수 있어요.",
   );
   check(
@@ -165,12 +165,18 @@ export function registrationIssues(
   const minutes = (v: string) =>
     Number(v.slice(0, 2)) * 60 + Number(v.slice(3));
   check(
+    !p.hours || time(p.hours.start),
+    "policies.hours.start",
+    2,
+    "시작 시간을 24시간제로 입력해 주세요.",
+  );
+  check(
     !p.hours ||
-      (time(p.hours.start) &&
-        time(p.hours.end, true) &&
+      (time(p.hours.end, true) &&
         !(p.hours.end === "24:00" && p.hours.endDayOffset !== 0) &&
-        minutes(p.hours.end) + p.hours.endDayOffset * 1440 >
-          minutes(p.hours.start)),
+        (!time(p.hours.start) ||
+          minutes(p.hours.end) + p.hours.endDayOffset * 1440 >
+            minutes(p.hours.start))),
     "policies.hours.end",
     2,
     "종료 시각과 익일 여부를 확인해 주세요.",
@@ -255,6 +261,7 @@ export const menuInputSchema = z
   .strict();
 
 export function registrationStep(path: string) {
+  if (path === "publicPhone") return 4;
   if (
     path.startsWith("spaces") ||
     ["maxCapacity", "minimumGuests"].some((field) => path.startsWith(field))
