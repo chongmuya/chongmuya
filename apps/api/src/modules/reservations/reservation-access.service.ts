@@ -25,11 +25,15 @@ export class ReservationAccessService {
     private readonly restaurants: RestaurantsService,
   ) {}
   url(link: ReservationManagementLink) {
-    return merchantLinkUrl(
-      this.config.environment.webOrigin,
-      { targetId: link.reservationId, encryptedToken: link.encryptedToken },
-      merchantEncryptionKey(this.config.environment),
-    ).replace("/merchant-reply?target=", "/reservation-manage?reservation=");
+    try {
+      return merchantLinkUrl(
+        this.config.environment.webOrigin,
+        { targetId: link.reservationId, encryptedToken: link.encryptedToken },
+        merchantEncryptionKey(this.config.environment),
+      ).replace("/merchant-reply?target=", "/reservation-manage?reservation=");
+    } catch {
+      throw new DomainHttpException("MESSAGE_CONFIGURATION");
+    }
   }
   async issue(
     selection: SelectedReservation,

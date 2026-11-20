@@ -17,6 +17,7 @@ export type NotificationInput = {
   reservationId?: string;
   targetId?: string;
   revision: number;
+  smsPolicyVersion?: number;
   accounts: {
     id: string;
     title: string;
@@ -37,6 +38,7 @@ export type NotificationReport = {
   provider: "fake" | "solapi";
   messageId?: string;
   groupId?: string;
+  channel?: "SMS" | "LMS";
   failureStage?: "SUBMISSION" | "DELIVERY";
   errorCode?: string;
   deliveryId?: string;

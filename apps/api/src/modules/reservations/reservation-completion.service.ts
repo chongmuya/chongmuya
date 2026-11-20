@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { In, type EntityManager } from "typeorm";
 import { z } from "zod";
 import { DatabaseService } from "../../database/database.service.js";
-import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { EventsService } from "../events/events.service.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
@@ -22,6 +21,11 @@ import {
   ReservationChange,
   ReservationManagementLink,
 } from "./entities/reservation-progress.entity.js";
+import { completionSmsPolicy } from "./lib/completion-sms-policy.js";
+import {
+  merchantSms,
+  RESERVATION_SMS_POLICY_VERSION,
+} from "./lib/reservation-sms.js";
 import { commandSchema } from "./types/reservation-completion.js";
 import type {
   ReservationPrincipal,
@@ -45,6 +49,7 @@ export type CompletionContext = {
   audit: ReservationAudit;
   notifications: NotificationInput[];
   evidence?: Record<string, unknown>;
+  change?: ReservationChange;
 };
 @Injectable()
 export class ReservationCompletionService {
@@ -56,7 +61,6 @@ export class ReservationCompletionService {
     private readonly access: ReservationAccessService,
     private readonly notices: NotificationsService,
     private readonly sender: ReservationNotificationsService,
-    private readonly config: ConfigService,
   ) {}
   audit(p: ReservationPrincipal): ReservationAudit {
     const now = new Date().toISOString();
@@ -381,6 +385,7 @@ export class ReservationCompletionService {
         }
         if (c.selection.version !== input.expectedVersion)
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+        const before = structuredClone(c.state);
         await mutate(c, input);
         const confirmed = advanceConfirmation(c.selection, c.state, c.audit);
         if (confirmed)
@@ -390,6 +395,37 @@ export class ReservationCompletionService {
             "예약이 확정됐어요. 메뉴와 필요한 실제 입금 확인이 완료됐어요.",
             "both",
           );
+        const sms = completionSmsPolicy({
+          action,
+          before,
+          after: c.state,
+          changeKind: c.change?.kind,
+          proposedGuidance: c.change?.proposal?.guidance,
+          operator: p.kind === "operator",
+          confirmed,
+        });
+        if (sms.organizer?.kind === "PAYMENT_ACTION_REQUIRED")
+          await this.notify(
+            c,
+            sms.organizer.kind,
+            sms.organizer.text,
+            "organizer",
+          );
+        const { organizer, merchant } = sms;
+        if (organizer) {
+          const notice = c.notifications.find(
+            (n) => n.eventKey === this.eventKey(c, organizer.kind),
+          );
+          notice?.messages.push(
+            this.sender.organizerMessage(c.request, c.target, organizer.text),
+          );
+        }
+        if (merchant) {
+          const notice = c.notifications.find(
+            (n) => n.eventKey === this.eventKey(c, merchant.kind),
+          );
+          if (notice) await this.addMerchantSms(c, notice, merchant.text);
+        }
         if (dryRun) throw rollbackPreview;
         await this.notices.recordBatch(m, c.notifications);
         c.selection.version++;
@@ -493,19 +529,24 @@ export class ReservationCompletionService {
           expiresAt: issued.expiresAt,
           audit: issued.audit,
         };
-        const replacementEventKey = await this.notify(
+        const replacement = await this.notify(
           c,
           "MANAGEMENT_LINK",
           "이 예약의 메뉴·입금·변경취소를 확인할 새 예약 관리 링크입니다.",
           "merchant",
         );
-        if (c.notifications.at(-1)?.merchantHold)
+        await this.addMerchantSms(
+          c,
+          replacement,
+          "새 예약 관리 링크로 메뉴·입금·변경취소를 확인해 주세요.",
+        );
+        if (replacement.merchantHold)
           throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
         if (input.heldMessageId)
           await this.notices.replaceHeldMessage(
             input.heldMessageId,
             id,
-            replacementEventKey,
+            replacement.eventKey,
             c.audit.recorder,
             c.audit.reason,
             c.m,
@@ -514,52 +555,32 @@ export class ReservationCompletionService {
           await this.notices.replaceHeldIntent(
             input.heldEventKey,
             id,
-            replacementEventKey,
+            replacement.eventKey,
             c.m,
           );
       },
       dryRun,
     );
   }
+  private eventKey(c: CompletionContext, kind: string) {
+    return `${c.selection.id}:${kind}:${c.selection.version + 1}`;
+  }
+
   async notify(
     c: CompletionContext,
     kind: string,
     summary: string,
     recipient: "organizer" | "merchant" | "both",
-    smsDetails = "",
   ) {
     const { selection: r, request, target, m } = c;
-    const eventKey = `${r.id}:${kind}:${r.version + 1}`;
-    let merchantHold: NotificationInput["merchantHold"];
-    const accounts: {
-        id: string;
-        title: string;
-        summary: string;
-        destination: string;
-      }[] = [],
-      messages: {
-        recipientKey: string;
-        phone: string;
-        contactId?: string;
-        text: string;
-        isDemo: boolean;
-      }[] = [];
-    if (recipient !== "merchant") {
-      const destination = `/events?event=${r.eventId}&request=${r.requestId}`;
-      if (request.currentContactAccountId)
-        accounts.push({
-          id: request.currentContactAccountId,
-          title: "예약 진행 안내",
-          summary,
-          destination,
-        });
-      messages.push({
-        recipientKey: `organizer:${request.currentContactAccountId ?? request.id}`,
-        phone: request.currentContactPhone ?? request.contactPhone,
-        isDemo: target.isDemo,
-        text: `[총무야] ${request.snapshot.eventName}\n${summary}\n${smsDetails}\n${this.config.environment.webOrigin}${destination}`,
+    const accounts: NotificationInput["accounts"] = [];
+    if (recipient !== "merchant" && request.currentContactAccountId)
+      accounts.push({
+        id: request.currentContactAccountId,
+        title: "예약 진행 안내",
+        summary,
+        destination: `/events?event=${r.eventId}&request=${request.id}`,
       });
-    }
     if (recipient !== "organizer") {
       const owner = await this.restaurants.notificationAccount(
         target.restaurantId,
@@ -572,41 +593,57 @@ export class ReservationCompletionService {
           summary,
           destination: `/owner/reservations?reservation=${r.id}`,
         });
-      const prior = await this.notices.messages(request.id, m, true);
-      const result = await this.access.forNotification(
-        r,
-        target,
-        m,
-        c.audit,
-        prior.some(
-          (n) =>
-            n.recipientKey.startsWith(`reservation:${r.id}:`) &&
-            ["UNKNOWN", "PROCESSING"].includes(n.status),
-        ),
-      );
-      const link = result.link;
-      if (!link) merchantHold = { reason: result.reason };
-      else
-        messages.push({
-          recipientKey: `reservation:${r.id}:${link.generation}`,
-          phone: link.phoneSnapshot,
-          contactId: link.contactId,
-          isDemo: target.isDemo,
-          text: `[총무야] ${request.snapshot.eventName} · ${target.restaurantName}\n${summary}\n${this.access.url(link)}`,
-        });
     }
-    c.notifications.push({
-      eventKey,
+    const notification: NotificationInput = {
+      eventKey: this.eventKey(c, kind),
       kind: "RESERVATION_UPDATED",
       eventId: r.eventId,
       requestId: r.requestId,
       targetId: r.targetId,
       reservationId: r.id,
       revision: r.version + 1,
+      smsPolicyVersion: RESERVATION_SMS_POLICY_VERSION,
       accounts,
-      messages,
-      merchantHold,
+      messages: [],
+    };
+    c.notifications.push(notification);
+    return notification;
+  }
+
+  private async addMerchantSms(
+    c: CompletionContext,
+    notice: NotificationInput,
+    action: string,
+  ) {
+    const { selection: r, request, target, m } = c;
+    const prior = await this.notices.messages(request.id, m, true);
+    const result = await this.access.forNotification(
+      r,
+      target,
+      m,
+      c.audit,
+      prior.some(
+        (row) =>
+          row.recipientKey.startsWith(`reservation:${r.id}:`) &&
+          ["UNKNOWN", "PROCESSING"].includes(row.status),
+      ),
+    );
+    const link = result.link;
+    if (!link) {
+      notice.merchantHold = { reason: result.reason };
+      return;
+    }
+    notice.messages.push({
+      recipientKey: `reservation:${r.id}:${link.generation}`,
+      phone: link.phoneSnapshot,
+      contactId: link.contactId,
+      isDemo: target.isDemo,
+      text: merchantSms(
+        request.snapshot.eventName,
+        c.state.agreement,
+        action,
+        this.access.url(link),
+      ),
     });
-    return eventKey;
   }
 }

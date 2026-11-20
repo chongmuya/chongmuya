@@ -130,6 +130,40 @@ test("PR1 forward migration retains legacy inquiry/reply/link/delivery bytes and
       [contact, message],
     );
     await assert.rejects(recipientMigration.down(q), /forward recovery/);
+    const sms = migrations.find((m) =>
+      m.constructor.name.startsWith("ReservationSmsPolicy"),
+    )!;
+    const waiting = randomUUID();
+    await q.query(
+      `INSERT INTO message_deliveries
+      (id,target_id,purpose,contact_id,phone_snapshot,variables,created_at,updated_at)
+      VALUES($1,$2,'PENDING_TEST',$3,'01000005678','{}',now(),now())`,
+      [waiting, target, contact],
+    );
+    await q.query(
+      "UPDATE notification_messages SET status = 'DELIVERED' WHERE id=$1",
+      [message],
+    );
+    await sms.up(q);
+    assert.deepEqual(
+      await q.query(
+        "SELECT status, channel FROM message_deliveries ORDER BY status",
+      ),
+      [
+        { status: "DELIVERED", channel: "LMS" },
+        { status: "PENDING", channel: null },
+      ],
+    );
+    assert.equal(
+      (
+        await q.query("SELECT channel FROM notification_messages WHERE id=$1", [
+          message,
+        ])
+      )[0].channel,
+      "LMS",
+    );
+    await sms.down(q);
+    await q.query("DELETE FROM message_deliveries WHERE id=$1", [waiting]);
     await q.query("DELETE FROM notification_messages WHERE id=$1", [message]);
     await q.query("DELETE FROM notification_facts WHERE event_key=$1", [fact]);
     await q.query("SAVEPOINT pr2_upgrade");

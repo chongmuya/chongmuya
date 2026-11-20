@@ -34,7 +34,7 @@ const resultCommand = commandSchema
     guidance: guidanceCommand
       .omit({ requestKey: true, expectedVersion: true })
       .optional(),
-    refundExpected: money.nullable(),
+    refundExpected: money.nullable().default(null),
   })
   .strict();
 const acceptCommand = commandSchema
@@ -81,7 +81,7 @@ export class ReservationChangesService {
           })
         )
           throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
-        await c.m.insert(ReservationChange, {
+        c.change = await c.m.save(ReservationChange, {
           id: randomUUID(),
           reservationId: id,
           kind: input.kind,
@@ -170,15 +170,12 @@ export class ReservationChangesService {
           audit: c.audit,
         };
         change.status = "PROPOSED";
-        await c.m.save(change);
+        c.change = await c.m.save(change);
         await this.completion.notify(
           c,
           "CHANGE_PROPOSED",
           "매장이 변경·취소 처리 내용을 제안했어요. 내용을 확인하고 수락하면 적용돼요.",
           "organizer",
-          guidance.kind === "REQUIRED" && guidance.channel === "SMS"
-            ? `${guidance.amount}원 · ${guidance.deadline}\n${guidance.bank} ${guidance.account} ${guidance.holder}`
-            : "",
         );
       },
     );
@@ -272,14 +269,14 @@ export class ReservationChangesService {
         }
         change.status = "APPLIED";
         change.resolvedAt = new Date();
-        await c.m.save(change);
+        c.change = await c.m.save(change);
         await this.completion.notify(
           c,
           "CHANGE_APPLIED",
           change.kind === "REFUND"
             ? "총무가 환불 예정액을 수락했어요. 실제 반환은 별도로 확인해 주세요."
             : change.kind === "CANCEL"
-              ? "예약 취소가 완료됐어요. 환불은 별도로 확인해 주세요."
+              ? "예약 취소가 완료됐어요. 환불은 전화로 협의해 주세요."
               : "총무가 변경 제안을 수락했어요. 새 합의 조건과 남은 확인 사항을 확인해 주세요.",
           "both",
         );
@@ -308,7 +305,7 @@ export class ReservationChangesService {
         } else this.completion.active(c);
         change.status = "REJECTED";
         change.resolvedAt = new Date();
-        await c.m.save(change);
+        c.change = await c.m.save(change);
         c.audit.reason = input.reason;
         await this.completion.notify(
           c,

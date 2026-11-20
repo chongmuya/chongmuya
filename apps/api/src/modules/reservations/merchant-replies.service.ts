@@ -1,5 +1,6 @@
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 import { isDeepStrictEqual } from "node:util";
+import { materiallyChangedReply } from "./lib/inquiry-sms-policy.js";
 import { candidateState } from "./lib/candidate-state.js";
 import { replyView } from "./lib/reply-view.js";
 import { Injectable } from "@nestjs/common";
@@ -242,6 +243,7 @@ export class MerchantRepliesService {
         current &&
         current.kind === input.kind &&
         current.reason === input.reason &&
+        (current.snapshot.holdConfirmed ?? false) === input.holdConfirmed &&
         (current.expiresAt?.getTime() ?? null) ===
           (input.expiresAt ? Date.parse(input.expiresAt) : null) &&
         isDeepStrictEqual(current.snapshot.offered, input.proposal)
@@ -287,6 +289,7 @@ export class MerchantRepliesService {
         c.target,
         "REPLY_RECEIVED",
         row.revision,
+        materiallyChangedReply(current, row),
       );
       return { response: replyView(row), version: row.revision };
     });

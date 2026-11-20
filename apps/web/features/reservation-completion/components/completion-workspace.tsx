@@ -120,9 +120,11 @@ function CompletionContent({
   const q = query.data,
     organizer = access.kind === "organizer";
   const pending = q.changes.find(
-    (c) => c.status === "REQUESTED" || c.status === "PROPOSED",
+    (c) =>
+      c.kind !== "REFUND" &&
+      (c.status === "REQUESTED" || c.status === "PROPOSED"),
   );
-  const latest = pending ?? q.changes[0];
+  const latest = pending ?? q.changes.find((c) => c.kind !== "REFUND");
   const review = () => {
     setCancelFirst(false);
     setPanel("changes");
@@ -147,6 +149,11 @@ function CompletionContent({
           보낸 예약문의 보기
         </button>
       </div>
+      {q.cancellation && organizer && (
+        <Button variant="outline" className="w-full" onClick={review}>
+          취소·환불 안내
+        </Button>
+      )}
       {!q.cancellation && q.progress !== "CONFIRMED" && q.order && !pending && (
         <Button
           className="w-full border-brand bg-brand"
@@ -170,6 +177,7 @@ function CompletionContent({
           {latest ? (
             <ChangeResult
               data={q}
+              latest={latest}
               organizer
               onReview={review}
               onDetails={() => setPanel("details")}
@@ -261,7 +269,7 @@ function CompletionContent({
             {pending
               ? "예약 변경 확인하기"
               : q.cancellation
-                ? "환불 내역 확인하기"
+                ? "취소·환불 안내"
                 : q.confirmation
                   ? "예약 내용 확인하기"
                   : q.guidance.kind === "REQUIRED"
@@ -317,6 +325,7 @@ function CompletionContent({
             <ChangeForms
               data={q}
               access={access}
+              contact={contact}
               initialKind={cancelFirst ? "CANCEL" : undefined}
               onClose={() => setPanel(null)}
               onDetails={() => setPanel("details")}

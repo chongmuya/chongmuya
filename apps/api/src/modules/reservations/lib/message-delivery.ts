@@ -17,7 +17,7 @@ export function newMessageDelivery(
     id,
     targetId: target.id,
     purpose,
-    channel: "LMS",
+    channel: null,
     contactId: link.contactId,
     phoneSnapshot: link.phoneSnapshot,
     linkGeneration: link.generation,

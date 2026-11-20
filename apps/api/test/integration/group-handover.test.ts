@@ -911,15 +911,22 @@ test("reservation selection race, current merchant contact, pending SMS replanni
 
   const notices = app.get(NotificationsService);
   const facts: string[] = [];
-  for (const status of ["PENDING", "UNKNOWN", "ACCEPTED", "PENDING"]) {
+  for (const status of [
+    "PENDING",
+    "UNKNOWN",
+    "ACCEPTED",
+    "PENDING",
+    "PENDING",
+  ]) {
     const eventKey = `handover-test:${randomUUID()}`;
     facts.push(eventKey);
     await db.transaction((m) =>
       notices.record(m, {
         eventKey,
-        kind: "RESERVATION_UPDATED",
+        kind: facts.length === 5 ? "STORE_SELECTED" : "REPLY_RECEIVED",
         eventId: e.id,
         requestId: inquiry.id,
+        targetId: inquiry.targets[0].id,
         revision: 1,
         accounts: [],
         messages: [
@@ -1035,6 +1042,13 @@ test("reservation selection race, current merchant contact, pending SMS replanni
       (r) => r.phoneSnapshot === "01000009999" && r.status === "ACCEPTED",
     ),
   );
+
+  const suppressed = await db.manager.findBy(NotificationMessage, {
+    eventKey: facts[4],
+  });
+  assert.equal(suppressed.length, 1);
+  assert.equal(suppressed[0].errorCode, "SMS_POLICY_SUPPRESSED");
+  assert(!submitted.includes(suppressed[0].id));
 
   await reminder;
   const updated = await db.manager.findOneByOrFail(ReservationRequest, {

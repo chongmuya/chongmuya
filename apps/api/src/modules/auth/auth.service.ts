@@ -47,6 +47,13 @@ export class AuthService {
       throw new DomainHttpException("GROUP_TARGET_UNAVAILABLE");
     return { id: a.id, name: a.name, email: a.email, phone: a.phone };
   }
+  async canUseOrganizerWorkspace(id: string, manager: EntityManager) {
+    const account = await manager.findOneBy(Account, {
+      id,
+      accountType: "organizer",
+    });
+    return !!account?.nickname?.trim();
+  }
   async assertOwnerAccount(id: string, manager: EntityManager) {
     if (!(await manager.existsBy(Account, { id, accountType: "owner" })))
       throw new DomainHttpException("OWNER_REQUIRED");

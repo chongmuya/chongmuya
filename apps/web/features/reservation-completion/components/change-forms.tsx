@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ProposalComparison } from "./proposal-comparison";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { CommandForm } from "./command-form";
@@ -19,17 +19,20 @@ export function ChangeForms({
   initialKind,
   onClose,
   onDetails,
+  contact,
 }: {
   data: Completion;
   access: CompletionAccess;
   initialKind?: "CANCEL";
   onClose?: () => void;
   onDetails?: () => void;
+  contact?: ReactNode;
 }) {
   const props = { data: q, access },
     organizer = access.kind === "organizer",
-    pending = q.changes.find((c) =>
-      ["REQUESTED", "PROPOSED"].includes(c.status),
+    pending = q.changes.find(
+      (c) =>
+        c.kind !== "REFUND" && ["REQUESTED", "PROPOSED"].includes(c.status),
     );
   const [lastPending, setLastPending] = useState(pending);
   if (pending && lastPending?.id !== pending.id) setLastPending(pending);
@@ -38,9 +41,7 @@ export function ChangeForms({
     pending?.status === "PROPOSED" && organizer
       ? pending.kind === "CANCEL"
         ? "예약 취소를 수락할까요?"
-        : pending.kind === "REFUND"
-          ? "환불 예정액을 수락할까요?"
-          : "예약 변경을 수락할까요?"
+        : "예약 변경을 수락할까요?"
       : "예약 변경·취소";
   return (
     <section className="space-y-7">
@@ -54,12 +55,7 @@ export function ChangeForms({
           {!pending.proposal && (
             <>
               <p>
-                {pending.kind === "REFUND"
-                  ? "환불 예정액"
-                  : pending.kind === "CANCEL"
-                    ? "취소"
-                    : "변경"}{" "}
-                문의 ·{" "}
+                {pending.kind === "CANCEL" ? "취소" : "변경"} 문의 ·{" "}
                 {pending.status === "REQUESTED"
                   ? "매장 확인 대기"
                   : "합의 내용 확인 대기"}
@@ -77,6 +73,17 @@ export function ChangeForms({
               title={title}
             />
           )}
+        </div>
+      )}
+      {(q.cancellation ||
+        pending?.kind === "CANCEL" ||
+        initialKind === "CANCEL") && (
+        <div className="space-y-2 rounded-control bg-choice p-4 text-sm">
+          <p>
+            환불 여부·금액·반환 일정은 {organizer ? "매장과" : "총무와"} 전화로
+            협의해 주세요.
+          </p>
+          {contact}
         </div>
       )}
       {organizer && (
@@ -157,11 +164,7 @@ export function ChangeForms({
             available={!!pending}
             action="change-reject"
             onDone={onClose}
-            title={
-              editable.kind === "REFUND"
-                ? "환불 제안 철회"
-                : "문의 불가 결과 안내"
-            }
+            title="문의 불가 결과 안내"
             fields={[
               {
                 name: "reason",
@@ -175,61 +178,35 @@ export function ChangeForms({
         </>
       )}
       {q.cancellation && !organizer && (
-        <>
-          {!pending && (
-            <CommandForm
-              {...props}
-              action="refund-plan"
-              title="환불 예정액 제안"
-              description="총무가 수락하기 전에는 기존 합의 금액과 환불 대기가 유지돼요. 미확인 금액도 총무가 수락해야 합의가 완료돼요."
-              fields={[
-                {
-                  name: "amount",
-                  label: "제안할 환불 예정 총액 (원)",
-                  type: "number",
-                  value:
-                    q.refundExpected === null ? "" : String(q.refundExpected),
-                },
-                {
-                  name: "reason",
-                  label: "합의·변경 사유",
-                  type: "textarea",
-                  max: 500,
-                },
-              ]}
-              build={(v) => ({ amount: Number(v.amount), reason: v.reason })}
-            />
-          )}
-          <CommandForm
-            {...props}
-            action="refund"
-            title="실제 반환 기록"
-            description="은행에서 반환이 완료된 금액만 기록해 주세요. 여기서 송금은 실행되지 않아요."
-            fields={[
-              {
-                name: "amount",
-                label: "이번 실제 반환액 (원)",
-                type: "number",
-              },
-              {
-                name: "refundedAt",
-                label: "실제 반환 시각",
-                type: "datetime-local",
-              },
-              {
-                name: "reason",
-                label: "반환 확인 내용",
-                type: "textarea",
-                max: 500,
-              },
-            ]}
-            build={(v) => ({
-              amount: Number(v.amount),
-              refundedAt: isoDate(v.refundedAt),
-              reason: v.reason,
-            })}
-          />
-        </>
+        <CommandForm
+          {...props}
+          action="refund"
+          title="실제 반환 기록"
+          description="은행에서 반환이 완료된 금액만 기록해 주세요. 여기서 송금은 실행되지 않아요."
+          fields={[
+            {
+              name: "amount",
+              label: "이번 실제 반환액 (원)",
+              type: "number",
+            },
+            {
+              name: "refundedAt",
+              label: "실제 반환 시각",
+              type: "datetime-local",
+            },
+            {
+              name: "reason",
+              label: "반환 확인 내용",
+              type: "textarea",
+              max: 500,
+            },
+          ]}
+          build={(v) => ({
+            amount: Number(v.amount),
+            refundedAt: isoDate(v.refundedAt),
+            reason: v.reason,
+          })}
+        />
       )}
       {onClose && !(pending?.status === "PROPOSED" && organizer) && (
         <button
@@ -291,13 +268,6 @@ function ProposalForm({
   const fields: Field[] = [
     { name: "reason", label: "합의할 처리 내용", type: "textarea", max: 500 },
   ];
-  if (cancel)
-    fields.push({
-      name: "refundExpected",
-      label: "환불 예정 총액 (미확인은 빈칸, 없음은 0)",
-      type: "number",
-      optional: true,
-    });
   if (!cancel)
     fields.push(
       {
@@ -516,8 +486,6 @@ function ProposalForm({
       build={(v, b) => ({
         changeId,
         reason: v.reason,
-        refundExpected:
-          cancel && v.refundExpected ? Number(v.refundExpected) : null,
         ...(!cancel
           ? {
               agreement: proposalAgreement(v, b.agreement),

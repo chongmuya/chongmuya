@@ -22,6 +22,7 @@ export class NotificationsService {
     requestId: string,
     to: { id: string; phone: string },
     m: EntityManager,
+    allowed: (fact: NotificationFact) => Promise<boolean>,
   ) {
     const row = await m.findOne(NotificationMessage, {
       where: { id },
@@ -42,14 +43,15 @@ export class NotificationsService {
         .digest("hex")
         .slice(0, 32),
       m,
+      allowed,
     );
   }
-  async messageRequest(id: string, m: EntityManager) {
-    const message = await m.findOneBy(NotificationMessage, { id });
-    return message
-      ? (await m.findOneBy(NotificationFact, { eventKey: message.eventKey }))
-          ?.requestId
-      : undefined;
+  messageFact(eventKey: string, m: EntityManager) {
+    return m.findOneBy(NotificationFact, { eventKey });
+  }
+
+  async hasInboxItem(eventKey: string, accountId: string, m: EntityManager) {
+    return m.existsBy(Notification, { eventKey, accountId });
   }
   async replanOrganizer(
     requestId: string,
@@ -58,6 +60,7 @@ export class NotificationsService {
     actor: string,
     handoverId: string,
     m: EntityManager,
+    allowed: (fact: NotificationFact) => Promise<boolean>,
   ) {
     const facts = await m.findBy(NotificationFact, { requestId });
     if (!facts.length) return;
@@ -77,7 +80,10 @@ export class NotificationsService {
         !(row.status === "FAILED" && row.failureStage === "SUBMISSION")
       )
         continue;
-      if (row.errorCode === "RECIPIENT_CHANGED") continue;
+      if (row.status === "HELD" && row.errorCode !== "SUBMISSION_NOT_STARTED")
+        continue;
+      const fact = facts.find((f) => f.eventKey === row.eventKey)!;
+      if (!(await allowed(fact))) continue;
       row.status = "HELD";
       row.errorCode = "RECIPIENT_CHANGED";
       row.updatedAt = new Date();
@@ -316,6 +322,7 @@ export class NotificationsService {
       status: r.status,
       attempts: r.attempts,
       provider: r.provider,
+      channel: r.channel,
       errorCode: r.errorCode,
       failureStage: r.failureStage,
       replacementEventKey:
@@ -338,6 +345,7 @@ export class NotificationsService {
         status: f.merchantHold?.replacementEventKey ? "REPLACED" : "HELD",
         attempts: 0,
         provider: null,
+        channel: null,
         errorCode: f.merchantHold!.reason,
         failureStage: null,
         replacementEventKey: f.merchantHold?.replacementEventKey ?? null,
@@ -381,6 +389,7 @@ export class NotificationsService {
       !row ||
       !fact ||
       row.status !== "HELD" ||
+      row.errorCode === "SMS_POLICY_SUPPRESSED" ||
       !row.recipientKey.startsWith(`reservation:${reservationId}:`) ||
       row.providerMessageId ||
       row.providerGroupId ||
@@ -450,6 +459,7 @@ export class NotificationsService {
       row.attempts++;
       row.startedAt = new Date();
       row.updatedAt = new Date();
+      row.channel = null;
       row.providerMessageId = null;
       row.providerGroupId = null;
       row.failureStage = null;
@@ -484,6 +494,8 @@ export class NotificationsService {
         row.reports.push({ key, at: new Date().toISOString() });
       }
       row.provider = result.provider;
+      if (result.channel && (report || !row.channel))
+        row.channel = result.channel;
       row.providerMessageId ??= result.messageId ?? null;
       row.providerGroupId ??= result.groupId ?? null;
       if (

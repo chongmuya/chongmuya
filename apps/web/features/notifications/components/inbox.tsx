@@ -63,7 +63,7 @@ export function InboxScreen() {
   return status === "authenticated" && account ? (
     <InboxContent key={account.id} accountId={account.id} request={request} />
   ) : (
-    <AuthScreen />
+    <AuthScreen returnPath="/notifications" />
   );
 }
 function InboxContent({

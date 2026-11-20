@@ -93,6 +93,7 @@ export function deliveryTable(rows) {
     매장: display(row.restaurant_name),
     발송ID: display(row.id),
     상태: display(row.status),
+    유형: row.channel ?? "미확인",
     수신번호: maskedPhone(row.recipient_phone),
     기록: row.current ? "현재" : "이전",
     시도: row.attempts,
@@ -112,7 +113,7 @@ export function printDeliveries(rows, detailed = false) {
       deliveryTable(rows),
       detailed
         ? undefined
-        : ["매장", "발송ID", "상태", "수신번호", "실패 단계/코드"],
+        : ["매장", "발송ID", "상태", "유형", "수신번호", "실패 단계/코드"],
     );
   else console.log("조건에 맞는 발송 기록이 없습니다.");
   console.log(

@@ -121,6 +121,145 @@ test("selection, reinquiry and durable notifications serialize competing command
     },
   });
   await t.test(
+    "fake delivery sends one inquiry and only material replies and seat releases",
+    async (t) => {
+      const gateway = app.get(MessageGateway);
+      const send = gateway.send.bind(gateway);
+      const sent: string[] = [];
+      t.mock.method(
+        gateway,
+        "send",
+        async (...args: Parameters<MessageGateway["send"]>) => {
+          sent.push(args[2]);
+          return send(...args);
+        },
+      );
+      const notices = app.get(NotificationsService);
+      for (const scenario of [
+        "held",
+        "unanswered",
+        "declined",
+        "expired",
+        "unheld",
+      ] as const) {
+        const f = await fixture();
+        const inquiry = sent.splice(0);
+        assert.equal(inquiry.length, 2);
+        assert.equal(
+          new Set(inquiry.map((text) => text.split("\n").at(-1))).size,
+          2,
+        );
+        assert(inquiry.every((text) => /24명\n예약 문의.*답변/.test(text)));
+        const [selected, other] = f.request.targets;
+        const first = proposal(f.request);
+        await replies.save(selected.id, principal, first, "sms-policy");
+        await replies.save(selected.id, principal, first, "sms-policy");
+        await replies.save(
+          selected.id,
+          principal,
+          { ...first, requestKey: randomUUID(), expectedVersion: 1 },
+          "sms-policy",
+        );
+        const note = {
+          ...first,
+          requestKey: randomUUID(),
+          expectedVersion: 1,
+          proposal: { ...first.proposal!, note: "메모 수정" },
+        };
+        await replies.save(selected.id, principal, note, "sms-policy");
+        assert.equal(sent.length, 1);
+        assert.match(sent[0], /매장 답변 확인/);
+        await replies.save(
+          selected.id,
+          principal,
+          {
+            ...note,
+            requestKey: randomUUID(),
+            expectedVersion: 2,
+            proposal: { ...note.proposal, minimumSpend: 50000 },
+          },
+          "sms-policy",
+        );
+        assert.equal(sent.length, 2);
+        assert.match(sent[1], /답변 변경/);
+
+        const oldClosure = proposal(f.request);
+        if (scenario !== "unanswered") {
+          await replies.save(
+            other.id,
+            principal,
+            scenario === "declined"
+              ? {
+                  ...oldClosure,
+                  kind: "DECLINE",
+                  proposal: null,
+                  expiresAt: null,
+                  holdConfirmed: false,
+                  reason: "좌석 없음",
+                }
+              : oldClosure,
+            "sms-policy",
+          );
+          if (scenario === "expired")
+            await db.manager.update(
+              MerchantReplyRevision,
+              { targetId: other.id },
+              { expiresAt: new Date(Date.now() - 1000) },
+            );
+          if (scenario === "unheld")
+            await db.manager.update(
+              MerchantReplyRevision,
+              { targetId: other.id },
+              {
+                snapshot: {
+                  offered: oldClosure.proposal,
+                  requested: f.request.snapshot,
+                  holdConfirmed: false,
+                },
+              },
+            );
+        }
+        sent.length = 0;
+        const input = decide(await get(f.event.id), selected.id);
+        await json(await call(input.url, owner, "POST", input.body), 201);
+        const rows = await notices.messages(f.request.id, db.manager);
+        assert.equal(
+          rows.filter(
+            (row) =>
+              row.eventKey.includes(":STORE_SELECTED") &&
+              row.recipientKey.startsWith("organizer:"),
+          ).length,
+          0,
+        );
+        assert.equal(sent.length, scenario === "held" ? 2 : 1);
+        assert.equal(sent.filter((text) => /확정 전/.test(text)).length, 1);
+        const released = sent.find((text) => text.includes("좌석 유지를 해제"));
+        if (scenario === "held") {
+          assert(released);
+          const closedUrl = new URL(released.split("\n").at(-1)!);
+          const original = inquiry.find((text) =>
+            text.includes(`target=${other.id}`),
+          )!;
+          assert.equal(
+            closedUrl.href,
+            new URL(original.split("\n").at(-1)!).href,
+          );
+          const token = new URLSearchParams(closedUrl.hash.slice(1)).get(
+            "token",
+          );
+          const closed = await json<{ closedState: string }>(
+            await call(`merchant-replies/${other.id}/access`, "", "POST", {
+              token,
+            }),
+          );
+          assert.equal(closed.closedState, "OTHER_SELECTED");
+        } else assert.equal(released, undefined);
+        sent.length = 0;
+      }
+    },
+  );
+
+  await t.test(
     "different organizers selecting opposite A/B stores both commit with ordered PostgreSQL inbox locks",
     async () => {
       const accountIds: string[] = [];
@@ -270,7 +409,7 @@ test("selection, reinquiry and durable notifications serialize competing command
       for (const row of rows) {
         const id = row.recipientKey.startsWith("reservation:")
             ? q.targets[0].id
-            : row.recipientKey.slice(9),
+            : row.recipientKey.split(":")[1]!,
           contact = replacements.get(id)!;
         assert.equal(row.contactIdSnapshot, contact.id);
         assert.equal(row.phoneSnapshot, contact.phone);
@@ -426,13 +565,13 @@ test("selection, reinquiry and durable notifications serialize competing command
           .length,
         1,
       );
-      assert.equal(selected.notifications.length, 5);
+      assert.equal(selected.notifications.length, 4);
       assert(selected.notifications.every((n) => n.status === "ACCEPTED"));
       assert.equal(
         (await call(winner.url, owner, "POST", winner.body)).status,
         201,
       );
-      assert.equal((await get(f.event.id)).notifications.length, 5);
+      assert.equal((await get(f.event.id)).notifications.length, 4);
       assert.equal(
         (
           await call(winner.url, owner, "POST", {

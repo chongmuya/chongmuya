@@ -998,7 +998,7 @@ test("organizer proposal preview shows all applied limits, fees and deadlines be
   }
 });
 
-test("merchant CHANGE proposals expose no refund plan; only cancellation proposals request it", async () => {
+test("change and cancellation proposals keep refund amounts out of the form and route cancellation to phone", async () => {
   const access: CompletionAccess = {
     kind: "owner",
     accountId: "owner",
@@ -1030,7 +1030,11 @@ test("merchant CHANGE proposals expose no refund plan; only cancellation proposa
     try {
       assert.equal(
         view.container.querySelectorAll('[name="refundExpected"]').length,
-        kind === "CANCEL" ? 1 : 0,
+        0,
+      );
+      assert.equal(
+        view.container.textContent?.includes("전화로"),
+        kind === "CANCEL",
       );
     } finally {
       await view.unmount();

@@ -91,7 +91,15 @@ export class ReservationHandoverService {
       r.currentContactPhone = to.phone;
       r.version++;
       await m.save(r);
-      await this.notices.replanOrganizer(r.id, from, to, to.id, handoverId, m);
+      await this.notices.replanOrganizer(
+        r.id,
+        from,
+        to,
+        to.id,
+        handoverId,
+        m,
+        (fact) => this.sender.mayReplanOrganizer(fact, m),
+      );
       const targets = await m.find(RequestTarget, {
         where: { requestId: r.id },
         order: { id: "ASC" },

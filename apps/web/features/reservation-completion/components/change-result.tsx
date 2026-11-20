@@ -2,10 +2,11 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
-import type { Completion } from "../types/completion.types";
+import type { Change, Completion } from "../types/completion.types";
 import { AttendanceLink, ReservationResultIcon } from "./completion-summary";
 export function ChangeResult({
   data: q,
+  latest,
   organizer,
   onReview,
   onDetails,
@@ -13,23 +14,14 @@ export function ChangeResult({
   footer,
 }: {
   data: Completion;
+  latest: Change;
   organizer: boolean;
   onReview: () => void;
   onDetails?: () => void;
   onCancel?: () => void;
   footer?: ReactNode;
 }) {
-  const latest =
-    q.changes.find(
-      (c) => c.status === "REQUESTED" || c.status === "PROPOSED",
-    ) ?? q.changes[0];
-  if (!latest) return null;
-  const kind =
-    latest.kind === "CANCEL"
-      ? "취소"
-      : latest.kind === "REFUND"
-        ? "환불 예정액"
-        : "변경";
+  const kind = latest.kind === "CANCEL" ? "취소" : "변경";
   const pending = latest.status === "REQUESTED" || latest.status === "PROPOSED";
   const rejected = latest.status === "REJECTED";
   const title =
@@ -42,16 +34,12 @@ export function ChangeResult({
           ? "매장 제안이 도착했어요"
           : "총무의 확인을 기다려요"
         : rejected
-          ? latest.kind === "REFUND"
-            ? "환불 제안이 철회됐어요"
-            : `예약 ${kind}${latest.kind === "CANCEL" ? "가" : "이"} 어려워요`
-          : latest.kind === "REFUND"
-            ? "환불 예정액에 합의했어요"
-            : q.cancellation
-              ? "예약 취소가 완료됐어요"
-              : q.progress === "CONFIRMED"
-                ? "예약이 확정됐어요"
-                : "변경 내용이 적용됐어요";
+          ? `예약 ${kind}${latest.kind === "CANCEL" ? "가" : "이"} 어려워요`
+          : q.cancellation
+            ? "예약 취소가 완료됐어요"
+            : q.progress === "CONFIRMED"
+              ? "예약이 확정됐어요"
+              : "변경 내용이 적용됐어요";
   const caption =
     latest.status === "REQUESTED"
       ? organizer
@@ -60,11 +48,9 @@ export function ChangeResult({
       : latest.status === "PROPOSED"
         ? "총무가 제안을 확인하고 수락해야 적용돼요."
         : rejected
-          ? q.cancellation
-            ? "기존 환불 합의와 실제 반환 기록은 유지돼요."
-            : "기존 예약으로 진행할지 확인해 주세요."
+          ? "기존 예약으로 진행할지 확인해 주세요."
           : q.cancellation
-            ? "취소와 별개로 실제 반환 내역을 확인해 주세요."
+            ? "환불 여부와 반환 일정은 전화로 협의해 주세요."
             : q.progress === "CONFIRMED"
               ? "예약 변경을 확인했어요. 이제 참석 명단을 준비해볼까요?"
               : "합의한 조건을 적용했어요. 남은 확인이 필요해요.";

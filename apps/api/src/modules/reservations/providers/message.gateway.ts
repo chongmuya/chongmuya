@@ -3,6 +3,7 @@ export type SendResult = {
   failureStage?: "SUBMISSION" | "DELIVERY";
   messageId?: string;
   groupId?: string;
+  channel?: "SMS" | "LMS";
   errorCode?: string;
   provider: "fake" | "solapi";
 };
