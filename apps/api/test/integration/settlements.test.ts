@@ -1169,7 +1169,20 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
     outdated: true,
   });
 
-  await changes.refund(reservationId, operator, {
+  progress = await payments.receipt(reservationId, operator, {
+    requestKey: randomUUID(),
+    expectedVersion: progress.version,
+    guidanceRevision: progress.guidance.revision,
+    amount: 3000,
+    receivedAt: "2026-01-01T10:00:00.000Z",
+    corrects: progress.receipt!.id,
+    reason: "가상 수령액 확인",
+  });
+  v = await adjustExpense(1000);
+  v = await save({ ...withBank, replaces: regeneratedId });
+  const beforeCombinedChangesId = v.state.notices.at(-1)!.id;
+  const beforeCombinedChanges = await getNotice(beforeCombinedChangesId);
+  progress = await changes.refund(reservationId, operator, {
     requestKey: randomUUID(),
     expectedVersion: progress.version,
     amount: 500,
@@ -1177,17 +1190,54 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
     refundedAt: "2026-01-02T10:00:00.000Z",
     reason: "추가 반환 뒤늦게 확인",
   });
-  v = await adjustExpense(2000);
+  v = await json<View>(await call(path, owner));
+  assert.equal(v.reservations[0]!.remainingAmount, 1500);
+  assert.deepEqual(
+    await getNotice(beforeCombinedChangesId),
+    beforeCombinedChanges,
+  );
+  progress = await payments.receipt(reservationId, operator, {
+    requestKey: randomUUID(),
+    expectedVersion: progress.version,
+    guidanceRevision: progress.guidance.revision,
+    amount: 1700,
+    receivedAt: "2026-01-01T10:00:00.000Z",
+    corrects: progress.receipt!.id,
+    reason: "추가 반환과 별개로 수령액 정정",
+  });
+  v = await adjustExpense(200);
   assert.deepEqual(v.depositConflicts, []);
-  assert.equal(v.reservations[0]!.refundedAmount, 1500);
-  assert.deepEqual(await getNotice(regeneratedId), {
-    ...regenerated,
+  assert.equal(v.reservations[0]!.remainingAmount, 200);
+  // Without the post-notice 500 won refund, the corrected balance would be 700,
+  // which still cannot cover the notice's 1,000 won allocation.
+  assert.deepEqual(await getNotice(beforeCombinedChangesId), {
+    ...beforeCombinedChanges,
+    outdated: true,
+  });
+
+  v = await save({ ...withBank, replaces: beforeCombinedChangesId });
+  const beforeTwoRefundsId = v.state.notices.at(-1)!.id;
+  const beforeTwoRefunds = await getNotice(beforeTwoRefundsId);
+  for (const amount of [50, 50]) {
+    progress = await changes.refund(reservationId, operator, {
+      requestKey: randomUUID(),
+      expectedVersion: progress.version,
+      amount,
+      refundedAt: "2026-01-02T10:00:00.000Z",
+      reason: "추가 반환 확인",
+    });
+  }
+  v = await adjustExpense(100);
+  assert.deepEqual(v.depositConflicts, []);
+  assert.equal(v.reservations[0]!.remainingAmount, 100);
+  assert.deepEqual(await getNotice(beforeTwoRefundsId), {
+    ...beforeTwoRefunds,
     outdated: true,
     refundRequiresRegeneration: true,
   });
-  v = await save({ ...withBank, replaces: regeneratedId });
+  v = await save({ ...withBank, replaces: beforeTwoRefundsId });
   const latestNotice = await getNotice(v.state.notices.at(-1)!.id);
   assert.equal(latestNotice.refundRequiresRegeneration, false);
   assert.equal(latestNotice.outdated, false);
-  assert.match(latestNotice.text, /테스트 참가자.*3,000원/);
+  assert.match(latestNotice.text, /테스트 참가자.*4,900원/);
 });

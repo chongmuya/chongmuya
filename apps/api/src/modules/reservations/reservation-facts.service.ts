@@ -319,20 +319,32 @@ export class ReservationFactsService {
     }));
   }
 
-  async hasRefundRecordedAfter(
+  async refundTotalsRecordedAfter(
     reservationIds: string[],
     createdAt: string,
     m: EntityManager,
-  ) {
-    if (!reservationIds.length) return false;
+  ): Promise<Map<string, number>> {
+    if (!reservationIds.length) return new Map();
     // Use the server's UTC record time. A transfer can be entered retroactively.
-    return m
+    const totals = await m
       .createQueryBuilder(ReservationCompletionHistory, "history")
+      .select("history.reservationId", "reservationId")
+      .addSelect(
+        "COALESCE(SUM((history.evidence->'refund'->>'amount')::integer), 0)",
+        "amount",
+      )
       .where("history.reservationId IN (:...reservationIds)", {
         reservationIds,
       })
       .andWhere("history.action = :action", { action: "REFUND_RECORDED" })
       .andWhere("history.audit->>'recordedAt' > :createdAt", { createdAt })
-      .getExists();
+      .groupBy("history.reservationId")
+      .getRawMany<{ reservationId: string; amount: string }>();
+    return new Map(
+      totals.map(({ reservationId, amount }) => [
+        reservationId,
+        Number(amount),
+      ]),
+    );
   }
 }

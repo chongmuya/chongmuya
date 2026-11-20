@@ -227,18 +227,20 @@ export class SettlementsService {
           .filter((r) => r.refundedAmount > 0)
           .map((r) => r.reservationId),
       );
-      const affectedReservations = depositConflicts(
+      const noticeConflicts = depositConflicts(
         { expenses: n.snapshot?.expenses ?? [] },
         reservations,
-      )
-        .map(({ reservationId }) => reservationId)
-        .filter((reservationId) => refunded.has(reservationId));
-      const refundRequiresRegeneration =
-        await this.reservations.hasRefundRecordedAfter(
-          affectedReservations,
-          n.createdAt,
-          m,
-        );
+      ).filter(({ reservationId }) => refunded.has(reservationId));
+      const newRefunds = await this.reservations.refundTotalsRecordedAfter(
+        noticeConflicts.map(({ reservationId }) => reservationId),
+        n.createdAt,
+        m,
+      );
+      // Only a shortage that disappears without the new refunds is refund-driven.
+      const refundRequiresRegeneration = noticeConflicts.some(
+        ({ reservationId, applied, remaining }) =>
+          remaining + (newRefunds.get(reservationId) ?? 0) >= applied,
+      );
       return {
         ...n,
         needsReview,
