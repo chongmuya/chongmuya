@@ -72,17 +72,22 @@ try {
       operationId(input.requestKey);
       if (!v.execute && input.expectedVersion !== current.version)
         throw new Error("VERSION_CONFLICT");
-      if (v.execute)
+      if (v.action === "link")
+        result = await completion.manageLink(
+          v.reservation,
+          principal,
+          input,
+          !v.execute,
+        );
+      else if (v.execute)
         result =
-          v.action === "link"
-            ? await completion.manageLink(v.reservation, principal, input)
-            : v.action === "apply-agreement"
-              ? await app
-                  .get(ReservationChangesService)
-                  .acceptOperator(v.reservation, principal, input)
-              : await app
-                  .get(ReservationCommands)
-                  .run(v.action, v.reservation, principal, input);
+          v.action === "apply-agreement"
+            ? await app
+                .get(ReservationChangesService)
+                .acceptOperator(v.reservation, principal, input)
+            : await app
+                .get(ReservationCommands)
+                .run(v.action, v.reservation, principal, input);
     }
     console.log(
       JSON.stringify({

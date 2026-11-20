@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
+import { FormInput } from "@/shared/ui/form-input";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
 import { noticeQuery } from "../api/settlement.api";
@@ -174,10 +174,11 @@ function NoticeForm({
         ).map(([name, label]) => (
           <label key={name} className="block space-y-2">
             <span>{label}</span>
-            <Input
+            <FormInput
               variant="form"
               type={name === "deadline" ? "date" : "text"}
-              {...form.register(name)}
+              control={form.control}
+              name={name}
               aria-invalid={!!form.formState.errors[name]}
               aria-describedby={`notice-${name}-error`}
             />

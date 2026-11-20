@@ -22,6 +22,8 @@ export type CalendarData = {
     title: string;
     startsAt: string;
     status: string;
+    progress: string | null;
+    issueCodes: string[];
     destination: string;
     expectedGuests: number;
     region: string | null;

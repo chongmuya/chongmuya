@@ -28,7 +28,10 @@ export async function updateEventCache(
     );
   }
   cache.setQueryData(detail, event);
-  await Promise.all(
-    lists.map((queryKey) => cache.invalidateQueries({ queryKey, exact: true })),
-  );
+  await Promise.all([
+    ...lists.map((queryKey) =>
+      cache.invalidateQueries({ queryKey, exact: true }),
+    ),
+    cache.invalidateQueries({ queryKey: ["user", accountId, "calendar"] }),
+  ]);
 }

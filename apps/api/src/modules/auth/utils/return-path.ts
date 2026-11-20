@@ -83,6 +83,20 @@ export function safeReturnPath(
   }
   if (url.pathname === "/events" && url.searchParams.get("action") === "add")
     params.set("action", "add");
+  const date = url.searchParams.get("date");
+  if (
+    url.pathname === "/events" &&
+    !params.has("event") &&
+    date &&
+    /^\d{4}-\d{2}-\d{2}$/.test(date)
+  ) {
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (
+      Number.isFinite(parsed.getTime()) &&
+      parsed.toISOString().slice(0, 10) === date
+    )
+      params.set("date", date);
+  }
   const view = url.searchParams.get("view");
   if (url.pathname === "/" && view === "personal" && !params.has("group"))
     params.set("view", view);

@@ -38,6 +38,7 @@ export function MenuForm({
       },
     }),
     items = useWatch({ control: form.control, name: "items" });
+  const closed = !!q.order || !!q.cancellation;
   const changed =
     !catalogReviewed ||
     q.version !== base.version ||
@@ -58,7 +59,7 @@ export function MenuForm({
       !!base.guidance.deadline);
   async function save(draft: boolean) {
     await form.handleSubmit(async (values) => {
-      if (changed || action.isPending || action.uncertain) return;
+      if (closed || changed || action.isPending || action.uncertain) return;
       if (!draft && !values.confirmed) {
         form.setError("confirmed", {
           message: "메뉴·예약금·변경 조건을 확인해 주세요.",
@@ -98,13 +99,22 @@ export function MenuForm({
               : {}),
           },
         });
-        if (action.active.current)
+        if (action.active.current) {
           setBase({ ...result, catalog: base.catalog });
+          form.reset(form.getValues());
+        }
       } catch {
         /* Input and command identity survive explicit retries. */
       }
     })();
   }
+  if (
+    closed &&
+    !form.formState.isDirty &&
+    !action.uncertain &&
+    !action.isPending
+  )
+    return null;
   return (
     <form
       noValidate
@@ -114,8 +124,14 @@ export function MenuForm({
         void save(false);
       }}
     >
+      {closed && (
+        <p role="alert">
+          다른 화면에서 메뉴를 전달했거나 예약을 종료했어요. 작성 내용은
+          보존했으며 추가 저장은 할 수 없어요.
+        </p>
+      )}
       <fieldset
-        disabled={action.uncertain || action.isPending}
+        disabled={closed || action.uncertain || action.isPending}
         className="space-y-6"
       >
         <section className="rounded-control bg-surface p-5 shadow-card">
@@ -133,6 +149,16 @@ export function MenuForm({
               메뉴로 완료할 수 없어요.
             </p>
           )}
+          {base.catalog.menus.length > 0 &&
+            !base.catalog.menus.some(
+              (m) => m.available && m.price !== null,
+            ) && (
+              <p role="status" className="mb-4 text-sm text-secondary">
+                지금 주문할 수 있는 메뉴가 없어요. 매장과 기존 전화·문자
+                연락으로 가격과 판매 여부를 확인해 주세요. 확인된 메뉴가
+                등록되면 최신 메뉴판을 불러와 선택할 수 있어요.
+              </p>
+            )}
           <div className="divide-y divide-border">
             {base.catalog.menus.map((m, index) => (
               <div key={m.id} className="grid grid-cols-1 gap-3 py-4">
@@ -152,7 +178,7 @@ export function MenuForm({
                     <strong className="text-sm">{m.name}</strong>
                     <p className="text-xs text-muted">{m.unit}</p>
                     <p className="text-sm font-semibold">
-                      {m.price === null ? "가격 확인 필요" : won(m.price)}
+                      {m.price === null ? "가격 확인 중" : won(m.price)}
                       {!m.available ? " · 품절" : ""}
                     </p>
                   </div>
@@ -235,7 +261,10 @@ export function MenuForm({
           <p className="mt-4 flex justify-between gap-3 text-sm">
             메뉴 주문 금액{" "}
             <strong className="text-2xl">
-              {unknownTotal ? "가격 확인 필요" : won(total)}
+              {unknownTotal ||
+              !base.catalog.menus.some((m) => m.available && m.price !== null)
+                ? "가격 확인 중"
+                : won(total)}
             </strong>
           </p>
           <p className="mt-2 text-xs text-muted">
@@ -284,7 +313,7 @@ export function MenuForm({
           id="menu-confirmed-error"
           message={form.formState.errors.confirmed?.message}
         />
-        {changed && !action.uncertain && (
+        {changed && !closed && !action.uncertain && (
           <div
             role="alert"
             className="space-y-3 rounded-control bg-choice p-4 text-sm"
@@ -358,8 +387,10 @@ export function MenuForm({
             void action
               .retryUncertain()
               .then((result) => {
-                if (action.active.current)
+                if (action.active.current) {
                   setBase({ ...result, catalog: base.catalog });
+                  form.reset(form.getValues());
+                }
               })
               .catch(() => undefined);
           }}

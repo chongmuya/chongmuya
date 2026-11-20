@@ -1,4 +1,5 @@
 "use client";
+import { isDateOnly } from "@/shared/lib/korean-date";
 import { Memberships } from "@/features/handovers/client";
 import { AccountSettings } from "@/features/account/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -79,7 +80,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
           첫 설정 이어서 하기
         </Link>
         {mode === "mypage" && (
-          <KakaoConnection key={account.id} accountId={account.id} />
+          <KakaoConnection key={`kakao:${account.id}`} accountId={account.id} />
         )}
         <AuthScreen />
       </StepLayout>
@@ -94,6 +95,9 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       key={`${account.id}:${mode}:${params.toString()}`}
       accountId={account.id}
       request={client.request.bind(client)}
+      initialDate={
+        isDateOnly(params.get("date")) ? params.get("date")! : undefined
+      }
       groupId={params.get("group")}
       eventId={params.get("event")}
       mode={mode}
@@ -129,9 +133,9 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
     >
       {mode === "mypage" && params.get("view") === "account" ? (
         <div className="space-y-8">
-          <AccountSettings key={account.id} />
+          <AccountSettings key={`settings:${account.id}`} />
           <AuthScreen />
-          <KakaoConnection key={account.id} accountId={account.id} />
+          <KakaoConnection key={`kakao:${account.id}`} accountId={account.id} />
         </div>
       ) : mode === "mypage" && params.get("view") !== "groups" ? (
         <AccountNavigation
@@ -155,6 +159,7 @@ export function WorkspaceContent({
   mode,
   view,
   roundId,
+  initialDate,
   detailPage = false,
 }: {
   accountId: string;
@@ -165,6 +170,7 @@ export function WorkspaceContent({
   view?: string | null;
   roundId?: string | null;
   detailPage?: boolean;
+  initialDate?: string;
 }) {
   return (
     <section className="text-copy">
@@ -235,6 +241,7 @@ export function WorkspaceContent({
         />
       ) : (
         <EventForm
+          initialDate={initialDate}
           accountId={accountId}
           request={request}
           groupId={groupId ?? undefined}

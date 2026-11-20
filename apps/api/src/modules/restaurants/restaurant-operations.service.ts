@@ -10,6 +10,7 @@ import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { AuthService } from "../auth/auth.service.js";
 import { Restaurant } from "./entities/restaurant.entity.js";
+import { RestaurantMenu } from "./entities/restaurant-menu.entity.js";
 import { RestaurantContact } from "./entities/restaurant-contact.entity.js";
 import { RestaurantOperation } from "./entities/restaurant-operation.entity.js";
 import { Geocoder } from "./providers/geocoder.js";
@@ -25,6 +26,101 @@ export class RestaurantOperationsService {
     private readonly geocoding: Geocoder,
     private readonly auth: AuthService,
   ) {}
+  async menus(restaurantId: string) {
+    if (!z.uuid().safeParse(restaurantId).success)
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const db = await this.database.connect();
+    return db.transaction("REPEATABLE READ", async (m) => {
+      const r = await m.findOneBy(Restaurant, { id: restaurantId });
+      if (!r) throw new NotFoundException();
+      const menus = await m.find(RestaurantMenu, {
+        where: { restaurantId },
+        order: { position: "ASC", id: "ASC" },
+      });
+      return { restaurantId, version: r.version, menus };
+    });
+  }
+  async patchMenuPrices(
+    restaurantId: string,
+    raw: unknown,
+    actor: string,
+    reason: string,
+    dryRun = true,
+  ) {
+    const parsed = z
+      .object({
+        expectedVersion: z.number().int().positive(),
+        evidence: z.string().trim().min(1).max(500),
+        items: z
+          .array(
+            z
+              .object({
+                id: z.uuid(),
+                price: z.number().int().min(0).max(2_000_000_000),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(500),
+      })
+      .strict()
+      .safeParse(raw);
+    if (
+      !parsed.success ||
+      !z.uuid().safeParse(restaurantId).success ||
+      !actor?.trim() ||
+      actor.length > 100 ||
+      !reason?.trim() ||
+      reason.length > 500
+    )
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const input = parsed.data;
+    if (new Set(input.items.map((i) => i.id)).size !== input.items.length)
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      const r = await m.findOne(Restaurant, {
+        where: { id: restaurantId },
+        lock: { mode: "pessimistic_write" },
+      });
+      if (!r) throw new NotFoundException();
+      if (r.version !== input.expectedVersion)
+        throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
+      const menus = await m.findBy(RestaurantMenu, { restaurantId });
+      const changes = input.items.map((item) => {
+        const menu = menus.find((v) => v.id === item.id);
+        if (!menu) throw new NotFoundException();
+        return { id: menu.id, previousPrice: menu.price, price: item.price };
+      });
+      const changed = changes.filter((v) => v.previousPrice !== v.price);
+      if (!dryRun && changed.length) {
+        for (const item of changed)
+          await m.update(
+            RestaurantMenu,
+            { id: item.id, restaurantId },
+            { price: item.price },
+          );
+        r.version++;
+        await m.save(r);
+        await m.save(RestaurantOperation, {
+          id: randomUUID(),
+          restaurantId,
+          actor,
+          reason,
+          action: "MENU_PRICES_PATCHED",
+          details: { evidence: input.evidence, prices: changed },
+          createdAt: new Date(),
+        });
+      }
+      return {
+        restaurantId,
+        version: r.version,
+        dryRun,
+        changed: changed.length,
+        prices: changes,
+      };
+    });
+  }
   async addressReview() {
     const db = await this.database.connect();
     return db.query(

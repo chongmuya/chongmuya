@@ -282,17 +282,18 @@ export class NotificationsService {
       });
     });
   }
-  async messages(requestId: string, m: EntityManager) {
+  async messages(requestId: string, m: EntityManager, lock = false) {
     const facts = await m.findBy(NotificationFact, { requestId });
     if (!facts.length) return [];
     return m.find(NotificationMessage, {
       where: { eventKey: In(facts.map((f) => f.eventKey)) },
-      order: { updatedAt: "ASC" },
+      order: lock ? { id: "ASC" } : { updatedAt: "ASC" },
+      ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
     });
   }
   async operations() {
     const db = await this.database.connect();
-    return (
+    const messages = (
       await db.manager.find(NotificationMessage, {
         order: { updatedAt: "DESC" },
         take: 100,
@@ -308,7 +309,83 @@ export class NotificationsService {
       provider: r.provider,
       errorCode: r.errorCode,
       failureStage: r.failureStage,
+      replacementEventKey:
+        r.operations
+          .find((v) => v.action.startsWith("REPLACED:"))
+          ?.action.slice(9) ?? null,
     }));
+    const held = await db.manager
+      .createQueryBuilder(NotificationFact, "f")
+      .where("f.merchant_hold IS NOT NULL")
+      .orderBy("f.occurredAt", "DESC")
+      .take(100)
+      .getMany();
+    return [
+      ...messages,
+      ...held.map((f) => ({
+        id: f.eventKey,
+        eventKey: f.eventKey,
+        recipientKind: "MERCHANT",
+        status: f.merchantHold?.replacementEventKey ? "REPLACED" : "HELD",
+        attempts: 0,
+        provider: null,
+        errorCode: f.merchantHold!.reason,
+        failureStage: null,
+        replacementEventKey: f.merchantHold?.replacementEventKey ?? null,
+      })),
+    ];
+  }
+  async replaceHeldIntent(
+    eventKey: string,
+    reservationId: string,
+    replacementEventKey: string,
+    m: EntityManager,
+  ) {
+    const fact = await m.findOne(NotificationFact, {
+      where: { eventKey, reservationId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!fact?.merchantHold || fact.merchantHold.replacementEventKey)
+      throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+    fact.merchantHold.replacementEventKey = replacementEventKey;
+    await m.save(fact);
+  }
+  async replaceHeldMessage(
+    id: string,
+    reservationId: string,
+    replacementEventKey: string,
+    actor: string,
+    reason: string,
+    m: EntityManager,
+  ) {
+    const row = await m.findOne(NotificationMessage, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    const fact = row
+      ? await m.findOneBy(NotificationFact, {
+          eventKey: row.eventKey,
+          reservationId,
+        })
+      : null;
+    if (
+      !row ||
+      !fact ||
+      row.status !== "HELD" ||
+      !row.recipientKey.startsWith(`reservation:${reservationId}:`) ||
+      row.providerMessageId ||
+      row.providerGroupId ||
+      row.reports.length ||
+      row.operations.some((v) => v.action.startsWith("REPLACED:"))
+    )
+      throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+    row.operations.push({
+      actor,
+      reason,
+      action: `REPLACED:${replacementEventKey}`,
+      at: new Date().toISOString(),
+    });
+    await m.save(row);
   }
   async pending() {
     const db = await this.database.connect();
@@ -337,7 +414,10 @@ export class NotificationsService {
       await m.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
         `notification:${id}`,
       ]);
-      const row = await m.findOneByOrFail(NotificationMessage, { id: r.id });
+      const row = await m.findOneOrFail(NotificationMessage, {
+        where: { id: r.id },
+        lock: { mode: "pessimistic_write" },
+      });
       if (
         row.status !== "PENDING" &&
         !(retry && row.status === "FAILED" && row.failureStage === "SUBMISSION")

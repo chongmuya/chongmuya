@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/shared/ui/button";
+import { DateTimePicker } from "@/shared/ui/date-time-picker";
 import { Input } from "@/shared/ui/input";
 import { Select } from "@/shared/ui/select";
 import { Checkbox } from "@/shared/ui/checkbox";
@@ -247,26 +248,32 @@ export function ReplyForm({
                       name="proposal.startsAt"
                       control={form.control}
                       render={({ field }) => (
-                        <label className="block space-y-2">
-                          제안 일시 (한국 시간) *
-                          <Input
-                            type="datetime-local"
+                        <div className="block space-y-2">
+                          <label htmlFor="reply-starts-at">
+                            제안 일시 (한국 시간) *
+                          </label>
+                          <DateTimePicker
+                            id="reply-starts-at"
+                            aria-label="제안 일시 (한국 시간)"
+                            aria-describedby="reply-starts-at-error"
+                            onBlur={field.onBlur}
                             name={field.name}
                             ref={field.ref}
                             aria-invalid={
                               !!form.formState.errors.proposal?.startsAt
                             }
                             value={koreanDateInput(field.value)}
-                            onChange={(e) =>
+                            onChange={(value) =>
                               field.onChange(
-                                fromKoreanDateInput(e.target.value) ?? "",
+                                fromKoreanDateInput(value) ?? value,
                               )
                             }
                           />
-                        </label>
+                        </div>
                       )}
                     />
                     <FormError
+                      id="reply-starts-at-error"
                       message={
                         form.formState.errors.proposal?.startsAt?.message
                       }
@@ -407,20 +414,37 @@ export function ReplyForm({
                       name="proposal.menuDeadlineAt"
                       control={form.control}
                       render={({ field }) => (
-                        <label className="block space-y-2">
-                          메뉴 확정 기한 (미확인 시 비워 두세요)
-                          <Input
-                            type="datetime-local"
+                        <div className="block space-y-2">
+                          <label htmlFor="reply-menu-deadline">
+                            메뉴 확정 기한 (미확인 시 비워 두세요)
+                          </label>
+                          <DateTimePicker
+                            id="reply-menu-deadline"
+                            aria-label="메뉴 확정 기한"
+                            aria-invalid={
+                              !!form.formState.errors.proposal?.menuDeadlineAt
+                            }
+                            aria-describedby="reply-menu-deadline-error"
+                            onBlur={field.onBlur}
                             name={field.name}
                             ref={field.ref}
                             value={koreanDateInput(field.value)}
-                            onChange={(e) =>
+                            onChange={(value) =>
                               field.onChange(
-                                fromKoreanDateInput(e.target.value),
+                                value
+                                  ? (fromKoreanDateInput(value) ?? value)
+                                  : null,
                               )
                             }
                           />
-                        </label>
+                          <FormError
+                            id="reply-menu-deadline-error"
+                            message={
+                              form.formState.errors.proposal?.menuDeadlineAt
+                                ?.message
+                            }
+                          />
+                        </div>
                       )}
                     />
                   </div>
@@ -510,21 +534,32 @@ export function ReplyForm({
                   name="expiresAt"
                   control={form.control}
                   render={({ field }) => (
-                    <label className="block space-y-2">
-                      제안 선택 기한 (한국 시간) *
-                      <Input
-                        type="datetime-local"
+                    <div className="block space-y-2">
+                      <label htmlFor="reply-expires-at">
+                        제안 선택 기한 (한국 시간) *
+                      </label>
+                      <DateTimePicker
+                        id="reply-expires-at"
+                        aria-label="제안 선택 기한 (한국 시간)"
+                        aria-invalid={!!form.formState.errors.expiresAt}
+                        aria-describedby="reply-expires-at-error"
+                        onBlur={field.onBlur}
                         name={field.name}
                         ref={field.ref}
                         value={koreanDateInput(field.value)}
-                        onChange={(e) =>
-                          field.onChange(fromKoreanDateInput(e.target.value))
+                        onChange={(value) =>
+                          field.onChange(
+                            value
+                              ? (fromKoreanDateInput(value) ?? value)
+                              : null,
+                          )
                         }
                       />
                       <FormError
+                        id="reply-expires-at-error"
                         message={form.formState.errors.expiresAt?.message}
                       />
-                    </label>
+                    </div>
                   )}
                 />
                 <label className="block space-y-2">

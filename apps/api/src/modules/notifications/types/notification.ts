@@ -23,6 +23,7 @@ export type NotificationInput = {
     summary: string;
     destination: string;
   }[];
+  merchantHold?: { reason: string; replacementEventKey?: string };
   messages: {
     recipientKey: string;
     phone: string;

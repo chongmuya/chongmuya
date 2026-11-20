@@ -14,6 +14,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@daypicker/react": "10.0.2",
     "@hookform/resolvers": "7.0.6",
     "@tanstack/react-query": "5.104.5",
     "client-only": "0.0.1",

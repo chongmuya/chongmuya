@@ -1,5 +1,6 @@
 "use client";
 
+import { isDateOnly } from "@/shared/lib/korean-date";
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -11,6 +12,7 @@ import { ErrorState } from "@/shared/ui/states";
 import { Button } from "@/shared/ui/button";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { Input } from "@/shared/ui/input";
+import { FormInput } from "@/shared/ui/form-input";
 import Image from "next/image";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
@@ -25,11 +27,13 @@ import { useCreateEvent } from "../hooks/use-create-event";
 export function EventForm({
   accountId,
   groupId = "",
+  initialDate,
   request,
   onCreated,
 }: {
   accountId: string;
   groupId?: string;
+  initialDate?: string;
   request: SessionRequest;
   onCreated?: (event: { id: string }) => void;
 }) {
@@ -40,6 +44,7 @@ export function EventForm({
   const [findVenue, setFindVenue] = useState(false);
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setError,
@@ -49,7 +54,7 @@ export function EventForm({
     resolver: zodResolver(eventSchema),
     defaultValues: {
       name: "",
-      date: "",
+      date: isDateOnly(initialDate) ? initialDate : "",
       time: "",
     },
   });
@@ -148,12 +153,13 @@ export function EventForm({
                 className="min-w-0 gap-3"
               >
                 {(attrs) => (
-                  <Input
+                  <FormInput
                     {...attrs}
                     className="min-w-0"
                     variant="form"
                     type={field}
-                    {...register(field)}
+                    control={control}
+                    name={field}
                     disabled={create.isPending}
                   />
                 )}

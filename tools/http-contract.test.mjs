@@ -3,7 +3,20 @@ import { test } from "node:test";
 import { domainErrors } from "../apps/api/src/common/http/domain-errors.ts";
 import { messages } from "../apps/web/shared/http/error-messages.ts";
 import { safeReturnPath as serverReturn } from "../apps/api/src/modules/auth/utils/return-path.ts";
-import { safeReturnPath as browserReturn } from "../apps/web/features/auth/lib/return-path.ts";
+import { registerHooks } from "node:module";
+const hooks = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier.startsWith("@/"))
+      return nextResolve(
+        new URL(`../apps/web/${specifier.slice(2)}.ts`, import.meta.url).href,
+        context,
+      );
+    return nextResolve(specifier, context);
+  },
+});
+const { safeReturnPath: browserReturn } =
+  await import("../apps/web/features/auth/lib/return-path.ts");
+hooks.deregister();
 
 test("web recognizes the HTTP status of every API domain error", () => {
   for (const [code, { status }] of Object.entries(domainErrors)) {
@@ -15,6 +28,8 @@ test("login return paths preserve the same organizer context on both sides", () 
   const id = "d4a0081c-790c-42be-b072-6e6012423632";
   for (const path of [
     "/?view=personal",
+    `/events?group=${id}&date=2026-12-05`,
+    "/events?date=2026-02-30",
     `/?group=${id}`,
     `/events?event=${id}&view=attendance&round=${id}`,
     "//example.test",

@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { serviceArea } from "@/shared/lib/service-area";
-import { Input } from "@/shared/ui/input";
+import { FormInput } from "@/shared/ui/form-input";
 import { Select } from "@/shared/ui/select";
 import { Button } from "@/shared/ui/button";
 import { FormField } from "@/shared/ui/form-field";
@@ -56,9 +56,10 @@ export function ConditionsForm({
       className="min-w-0 gap-3 text-xs"
     >
       {(attributes) => (
-        <Input
+        <FormInput
           {...attributes}
-          {...register(name)}
+          control={control}
+          name={name}
           type={type}
           inputMode={
             name === "expectedGuests" || name === "budgetAmount"

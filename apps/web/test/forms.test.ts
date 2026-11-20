@@ -1,3 +1,4 @@
+import { chooseDate, chooseTime } from "./support/date-controls";
 import "./support/dom";
 import { act, createElement } from "react";
 import assert from "node:assert/strict";
@@ -136,11 +137,11 @@ test("event form submits Korean time and refreshes the account list plus only it
     cache,
   );
   try {
-    assert.equal(view.container.querySelector("select"), null);
+    assert.equal(view.container.querySelector('select[name="groupId"]'), null);
     assert.match(view.container.textContent!, /모임 확인/);
     await fill(view.container, "name", " 새 행사 ");
-    await fill(view.container, "date", "2026-11-14");
-    await fill(view.container, "time", "18:30");
+    await chooseDate(view.container, "date", "2026-11-14");
+    await chooseTime(view.container, "time", "18:30");
     await submit(view.container);
     assert.equal(typeof body, "undefined");
     await act(async () => {
@@ -313,7 +314,7 @@ test("the home group stays fixed through failed or missing reads and recovery pr
     await until(() =>
       assert.match(view.container.textContent!, /홈에서 고른 모임/),
     );
-    assert.equal(view.container.querySelector("select"), null);
+    assert.equal(view.container.querySelector('select[name="groupId"]'), null);
     await fill(view.container, "name", "작성하던 행사");
     for (const failure of [true, false]) {
       failed = failure;
@@ -391,7 +392,7 @@ test("personal event creation works while groups fail and server field errors re
     createElement(EventForm, { accountId: "a", request }),
   );
   try {
-    assert.equal(view.container.querySelector("select"), null);
+    assert.equal(view.container.querySelector('select[name="groupId"]'), null);
     await fill(view.container, "name", "개인 일정");
     await submit(view.container);
     await until(() =>

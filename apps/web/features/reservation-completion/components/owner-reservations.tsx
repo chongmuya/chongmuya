@@ -6,7 +6,7 @@ import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { buttonStyles } from "@/shared/ui/button";
 import { ownerReservationsQuery } from "../api/completion.api";
 import { CompletionWorkspace } from "./completion-workspace";
-import { progressLabels } from "./completion-summary";
+import { progressLabels } from "../lib/progress-labels";
 export function OwnerReservations({
   account,
   request,

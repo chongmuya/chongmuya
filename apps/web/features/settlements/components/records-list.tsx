@@ -7,7 +7,7 @@ import { recordsSchema } from "../schemas/records.schema";
 import { recordsQuery } from "../api/records.api";
 import Link from "next/link";
 import type { SessionRequest } from "@/features/auth/types";
-import { Input } from "@/shared/ui/input";
+import { FormInput } from "@/shared/ui/form-input";
 import { Button } from "@/shared/ui/button";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 export function RecordsList({
@@ -48,10 +48,11 @@ export function RecordsList({
         className="space-y-3"
         onSubmit={f.handleSubmit((v) => setFilter({ ...v, offset: 0 }))}
       >
-        <Input
+        <FormInput
           aria-label="행사 이름 검색"
           placeholder="행사 이름 검색"
-          {...f.register("search")}
+          control={f.control}
+          name="search"
           aria-invalid={!!f.formState.errors.search}
           aria-describedby="records-search-error"
         />
@@ -61,11 +62,11 @@ export function RecordsList({
         <div className="flex flex-wrap gap-2">
           <label>
             시작 날짜
-            <Input type="date" {...f.register("after")} />
+            <FormInput type="date" control={f.control} name="after" />
           </label>
           <label>
             종료 날짜
-            <Input type="date" {...f.register("before")} />
+            <FormInput type="date" control={f.control} name="before" />
           </label>
         </div>
         <Button type="submit">검색</Button>

@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { focusManager, useQuery, useQueryClient } from "@tanstack/react-query";
 import { koreanDateLabel } from "@/shared/lib/korean-date";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
@@ -35,27 +35,53 @@ export function CompletionWorkspace({
   id: string;
   access: CompletionAccess;
 }) {
-  const query = useQuery(completionQuery(id, access)),
-    cache = useQueryClient(),
+  const cache = useQueryClient(),
     [expired, setExpired] = useState(false);
+  useEffect(() => {
+    if (!expired) return;
+    void cache
+      .cancelQueries({ queryKey: completionKey(id, access) })
+      .then(() => cache.removeQueries({ queryKey: completionKey(id, access) }));
+  }, [expired, id, access, cache]);
   useEffect(() => {
     if (access.kind !== "link") return;
     const timer = setTimeout(
-      () => {
-        setExpired(true);
-        cache.removeQueries({ queryKey: completionKey(id, access) });
-      },
+      () => setExpired(true),
       Math.max(0, Date.parse(access.accessExpiresAt) - Date.now()),
     );
     return () => clearTimeout(timer);
   }, [access, id, cache]);
-  if (expired || isAccessError(query.error))
+  if (expired)
     return (
       <p role="alert">
         예약 관리 권한이 만료됐거나 폐기됐어요. 문자 링크를 다시 열거나 매장
         담당자에게 새 링크를 요청해 주세요.
       </p>
     );
+  return (
+    <CompletionContent id={id} access={access} onAccessLost={setExpired} />
+  );
+}
+function CompletionContent({
+  id,
+  access,
+  onAccessLost,
+}: {
+  id: string;
+  access: CompletionAccess;
+  onAccessLost: (lost: boolean) => void;
+}) {
+  const visible = useSyncExternalStore(
+    focusManager.subscribe,
+    () => focusManager.isFocused(),
+    () => true,
+  );
+  const query = useQuery(completionQuery(id, access, visible));
+  const denied = isAccessError(query.error);
+  useEffect(() => {
+    if (denied) onAccessLost(true);
+  }, [denied, onAccessLost]);
+  if (denied) return null;
   if (!query.data)
     return query.isError ? (
       <ErrorState retry={() => void query.refetch()} />
@@ -114,23 +140,8 @@ export function CompletionWorkspace({
           </div>
         </details>
       )}
-      {access.kind === "organizer" && !q.order && !q.cancellation && (
-        <MenuForm data={q} access={access} />
-      )}
-      {q.confirmation && access.kind === "organizer" ? (
-        q.guidance.kind === "REQUIRED" ? (
-          <details className="rounded-card bg-surface p-5 shadow-card">
-            <summary className="cursor-pointer font-semibold">
-              추가 송금 사실 신고
-            </summary>
-            <div className="mt-4">
-              <PaymentForms data={q} access={access} />
-            </div>
-          </details>
-        ) : null
-      ) : (
-        <PaymentForms data={q} access={access} />
-      )}
+      {access.kind === "organizer" && <MenuForm data={q} access={access} />}
+      <PaymentForms data={q} access={access} />
       <details
         open={q.cancellation ? true : undefined}
         className="rounded-card bg-surface p-5 shadow-card"

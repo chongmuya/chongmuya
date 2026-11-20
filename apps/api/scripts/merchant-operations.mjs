@@ -46,6 +46,7 @@ async function run() {
   });
   if (v.help) {
     console.log(`merchant:operations --action <작업> [옵션]
+메뉴: menus --restaurant UUID, menu-prices --restaurant UUID --input JSON (expectedVersion, evidence, items[{id,price}])
 조회: deliveries [--status ${deliveryStates.join("|")}] [--page N | --delivery UUID] (최신순, 50건씩)
 매장 관리: publish --restaurant UUID [--unpublish], owner-link --restaurant UUID --account UUID,
            record-contact --restaurant UUID --input 비공개JSON
@@ -67,6 +68,8 @@ async function run() {
     "change-recipient",
     "record-reply",
     "record-contact",
+    "menus",
+    "menu-prices",
   ];
   if (!actions.includes(v.action)) throw new Error("INVALID_ACTION");
   if (
@@ -85,8 +88,16 @@ async function run() {
     throw new Error("INVALID_PAGE");
   if (v.action === "deliveries" && v.output && !v.page && !v.delivery)
     throw new Error("EXPORT_SCOPE_REQUIRED");
-  if (v.action !== "deliveries") requireOperator(v);
-  if (["owner-link", "publish", "record-contact"].includes(v.action))
+  if (!["deliveries", "menus"].includes(v.action)) requireOperator(v);
+  if (
+    [
+      "owner-link",
+      "publish",
+      "record-contact",
+      "menus",
+      "menu-prices",
+    ].includes(v.action)
+  )
     uuid(v.restaurant);
   if (v.action === "owner-link") uuid(v.account);
   if (["retry", "reconcile"].includes(v.action) || v.delivery) uuid(v.delivery);
@@ -113,6 +124,18 @@ async function run() {
         : { published: !v.unpublish }),
       dryRun: !v.execute,
     });
+  else if (v.action === "menus")
+    result = await app.get(RestaurantOperationsService).menus(v.restaurant);
+  else if (v.action === "menu-prices")
+    result = await app
+      .get(RestaurantOperationsService)
+      .patchMenuPrices(
+        v.restaurant,
+        await privateInput(v.input),
+        v.actor,
+        v.reason,
+        !v.execute,
+      );
   else if (v.action === "record-contact")
     result = await app
       .get(RestaurantOperationsService)
@@ -193,7 +216,9 @@ async function run() {
     printDeliveries(result, Boolean(v.delivery));
     if (!v.delivery && result.length === 50)
       console.log(`다음 페이지 조회: --page ${page + 1}`);
-  } else printOperation(v.action, result, v);
+  } else if (["menus", "menu-prices"].includes(v.action))
+    console.log(JSON.stringify(result));
+  else printOperation(v.action, result, v);
 }
 try {
   await run();

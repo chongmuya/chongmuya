@@ -3,6 +3,7 @@ import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
+import type { ReservationPreparation } from "./types/reservation-completion.js";
 import { Injectable } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import { EventsService } from "../events/events.service.js";
@@ -11,6 +12,7 @@ import { ReservationProgress } from "./entities/reservation-progress.entity.js";
 import {
   initialPreparation,
   completionStatus,
+  completionIssues,
 } from "./lib/reservation-completion.js";
 @Injectable()
 export class ReservationFactsService {
@@ -24,6 +26,7 @@ export class ReservationFactsService {
     from: Date,
     to: Date,
     m: EntityManager,
+    now = Date.now(),
   ) {
     await this.restaurants.assertOwned(ownerId, restaurantId, m);
     const starts =
@@ -47,6 +50,9 @@ export class ReservationFactsService {
         "t.id AS id",
         "s.id AS reservation_id",
         "s.status AS status",
+        "s.snapshot AS selection_snapshot",
+        "s.selected_at AS selected_at",
+        "p.state AS preparation",
         "t.candidate_state AS candidate_state",
         "reply.expires_at AS expires_at",
         "reply.kind AS reply_kind",
@@ -65,6 +71,9 @@ export class ReservationFactsService {
         id: string;
         reservation_id: string | null;
         status: string | null;
+        selection_snapshot: SelectedReservation["snapshot"] | null;
+        selected_at: Date | null;
+        preparation: ReservationPreparation | null;
         candidate_state: RequestTarget["candidateState"];
         expires_at: Date | null;
         reply_kind: MerchantReplyRevision["kind"] | null;
@@ -78,14 +87,24 @@ export class ReservationFactsService {
         starts_at: string;
       }>();
     return rows.map((r) => {
+      const preparation =
+        r.preparation ??
+        (r.selection_snapshot?.offered && r.selected_at
+          ? initialPreparation({
+              snapshot: r.selection_snapshot,
+              selectedAt: new Date(r.selected_at),
+            } as SelectedReservation)
+          : null);
       const lifecycle = candidateState(
         { candidateState: r.candidate_state },
         r.reply_kind ? { kind: r.reply_kind, expiresAt: r.expires_at } : null,
-        new Date(),
+        new Date(now),
       );
       return {
         id: r.id,
         reservationId: r.reservation_id,
+        progress: preparation ? completionStatus(preparation, now) : null,
+        issueCodes: preparation ? completionIssues(preparation, now) : [],
         title: r.title,
         expectedGuests: r.guests,
         region: r.region,
@@ -131,6 +150,7 @@ export class ReservationFactsService {
       where: { eventId },
       order: { selectedAt: "DESC" },
     });
+    const now = Date.now();
     return Promise.all(
       rows.map(async (r) => {
         const s =
@@ -143,7 +163,7 @@ export class ReservationFactsService {
               ?.restaurantName ?? null,
           eventId,
           status: r.status,
-          progress: completionStatus(s),
+          progress: completionStatus(s, now),
           agreedStartsAt: s.agreement.startsAt,
           confirmedAt: s.confirmation?.at ?? null,
           cancelledAt: s.cancellation?.at ?? null,

@@ -1,3 +1,4 @@
+import { isDateOnly } from "@/shared/lib/korean-date";
 // Only routes the app owns can be resumed. Rebuild their query rather than
 // forwarding an arbitrary URL (including encoded hosts, backslashes or hashes).
 export function safeReturnPath(
@@ -92,6 +93,9 @@ export function safeReturnPath(
   }
   if (url.pathname === "/events" && url.searchParams.get("action") === "add")
     params.set("action", "add");
+  const date = url.searchParams.get("date");
+  if (url.pathname === "/events" && !params.has("event") && isDateOnly(date))
+    params.set("date", date);
   const view = url.searchParams.get("view");
   if (url.pathname === "/" && view === "personal" && !params.has("group"))
     params.set("view", view);

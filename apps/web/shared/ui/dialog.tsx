@@ -13,6 +13,7 @@ export function Dialog({
   initialFocusRef,
   busy = false,
   showCloseButton = false,
+  dismissOnBackdrop = false,
   onClose,
   className,
 }: {
@@ -22,6 +23,7 @@ export function Dialog({
   initialFocusRef?: RefObject<HTMLElement | null>;
   busy?: boolean;
   showCloseButton?: boolean;
+  dismissOnBackdrop?: boolean;
   onClose: () => void;
   className?: string;
 }) {
@@ -50,8 +52,21 @@ export function Dialog({
         "m-auto max-h-[calc(100svh-2rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-control border-0 bg-surface p-5 text-foreground shadow-card backdrop:bg-black/40",
         className,
       )}
+      onClick={(event) => {
+        if (!dismissOnBackdrop || busy || event.target !== event.currentTarget)
+          return;
+        const box = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX < box.left ||
+          event.clientX > box.right ||
+          event.clientY < box.top ||
+          event.clientY > box.bottom
+        )
+          onClose();
+      }}
       onCancel={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         if (!busy) onClose();
       }}
     >

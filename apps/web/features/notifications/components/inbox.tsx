@@ -14,24 +14,46 @@ import { isAccessError } from "@/shared/http/access-error";
 import { inboxKey, readInbox, unreadQuery } from "../api/notifications.api";
 import { useInbox } from "../hooks/use-inbox";
 import { notificationDestination } from "../lib/destination";
+import { cn } from "@/shared/lib/cn";
 export function NotificationBadge({
   accountId,
   request,
+  icon = false,
 }: {
   accountId: string;
   request: SessionRequest;
+  icon?: boolean;
 }) {
   const q = useQuery({ ...unreadQuery(accountId, request), enabled: false });
   return (
     <Link
       href="/notifications"
-      className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-brand-action px-3 text-white"
+      className={cn(
+        "relative flex min-h-11 min-w-11 items-center justify-center rounded-full",
+        !icon && "bg-brand-action px-3 text-white",
+      )}
       aria-label={`알림${q.data && !isAccessError(q.error) ? ` 미읽음 ${q.data.unread}개` : ""}`}
     >
-      알림
-      {q.data && !isAccessError(q.error) && q.data.unread > 0
-        ? ` ${q.data.unread}`
-        : ""}
+      {icon ? (
+        <Image
+          src="/images/calendar/notification.svg"
+          width={36}
+          height={36}
+          alt=""
+        />
+      ) : (
+        "알림"
+      )}
+      {q.data &&
+        !isAccessError(q.error) &&
+        q.data.unread > 0 &&
+        (icon ? (
+          <span className="absolute right-0 top-0 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-surface px-1 text-[10px] font-semibold text-brand-action">
+            {q.data.unread > 99 ? "99+" : q.data.unread}
+          </span>
+        ) : (
+          ` ${q.data.unread}`
+        ))}
     </Link>
   );
 }

@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { requestJson } from "@/shared/http/request";
+import { isAccessError } from "@/shared/http/access-error";
 import { ApiError } from "@/shared/http/api-error";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 export const completionKey = (id: string, a: CompletionAccess) =>
@@ -28,12 +29,24 @@ export function completionRequest<T>(
     headers: { ...options.headers, "X-Reservation-Access": a.access },
   });
 }
-export const completionQuery = (id: string, a: CompletionAccess) =>
+export const completionQuery = (
+  id: string,
+  a: CompletionAccess,
+  visible = true,
+) =>
   queryOptions({
     queryKey: completionKey(id, a),
     queryFn: ({ signal }) =>
       completionRequest<Completion>(a, completionPath(id, a), { signal }),
     staleTime: 0,
+    enabled: (query) =>
+      visible &&
+      !isAccessError(query.state.error) &&
+      (a.kind !== "link" || Date.parse(a.accessExpiresAt) > Date.now()),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     retry: false,
     gcTime: a.kind === "link" ? 0 : undefined,
   });
