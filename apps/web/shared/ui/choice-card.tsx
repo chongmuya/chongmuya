@@ -12,11 +12,11 @@ export function ChoiceCard({
   return (
     <label
       className={cn(
-        "relative flex cursor-pointer flex-col rounded-card border-2 border-transparent bg-surface p-4 shadow-card transition-colors has-checked:border-brand has-checked:bg-brand/5 has-focus-visible:outline-3 has-focus-visible:outline-offset-3 has-focus-visible:outline-focus has-disabled:cursor-not-allowed has-disabled:opacity-60",
+        "relative flex cursor-pointer flex-col rounded-card border-2 border-transparent bg-surface p-4 shadow-card transition-colors has-checked:border-brand has-checked:bg-brand/5 has-focus-visible:focus-outline has-disabled:cursor-not-allowed has-disabled:opacity-60",
         className,
       )}
     >
-      <input {...input} type="radio" className="sr-only" />
+      <input {...input} type="radio" className="choice-card-radio" />
       {children}
     </label>
   );

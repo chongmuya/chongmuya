@@ -22,7 +22,7 @@
   --color-placeholder: #c0c0c0;
   --color-kakao: #fbe300;
   --color-danger: #b42318;
-  --color-focus: #243b33;
+  --color-focus: var(--color-brand);
   --radius-control: 0.5rem;
   --radius-card: 1.25rem;
   --shadow-card: 0 2px 4px 0 rgb(0 0 0 / 0.15);
@@ -44,17 +44,60 @@
   --font-sans: var(--font-pretendard), Arial, "Apple SD Gothic Neo", sans-serif;
 }
 
+@utility focus-outline {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+
+  &:where(.focus-on-brand *) {
+    @apply ring-2 ring-surface;
+  }
+}
+
 @layer base {
+  :root {
+    --bottom-navigation-height: max(
+      72px,
+      calc(56px + env(safe-area-inset-bottom))
+    );
+    scroll-padding-block: 4px;
+  }
+  :root:has(.bottom-navigation) {
+    scroll-padding-bottom: calc(var(--bottom-navigation-height) + 4px);
+  }
   body {
     @apply bg-background text-copy font-sans;
     line-height: 1.6;
   }
-  :focus-visible {
-    @apply outline-3 outline-offset-3 outline-focus;
+  /* Keep the outline color stable on controls that transition colors. */
+  :where(*) {
+    outline-color: var(--color-focus);
+  }
+  :focus-visible,
+  :where(
+    input:not([type]),
+    input:is(
+      [type="text" i],
+      [type="search" i],
+      [type="email" i],
+      [type="password" i],
+      [type="tel" i],
+      [type="url" i],
+      [type="number" i]
+    ),
+    textarea
+  ):focus {
+    @apply focus-outline;
   }
 }
 
 @layer components {
+  .choice-card-radio {
+    /* The browser scrolls the whole card into view when the radio gets focus. */
+    @apply pointer-events-none absolute inset-0 size-full scroll-my-0.5 opacity-0;
+  }
+  .bottom-navigation {
+    @apply sticky bottom-0 z-10 mt-auto grid min-h-(--bottom-navigation-height) bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] shadow-[0_-4px_4px_rgb(0_0_0/0.1)];
+  }
   .app-page {
     @apply mx-auto max-w-[402px] px-5 py-12;
   }

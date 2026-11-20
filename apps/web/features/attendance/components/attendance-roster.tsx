@@ -47,7 +47,7 @@ export function AttendanceRoster({
         />
         <span
           aria-hidden="true"
-          className="relative h-5 w-9 rounded-pill bg-secondary/30 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-brand-action peer-checked:after:translate-x-4 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-3 peer-focus-visible:outline-focus"
+          className="relative h-5 w-9 rounded-pill bg-secondary/30 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-brand-action peer-checked:after:translate-x-4 peer-focus-visible:focus-outline"
         />
         참석만 보기
       </label>
@@ -80,7 +80,7 @@ export function AttendanceRoster({
                   <div
                     role="group"
                     aria-label={person.name + " 참석 상태"}
-                    className="inline-flex overflow-hidden rounded-pill bg-soft p-1"
+                    className="inline-flex gap-1 rounded-pill bg-soft p-1"
                   >
                     {(["ATTENDING", "ABSENT"] as const).map((value) => (
                       <button
@@ -90,7 +90,7 @@ export function AttendanceRoster({
                         disabled={saving}
                         onClick={() => onCorrect(person, value)}
                         className={cn(
-                          "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-[-2px]",
+                          "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold",
                           person.response.finalState === value
                             ? "bg-brand-action text-white"
                             : "text-secondary",

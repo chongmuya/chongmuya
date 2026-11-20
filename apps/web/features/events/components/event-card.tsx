@@ -21,10 +21,10 @@ export function EventCard({
   summaryUnavailable?: boolean;
 }) {
   return (
-    <article className="overflow-hidden rounded-[4px] bg-surface shadow-card">
+    <article className="rounded-[4px] bg-surface shadow-card">
       <Link
         href={homeEventPath(event, homeAction(summary).view)}
-        className="block px-5 py-4"
+        className="block rounded-[inherit] px-5 py-4"
       >
         <div className="flex items-start justify-between gap-3">
           <h3 className="min-w-0 flex-1 text-base leading-[1.2] font-medium break-words">

@@ -42,7 +42,7 @@ export function BottomSheet({
           </IconButton>
         </div>
       </header>
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pb-5">
+      <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pt-1 pb-5">
         {children}
       </div>
       <footer className="shrink-0 px-5 pb-[max(20px,env(safe-area-inset-bottom))]">

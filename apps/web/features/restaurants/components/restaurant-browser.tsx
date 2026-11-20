@@ -182,10 +182,10 @@ export function RestaurantBrowser({
                     return (
                       <article
                         key={r.id}
-                        className="overflow-hidden rounded-control bg-surface shadow-card"
+                        className="rounded-control bg-surface shadow-card"
                       >
                         <button
-                          className="relative block w-full cursor-pointer text-left"
+                          className="relative block w-full cursor-pointer overflow-hidden rounded-t-control text-left"
                           aria-label={`${r.name} 상세 보기`}
                           onClick={() => open(r.id)}
                         >
