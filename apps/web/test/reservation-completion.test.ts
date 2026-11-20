@@ -10,6 +10,7 @@ import { test } from "node:test";
 import { render, until, fill, submit, click } from "./support/form-dom";
 import { MenuForm } from "../features/reservation-completion/components/menu-form";
 import { CommandForm } from "../features/reservation-completion/components/command-form";
+import { PaymentForms } from "../features/reservation-completion/components/payment-forms";
 import type {
   Completion,
   CompletionAccess,
@@ -38,6 +39,128 @@ const fixture = () =>
     receivedAmount: 0,
     refundedAmount: 0,
   }) as Completion;
+for (const lostResponse of [false, true]) {
+  test(`receipt correction keeps the saved amount and time for the next correction (lost response: ${lostResponse})`, async () => {
+    let current: Completion = {
+      ...fixture(),
+      guidance: { ...fixture().guidance, kind: "REQUIRED", amount: 100000 },
+      confirmation: {} as NonNullable<Completion["confirmation"]>,
+      issues: [],
+      receivedAmount: 100000,
+      receipt: {
+        id: "old-receipt",
+        amount: 100000,
+        receivedAt: "2026-11-18T01:00:00.000Z",
+        recordedAt: "2026-11-18T01:00:00.000Z",
+        guidanceRevision: 1,
+        corrects: null,
+        audit: {} as NonNullable<Completion["receipt"]>["audit"],
+      },
+    };
+    const writes: Record<string, unknown>[] = [];
+    const applied = new Set<string>();
+    const access: CompletionAccess = {
+      kind: "owner",
+      accountId: `receipt-${lostResponse}`,
+      request: async <T>(_path: string, options?: RequestInit) => {
+        if (options?.method !== "POST") return structuredClone(current) as T;
+        const command = JSON.parse(String(options.body)).command;
+        writes.push(command);
+        if (!applied.has(command.requestKey)) {
+          applied.add(command.requestKey);
+          current = {
+            ...current,
+            version: current.version + 1,
+            receivedAmount: command.amount,
+            receipt: {
+              ...current.receipt!,
+              id: `receipt-${applied.size}`,
+              amount: command.amount,
+              receivedAt: command.receivedAt,
+              corrects: command.corrects,
+            },
+          };
+        }
+        if (lostResponse && writes.length === 1)
+          throw new TypeError("response lost");
+        return structuredClone(current) as T;
+      },
+    };
+    function Screen() {
+      const query = useQuery(completionQuery(current.id, access));
+      return query.data
+        ? createElement(PaymentForms, { data: query.data, access })
+        : null;
+    }
+    const view = await render(createElement(Screen));
+    const confirm = async () => {
+      await act(async () => {
+        const reason =
+          view.container.querySelector<HTMLTextAreaElement>('[name="reason"]')!;
+        Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(reason, "은행 내역 대조");
+        reason.dispatchEvent(new window.Event("input", { bubbles: true }));
+        view.container
+          .querySelector<HTMLInputElement>('input[type="checkbox"]')!
+          .click();
+      });
+    };
+    try {
+      await until(() =>
+        assert(view.container.querySelector('[name="amount"]')),
+      );
+      await fill(view.container, "amount", "150000");
+      await fill(view.container, "receivedAt", "2026-11-19T12:30");
+      await confirm();
+      await submit(view.container);
+      await until(() => assert.equal(writes.length, 1));
+      if (lostResponse) {
+        await until(() =>
+          assert.match(view.container.textContent!, /원래 요청 결과 다시 확인/),
+        );
+        await click(view.container, "원래 요청 결과 다시 확인");
+        await until(() => assert.equal(writes.length, 2));
+        assert.deepEqual(writes[1], writes[0]);
+      }
+      await until(() =>
+        assert.equal(
+          view.container.querySelector<HTMLInputElement>('[name="amount"]')!
+            .value,
+          "150000",
+        ),
+      );
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>('[name="receivedAt"]')!
+          .value,
+        "2026-11-19T12:30",
+      );
+      assert.equal(
+        view.container.querySelector<HTMLTextAreaElement>('[name="reason"]')!
+          .value,
+        "",
+      );
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          'input[type="checkbox"]',
+        )!.checked,
+        false,
+      );
+      await confirm();
+      await submit(view.container);
+      await until(() => assert.equal(applied.size, 2));
+      const next = writes.at(-1)!;
+      assert.equal(next.amount, 150000);
+      assert.equal(next.receivedAt, "2026-11-19T03:30:00.000Z");
+      assert.equal(next.expectedVersion, 2);
+      assert.equal(next.corrects, "receipt-1");
+      assert.notEqual(next.requestKey, writes[0].requestKey);
+    } finally {
+      await view.unmount();
+    }
+  });
+}
 test("menu draft preserves quantities; stale catalog needs explicit review and unchecked submission explains cause", async () => {
   const writes: Record<string, unknown>[] = [];
   const access: CompletionAccess = {
