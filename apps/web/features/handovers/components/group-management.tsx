@@ -130,7 +130,9 @@ export function GroupManagement({
               : "기존 인수인계 요청 확인"}
           </summary>
           <p className="text-sm text-muted">
-            모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요.
+            {groupHandoverEnabled
+              ? "모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요."
+              : "기존 요청의 인수인계 범위를 확인할 수 있어요."}
           </p>
           <TransferScope scope={preview.data.scope} />
           {pending ? (
