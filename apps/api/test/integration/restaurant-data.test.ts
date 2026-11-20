@@ -332,3 +332,113 @@ test("restaurant data import/update preserves identities, consent, partial field
     code: "VALIDATION_FAILED",
   });
 });
+
+test("batch update previews and execution share normalized planned identities and rollback collisions", async (t) => {
+  assert(process.env.TEST_DATABASE_URL);
+  const db = new DataSource(
+    databaseOptions({ databaseUrl: process.env.TEST_DATABASE_URL }),
+  );
+  await db.initialize();
+  t.after(() => db.destroy());
+  await db.runMigrations();
+  const service = new RestaurantDataService(new DatabaseService(db));
+  const prefix = `batch-${randomUUID()}`;
+  const fixture = restaurantDataFixture(prefix);
+  await service.import(fixture, { ...options, execute: true });
+  const ids = fixture.restaurants
+    .map((r) => restaurantSeedId("restaurant", r.key))
+    .sort((a, b) => a.localeCompare(b));
+  const read = () =>
+    Promise.all(
+      ids.map((id) => db.manager.findOneByOrFail(Restaurant, { id })),
+    );
+  const before = await read(),
+    [first, second, untouched] = before;
+  const auditCount = await db.manager.count(RestaurantOperation);
+  const identity = {
+    name: `중복 ${prefix}`,
+    address: "가상로 11",
+    latitude: null,
+    longitude: null,
+  };
+  const patch = (row: Restaurant, changes: typeof identity) => ({
+    id: row.id,
+    expectedVersion: row.version,
+    changes,
+  });
+  const unchanged = async () => {
+    assert.deepEqual(await read(), before);
+    assert.equal(await db.manager.count(RestaurantOperation), auditCount);
+  };
+
+  for (const variant of [
+    identity,
+    {
+      ...identity,
+      name: `중복\t  ${prefix}`.normalize("NFD"),
+      address: "가상로\t  11".normalize("NFD"),
+    },
+  ]) {
+    // Reverse input order: execution still follows the existing sorted ID order.
+    const batch = {
+      restaurants: [patch(second!, variant), patch(first!, identity)],
+    };
+    for (const execute of [false, true]) {
+      await assert.rejects(service.update(batch, { ...options, execute }), {
+        code: "RESTAURANT_DUPLICATE",
+      });
+      await unchanged(); // The second collision must roll back the first row and its audit.
+    }
+  }
+
+  const existing = {
+    ...identity,
+    name: untouched!.name,
+    address: untouched!.address,
+  };
+  for (const execute of [false, true]) {
+    await assert.rejects(
+      service.update(
+        { restaurants: [patch(first!, existing)] },
+        { ...options, execute },
+      ),
+      { code: "RESTAURANT_DUPLICATE" },
+    );
+    await unchanged();
+  }
+
+  // A preceding row releases its old identity; preview must not still match its old DB values.
+  const batch = {
+    restaurants: [
+      patch(second!, {
+        ...identity,
+        name: first!.name,
+        address: first!.address,
+      }),
+      patch(first!, identity),
+    ],
+  };
+  assert.equal((await service.update(batch, options)).updated, 2);
+  await unchanged();
+  const stale = structuredClone(batch);
+  stale.restaurants[0]!.expectedVersion++;
+  for (const execute of [false, true]) {
+    await assert.rejects(service.update(stale, { ...options, execute }), {
+      code: "RESTAURANT_VERSION_CONFLICT",
+    });
+    await unchanged();
+  }
+  assert.equal(
+    (await service.update(batch, { ...options, execute: true })).updated,
+    2,
+  );
+  const after = await read();
+  assert.equal(after[0]!.name, identity.name);
+  assert.equal(after[0]!.address, identity.address);
+  assert.equal(after[1]!.name, first!.name);
+  assert.equal(after[1]!.address, first!.address);
+  assert.equal(after[0]!.version, first!.version + 1);
+  assert.equal(after[1]!.version, second!.version + 1);
+  assert.deepEqual(after.slice(2), before.slice(2));
+  assert.equal(await db.manager.count(RestaurantOperation), auditCount + 2);
+});

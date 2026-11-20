@@ -27,6 +27,7 @@ import {
 } from "./types/restaurant-data.js";
 
 type Run = { actor: string; reason: string; execute?: boolean };
+type RestaurantIdentity = Pick<Restaurant, "id" | "name" | "address">;
 const descriptionKeys: PolicyDescriptionKey[] = [
   "operatingHours",
   "bookingPolicy",
@@ -106,11 +107,24 @@ export class RestaurantDataService {
   }
   private async collision(
     m: EntityManager,
-    row: Pick<Restaurant, "id" | "name" | "address">,
+    row: RestaurantIdentity,
+    planned: RestaurantIdentity[] = [],
   ) {
     const found = (await m.query(
-      "SELECT id FROM restaurants WHERE id<>$1 AND normalized_name=restaurant_identity_text($2) AND normalized_address=restaurant_identity_text($3) LIMIT 1",
-      [row.id, row.name, row.address],
+      `WITH planned AS (
+        SELECT id, restaurant_identity_text(name) AS normalized_name,
+          restaurant_identity_text(address) AS normalized_address
+        FROM jsonb_to_recordset($4::jsonb) AS p(id uuid, name text, address text)
+      ), effective AS (
+        SELECT id, normalized_name, normalized_address FROM restaurants
+        WHERE id NOT IN (SELECT id FROM planned)
+        UNION ALL
+        SELECT id, normalized_name, normalized_address FROM planned
+      )
+      SELECT id FROM effective WHERE id<>$1
+        AND normalized_name=restaurant_identity_text($2)
+        AND normalized_address=restaurant_identity_text($3) LIMIT 1`,
+      [row.id, row.name, row.address, JSON.stringify(planned)],
     )) as { id: string }[];
     if (found.length) throw new RestaurantDataError("RESTAURANT_DUPLICATE");
   }
@@ -258,6 +272,8 @@ export class RestaurantDataService {
         skipped: 0,
         updated: 0,
       };
+      // Earlier rows replace their DB identities in both preview and execution.
+      const planned: RestaurantIdentity[] = [];
       for (const input of [...restaurants].sort((a, b) =>
         targetId(a).localeCompare(targetId(b)),
       )) {
@@ -296,7 +312,7 @@ export class RestaurantDataService {
         if ((r.latitude === null) !== (r.longitude === null))
           throw new RestaurantDataError("VALIDATION_FAILED", [path]);
         if (r.name !== oldName || r.address !== oldAddress) {
-          await this.collision(m, r);
+          await this.collision(m, r, planned);
           // A changed free-form address must not keep unrelated structured coordinates/identity.
           if (r.address !== oldAddress) {
             if (!("latitude" in fields) || !("longitude" in fields))
@@ -416,6 +432,7 @@ export class RestaurantDataService {
             ...(contactId !== undefined ? { contactId } : {}),
           });
         }
+        planned.push({ id: r.id, name: r.name, address: r.address });
         result.updated++;
       }
       return result;
