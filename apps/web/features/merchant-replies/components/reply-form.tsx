@@ -105,7 +105,14 @@ export function ReplyForm({
       )}
       <section className="rounded-control bg-surface p-5 shadow-card">
         <RequestSummary snapshot={q.snapshot} />
-        <p className="mt-3 text-sm">담당자: {q.organizerName}</p>
+        <p className="mt-3 text-sm">
+          현재 담당자: {q.organizerName} {q.organizerMaskedPhone}
+        </p>
+        {q.contactChangedAt && (
+          <p className="text-caption text-muted">
+            모임 인수인계로 담당자가 변경됐어요. 원래 문의·답변 기록은 보존돼요.
+          </p>
+        )}
       </section>
       {q.response && <ReplySummary response={q.response} />}
       {!editing && !revising && q.response && (

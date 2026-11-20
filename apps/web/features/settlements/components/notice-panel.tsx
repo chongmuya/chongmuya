@@ -31,7 +31,7 @@ function NoticeForm({
     command = useSettlementCommand(a, (result) => {
       if (result.createdNoticeId) onCreated(result.createdNoticeId);
     }),
-    bank = previous?.bank ?? data.bankDefault;
+    bank = previous?.actorId === a.accountId ? previous.bank : data.bankDefault;
   const form = useForm<NoticeValues>({
     resolver: zodResolver(noticeSchema),
     defaultValues: {
@@ -225,6 +225,12 @@ function NoticeForm({
           </Button>
         </div>
       )}
+      {previous && previous.actorId !== a.accountId && (
+        <p role="alert">
+          이전 총무가 만든 문서예요. 당시 계좌를 자동으로 복사하지 않았어요. 새
+          안내에 사용할 계좌를 확인해 주세요.
+        </p>
+      )}
       <CommandStatus command={command} />
       <div className="flex gap-2">
         <Button
@@ -285,7 +291,7 @@ function NoticeDetail({
             })}{" "}
             생성
             {n.outdated &&
-              " · 현재 분담액 또는 미확인 대상·잔액과 달라 재생성 필요"}
+              " · 현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요. 당시 계좌는 보존되므로 현재 총무의 계좌를 확인해 주세요."}
           </p>
           <pre className="whitespace-pre-wrap break-words rounded-[20px] bg-choice p-5 font-sans text-base leading-relaxed">
             {n.text}

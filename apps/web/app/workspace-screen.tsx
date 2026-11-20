@@ -1,4 +1,5 @@
 "use client";
+import { Memberships } from "@/features/handovers/client";
 import { AccountSettings } from "@/features/account/client";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -168,21 +169,24 @@ export function WorkspaceContent({
   return (
     <section className="text-copy">
       {mode === "mypage" ? (
-        <GroupBoundary
-          accountId={accountId}
-          request={request}
-          groupId={groupId}
-        >
-          {(selected, groups) => (
-            <GroupSettings
-              key={`${accountId}:${selected.id}`}
-              accountId={accountId}
-              request={request}
-              selected={selected}
-              groups={groups}
-            />
-          )}
-        </GroupBoundary>
+        <>
+          <Memberships accountId={accountId} request={request} />
+          <GroupBoundary
+            accountId={accountId}
+            request={request}
+            groupId={groupId}
+          >
+            {(selected, groups) => (
+              <GroupSettings
+                key={`${accountId}:${selected.id}`}
+                accountId={accountId}
+                request={request}
+                selected={selected}
+                groups={groups}
+              />
+            )}
+          </GroupBoundary>
+        </>
       ) : eventId ? (
         <>
           {!detailPage && (

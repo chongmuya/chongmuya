@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { In, type EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
@@ -15,6 +15,105 @@ import type {
 } from "./types/notification.js";
 @Injectable()
 export class NotificationsService {
+  // Only the dispatcher that owns this claim may prove no external submission occurred.
+  async replanUnsubmitted(
+    id: string,
+    attempts: number,
+    requestId: string,
+    to: { id: string; phone: string },
+    m: EntityManager,
+  ) {
+    const row = await m.findOne(NotificationMessage, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!row || row.status !== "PROCESSING" || row.attempts !== attempts)
+      return;
+    row.status = "HELD";
+    row.errorCode = "SUBMISSION_NOT_STARTED";
+    await m.save(row);
+    await this.replanOrganizer(
+      requestId,
+      row.recipientKey.split(":")[1]!,
+      to,
+      "dispatcher",
+      createHash("sha256")
+        .update(`unsubmitted:${id}:${attempts}`)
+        .digest("hex")
+        .slice(0, 32),
+      m,
+    );
+  }
+  async messageRequest(id: string, m: EntityManager) {
+    const message = await m.findOneBy(NotificationMessage, { id });
+    return message
+      ? (await m.findOneBy(NotificationFact, { eventKey: message.eventKey }))
+          ?.requestId
+      : undefined;
+  }
+  async replanOrganizer(
+    requestId: string,
+    from: string,
+    to: { id: string; phone: string },
+    actor: string,
+    handoverId: string,
+    m: EntityManager,
+  ) {
+    const facts = await m.findBy(NotificationFact, { requestId });
+    if (!facts.length) return;
+    const rows = await m
+      .createQueryBuilder(NotificationMessage, "n")
+      .where("n.eventKey IN (:...keys)", { keys: facts.map((f) => f.eventKey) })
+      .andWhere(
+        "split_part(n.recipientKey, ':', 2) = :from AND n.recipientKey LIKE 'organizer:%'",
+        { from },
+      )
+      .orderBy("n.id", "ASC")
+      .setLock("pessimistic_write")
+      .getMany();
+    for (const row of rows) {
+      if (
+        !["PENDING", "HELD"].includes(row.status) &&
+        !(row.status === "FAILED" && row.failureStage === "SUBMISSION")
+      )
+        continue;
+      if (row.errorCode === "RECIPIENT_CHANGED") continue;
+      row.status = "HELD";
+      row.errorCode = "RECIPIENT_CHANGED";
+      row.updatedAt = new Date();
+      row.operations = [
+        ...row.operations,
+        {
+          actor,
+          reason: "모임 인수인계",
+          action: "REPLAN",
+          at: new Date().toISOString(),
+        },
+      ];
+      await m.save(row);
+      await m
+        .createQueryBuilder()
+        .insert()
+        .into(NotificationMessage)
+        .values({
+          id: randomUUID(),
+          eventKey: row.eventKey,
+          recipientKey: `organizer:${to.id}:handover:${handoverId}`,
+          phoneSnapshot: to.phone,
+          contactIdSnapshot: null,
+          text: row.text,
+          isDemo: row.isDemo,
+          status: "PENDING",
+          attempts: 0,
+          updatedAt: new Date(),
+          operations: [],
+          reports: [],
+        })
+        .orIgnore()
+        .execute();
+    }
+  }
+
   constructor(private readonly database: DatabaseService) {}
   async record(m: EntityManager, input: NotificationInput) {
     await this.recordBatch(m, [input]);

@@ -1,7 +1,7 @@
 import "./support/dom";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createElement, useState } from "react";
+import { act, createElement, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { render, until, click, fill, submit } from "./support/form-dom";
 import { ApiError } from "../shared/http/api-error";
@@ -603,7 +603,7 @@ test("deposit conflicts block new notices while stale historical text remains vi
     await until(() =>
       assert.match(
         view.container.textContent!,
-        /현재 분담액 또는 미확인 대상·잔액과 달라 재생성 필요/,
+        /현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요/,
       ),
     );
     assert.match(
@@ -612,5 +612,62 @@ test("deposit conflicts block new notices while stale historical text remains vi
     );
   } finally {
     await view.unmount();
+  }
+});
+
+test("new manager editing an inherited notice preserves its text but must enter their own bank", async () => {
+  const { NoticePanel } =
+    await import("../features/settlements/components/notice-panel");
+  const data = fixture();
+  data.summary.target = 10000;
+  data.summary.status = "IN_PROGRESS";
+  data.state.notices = [
+    {
+      id: "old",
+      title: "이전 안내",
+      createdAt: "2026-01-01T10:00:00Z",
+      calculationVersion: 1,
+      outdated: true,
+    },
+  ];
+  const a: Access = {
+    accountId: "new-manager",
+    eventId: "e",
+    request: async <T>() =>
+      ({
+        ...data.state.notices[0],
+        actorId: "previous-manager",
+        text: "당시 계좌 111-222 원문",
+        message: "원래 안내",
+        bank: { bank: "이전은행", account: "111-222", holder: "이전총무" },
+        deadline: null,
+        includePeople: false,
+        scope: "ALL",
+      }) as T,
+  };
+  const v = await render(createElement(NoticePanel, { access: a, data }));
+  try {
+    const button = [...v.container.querySelectorAll("button")].find((b) =>
+      b.textContent?.startsWith("이전 안내"),
+    );
+    assert(button);
+    await act(async () => button.click());
+    await until(() => assert(v.container.querySelector("pre")));
+    assert.match(
+      v.container.querySelector("pre")!.textContent!,
+      /당시 계좌 111-222 원문/,
+    );
+    await click(v.container, "입력 내용 수정본 만들기");
+    await until(() => assert(v.container.querySelector("[name=account]")));
+    assert.equal(
+      v.container.querySelector<HTMLInputElement>("[name=account]")!.value,
+      "",
+    );
+    assert.equal(
+      v.container.querySelector<HTMLInputElement>("[name=holder]")!.value,
+      "",
+    );
+  } finally {
+    await v.unmount();
   }
 });

@@ -1,6 +1,6 @@
 import { Column, Entity, ForeignKey, Index, PrimaryColumn } from "typeorm";
 @Entity("events")
-@Index("events_owner_creation_key", ["ownerId", "creationKey"], {
+@Index("events_owner_creation_key", ["creatorId", "creationKey"], {
   unique: true,
 })
 export class Event {
@@ -10,6 +10,10 @@ export class Event {
   @ForeignKey("accounts", "id", { name: "events_owner_id_fkey" })
   @Column({ type: "uuid", name: "owner_id" })
   ownerId!: string;
+  // Immutable creator; ownerId is the current manager, changed only by accepted handover.
+  @ForeignKey("accounts", "id", { name: "events_creator_id_fkey" })
+  @Column({ type: "uuid", name: "creator_id" })
+  creatorId!: string;
   @Index("events_group")
   @ForeignKey("groups", "id", { name: "events_group_id_fkey" })
   @Column({ type: "uuid", name: "group_id", nullable: true })

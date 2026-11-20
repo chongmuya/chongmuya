@@ -83,6 +83,11 @@ export type Completion = {
   restaurantId: string;
   restaurantName: string;
   eventName: string;
+  currentContact?: {
+    name: string;
+    maskedPhone: string;
+    changedAt: string | null;
+  };
   version: number;
   status: "PREPARING" | "CONFIRMED" | "CHECK_REQUIRED" | "CANCELLED";
   progress: string;

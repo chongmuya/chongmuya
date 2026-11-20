@@ -113,7 +113,7 @@ test("switching groups and accounts never renders another scope's cached events"
   );
   const page = render(cache, "g1", "a", null, "mypage");
   assert.match(page, /모임 추가/);
-  assert.match(page, /모임 이름 수정/);
+  assert.match(page, /모임 정보 저장/);
   assert.match(page, /모임 전환/);
   assert.doesNotMatch(page, /mypage\?view=groups&amp;group=g2/);
   cache.clear();

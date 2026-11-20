@@ -41,7 +41,8 @@ export function configureHttp(
   app.use((req: Request, res: Response, next: () => void) => {
     if (
       req.path.startsWith("/api/v1/merchant-replies/") ||
-      req.path.startsWith("/api/v1/owner/")
+      req.path.startsWith("/api/v1/owner/") ||
+      /^\/api\/v1\/(groups|handovers|favorites)(?:\/|$)/.test(req.path)
     ) {
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Referrer-Policy", "no-referrer");

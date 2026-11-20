@@ -166,7 +166,8 @@ test("personal events work without groups and event ownership is enforced for ev
     [],
   );
   assert.equal((await call(`events/${linked.id}`, a)).status, 404);
-  assert.equal((await call(`events/${linked.id}`, b)).status, 200);
+  // A mismatched owner projection cannot bypass the current group administrator.
+  assert.equal((await call(`events/${linked.id}`, b)).status, 404);
   assert.equal((await call("auth/logout", a, "POST")).status, 204);
   assert.equal((await call("events", a)).status, 401);
   assert.doesNotMatch(

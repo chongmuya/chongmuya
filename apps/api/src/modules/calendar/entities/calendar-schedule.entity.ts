@@ -1,7 +1,7 @@
-import { Column, Entity, PrimaryColumn, Index } from "typeorm";
+import { ForeignKey, Column, Entity, PrimaryColumn, Index } from "typeorm";
 @Entity("calendar_schedules")
 @Index("calendar_schedule_range", ["ownerId", "date"])
-@Index("calendar_schedule_creation", ["ownerId", "creationKey"], {
+@Index("calendar_schedule_creation", ["creatorId", "creationKey"], {
   unique: true,
 })
 export class CalendarSchedule {
@@ -10,6 +10,10 @@ export class CalendarSchedule {
   })
   id!: string;
   @Column({ type: "uuid", name: "owner_id" }) ownerId!: string;
+  // Immutable creator; ownerId is the current manager, changed only by accepted handover.
+  @ForeignKey("accounts", "id", { name: "calendar_schedules_creator_id_fkey" })
+  @Column({ type: "uuid", name: "creator_id" })
+  creatorId!: string;
   @Column({ type: "uuid", name: "group_id", nullable: true }) groupId!:
     string | null;
   @Column({ type: "uuid", name: "creation_key" }) creationKey!: string;

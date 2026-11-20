@@ -30,6 +30,23 @@ export class AuthService {
     private readonly phone: PhoneVerificationService,
     private readonly terms: SignupTermsService,
   ) {}
+  // Exact, verified identity only; deliberately no account search endpoint.
+  async groupAccount(
+    m: EntityManager,
+    identity: { id: string } | { email: string },
+  ) {
+    const a = await m.findOneBy(Account, identity);
+    if (
+      !a ||
+      a.accountType !== "organizer" ||
+      !a.emailVerifiedAt ||
+      !a.phoneVerifiedAt ||
+      !a.name ||
+      !a.phone
+    )
+      throw new DomainHttpException("GROUP_TARGET_UNAVAILABLE");
+    return { id: a.id, name: a.name, email: a.email, phone: a.phone };
+  }
   async assertOwnerAccount(id: string, manager: EntityManager) {
     if (!(await manager.existsBy(Account, { id, accountType: "owner" })))
       throw new DomainHttpException("OWNER_REQUIRED");

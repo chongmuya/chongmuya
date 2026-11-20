@@ -13,6 +13,7 @@ export class AddedGroupMembersDto {
 }
 
 export class GroupMemberDto {
+  @ApiProperty() version!: number;
   @ApiProperty({ type: String, nullable: true }) label!: string | null;
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GroupManagement } from "@/features/handovers/client";
 import { useState } from "react";
 import { GroupSwitcher } from "./group-switcher";
 import type { SessionRequest } from "@/features/auth/types";
@@ -37,17 +38,28 @@ export function GroupSettings({
           onClose={() => setSwitching(false)}
         />
       )}
+      <h2 className="mb-3 text-xl font-semibold">기본 정보</h2>
       <GroupForm
         accountId={accountId}
         request={request}
         group={selected}
-        title="모임 이름 수정"
+        title="모임 정보 저장"
       />
-      <GroupRoster
+      <GroupManagement
         accountId={accountId}
         groupId={selected.id}
         request={request}
       />
+      <details className="mt-7 rounded-card bg-surface p-5 shadow-card">
+        <summary className="cursor-pointer font-semibold">
+          기본 명단 관리 · {selected.memberCount}명
+        </summary>
+        <GroupRoster
+          accountId={accountId}
+          groupId={selected.id}
+          request={request}
+        />
+      </details>
       <Link href="/groups/new" className={buttonStyles({ className: "mt-6" })}>
         모임 추가
       </Link>

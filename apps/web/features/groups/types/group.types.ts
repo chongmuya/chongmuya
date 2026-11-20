@@ -1,10 +1,12 @@
+import type { GroupType } from "./group-type";
 export type Group = {
   id: string;
   name: string;
-  groupType: string | null;
+  groupType: GroupType | null;
   memberCount: number;
 };
 export type GroupMember = {
+  version: number;
   id: string;
   name: string;
   phoneLast4: string | null;

@@ -23,6 +23,12 @@ const dto = (f: EventFile) => ({
 });
 @Injectable()
 export class FilesService {
+  async handoverCount(events: string[], m: EntityManager) {
+    return events.length
+      ? m.countBy(EventFile, { eventId: In(events), status: "READY" })
+      : 0;
+  }
+
   constructor(
     private readonly notifications: NotificationsService,
     private readonly database: DatabaseService,
@@ -166,10 +172,11 @@ export class FilesService {
       /* Provider details must never escape. */
     }
     const completed = await db.transaction(async (m) => {
-      const eventInfo = await this.events.assertOwned(owner, event, m, true);
+      // Complete only the previously authorized immutable upload lease.
+      const eventInfo = await this.events.lockReservationEvent(event, m);
       const result = await m.update(
         EventFile,
-        { id, version: row.version, status: "UPLOADING" },
+        { id, eventId: event, version: row.version, status: "UPLOADING" },
         { status: success ? "READY" : "FAILED", updatedAt: new Date() },
       );
       if (result.affected === 1) {
@@ -183,7 +190,7 @@ export class FilesService {
             revision: row.version,
             accounts: [
               {
-                id: owner,
+                id: eventInfo.ownerId,
                 title: "첨부 등록이 완료됐어요",
                 summary: `${eventInfo.name} · 행사 자료에서 확인할 수 있어요.`,
                 destination: `/events?event=${event}&view=record`,
@@ -202,6 +209,8 @@ export class FilesService {
       );
       return false;
     });
+    // Do not return metadata to the former manager after durable completion.
+    await this.events.assertOwned(owner, event, db.manager);
     if (!completed) throw new DomainHttpException("FILE_BUSY");
     if (!success) throw new DomainHttpException("FILE_UNAVAILABLE");
     return dto({ ...row, status: "READY" });

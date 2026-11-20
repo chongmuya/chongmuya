@@ -32,6 +32,8 @@ export type MerchantInquiry = {
   restaurantName: string;
   snapshot: RequestSnapshot;
   organizerName: string;
+  organizerMaskedPhone?: string;
+  contactChangedAt?: string | null;
   version: number;
   response: Reply | null;
   defaults: {

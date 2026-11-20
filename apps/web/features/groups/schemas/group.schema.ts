@@ -1,6 +1,10 @@
 import { z } from "zod";
+import { GROUP_TYPES } from "../types/group-type";
+
+export const groupTypeSchema = z.enum(["", ...GROUP_TYPES]);
 
 export const groupSchema = z.object({
+  groupType: groupTypeSchema.optional(),
   name: z
     .string()
     .trim()

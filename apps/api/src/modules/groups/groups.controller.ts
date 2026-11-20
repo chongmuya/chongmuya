@@ -1,4 +1,9 @@
 import {
+  InvitationInput,
+  InvitationTokenInput,
+  EditGroupMemberInput,
+} from "./dto/request/membership.request.dto.js";
+import {
   Body,
   Controller,
   Get,
@@ -30,6 +35,58 @@ import { GroupsService } from "./groups.service.js";
 @Controller("api/v1/groups")
 export class GroupsController {
   constructor(private readonly groups: GroupsService) {}
+  @Get("memberships")
+  memberships(@CurrentUser() user: AuthUser) {
+    return this.groups.membershipBasics(user.id);
+  }
+  @Get(":groupId/accounts")
+  accounts(
+    @CurrentUser() user: AuthUser,
+    @Param("groupId", ParseUUIDPipe) id: string,
+  ) {
+    return this.groups.membershipState(user.id, id);
+  }
+  @Post(":groupId/invitations")
+  invite(
+    @CurrentUser() user: AuthUser,
+    @Param("groupId", ParseUUIDPipe) id: string,
+    @Body() input: InvitationInput,
+  ) {
+    return this.groups.invite(user.id, id, input);
+  }
+  @Post("invitations/:id/preview")
+  invitation(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() input: InvitationTokenInput,
+  ) {
+    return this.groups.invitation(user.id, id, input.token);
+  }
+  @Post("invitations/:id/accept")
+  acceptInvitation(
+    @CurrentUser() user: AuthUser,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() input: InvitationTokenInput,
+  ) {
+    return this.groups.invitation(user.id, id, input.token, true);
+  }
+  @Post(":groupId/invitations/:id/cancel")
+  cancelInvitation(
+    @CurrentUser() user: AuthUser,
+    @Param("groupId", ParseUUIDPipe) groupId: string,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return this.groups.cancelInvitation(user.id, groupId, id);
+  }
+  @Patch(":groupId/members/:memberId")
+  editMember(
+    @CurrentUser() user: AuthUser,
+    @Param("groupId", ParseUUIDPipe) groupId: string,
+    @Param("memberId", ParseUUIDPipe) memberId: string,
+    @Body() input: EditGroupMemberInput,
+  ) {
+    return this.groups.editMember(user.id, groupId, memberId, input);
+  }
   @Get()
   @Header("Cache-Control", "no-store")
   @ApiOkResponse({ type: [GroupDto] })

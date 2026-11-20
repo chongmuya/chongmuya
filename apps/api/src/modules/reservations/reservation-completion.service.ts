@@ -193,6 +193,11 @@ export class ReservationCompletionService {
       restaurantId: target.restaurantId,
       restaurantName: target.restaurantName,
       eventName: request.snapshot.eventName,
+      currentContact: {
+        name: request.currentContactName ?? request.contactName,
+        maskedPhone: `${(request.currentContactPhone ?? request.contactPhone).slice(0, 3)}-****-${(request.currentContactPhone ?? request.contactPhone).slice(-4)}`,
+        changedAt: request.contactChanges.at(-1)?.at ?? null,
+      },
       version: r.version,
       status: r.status,
       progress: completionStatus(s),

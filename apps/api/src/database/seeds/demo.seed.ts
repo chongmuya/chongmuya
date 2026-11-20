@@ -5,6 +5,7 @@ import {
   hashPassword,
   passwordPattern,
 } from "../../modules/auth/utils/password.js";
+import { GroupMembership } from "../../modules/groups/entities/group-membership.entity.js";
 import { Group } from "../../modules/groups/entities/group.entity.js";
 import { GroupMember } from "../../modules/groups/entities/group-member.entity.js";
 import { Event } from "../../modules/events/entities/event.entity.js";
@@ -227,10 +228,16 @@ export async function seedDemo(
         id,
         ownerId,
         name: ["늘봄 동아리", "늘봄 운영팀", "다온 모임"][i]!,
-        groupType: "친목",
+        groupType: "친목 모임",
         creationKey: demoId(`group-key:${i}`),
         creationDigest: digest({ fixture: i }),
         createdAt: now,
+      });
+      await m.insert(GroupMembership, {
+        groupId: id,
+        accountId: ownerId,
+        role: "ADMIN",
+        joinedAt: now,
       });
       await m.insert(
         GroupMember,

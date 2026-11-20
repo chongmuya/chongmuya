@@ -219,6 +219,7 @@ export class AttendanceService {
   ) {
     const found = await manager.findOneBy(AttendanceRound, { shareId });
     if (!found || found.revokedAt) throw new NotFoundException();
+    if (lock) await this.events.lockReservationEvent(found.eventId, manager);
     const event = await manager.findOne(Event, {
       where: { id: found.eventId },
       ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),

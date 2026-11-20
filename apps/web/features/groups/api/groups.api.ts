@@ -30,7 +30,10 @@ export const renameGroup = (
 ) =>
   request<Group>(`/api/v1/groups/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...input,
+      groupType: input.groupType === "" ? null : input.groupType,
+    }),
   });
 
 export const addGroupMembers = (
@@ -42,3 +45,14 @@ export const addGroupMembers = (
     `/api/v1/groups/${encodeURIComponent(id)}/members`,
     { method: "POST", body: JSON.stringify(input) },
   );
+
+export const updateMember = (
+  request: SessionRequest,
+  groupId: string,
+  memberId: string,
+  body: object,
+) =>
+  request(`/api/v1/groups/${groupId}/members/${memberId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });

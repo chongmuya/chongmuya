@@ -1,3 +1,4 @@
+import { EventsService } from "../events/events.service.js";
 import { Injectable } from "@nestjs/common";
 import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
@@ -10,12 +11,13 @@ import { ReservationManagementLink } from "./entities/reservation-progress.entit
 import { SelectedReservation } from "./entities/selected-reservation.entity.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
 import { MessageGateway } from "./providers/message.gateway.js";
-import type { ReservationRequest } from "./entities/reservation-request.entity.js";
+import { ReservationRequest } from "./entities/reservation-request.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 @Injectable()
 export class ReservationNotificationsService {
   constructor(
     private readonly database: DatabaseService,
+    private readonly events: EventsService,
     private readonly notices: NotificationsService,
     private readonly gateway: MessageGateway,
     private readonly config: ConfigService,
@@ -140,6 +142,43 @@ export class ReservationNotificationsService {
       retry,
     );
     if (!row) return;
+    if (row.recipientKey.startsWith("organizer:")) {
+      const db = await this.database.connect();
+      const requestId = await this.notices.messageRequest(row.id, db.manager);
+      const seed = requestId
+        ? await db.manager.findOneBy(ReservationRequest, { id: requestId })
+        : null;
+      if (!seed) {
+        await this.notices.hold(row.id, "RECIPIENT_CHANGED");
+        return;
+      }
+      const changed = await db.transaction(async (m) => {
+        await this.events.lockReservationEvent(seed.eventId, m);
+        const request = await m.findOneOrFail(ReservationRequest, {
+          where: { id: seed.id },
+          lock: { mode: "pessimistic_write" },
+        });
+        const recipient = request.currentContactAccountId ?? request.id;
+        const phone = request.currentContactPhone ?? request.contactPhone;
+        if (
+          row.recipientKey.split(":")[1] === recipient &&
+          row.phoneSnapshot === phone
+        )
+          return false;
+        await this.notices.replanUnsubmitted(
+          row.id,
+          row.attempts,
+          request.id,
+          { id: recipient, phone },
+          m,
+        );
+        return true;
+      });
+      if (changed) {
+        await this.dispatchRequest(seed.id);
+        return;
+      }
+    }
     if (
       row.recipientKey.startsWith("merchant:") ||
       row.recipientKey.startsWith("reservation:")

@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -12,6 +13,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 import { GroupMemberInput } from "./group-member.request.dto.js";
+import { GROUP_TYPES, type GroupType } from "../../types/group-type.js";
 
 export class CreateGroupInput {
   @ApiProperty({ maxLength: 100 })
@@ -22,14 +24,13 @@ export class CreateGroupInput {
   @Length(1, 100)
   name!: string;
 
-  @ApiPropertyOptional({ nullable: true, maxLength: 40 })
+  @ApiPropertyOptional({ nullable: true, enum: GROUP_TYPES })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim() : value,
   )
   @IsOptional()
-  @IsString()
-  @Length(1, 40)
-  groupType?: string | null;
+  @IsIn(GROUP_TYPES)
+  groupType?: GroupType | null;
 
   // Old clients can create a group without a roster; the new flow always supplies a key.
   @ApiPropertyOptional({ format: "uuid" })
