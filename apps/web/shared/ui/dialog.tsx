@@ -38,6 +38,7 @@ export function Dialog({
   labelledBy,
   describedBy,
   initialFocusRef,
+  returnFocusRef,
   busy = false,
   showCloseButton = false,
   dismissOnBackdrop = false,
@@ -48,6 +49,7 @@ export function Dialog({
   labelledBy: string;
   describedBy?: string;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   busy?: boolean;
   showCloseButton?: boolean;
   dismissOnBackdrop?: boolean;
@@ -57,17 +59,17 @@ export function Dialog({
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current!;
-    const previousFocus = document.activeElement;
+    const returnFocus = returnFocusRef?.current ?? document.activeElement;
     dialog.showModal();
     const unlockScroll = lockScroll(document.body);
     initialFocusRef?.current?.focus();
     return () => {
       dialog.close();
       unlockScroll();
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
-        previousFocus.focus({ preventScroll: true });
+      if (returnFocus instanceof HTMLElement && returnFocus.isConnected)
+        returnFocus.focus({ preventScroll: true });
     };
-  }, [initialFocusRef]);
+  }, [initialFocusRef, returnFocusRef]);
   return (
     <dialog
       ref={ref}

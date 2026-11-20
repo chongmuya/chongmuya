@@ -19,7 +19,8 @@ export type ColumnSelection = {
   header: boolean;
 };
 export const normalizeName = (name: string) => name.trim().normalize("NFC");
-const mobileSource = "01[016789][ -]*\\d{3,4}[ -]*\\d{4}";
+// Sheets can drop the leading zero when an 010 number is stored as a number.
+const mobileSource = "(?:01[016789][ -]*\\d{3,4}[ -]*\\d{4}|10\\d{8})";
 export const isPersonName = (name: string) =>
   /\p{L}/u.test(name) &&
   !new RegExp(mobileSource).test(name) &&
