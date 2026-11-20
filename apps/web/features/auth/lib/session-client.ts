@@ -127,6 +127,7 @@ export class SessionClient {
   async request<T>(
     path: `/api/v1/${string}`,
     options: RequestInit = {},
+    timeoutMs?: number,
   ): Promise<T> {
     const generation = this.generation;
     const revision = this.revision;
@@ -135,7 +136,7 @@ export class SessionClient {
     try {
       let result: T;
       try {
-        result = await this.transport<T>(path, options);
+        result = await this.transport<T>(path, options, timeoutMs);
       } catch (error) {
         if (!(error instanceof ApiError) || error.code !== "ACCESS_EXPIRED")
           throw error;
@@ -144,7 +145,7 @@ export class SessionClient {
         if (revision === this.revision) await this.refresh();
         if (generation !== this.generation || this.ending)
           throw new ApiError("세션이 종료되었습니다.", 401, "SESSION_INVALID");
-        result = await this.transport<T>(path, options); // One retry only.
+        result = await this.transport<T>(path, options, timeoutMs); // One retry only.
       }
       if (generation !== this.generation)
         throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");

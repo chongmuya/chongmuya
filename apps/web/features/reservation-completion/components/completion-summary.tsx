@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { buttonStyles } from "@/shared/ui/button";
 import { koreanDateLabel } from "@/shared/lib/korean-date";
+import { auditLabel } from "../lib/audit-label";
 import type { Completion } from "../types/completion.types";
 export const won = (n: number | null | undefined) =>
   n === null || n === undefined ? "미확인" : `${n.toLocaleString("ko-KR")}원`;
@@ -18,6 +19,7 @@ export const progressLabels: Record<string, string> = {
   CANCELLED: "예약 취소 처리가 완료됐어요",
 };
 const issueLabels: Record<string, string> = {
+  EVENT_STARTED: "행사가 시작되어 매장의 명시적인 진행 확인이 필요해요",
   MENU_LATE: "메뉴 제출 기한 경과",
   PAYMENT_LATE: "입금 기한 경과",
   TRANSFER_REVIEW: "신고 금액·안내 차수 또는 송금 지연 확인 필요",
@@ -29,10 +31,36 @@ const issueLabels: Record<string, string> = {
 export function CompletionSummary({
   data: q,
   organizer,
+  compact = false,
 }: {
   data: Completion;
   organizer: boolean;
+  compact?: boolean;
 }) {
+  if (compact)
+    return (
+      <section className="space-y-3">
+        <h2 className="text-xl font-bold">
+          {progressLabels[q.progress] ?? "메뉴·송금 안내"}
+        </h2>
+        <p className="text-sm text-secondary">
+          {q.restaurantName} · {q.agreement.expectedGuests}명<br />
+          {koreanDateLabel(q.agreement.startsAt)}
+        </p>
+        {q.progress === "GUIDANCE_PENDING" && (
+          <p className="text-sm text-brand-action">
+            예약금 안내를 준비하고 있어요. 메뉴는 임시 저장할 수 있어요.
+          </p>
+        )}
+        {q.issues
+          .filter((i) => i !== "GUIDANCE_REVIEW" && issueLabels[i])
+          .map((i) => (
+            <p key={i} className="text-sm text-brand-action">
+              {issueLabels[i]}
+            </p>
+          ))}
+      </section>
+    );
   return (
     <>
       <section className="space-y-6 rounded-card bg-surface p-5 py-8 shadow-card">
@@ -65,7 +93,7 @@ export function CompletionSummary({
             참석 관리하러 가기
           </Link>
         )}
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
+        <dl className="grid grid-cols-[minmax(64px,auto)_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
           <dt className="text-muted">매장</dt>
           <dd>{q.restaurantName}</dd>
           <dt className="text-muted">인원</dt>
@@ -83,9 +111,7 @@ export function CompletionSummary({
               <dt className="text-muted">확정 시각</dt>
               <dd>{koreanDateLabel(q.confirmation.at)}</dd>
               <dt className="text-muted">확인자·방법</dt>
-              <dd>
-                {q.confirmation.audit.confirmer} · {q.confirmation.audit.method}
-              </dd>
+              <dd>{auditLabel(q.confirmation.audit)}</dd>
             </>
           )}
           {q.cancellation && (
@@ -132,8 +158,10 @@ export function CompletionSummary({
         )}
       </section>
       {q.order && (
-        <section className="rounded-card bg-surface p-5 shadow-card">
-          <h3 className="font-semibold">전달한 메뉴</h3>
+        <details className="rounded-card bg-surface p-5 shadow-card">
+          <summary className="cursor-pointer font-semibold">
+            전달한 메뉴 · {won(q.order.total)}
+          </summary>
           <ul className="my-4 space-y-3">
             {q.order.lines.map((l) => (
               <li key={l.id} className="flex justify-between gap-3 text-sm">
@@ -152,7 +180,7 @@ export function CompletionSummary({
             예약금·별도 이용료와 구분한 메뉴 금액이에요. 전달 후 변경은 변경
             문의로 진행해요.
           </p>
-        </section>
+        </details>
       )}
     </>
   );

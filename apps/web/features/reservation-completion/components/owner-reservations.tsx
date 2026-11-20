@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Account, SessionRequest } from "@/features/auth/types";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { buttonStyles } from "@/shared/ui/button";
-import type { Completion } from "../types/completion.types";
+import { ownerReservationsQuery } from "../api/completion.api";
 import { CompletionWorkspace } from "./completion-workspace";
 import { progressLabels } from "./completion-summary";
 export function OwnerReservations({
@@ -17,10 +17,7 @@ export function OwnerReservations({
   reservationId?: string;
 }) {
   const list = useQuery({
-    queryKey: ["user", account.id, "owner", "reservations"],
-    queryFn: ({ signal }) =>
-      request<Completion[]>("/api/v1/owner/reservations", { signal }),
-    retry: false,
+    ...ownerReservationsQuery(account.id, request),
     enabled: !reservationId,
   });
   return (

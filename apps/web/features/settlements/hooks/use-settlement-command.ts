@@ -4,8 +4,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { ApiError } from "@/shared/http/api-error";
 import { settlementKey, settlementPath } from "../api/settlement.api";
-import type { Access, Detail } from "../types/settlement.types";
-export function useSettlementCommand(a: Access) {
+import type { Access, CommandResult } from "../types/settlement.types";
+export function useSettlementCommand(
+  a: Access,
+  onApplied?: (result: CommandResult) => void,
+) {
   const cache = useQueryClient(),
     active = useActiveScreen(),
     attempt = useRef<Record<string, unknown> | null>(null),
@@ -16,7 +19,7 @@ export function useSettlementCommand(a: Access) {
         ...structuredClone(input),
         requestKey: crypto.randomUUID(),
       };
-      return a.request<Detail>(settlementPath(a), {
+      return a.request<CommandResult>(settlementPath(a), {
         method: "POST",
         body: JSON.stringify({ command: attempt.current }),
       });
@@ -36,6 +39,7 @@ export function useSettlementCommand(a: Access) {
       void cache.invalidateQueries({
         queryKey: ["user", a.accountId, "files", a.eventId],
       });
+      if (active.current) onApplied?.(data);
     },
     onError: (error) => {
       const rejected =

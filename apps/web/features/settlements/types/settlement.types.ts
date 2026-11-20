@@ -123,3 +123,4 @@ export type Access = {
   eventId: string;
   request: import("@/features/auth/types").SessionRequest;
 };
+export type CommandResult = Detail & { createdNoticeId: string | null };

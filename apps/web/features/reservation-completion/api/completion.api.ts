@@ -47,3 +47,14 @@ export const executeCompletion = (
     method: "POST",
     body: JSON.stringify({ command }),
   });
+
+export const ownerReservationsQuery = (
+  accountId: string,
+  request: import("@/features/auth/types").SessionRequest,
+) =>
+  queryOptions({
+    queryKey: ["user", accountId, "owner", "reservations"],
+    queryFn: ({ signal }) =>
+      request<Completion[]>("/api/v1/owner/reservations", { signal }),
+    retry: false,
+  });

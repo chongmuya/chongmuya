@@ -212,7 +212,6 @@ export class ReservationChangesService {
       raw,
       operator ? "operator" : "organizer",
       async (c, input) => {
-        this.completion.active(c);
         const change = await c.m.findOneBy(ReservationChange, {
           id: input.changeId,
           reservationId: id,
@@ -222,7 +221,16 @@ export class ReservationChangesService {
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
         const proposal = change.proposal,
           s = c.state;
-        if (change.kind === "CANCEL") {
+        if (change.kind === "REFUND") {
+          if (
+            !s.cancellation ||
+            proposal.refundExpected === null ||
+            proposal.refundExpected > (s.receipt?.amount ?? 0)
+          )
+            throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+          s.refundExpected = proposal.refundExpected;
+        } else if (change.kind === "CANCEL") {
+          this.completion.active(c);
           if (
             proposal.refundExpected !== null &&
             proposal.refundExpected > (s.receipt?.amount ?? 0)
@@ -242,6 +250,7 @@ export class ReservationChangesService {
             c.m,
           );
         } else {
+          this.completion.active(c);
           if (proposal.refundExpected !== null)
             throw new DomainHttpException("VALIDATION_FAILED");
           this.validateAgreement(proposal.agreement);
@@ -267,9 +276,11 @@ export class ReservationChangesService {
         await this.completion.notify(
           c,
           "CHANGE_APPLIED",
-          change.kind === "CANCEL"
-            ? "예약 취소가 완료됐어요. 환불은 별도로 확인해 주세요."
-            : "총무가 변경 제안을 수락했어요. 새 합의 조건과 남은 확인 사항을 확인해 주세요.",
+          change.kind === "REFUND"
+            ? "총무가 환불 예정액을 수락했어요. 실제 반환은 별도로 확인해 주세요."
+            : change.kind === "CANCEL"
+              ? "예약 취소가 완료됐어요. 환불은 별도로 확인해 주세요."
+              : "총무가 변경 제안을 수락했어요. 새 합의 조건과 남은 확인 사항을 확인해 주세요.",
           "both",
         );
       },
@@ -284,7 +295,6 @@ export class ReservationChangesService {
       raw,
       "merchant",
       async (c, input) => {
-        this.completion.active(c);
         const change = await c.m.findOneBy(ReservationChange, {
           id: input.changeId,
           reservationId: id,
@@ -292,6 +302,10 @@ export class ReservationChangesService {
         });
         if (!change)
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+        if (change.kind === "REFUND") {
+          if (!c.state.cancellation)
+            throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+        } else this.completion.active(c);
         change.status = "REJECTED";
         change.resolvedAt = new Date();
         await c.m.save(change);
@@ -299,7 +313,9 @@ export class ReservationChangesService {
         await this.completion.notify(
           c,
           "CHANGE_REJECTED",
-          "변경·취소 문의의 처리 결과가 등록됐어요. 기존 예약 조건은 유지돼요.",
+          change.kind === "REFUND"
+            ? "환불 예정액 제안이 철회됐어요. 기존 합의 금액은 유지돼요."
+            : "변경·취소 문의의 처리 결과가 등록됐어요. 기존 예약 조건은 유지돼요.",
           "organizer",
         );
       },
@@ -349,7 +365,7 @@ export class ReservationChangesService {
     return this.completion.write(
       id,
       p,
-      "REFUND_PLAN",
+      "REFUND_PROPOSED",
       commandSchema
         .extend({ amount: money, reason: z.string().trim().min(1).max(500) })
         .strict(),
@@ -361,12 +377,36 @@ export class ReservationChangesService {
           input.amount > (c.state.receipt?.amount ?? 0)
         )
           throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
-        c.state.refundExpected = input.amount;
+        if (
+          await c.m.existsBy(ReservationChange, {
+            reservationId: id,
+            status: In(["REQUESTED", "PROPOSED"]),
+          })
+        )
+          throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
         c.audit.reason = input.reason;
+        await c.m.insert(ReservationChange, {
+          id: randomUUID(),
+          reservationId: id,
+          kind: "REFUND",
+          subject: "OTHER",
+          reason: "환불 예정액 합의",
+          status: "PROPOSED",
+          proposal: {
+            agreement: c.state.agreement,
+            order: c.state.order,
+            guidance: c.state.guidance,
+            refundExpected: input.amount,
+            reason: input.reason,
+            audit: c.audit,
+          },
+          createdAt: new Date(),
+          resolvedAt: null,
+        });
         await this.completion.notify(
           c,
-          "REFUND_PLAN",
-          "매장이 환불 예정액을 확인했어요. 실제 반환 확인과 구분해 주세요.",
+          "REFUND_PROPOSED",
+          "매장이 환불 예정액을 제안했어요. 총무가 수락하기 전에는 기존 합의 금액이 유지돼요.",
           "organizer",
         );
       },

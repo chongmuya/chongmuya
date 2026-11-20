@@ -54,7 +54,8 @@ export class ReservationChange {
   })
   @Column({ type: "uuid", name: "reservation_id" })
   reservationId!: string;
-  @Column({ type: "varchar", length: 10 }) kind!: "CHANGE" | "CANCEL";
+  @Column({ type: "varchar", length: 10 }) kind!:
+    "CHANGE" | "CANCEL" | "REFUND";
   @Column({ type: "varchar", length: 16 }) subject!: string;
   @Column({ type: "varchar", length: 100 }) reason!: string;
   @Column({ type: "varchar", length: 16 }) status!:

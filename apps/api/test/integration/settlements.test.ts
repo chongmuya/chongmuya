@@ -157,7 +157,21 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
     includePeople: true,
     scope: "UNCONFIRMED",
   };
-  state = await post(notice);
+  const noticeCommand = {
+    ...notice,
+    requestKey: randomUUID(),
+    expectedVersion: state.state.version,
+  };
+  const created = await json<View & { createdNoticeId: string }>(
+    await call(path, owner, "POST", { command: noticeCommand }),
+  );
+  const recovered = await json<View & { createdNoticeId: string }>(
+    await call(path, owner, "POST", { command: noticeCommand }),
+  );
+  assert.equal(created.createdNoticeId, noticeCommand.requestKey);
+  assert.equal(recovered.createdNoticeId, created.createdNoticeId);
+  assert.equal(recovered.state.notices.length, 1);
+  state = recovered;
   const oldId = state.state.notices[0]!.id,
     oldText = await json<{ text: string }>(
       await call(`${path}/notices/${oldId}`, owner),

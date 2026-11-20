@@ -7,6 +7,7 @@ import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import { completionQuery, completionKey } from "../api/completion.api";
 import type { CompletionAccess } from "../types/completion.types";
+import { auditLabel } from "../lib/audit-label";
 import { CompletionSummary, GuidanceSummary } from "./completion-summary";
 import { MenuForm } from "./menu-form";
 import { PaymentForms } from "./payment-forms";
@@ -24,7 +25,7 @@ const actionLabels: Record<string, string> = {
   CHANGE_APPLIED: "합의 적용",
   CHANGE_REJECTED: "처리 불가 안내",
   REFUND_RECORDED: "실제 반환 기록",
-  REFUND_PLAN: "환불 예정액 확인",
+  REFUND_PROPOSED: "환불 예정액 제안",
   MANAGEMENT_LINK: "예약 관리 링크 변경",
 };
 export function CompletionWorkspace({
@@ -79,13 +80,71 @@ export function CompletionWorkspace({
           최신 내용을 확인하지 못했어요. 입력을 유지한 채 다시 확인해 주세요.
         </ErrorState>
       )}
-      <CompletionSummary data={q} organizer={access.kind === "organizer"} />
-      <GuidanceSummary data={q} />
+      <ol
+        aria-label="예약 진행 단계"
+        className="grid grid-cols-4 text-center text-xs text-secondary"
+      >
+        {["매장 선택", "메뉴·송금", "매장 확인", "예약 확정"].map(
+          (label, index) => {
+            const step = q.confirmation ? 3 : q.order ? 2 : 1;
+            return (
+              <li
+                key={label}
+                aria-current={index === step ? "step" : undefined}
+                className={`border-t-2 px-1 pt-3 ${index <= step ? "border-brand text-brand-action" : "border-border"}`}
+              >
+                {label}
+              </li>
+            );
+          },
+        )}
+      </ol>
+      <CompletionSummary
+        data={q}
+        organizer={access.kind === "organizer"}
+        compact={access.kind === "organizer" && !q.order && !q.cancellation}
+      />
+      {(access.kind !== "organizer" || q.order || q.cancellation) && (
+        <details className="rounded-card bg-surface p-5 shadow-card">
+          <summary className="cursor-pointer font-semibold">
+            예약금·송금 안내 확인
+          </summary>
+          <div className="mt-4">
+            <GuidanceSummary data={q} />
+          </div>
+        </details>
+      )}
       {access.kind === "organizer" && !q.order && !q.cancellation && (
         <MenuForm data={q} access={access} />
       )}
-      <PaymentForms data={q} access={access} />
-      <ChangeForms data={q} access={access} />
+      {q.confirmation && access.kind === "organizer" ? (
+        q.guidance.kind === "REQUIRED" ? (
+          <details className="rounded-card bg-surface p-5 shadow-card">
+            <summary className="cursor-pointer font-semibold">
+              추가 송금 사실 신고
+            </summary>
+            <div className="mt-4">
+              <PaymentForms data={q} access={access} />
+            </div>
+          </details>
+        ) : null
+      ) : (
+        <PaymentForms data={q} access={access} />
+      )}
+      <details
+        open={q.cancellation ? true : undefined}
+        className="rounded-card bg-surface p-5 shadow-card"
+      >
+        <summary className="cursor-pointer font-semibold text-brand-action">
+          {q.cancellation ? "환불 내용 확인·변경" : "변경·취소 문의하기"}
+          {q.changes.some(
+            (c) => c.status === "PROPOSED" || c.status === "REQUESTED",
+          ) && <span className="mt-2 block text-xs">확인할 문의가 있어요</span>}
+        </summary>
+        <div className="mt-5">
+          <ChangeForms data={q} access={access} />
+        </div>
+      </details>
       <details className="rounded-control bg-surface p-5 text-xs shadow-card">
         <summary>예약 기록·문자 상태</summary>
         <ul className="mt-4 space-y-4">
@@ -94,8 +153,7 @@ export function CompletionWorkspace({
               {actionLabels[h.action] ?? "예약 기록"} ·{" "}
               {koreanDateLabel(h.audit.confirmedAt)}
               <p>
-                확인자 {h.audit.confirmer} · 방법 {h.audit.method} · 기록자{" "}
-                {h.audit.recorder} · 기록 시각{" "}
+                {auditLabel(h.audit)} · 기록 시각{" "}
                 {koreanDateLabel(h.audit.recordedAt)}
               </p>
               <p>{h.audit.reason}</p>
@@ -142,7 +200,7 @@ export function CompletionWorkspace({
                   HELD: "발송 보류",
                   UNKNOWN: "접수 확인 필요 · 자동 재발송하지 않아요",
                 } as Record<string, string>
-              )[n.status] ?? n.status}
+              )[n.status] ?? "발송 상태 확인 필요"}
             </li>
           ))}
         </ul>

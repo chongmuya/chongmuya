@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import Image from "next/image";
+import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
-import { settlementKey, settlementPath } from "../api/settlement.api";
+import { noticeQuery } from "../api/settlement.api";
 import type { Access, Detail, Notice } from "../types/settlement.types";
 import { noticeSchema, type NoticeValues } from "../schemas/notice.schema";
 import { useSettlementCommand } from "../hooks/use-settlement-command";
@@ -17,14 +19,18 @@ function NoticeForm({
   data,
   previous,
   onClose,
+  onCreated,
 }: {
   a: Access;
   data: Detail;
   previous?: Notice;
   onClose: () => void;
+  onCreated: (id: string) => void;
 }) {
   const [base, setBase] = useState(data.state.version),
-    command = useSettlementCommand(a),
+    command = useSettlementCommand(a, (result) => {
+      if (result.createdNoticeId) onCreated(result.createdNoticeId);
+    }),
     bank = previous?.bank ?? data.bankDefault;
   const form = useForm<NoticeValues>({
     resolver: zodResolver(noticeSchema),
@@ -90,7 +96,6 @@ function NoticeForm({
             includePeople: v.includePeople,
             scope: v.scope,
           });
-          if (command.active.current) onClose();
         } catch {}
       })}
     >
@@ -101,19 +106,63 @@ function NoticeForm({
         disabled={command.isPending || command.uncertain}
         className="space-y-5"
       >
-        <label>
-          정산 대상
-          <select
-            {...form.register("scope")}
-            className="ml-3 rounded-pill border p-3"
-          >
-            <option value="ALL">전체</option>
-            <option value="UNCONFIRMED">입금 미확인</option>
-          </select>
-        </label>
-        <p className="font-semibold">
-          {amount.toLocaleString()}원{amount === 0 && " · 입금 요청 없음"}
-        </p>
+        <fieldset className="space-y-4">
+          <legend className="mb-3 text-lg font-semibold">정산 대상</legend>
+          <div className="grid grid-cols-2 rounded-pill bg-field p-1">
+            {(
+              [
+                ["ALL", "전체"],
+                ["UNCONFIRMED", "입금 미확인"],
+              ] as const
+            ).map(([scope, label]) => (
+              <label
+                key={scope}
+                className={`cursor-pointer rounded-pill p-3 text-center text-sm ${v.scope === scope ? "bg-brand text-white" : "text-secondary"}`}
+              >
+                <input
+                  className="sr-only"
+                  type="radio"
+                  value={scope}
+                  {...form.register("scope")}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <div className="rounded-card bg-surface p-5 shadow-card">
+            <p className="mb-4 flex justify-between font-semibold">
+              <span>요청 금액</span>
+              <span>{amount.toLocaleString()}원</span>
+            </p>
+            <ul
+              className="max-h-60 space-y-3 overflow-auto text-sm"
+              aria-label="정산 대상별 금액"
+            >
+              {data.summary.people
+                .filter((p) => v.scope === "ALL" || p.remaining > 0)
+                .map((p) => (
+                  <li key={p.person.id} className="flex justify-between gap-3">
+                    <span>
+                      {p.person.name}
+                      {p.person.label ? ` (${p.person.label})` : ""}
+                    </span>
+                    <strong>
+                      {(v.scope === "ALL"
+                        ? p.amount
+                        : p.remaining
+                      ).toLocaleString()}
+                      원
+                    </strong>
+                  </li>
+                ))}
+            </ul>
+            {amount === 0 && (
+              <p className="mt-3 text-sm text-secondary">
+                입금 요청 없이 정산 내역을 안내해요.
+              </p>
+            )}
+          </div>
+        </fieldset>
         {(
           [
             ["title", "제목"],
@@ -211,25 +260,18 @@ function NoticeDetail({
   onEdit: (n: Notice) => void;
 }) {
   const [message, setMessage] = useState("");
-  const q = useQuery({
-    queryKey: [...settlementKey(a), "notice", id],
-    queryFn: ({ signal }) =>
-      a.request<Notice & { outdated: boolean }>(
-        `${settlementPath(a)}/notices/${id}`,
-        { signal },
-      ),
-    retry: false,
-    staleTime: 0,
-  });
+  const active = useActiveScreen();
+  const q = useQuery(noticeQuery(a, id));
   if (q.error instanceof ApiError && [401, 403, 404].includes(q.error.status))
     return <p role="alert">정산문에 접근할 수 없습니다.</p>;
   const n = q.data;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(n!.text);
-      setMessage("복사했습니다.");
+      if (active.current) setMessage("복사했습니다.");
     } catch {
-      setMessage("복사하지 못했습니다. 브라우저 권한을 확인해 주세요.");
+      if (active.current)
+        setMessage("복사하지 못했습니다. 브라우저 권한을 확인해 주세요.");
     }
   };
   return (
@@ -237,17 +279,25 @@ function NoticeDetail({
       {q.error && <p role="alert">{safeErrorMessage(q.error)}</p>}
       {n && (
         <>
-          <p>
-            계산 버전 {n.calculationVersion} ·{" "}
-            {new Date(n.createdAt).toLocaleString("ko-KR")}
+          <p className="text-xs leading-relaxed text-secondary">
+            {new Date(n.createdAt).toLocaleString("ko-KR", {
+              timeZone: "Asia/Seoul",
+            })}{" "}
+            생성
             {n.outdated &&
               " · 현재 분담액 또는 미확인 대상·잔액과 달라 재생성 필요"}
           </p>
-          <pre className="whitespace-pre-wrap break-words rounded-[20px] bg-choice p-5 font-sans text-sm">
+          <pre className="whitespace-pre-wrap break-words rounded-[20px] bg-choice p-5 font-sans text-base leading-relaxed">
             {n.text}
           </pre>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <Button variant="brand-outline" onClick={() => void copy()}>
+              <Image
+                src="/images/settlements/copy.svg"
+                width={18}
+                height={18}
+                alt=""
+              />
               복사하기
             </Button>
             <Button
@@ -260,21 +310,33 @@ function NoticeDetail({
                 }
                 try {
                   await navigator.share({ title: n.title, text: n.text });
-                  setMessage(
-                    "공유 창 작업을 마쳤습니다. 수신·열람 여부는 확인하지 않습니다.",
-                  );
+                  if (active.current)
+                    setMessage(
+                      "공유 창 작업을 마쳤습니다. 수신·열람 여부는 확인하지 않습니다.",
+                    );
                 } catch (e) {
-                  setMessage(
-                    e instanceof DOMException && e.name === "AbortError"
-                      ? "공유를 취소했습니다."
-                      : "공유하지 못했습니다. 복사하기를 이용해 주세요.",
-                  );
+                  if (active.current)
+                    setMessage(
+                      e instanceof DOMException && e.name === "AbortError"
+                        ? "공유를 취소했습니다."
+                        : "공유하지 못했습니다. 복사하기를 이용해 주세요.",
+                    );
                 }
               }}
             >
+              <Image
+                src="/images/settlements/share.svg"
+                width={18}
+                height={18}
+                alt=""
+              />
               공유하기
             </Button>
-            <Button variant="outline" onClick={() => onEdit(n)}>
+            <Button
+              className="col-span-2"
+              variant="outline"
+              onClick={() => onEdit(n)}
+            >
               입력 내용 수정본 만들기
             </Button>
           </div>
@@ -287,12 +349,15 @@ function NoticeDetail({
 export function NoticePanel({
   access: a,
   data,
+  onFlowChange,
 }: {
   access: Access;
   data: Detail;
+  onFlowChange?: (active: boolean) => void;
 }) {
   const [editing, setEditing] = useState<Notice | "new" | null>(null),
-    [id, setId] = useState<string | null>(null);
+    [id, setId] = useState<string | null>(null),
+    [created, setCreated] = useState(false);
   if (editing)
     return (
       <NoticeForm
@@ -300,13 +365,54 @@ export function NoticePanel({
         a={a}
         data={data}
         previous={editing === "new" ? undefined : editing}
-        onClose={() => setEditing(null)}
+        onClose={() => {
+          setEditing(null);
+          onFlowChange?.(!!id);
+        }}
+        onCreated={(noticeId) => {
+          setId(noticeId);
+          setCreated(true);
+          setEditing(null);
+        }}
       />
+    );
+  if (id)
+    return (
+      <div className="space-y-8">
+        <header className="space-y-2">
+          <h2 className="text-2xl font-bold">
+            {created ? "정산문이 생성되었어요" : "정산문"}
+          </h2>
+          <p className="text-secondary">
+            안내 내용을 확인하고 복사하거나 공유해 주세요.
+          </p>
+        </header>
+        <NoticeDetail
+          key={id + ":" + data.state.version}
+          a={a}
+          id={id}
+          onEdit={setEditing}
+        />
+        <Button
+          variant="brand-outline"
+          className="w-full"
+          onClick={() => {
+            setId(null);
+            setCreated(false);
+            onFlowChange?.(false);
+          }}
+        >
+          정산문 기록으로 가기
+        </Button>
+      </div>
     );
   return (
     <div className="space-y-5">
       <Button
-        onClick={() => setEditing("new")}
+        onClick={() => {
+          setEditing("new");
+          onFlowChange?.(true);
+        }}
         disabled={
           !!data.depositConflicts?.length ||
           data.summary.drafts > 0 ||
@@ -338,7 +444,11 @@ export function NoticePanel({
         <button
           key={n.id}
           className="block w-full rounded-[20px] bg-choice p-5 text-left"
-          onClick={() => setId(n.id)}
+          onClick={() => {
+            setCreated(false);
+            setId(n.id);
+            onFlowChange?.(true);
+          }}
         >
           <strong>{n.title}</strong>
           <small className="block">
@@ -348,14 +458,6 @@ export function NoticePanel({
           </small>
         </button>
       ))}
-      {id && (
-        <NoticeDetail
-          key={id + ":" + data.state.version}
-          a={a}
-          id={id}
-          onEdit={setEditing}
-        />
-      )}
     </div>
   );
 }

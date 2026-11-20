@@ -3,17 +3,13 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { recordsSchema } from "../schemas/records.schema";
+import { recordsQuery } from "../api/records.api";
 import Link from "next/link";
 import type { SessionRequest } from "@/features/auth/types";
 import { Input } from "@/shared/ui/input";
 import { Button } from "@/shared/ui/button";
 import { safeErrorMessage } from "@/shared/http/error-contract";
-const schema = z.object({
-  search: z.string().max(100, "100자 이내로 검색해 주세요."),
-  after: z.string(),
-  before: z.string(),
-});
 export function RecordsList({
   accountId,
   request,
@@ -29,35 +25,11 @@ export function RecordsList({
       before: "",
       offset: 0,
     }),
-    f = useForm<z.infer<typeof schema>>({
-      resolver: zodResolver(schema),
+    f = useForm({
+      resolver: zodResolver(recordsSchema),
       defaultValues: filter,
     });
-  const q = useQuery({
-    queryKey: ["user", accountId, "records", groupId, filter],
-    queryFn: ({ signal }) => {
-      const p = new URLSearchParams({ offset: String(filter.offset) });
-      if (groupId) p.set("groupId", groupId);
-      if (filter.search) p.set("search", filter.search);
-      if (filter.after) p.set("after", `${filter.after}T00:00:00+09:00`);
-      if (filter.before) p.set("before", `${filter.before}T23:59:59+09:00`);
-      return request<{
-        count: number;
-        events: {
-          id: string;
-          name: string;
-          scheduledAt: string | null;
-          attendingCount: number;
-          total: number;
-          confirmed: number;
-          status: "EMPTY" | "COMPLETE" | "IN_PROGRESS";
-          files: { id: string; name: string }[];
-        }[];
-      }>(`/api/v1/records?${p}`, { signal });
-    },
-    retry: false,
-    staleTime: 0,
-  });
+  const q = useQuery(recordsQuery(accountId, request, groupId, filter));
   if (q.error)
     return (
       <div>

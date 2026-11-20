@@ -1,8 +1,10 @@
 import { ProposalComparison } from "./proposal-comparison";
 import type { Completion, CompletionAccess } from "../types/completion.types";
-import { CommandForm, isoDate, localDate, type Field } from "./command-form";
+import { CommandForm } from "./command-form";
+import { isoDate, localDate } from "../lib/command-values";
+import type { Field } from "../types/command-field";
 import { won } from "./completion-summary";
-import { guidanceFields, buildGuidance } from "./payment-forms";
+import { guidanceFields, buildGuidance } from "../lib/guidance-fields";
 export function ChangeForms({
   data: q,
   access,
@@ -21,7 +23,12 @@ export function ChangeForms({
       {pending && (
         <div className="space-y-4 rounded-control bg-choice p-5 text-sm">
           <p>
-            {pending.kind === "CANCEL" ? "취소" : "변경"} 문의 ·{" "}
+            {pending.kind === "REFUND"
+              ? "환불 예정액"
+              : pending.kind === "CANCEL"
+                ? "취소"
+                : "변경"}{" "}
+            문의 ·{" "}
             {pending.status === "REQUESTED"
               ? "매장 확인 대기"
               : "합의 내용 확인 대기"}
@@ -86,9 +93,11 @@ export function ChangeForms({
             {...props}
             action="change-accept"
             title={
-              pending.kind === "CANCEL"
-                ? "취소 처리 내용 수락"
-                : "변경 내용 수락"
+              pending.kind === "REFUND"
+                ? "환불 예정액 수락"
+                : pending.kind === "CANCEL"
+                  ? "취소 처리 내용 수락"
+                  : "변경 내용 수락"
             }
             fields={[
               {
@@ -112,7 +121,11 @@ export function ChangeForms({
           <CommandForm
             {...props}
             action="change-reject"
-            title="문의 불가 결과 안내"
+            title={
+              pending.kind === "REFUND"
+                ? "환불 제안 철회"
+                : "문의 불가 결과 안내"
+            }
             fields={[
               {
                 name: "reason",
@@ -127,28 +140,30 @@ export function ChangeForms({
       )}
       {q.cancellation && !organizer && (
         <>
-          <CommandForm
-            {...props}
-            action="refund-plan"
-            title="환불 예정액 기록"
-            description="실제 반환 기록과 구분돼요. 0원은 환불 없음이 확인된 경우에만 입력해 주세요."
-            fields={[
-              {
-                name: "amount",
-                label: "확인된 환불 예정 총액 (원)",
-                type: "number",
-                value:
-                  q.refundExpected === null ? "" : String(q.refundExpected),
-              },
-              {
-                name: "reason",
-                label: "합의·변경 사유",
-                type: "textarea",
-                max: 500,
-              },
-            ]}
-            build={(v) => ({ amount: Number(v.amount), reason: v.reason })}
-          />
+          {!pending && (
+            <CommandForm
+              {...props}
+              action="refund-plan"
+              title="환불 예정액 제안"
+              description="총무가 수락하기 전에는 기존 합의 금액과 환불 대기가 유지돼요. 미확인 금액도 총무가 수락해야 합의가 완료돼요."
+              fields={[
+                {
+                  name: "amount",
+                  label: "제안할 환불 예정 총액 (원)",
+                  type: "number",
+                  value:
+                    q.refundExpected === null ? "" : String(q.refundExpected),
+                },
+                {
+                  name: "reason",
+                  label: "합의·변경 사유",
+                  type: "textarea",
+                  max: 500,
+                },
+              ]}
+              build={(v) => ({ amount: Number(v.amount), reason: v.reason })}
+            />
+          )}
           <CommandForm
             {...props}
             action="refund"
@@ -186,7 +201,12 @@ export function ChangeForms({
           <ul className="mt-3 space-y-3">
             {q.changes.map((c) => (
               <li key={c.id}>
-                {c.kind === "CANCEL" ? "취소" : "변경"} ·{" "}
+                {c.kind === "REFUND"
+                  ? "환불 예정액"
+                  : c.kind === "CANCEL"
+                    ? "취소"
+                    : "변경"}{" "}
+                ·{" "}
                 {
                   {
                     REQUESTED: "문의 중",

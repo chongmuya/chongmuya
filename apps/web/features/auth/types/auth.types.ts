@@ -25,4 +25,5 @@ export type AuthState = {
 export type SessionRequest = <T>(
   path: `/api/v1/${string}`,
   options?: RequestInit,
+  timeoutMs?: number,
 ) => Promise<T>;
