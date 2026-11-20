@@ -195,7 +195,7 @@ export function ExpenseForm({
         </label>
         {!data.facts.rounds.length && (
           <Link
-            className="text-brand-action underline"
+            className="text-brand underline"
             href={`/events?event=${a.eventId}&view=attendance`}
           >
             참석 화면에서 차수 만들기
@@ -267,7 +267,7 @@ export function ExpenseForm({
         <section className="space-y-3">
           <h3 className="font-semibold">
             비용을 나눌 사람{" "}
-            <span className="text-brand-action">{v.payers.length}</span>
+            <span className="text-brand">{v.payers.length}</span>
           </h3>
           <Button
             variant="brand-outline"

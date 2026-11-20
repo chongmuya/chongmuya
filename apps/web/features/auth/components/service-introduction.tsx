@@ -88,7 +88,7 @@ export function ServiceIntroduction() {
             href={start}
             replace
             className={buttonStyles({
-              className: "w-full border-brand bg-brand",
+              className: "w-full",
             })}
           >
             시작하기

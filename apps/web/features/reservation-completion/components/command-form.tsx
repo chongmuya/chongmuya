@@ -212,7 +212,7 @@ export function CommandForm({
           )}
           <Button
             type="submit"
-            className="w-full border-brand bg-brand"
+            className="w-full"
             disabled={base.version !== data.version}
             loading={mutation.isPending}
           >

@@ -58,7 +58,7 @@ export function SignupTerms({
                   />
                   <span className="text-[clamp(16px,4.8vw,20px)] leading-6">
                     {term.title}
-                    <span className={term.required ? "text-brand-action" : ""}>
+                    <span className={term.required ? "text-brand" : ""}>
                       ({term.required ? "필수" : "선택"})
                     </span>
                   </span>

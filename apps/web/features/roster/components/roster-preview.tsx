@@ -46,7 +46,7 @@ export function RosterPreview({
       <div>
         <h2 className="text-label">
           가져온 명단{" "}
-          <span className="ml-2 text-control text-brand-action">
+          <span className="ml-2 text-control text-brand">
             {fields.length}명
           </span>
         </h2>

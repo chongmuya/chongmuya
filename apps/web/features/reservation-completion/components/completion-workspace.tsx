@@ -155,10 +155,7 @@ function CompletionContent({
         </Button>
       )}
       {!q.cancellation && q.progress !== "CONFIRMED" && q.order && !pending && (
-        <Button
-          className="w-full border-brand bg-brand"
-          onClick={() => setPanel("payments")}
-        >
+        <Button className="w-full" onClick={() => setPanel("payments")}>
           예약금 안내 확인하기
         </Button>
       )}
@@ -255,7 +252,7 @@ function CompletionContent({
             </p>
           )}
           <Button
-            className="w-full border-brand bg-brand"
+            className="w-full"
             onClick={() =>
               setPanel(
                 pending || q.cancellation

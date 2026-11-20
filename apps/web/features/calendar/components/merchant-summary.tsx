@@ -64,7 +64,7 @@ export function MerchantSummary({
                 day: "numeric",
                 weekday: "short",
               }).format(new Date(`${selected}T00:00:00+09:00`))}
-              <span className="ml-2 text-sm text-brand-action">
+              <span className="ml-2 text-sm text-brand">
                 {selectedRows.length}
               </span>
             </h2>
@@ -88,7 +88,7 @@ export function MerchantSummary({
                 href={r.destination}
                 key={r.id}
               >
-                <p className="text-base font-medium text-brand-action">
+                <p className="text-base font-medium text-brand">
                   {new Intl.DateTimeFormat("ko-KR", {
                     timeZone: "Asia/Seoul",
                     month: "numeric",

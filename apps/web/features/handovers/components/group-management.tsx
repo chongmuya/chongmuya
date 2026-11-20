@@ -114,7 +114,7 @@ export function GroupManagement({
         open={pending ? true : undefined}
         className="space-y-4 rounded-card bg-surface p-5 shadow-card"
       >
-        <summary className="cursor-pointer text-lg font-semibold text-brand-action">
+        <summary className="cursor-pointer text-lg font-semibold text-brand">
           다음 총무에게 넘기기
         </summary>
         <p className="text-sm text-muted">

@@ -130,16 +130,13 @@ export function ChangeResult({
         footer
       )}
       {pending && (latest.status === "PROPOSED" || !organizer) && (
-        <Button className="w-full border-brand bg-brand" onClick={onReview}>
+        <Button className="w-full" onClick={onReview}>
           {organizer ? "바뀐 조건 확인하기" : "예약 변경 확인하기"}
         </Button>
       )}
       {rejected && (
         <div className="space-y-2">
-          <Button
-            className="w-full border-brand bg-brand"
-            onClick={onDetails ?? onReview}
-          >
+          <Button className="w-full" onClick={onDetails ?? onReview}>
             {q.cancellation ? "환불 내역 확인하기" : "기존 예약으로 진행하기"}
           </Button>
           {!q.cancellation && (

@@ -8,7 +8,7 @@ import { EmailVerification } from "./email-verification";
 import { ContactVerification } from "../contact-verification";
 import { StepHeading } from "@/shared/ui/step-layout";
 
-export const enrollmentInputClass = "shadow-control aria-invalid:bg-brand/10";
+const enrollmentInputClass = "shadow-control aria-invalid:bg-brand/10";
 export function SignupInformation({
   phone,
   email,
@@ -26,10 +26,11 @@ export function SignupInformation({
     formState: { errors },
   } = useFormContext<SignupValues>();
   return (
-    <div className="px-[17px]">
+    <div className="px-[17px] max-[374px]:px-2">
       <StepHeading
         title="총무야에 오신 걸 환영해요!"
         description="계정을 만들고 모임 준비를 시작해 보세요."
+        className="text-foreground [&_p]:leading-[1.2]"
       />
       <div className="space-y-9">
         <EmailVerification
@@ -41,7 +42,8 @@ export function SignupInformation({
           required
           id="signup-name"
           label="이름"
-          labelClassName="text-label"
+          className="gap-2"
+          labelClassName="text-label text-black/80"
           error={errors.name?.message}
         >
           {(attributes) => (
@@ -51,7 +53,7 @@ export function SignupInformation({
               variant="pill"
               className={enrollmentInputClass}
               autoComplete="name"
-              placeholder="이름을 입력해 주세요"
+              placeholder="이름을 입력해주세요"
               required
             />
           )}
@@ -62,8 +64,8 @@ export function SignupInformation({
               required
               id="signup-password"
               label="비밀번호"
-              labelClassName="text-label"
-              hint="8~16자, 공백 없이 영문·숫자·일반 특수문자 허용. 문자 종류별 필수 조합은 없어요."
+              className="gap-2"
+              labelClassName="text-label text-black/80"
               error={errors.password?.message}
             >
               {(attributes) => (
@@ -72,8 +74,9 @@ export function SignupInformation({
                   {...register("password")}
                   variant="pill"
                   className={enrollmentInputClass}
+                  hideToggleWhenEmpty
                   autoComplete="new-password"
-                  placeholder="8~16자 비밀번호"
+                  placeholder="8~16자, 영문·숫자·특수문자 허용"
                   required
                 />
               )}
@@ -82,7 +85,8 @@ export function SignupInformation({
               required
               id="signup-passwordConfirm"
               label="비밀번호 확인"
-              labelClassName="text-label"
+              className="gap-2"
+              labelClassName="text-label text-black/80"
               error={errors.passwordConfirm?.message}
             >
               {(attributes) => (
@@ -91,46 +95,51 @@ export function SignupInformation({
                   {...register("passwordConfirm")}
                   variant="pill"
                   className={enrollmentInputClass}
+                  hideToggleWhenEmpty
                   autoComplete="new-password"
-                  placeholder="비밀번호를 다시 입력해 주세요"
+                  placeholder="비밀번호를 다시 입력해주세요"
                   required
                 />
               )}
             </FormField>
           </>
         )}
-        <div>
-          <FormField
-            required
-            id="signup-phone"
-            label="전화번호"
-            labelClassName="text-label"
-            error={errors.phone?.message}
-          >
-            {(attributes) => (
-              <Input
-                {...attributes}
-                {...register("phone", { onChange: phone.reset })}
-                variant="pill"
-                className={enrollmentInputClass}
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="01012345678"
-                required
-              />
-            )}
-          </FormField>
-          <ContactVerification
-            {...phone}
-            onRequest={() => {
-              void trigger("phone", { shouldFocus: true }).then((valid) => {
-                if (valid) void phone.request();
-              });
-            }}
-            onCheck={phone.check}
-          />
-        </div>
+        <ContactVerification
+          {...phone}
+          onRequest={() => {
+            void trigger("phone", { shouldFocus: true }).then((valid) => {
+              if (valid) void phone.request();
+            });
+          }}
+          onCheck={phone.check}
+          renderField={(requestButton) => (
+            <FormField
+              required
+              id="signup-phone"
+              label="전화번호"
+              className="gap-2"
+              labelClassName="text-label text-black/80"
+              error={errors.phone?.message}
+            >
+              {(attributes) => (
+                <div className="flex items-start gap-2">
+                  <Input
+                    {...attributes}
+                    {...register("phone", { onChange: phone.reset })}
+                    variant="pill"
+                    className="min-w-0 shadow-control aria-invalid:bg-brand/10 max-[374px]:px-3 max-[374px]:placeholder:text-sm"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="전화번호를 입력해주세요"
+                    required
+                  />
+                  {requestButton}
+                </div>
+              )}
+            </FormField>
+          )}
+        />
       </div>
     </div>
   );

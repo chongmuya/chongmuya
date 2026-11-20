@@ -97,7 +97,7 @@ export function AttendanceLink({ eventId }: { eventId: string }) {
   return (
     <Link
       href={`/events?event=${eventId}&view=attendance`}
-      className="inline-flex min-h-11 items-center gap-5 rounded-control bg-brand px-[14px] py-4 text-xs leading-[normal] text-white"
+      className="inline-flex min-h-11 items-center gap-5 rounded-control bg-brand px-[14px] py-4 text-xs leading-[normal] text-copy"
     >
       참석 관리하러 가기
       <span className="relative h-2.5 w-3">
@@ -274,7 +274,7 @@ export function GuidanceSummary({ data: q }: { data: Completion }) {
         <p className="text-sm">입금 기한 {koreanDateLabel(g.deadline)}</p>
       )}
       {g.channel === "WEB" && g.account ? (
-        <div className="rounded-control bg-brand p-5 text-white">
+        <div className="rounded-control bg-brand p-5 text-copy">
           <p className="text-xl font-bold break-all">{g.account}</p>
           <p className="my-2 text-sm">
             {g.bank} · {g.holder}

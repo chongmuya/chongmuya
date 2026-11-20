@@ -63,7 +63,7 @@ export function OwnerInquiries({
                       timeZone: "Asia/Seoul",
                     })}
                   </p>
-                  <p className="text-sm text-brand-action">
+                  <p className="text-sm text-brand">
                     {i.closed
                       ? "문의 종료"
                       : i.response?.state === "EXPIRED"

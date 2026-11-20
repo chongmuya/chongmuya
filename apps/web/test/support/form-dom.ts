@@ -116,7 +116,8 @@ export async function submit(container: HTMLElement) {
 }
 export async function click(container: HTMLElement, text: string) {
   const button = [...container.querySelectorAll("button")].find(
-    (item) => item.textContent === text,
+    (item) =>
+      item.getAttribute("aria-label") === text || item.textContent === text,
   );
   assert(button, text);
   await act(async () => button.click());

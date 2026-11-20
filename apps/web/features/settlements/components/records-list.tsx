@@ -84,7 +84,7 @@ export function RecordsList({
         >
           <div className="flex flex-wrap justify-between gap-2">
             <strong className="break-words">{e.name}</strong>
-            <small className="text-brand-action">
+            <small className="text-brand">
               {
                 {
                   EMPTY: "정산 없음",

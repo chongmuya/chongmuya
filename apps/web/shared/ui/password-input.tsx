@@ -6,15 +6,23 @@ import { cn } from "../lib/cn";
 
 export function PasswordInput({
   className,
+  hideToggleWhenEmpty = false,
   ...props
-}: Omit<ComponentProps<typeof Input>, "type">) {
+}: Omit<ComponentProps<typeof Input>, "type"> & {
+  hideToggleWhenEmpty?: boolean;
+}) {
   const [visible, setVisible] = useState(false);
+  const hideEmptyToggle = hideToggleWhenEmpty && !visible;
   return (
     <div className="relative">
       <Input
         {...props}
         type={visible ? "text" : "password"}
-        className={cn("pr-16", className)}
+        className={cn(
+          "peer pr-16",
+          hideEmptyToggle && "placeholder-shown:pr-4",
+          className,
+        )}
       />
       <button
         type="button"
@@ -22,7 +30,10 @@ export function PasswordInput({
         aria-pressed={visible}
         disabled={props.disabled}
         onClick={() => setVisible(!visible)}
-        className="absolute inset-y-0 right-2 min-w-12 rounded-pill px-2 text-caption text-muted disabled:cursor-not-allowed"
+        className={cn(
+          "absolute inset-y-0 right-2 min-w-12 rounded-pill px-2 text-caption text-muted disabled:cursor-not-allowed",
+          hideEmptyToggle && "peer-placeholder-shown:hidden",
+        )}
       >
         {visible ? "숨김" : "보기"}
       </button>
