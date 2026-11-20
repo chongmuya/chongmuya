@@ -3,8 +3,7 @@ import "reflect-metadata";
 import { config } from "dotenv";
 import { parseArgs } from "node:util";
 import { open } from "node:fs/promises";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "../dist/app.module.js";
+import { createOperationsApplication } from "./operations-application.mjs";
 import { RestaurantOperationsService } from "../dist/modules/restaurants/restaurant-operations.service.js";
 import {
   operationId,
@@ -13,8 +12,6 @@ import {
   printOperationError,
 } from "./merchant-cli.mjs";
 config({ quiet: true });
-// One-off commands must not start unrelated background writes.
-process.env.REMINDERS_ENABLED = "false";
 let app, output;
 try {
   const { values: v } = parseArgs({
@@ -38,10 +35,7 @@ try {
   });
   if (v.list) {
     if (v.execute || v.restaurant) throw new Error("INVALID_ADDRESS_INPUT");
-    app = await NestFactory.createApplicationContext(AppModule, {
-      logger: false,
-      abortOnError: false,
-    });
+    app = await createOperationsApplication();
     console.table(await app.get(RestaurantOperationsService).addressReview());
   } else {
     requireOperator(v);
@@ -53,10 +47,7 @@ try {
     )
       throw new Error("INVALID_ADDRESS_INPUT");
     if (v.output) output = await open(v.output, "wx", 0o600);
-    app = await NestFactory.createApplicationContext(AppModule, {
-      logger: false,
-      abortOnError: false,
-    });
+    app = await createOperationsApplication();
     const result = await app.get(RestaurantOperationsService).normalizeAddress({
       restaurantId,
       version: Number(v.version),

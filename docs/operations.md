@@ -86,12 +86,6 @@ receipt 입력은 `requestKey`, `expectedVersion`, `guidanceRevision`, `amount`(
 
 ## 리마인더
 
-기본 `REMINDERS_ENABLED=false`다. true인 API는 60초마다 전날 09:00 KST 알림 대상을 확인한다. 현재 관리자·일정 세대·삭제·수신 설정을 다시 검사하고 고유 fact와 자원 잠금으로 중복을 막는다. 늦게 생성/변경된 일정과 당일 이후 과거 알림은 소급 생성하지 않는다. 알림함만 기록하며 SMS는 보내지 않는다.
+기본 `REMINDERS_ENABLED=false`다. true인 API는 매일 09:00 Asia/Seoul에 다음 날 일정을 처리한다. 09:00 이전 시작은 정시까지 기다리고, 이후 시작은 그날 미처리분만 한 번 보완한다. 실패한 배치만 각 실패 후 1분·5분·15분 간격으로 최대 3회 추가 시도하며, 한국 날짜가 바뀌거나 프로세스가 종료되면 중단한다. 한도 초과는 `REMINDER_RETRIES_EXHAUSTED`로 기록한다.
 
-저장소에서 빌드된 API와 런타임 설정을 갖춘 별도 실행 환경에는 다음 일회성 CLI도 있다.
-
-```sh
-pnpm --filter @chongmuya/api calendar:reminders --execute
-```
-
-이 스크립트는 현재 운영 이미지·`deploy.sh operations`에 포함되지 않는다. EC2의 현재 지원 방식은 API의 `REMINDERS_ENABLED` 설정이다. 별도 CLI 스케줄을 구성했다면 결과의 checked/failed와 종료 코드를 확인하고 실패 원인을 해결한 뒤 재실행한다.
+현재 관리자·일정 세대·삭제·수신 설정을 다시 검사하고 고유 fact와 자원 잠금으로 중복을 막는다. 늦게 생성/변경된 일정과 과거 알림은 소급 생성하지 않는다. 알림함만 기록하며 SMS는 보내지 않는다. 관리 CLI는 Nest 초기화 전에 해당 프로세스의 자동 리마인더를 끄며, 수동 리마인더 CLI는 제거했다. 새 API 이미지 배포 외에 추가 인프라·필수 환경변수·migration은 필요하지 않다.

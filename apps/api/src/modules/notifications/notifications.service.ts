@@ -115,6 +115,15 @@ export class NotificationsService {
   }
 
   constructor(private readonly database: DatabaseService) {}
+  // Read-only optimization; record() still owns the final transactional deduplication.
+  async recordedEventKeys(eventKeys: string[], m: EntityManager) {
+    if (!eventKeys.length) return new Set<string>();
+    const facts = await m.find(NotificationFact, {
+      select: { eventKey: true },
+      where: { eventKey: In(eventKeys) },
+    });
+    return new Set(facts.map((fact) => fact.eventKey));
+  }
   async record(m: EntityManager, input: NotificationInput) {
     await this.recordBatch(m, [input]);
   }

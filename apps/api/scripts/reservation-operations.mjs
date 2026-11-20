@@ -1,8 +1,7 @@
 import "reflect-metadata";
 import { config } from "dotenv";
 import { parseArgs } from "node:util";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "../dist/app.module.js";
+import { createOperationsApplication } from "./operations-application.mjs";
 import { ReservationSelectionService } from "../dist/modules/reservations/reservation-selection.service.js";
 import { ReservationNotificationsService } from "../dist/modules/reservations/reservation-notifications.service.js";
 import { NotificationsService } from "../dist/modules/notifications/notifications.service.js";
@@ -12,8 +11,6 @@ import {
   printOperationError,
 } from "./merchant-cli.mjs";
 config({ quiet: true });
-// One-off commands must not start unrelated background writes.
-process.env.REMINDERS_ENABLED = "false";
 let app;
 try {
   const { values: v } = parseArgs({
@@ -46,9 +43,7 @@ try {
     if (v.action !== "notifications") requireOperator(v);
     if (v.action === "close-unanswered") operationId(v.target);
     if (v.action.endsWith("notification")) operationId(v.delivery);
-    app = await NestFactory.createApplicationContext(AppModule, {
-      logger: false,
-    });
+    app = await createOperationsApplication();
     const selections = app.get(ReservationSelectionService),
       sender = app.get(ReservationNotificationsService),
       notices = app.get(NotificationsService);

@@ -418,7 +418,12 @@ test("reminder batch isolates a failed commit and settings serialize against del
   } finally {
     notifications.record = record;
   }
-  await reminders.run(new Date("2030-04-01T00:01:00Z"));
+  const recovered = await reminders.run(new Date("2030-04-01T00:01:00Z"));
+  assert.equal(
+    recovered.checked,
+    1,
+    "committed versions are skipped before locking again",
+  );
   assert.equal((await notifications.inbox(me.id)).items.length, 2);
   let release!: () => void;
   let locked!: () => void;

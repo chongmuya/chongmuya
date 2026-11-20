@@ -13,7 +13,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { verifyDeploymentFlow } from "./test-deployment-flow.mjs";
 
-const image = "chongmuya-api:deployment-test";
+const image =
+  process.env.DEPLOYMENT_TEST_IMAGE ?? "chongmuya-api:deployment-test";
 const host = "chongmuya-prod.cp6awyiq6zpo.ap-northeast-2.rds.amazonaws.com";
 const run = (command, args, options = {}) =>
   spawnSync(command, args, { encoding: "utf8", timeout: 180000, ...options });
@@ -515,6 +516,45 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
       "scripts/merchant-operations.mjs",
       "--help",
     ]),
+  );
+
+  // Exercise the actual packaged CLI helper, with eligible reminders and inherited true.
+  // Only this disposable process uses fake providers; production configuration is untouched.
+  const reminderProbe = readFileSync(
+    resolve("infra/reminder-runtime-probe.mjs"),
+    "utf8",
+  );
+  const reminderEnv = {
+    ...env,
+    NODE_ENV: "test",
+    MESSAGE_PROVIDER: "fake",
+    GEOCODING_PROVIDER: "fake",
+    REMINDERS_ENABLED: "true",
+    TZ: "UTC",
+  };
+  assert.match(
+    ok(
+      run("docker", [
+        "run",
+        "--rm",
+        "--platform",
+        "linux/amd64",
+        "--network",
+        name,
+        "-v",
+        `${certificate}:/run/certs/rds-global-bundle.pem:ro`,
+        ...Object.entries(reminderEnv).flatMap(([key, value]) => [
+          "-e",
+          `${key}=${value}`,
+        ]),
+        image,
+        "node",
+        "--input-type=module",
+        "--eval",
+        reminderProbe,
+      ]),
+    ),
+    /Reminder runtime probe passed/,
   );
 
   const connect =

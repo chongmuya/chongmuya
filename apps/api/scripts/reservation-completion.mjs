@@ -1,8 +1,7 @@
 import "reflect-metadata";
 import { config } from "dotenv";
 import { parseArgs } from "node:util";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "../dist/app.module.js";
+import { createOperationsApplication } from "./operations-application.mjs";
 import { ReservationCommands } from "../dist/modules/reservations/reservation-completion.controller.js";
 import { ReservationCompletionService } from "../dist/modules/reservations/reservation-completion.service.js";
 import { ReservationChangesService } from "../dist/modules/reservations/reservation-changes.service.js";
@@ -13,8 +12,6 @@ import {
   privateInput,
 } from "./merchant-cli.mjs";
 config({ quiet: true });
-// One-off commands must not start unrelated background writes.
-process.env.REMINDERS_ENABLED = "false";
 let app;
 try {
   const { values: v } = parseArgs({
@@ -61,9 +58,7 @@ try {
       confirmedAt: v["confirmed-at"] ?? "",
       reason: v.reason,
     };
-    app = await NestFactory.createApplicationContext(AppModule, {
-      logger: false,
-    });
+    app = await createOperationsApplication();
     const completion = app.get(ReservationCompletionService);
     completion.audit(principal);
     const current = await completion.get(v.reservation, principal);

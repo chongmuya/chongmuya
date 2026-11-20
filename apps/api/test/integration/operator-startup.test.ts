@@ -2,7 +2,7 @@ import "reflect-metadata";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { DataSource } from "typeorm";
 import { databaseOptions } from "../../src/database/database-options.js";
 
-test("operator queries and previews never start background reminders; the explicit reminder command still runs", async (t) => {
+test("operator queries and previews never start background reminders after 09:00 KST", async (t) => {
   assert(process.env.TEST_DATABASE_URL);
   const db = new DataSource(
     databaseOptions({ databaseUrl: process.env.TEST_DATABASE_URL }),
@@ -29,6 +29,8 @@ test("operator queries and previews never start background reminders; the explic
     `import ${JSON.stringify(new URL("../../../node_modules/reflect-metadata/Reflect.js", import.meta.url).href)};
      import { registerHooks } from 'node:module';
      import { writeFileSync } from 'node:fs';
+     import { mock } from 'node:test';
+     mock.timers.enable({apis:['Date'], now:new Date('2035-04-01T00:05:00Z')});
      registerHooks({resolve(specifier, context, next) {
        return next(specifier.startsWith('../dist/')
          ? specifier.replace('../dist/', '../dist-test/src/') : specifier, context);
@@ -96,7 +98,4 @@ test("operator queries and previews never start background reminders; the explic
     });
     await rm(marker, { force: true });
   }
-  const explicit = run("calendar-reminders", ["--execute"]);
-  assert.equal(explicit.status, 0, explicit.stderr);
-  assert.equal(await readFile(marker, "utf8"), "ran");
 });
