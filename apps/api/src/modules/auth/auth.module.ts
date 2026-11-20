@@ -1,3 +1,5 @@
+import { ProfileService } from "./profile.service.js";
+import { ProfileController } from "./profile.controller.js";
 import { KakaoController } from "./kakao.controller.js";
 import { KakaoOidcService } from "./kakao-oidc.service.js";
 import { KakaoFlowService } from "./kakao-flow.service.js";
@@ -33,12 +35,14 @@ import { OptionalAccessGuard } from "./guards/optional-access.guard.js";
     JwtModule.register({}),
   ],
   controllers: [
+    ProfileController,
     AuthController,
     SignupController,
     PasswordResetController,
     KakaoController,
   ],
   providers: [
+    ProfileService,
     AuthService,
     SessionIssuerService,
     PasswordResetService,

@@ -1,3 +1,4 @@
+import { NotificationsService } from "../notifications/notifications.service.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { In, type EntityManager } from "typeorm";
@@ -23,6 +24,7 @@ const dto = (f: EventFile) => ({
 @Injectable()
 export class FilesService {
   constructor(
+    private readonly notifications: NotificationsService,
     private readonly database: DatabaseService,
     private readonly events: EventsService,
     private readonly storage: FileStorage,
@@ -164,13 +166,33 @@ export class FilesService {
       /* Provider details must never escape. */
     }
     const completed = await db.transaction(async (m) => {
-      await this.events.assertOwned(owner, event, m, true);
+      const eventInfo = await this.events.assertOwned(owner, event, m, true);
       const result = await m.update(
         EventFile,
         { id, version: row.version, status: "UPLOADING" },
         { status: success ? "READY" : "FAILED", updatedAt: new Date() },
       );
-      if (result.affected === 1) return true;
+      if (result.affected === 1) {
+        if (success)
+          await this.notifications.record(m, {
+            eventKey: `file:${id}`,
+            kind: "FILE_REGISTERED",
+            category: "SETTLEMENT",
+            eventId: event,
+            requestId: id,
+            revision: row.version,
+            accounts: [
+              {
+                id: owner,
+                title: "첨부 등록이 완료됐어요",
+                summary: `${eventInfo.name} · 행사 자료에서 확인할 수 있어요.`,
+                destination: `/events?event=${event}&view=record`,
+              },
+            ],
+            messages: [],
+          });
+        return true;
+      }
       // A late provider result must not resurrect a deleted attachment or
       // claim completion. Keep a tombstone requiring another object cleanup.
       await m.update(

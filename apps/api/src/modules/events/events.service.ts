@@ -32,6 +32,57 @@ export class EventsService {
     private readonly groups: GroupsService,
   ) {}
 
+  async reminderCandidates(now: Date, m: EntityManager, after?: string) {
+    const q = m
+      .createQueryBuilder(Event, "e")
+      .where("e.scheduledAt > :now AND e.scheduledAt < :until", {
+        now,
+        until: new Date(now.getTime() + 172800000),
+      });
+    if (after) q.andWhere("e.id > :after", { after });
+    return (await q.orderBy("e.id", "ASC").take(100).getMany()).map(
+      (e) => e.id,
+    );
+  }
+  async reminderCurrent(id: string, m: EntityManager) {
+    const e = await m.findOne(Event, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    return e
+      ? {
+          id: e.id,
+          ownerId: e.ownerId,
+          title: e.name,
+          version: e.scheduleRevision,
+          startsAt: e.scheduledAt,
+          updatedAt: e.scheduleUpdatedAt,
+        }
+      : null;
+  }
+  async calendar(
+    ownerId: string,
+    groupId: string | undefined,
+    from: Date,
+    to: Date,
+    m: EntityManager,
+  ) {
+    if (groupId) await this.groups.assertOwned(ownerId, groupId, m);
+    return (
+      await m
+        .createQueryBuilder(Event, "e")
+        .where(
+          "e.ownerId = :ownerId AND e.scheduledAt >= :from AND e.scheduledAt < :to",
+          { ownerId, from, to },
+        )
+        .andWhere(groupId ? "e.groupId = :groupId" : "e.groupId IS NULL", {
+          groupId,
+        })
+        .orderBy("e.scheduledAt", "ASC")
+        .addOrderBy("e.id", "ASC")
+        .getMany()
+    ).map(eventDto);
+  }
   async settlementFacts(ownerId: string, id: string, m: EntityManager) {
     await this.assertOwned(ownerId, id, m);
     const participants = await m.find(EventParticipant, {
@@ -155,6 +206,10 @@ export class EventsService {
       event.scheduledAt?.getTime() !== date.getTime() ||
       event.reservationScheduleLocked !== locked
     ) {
+      if (event.scheduledAt?.getTime() !== date.getTime()) {
+        event.scheduleUpdatedAt = new Date();
+        event.scheduleRevision++;
+      }
       event.scheduledAt = date;
       event.reservationScheduleLocked = locked;
       event.version++;
@@ -223,6 +278,8 @@ export class EventsService {
         name: input.name,
         scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
         createdAt: new Date(),
+        scheduleUpdatedAt: new Date(),
+        scheduleRevision: 1,
       });
       const inserted = await manager
         .createQueryBuilder()
@@ -276,9 +333,17 @@ export class EventsService {
       )
         throw new DomainHttpException("EVENT_SCHEDULE_LOCKED");
       if (input.name !== undefined) event.name = input.name;
-      if (input.scheduledAt !== undefined)
-        event.scheduledAt =
+      if (input.scheduledAt !== undefined) {
+        const next =
           input.scheduledAt === null ? null : new Date(input.scheduledAt);
+        if (
+          (event.scheduledAt?.getTime() ?? null) !== (next?.getTime() ?? null)
+        ) {
+          event.scheduleUpdatedAt = new Date();
+          event.scheduleRevision++;
+        }
+        event.scheduledAt = next;
+      }
       event.version += 1;
       return eventDto(await repository.save(event));
     });

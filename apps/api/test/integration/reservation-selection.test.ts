@@ -1,4 +1,6 @@
 import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
+import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
+import { Notification } from "../../src/modules/notifications/entities/notification.entity.js";
 import { ReservationNotificationsService } from "../../src/modules/reservations/reservation-notifications.service.js";
 import { NotificationsService } from "../../src/modules/notifications/notifications.service.js";
 import { SolapiMessageGateway } from "../../src/modules/reservations/providers/solapi-message.gateway.js";
@@ -54,9 +56,9 @@ test("selection, reinquiry and durable notifications serialize competing command
         await callResponse(eventId),
       )
     ).request;
-  async function fixture() {
+  async function fixture(jar = owner) {
     const event = await json<{ id: string; version: number }>(
-      await call("events", owner, "POST", {
+      await call("events", jar, "POST", {
         name: "선택 검증",
         creationKey: randomUUID(),
       }),
@@ -77,12 +79,7 @@ test("selection, reinquiry and durable notifications serialize competing command
       contact: { name: "테스트 총무", phone: "01000001234" },
     };
     const request = await json<ReservationRequestDto>(
-      await call(
-        `events/${event.id}/reservation-requests`,
-        owner,
-        "POST",
-        input,
-      ),
+      await call(`events/${event.id}/reservation-requests`, jar, "POST", input),
       201,
     );
     return { event, input, request };
@@ -123,6 +120,116 @@ test("selection, reinquiry and durable notifications serialize competing command
       expectedVersion: q.version,
     },
   });
+  await t.test(
+    "different organizers selecting opposite A/B stores both commit with ordered PostgreSQL inbox locks",
+    async () => {
+      const accountIds: string[] = [];
+      for (let i = 0; i < 2; i++) {
+        const jar = await signup();
+        const account = await json<{ id: string }>(await call("auth/me", jar));
+        accountIds.push(account.id);
+        await db.manager.update(
+          Restaurant,
+          { id: demoRestaurantIds[i] },
+          { ownerAccountId: account.id },
+        );
+      }
+      const left = await fixture(owner),
+        right = await fixture(alien);
+      for (const f of [left, right])
+        for (const target of f.request.targets)
+          await replies.save(
+            target.id,
+            principal,
+            proposal(f.request),
+            "cross-event",
+          );
+      const read = async (f: typeof left, jar: string) =>
+        (
+          await json<{ request: ReservationRequestDto }>(
+            await call(`events/${f.event.id}/reservation-requests`, jar),
+          )
+        ).request;
+      const a = await read(left, owner),
+        b = await read(right, alien);
+      const inputs = [
+        decide(
+          a,
+          a.targets.find((t) => t.restaurantId === demoRestaurantIds[0])!.id,
+        ),
+        decide(
+          b,
+          b.targets.find((t) => t.restaurantId === demoRestaurantIds[1])!.id,
+        ),
+      ];
+      const notices = app.get(NotificationsService),
+        lock = notices.lockAccount.bind(notices);
+      // These remain real PostgreSQL advisory locks. A short database delay
+      // widens the overlap that formerly acquired A/B in opposite orders.
+      notices.lockAccount = async (m, id) => {
+        await lock(m, id);
+        await m.query("SELECT pg_sleep(0.03)");
+      };
+      try {
+        await Promise.all(
+          inputs.map(async (input, i) =>
+            json(
+              await call(input.url, i ? alien : owner, "POST", input.body),
+              201,
+            ),
+          ),
+        );
+        await Promise.all(
+          inputs.map(async (input, i) =>
+            json(
+              await call(input.url, i ? alien : owner, "POST", input.body),
+              201,
+            ),
+          ),
+        );
+        for (const q of [a, b]) {
+          assert.equal(
+            await db.manager.countBy(SelectedReservation, { requestId: q.id }),
+            1,
+          );
+          const targets = await db.manager.findBy(RequestTarget, {
+            requestId: q.id,
+          });
+          assert.equal(
+            targets.filter((t) => t.candidateState === "SELECTED").length,
+            1,
+          );
+          assert.equal(
+            targets.filter((t) => t.candidateState === "OTHER_SELECTED").length,
+            1,
+          );
+          assert.equal(
+            await db.manager.countBy(NotificationFact, {
+              requestId: q.id,
+              kind: "STORE_SELECTED",
+            }),
+            2,
+          );
+          assert.equal(
+            await db.manager.countBy(NotificationFact, {
+              requestId: q.id,
+              kind: "CANDIDATE_CLOSED",
+            }),
+            1,
+          );
+        }
+        for (const id of accountIds)
+          assert.equal(
+            await db.manager.countBy(Notification, { accountId: id }),
+            2,
+          );
+      } finally {
+        notices.lockAccount = lock;
+        for (const id of demoRestaurantIds.slice(0, 2))
+          await db.manager.update(Restaurant, { id }, { ownerAccountId: null });
+      }
+    },
+  );
   await t.test(
     "replacement recipient is snapshotted for selection and closure without changing original history",
     async () => {

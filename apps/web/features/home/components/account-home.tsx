@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationBadge } from "@/features/notifications/client";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -39,8 +40,10 @@ export function AccountHome({
       : (groups.data?.find((group) => group.id === requested) ??
         (!requested ? groups.data?.[0] : undefined));
   const groupsReady =
-    !isAccessError(groups.error) &&
-    (personal || !!groups.data) &&
+    (personal ||
+      (!requested && groups.isError) ||
+      !isAccessError(groups.error)) &&
+    (personal || (!requested && groups.isError) || !!groups.data) &&
     (!requested || !!selected);
   const hasGroups = !!groups.data?.length;
 
@@ -72,6 +75,7 @@ export function AccountHome({
             </span>
           </Link>
         )}
+        <NotificationBadge accountId={account.id} request={request} />
         <Link
           href={selected ? `/mypage?group=${selected.id}` : "/mypage"}
           aria-label="마이페이지"
@@ -120,8 +124,11 @@ export function AccountHome({
           />
         )}
       </div>
-      {(selected || requested) && (
-        <HomeNavigation groupId={selected?.id ?? requested!} />
+      {(requested || groups.data || personal || groups.isError) && (
+        <HomeNavigation
+          groupId={selected?.id ?? requested ?? undefined}
+          personal={!selected && !requested}
+        />
       )}
       {dialog === "groups" && (
         <GroupSwitcher

@@ -1,4 +1,8 @@
 export const domainErrors = {
+  WORKSPACE_VERSION_CONFLICT: {
+    status: 409,
+    message: "내용이 변경됐어요. 최신 내용을 확인한 뒤 다시 적용해 주세요.",
+  },
   RESERVATION_STATE_CONFLICT: {
     status: 409,
     message:

@@ -1,3 +1,4 @@
+import { NotificationsService } from "../notifications/notifications.service.js";
 import { copyGroupRoster } from "./lib/copy-group-roster.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID, createHash } from "node:crypto";
@@ -18,6 +19,7 @@ import { normalizePersonName } from "../../common/validation/person-name.js";
 @Injectable()
 export class EventRosterService {
   constructor(
+    private readonly notifications: NotificationsService,
     private readonly database: DatabaseService,
     private readonly events: EventsService,
     private readonly groups: GroupsService,
@@ -70,7 +72,12 @@ export class EventRosterService {
       .digest("hex");
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
-      await this.events.assertOwned(ownerId, eventId, manager, true);
+      const event = await this.events.assertOwned(
+        ownerId,
+        eventId,
+        manager,
+        true,
+      );
       const receipt = await manager.findOneBy(EventRosterAddition, {
         eventId,
         requestKey: input.requestKey,
@@ -146,6 +153,24 @@ export class EventRosterService {
         addedCount: members.length,
         createdAt,
       });
+      if (members.length)
+        await this.notifications.record(manager, {
+          eventKey: `roster:${eventId}:${input.requestKey}`,
+          kind: "MEMBERS_ADDED",
+          category: "EVENT",
+          eventId,
+          requestId: input.requestKey,
+          revision: existing.length + members.length,
+          accounts: [
+            {
+              id: ownerId,
+              title: "행사에 새 구성원이 추가됐어요",
+              summary: `${event.name} · ${members.length}명이 추가됐어요.`,
+              destination: `/events?event=${eventId}&view=roster`,
+            },
+          ],
+          messages: [],
+        });
       return { addedCount: members.length };
     });
   }
@@ -165,7 +190,28 @@ export class EventRosterService {
         manager,
         true,
       );
-      return copyGroupRoster(manager, eventId, members);
+      const result = await copyGroupRoster(manager, eventId, members);
+      if (result.addedCount)
+        await this.notifications.record(manager, {
+          eventKey: `roster-import:${eventId}:${createHash("sha256")
+            .update(JSON.stringify(members.map((r) => r.id).sort()))
+            .digest("hex")}`,
+          kind: "MEMBERS_ADDED",
+          category: "EVENT",
+          eventId,
+          requestId: eventId,
+          revision: members.length,
+          accounts: [
+            {
+              id: ownerId,
+              title: "행사에 새 구성원이 추가됐어요",
+              summary: `${event.name} · ${result.addedCount}명이 추가됐어요.`,
+              destination: `/events?event=${eventId}&view=roster`,
+            },
+          ],
+          messages: [],
+        });
+      return result;
     });
   }
   async update(

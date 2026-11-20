@@ -3,6 +3,7 @@ import { linkEnvironmentFields } from "./link-environment.js";
 import { databaseEnvironmentSchema } from "./database-environment.js";
 
 const environmentInputSchema = z.object({
+  REMINDERS_ENABLED: z.enum(["true", "false"]).default("false"),
   FILES_S3_BUCKET: z
     .string()
     .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
@@ -218,6 +219,7 @@ const environmentSchema = environmentInputSchema
     filesRegion: env.FILES_S3_REGION,
     filesMaxCount: env.FILES_MAX_COUNT,
     filesMaxBytes: env.FILES_MAX_BYTES,
+    remindersEnabled: env.REMINDERS_ENABLED === "true",
     solapiApiKey: env.SOLAPI_API_KEY,
     solapiApiSecret: env.SOLAPI_API_SECRET,
     solapiSenderNumber: env.SOLAPI_SENDER_NUMBER,

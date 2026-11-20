@@ -24,7 +24,8 @@
     "merchant:operations": "node scripts/merchant-operations.mjs",
     "db:seed:demo": "node dist/database/seeds/run-demo.js seed",
     "db:demo:links": "node dist/database/seeds/run-demo.js links",
-    "reservation:completion": "node scripts/reservation-completion.mjs"
+    "reservation:completion": "node scripts/reservation-completion.mjs",
+    "calendar:reminders": "node scripts/calendar-reminders.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1171.0",

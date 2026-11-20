@@ -30,8 +30,16 @@ export class Event {
   })
   reservationScheduleLocked!: boolean;
   @Column({ type: "integer", default: 1 }) version!: number;
+  @Column({ type: "integer", name: "schedule_revision", default: 1 })
+  scheduleRevision!: number;
   @Column({ type: "varchar", length: 100 }) name!: string;
   @Column({ type: "timestamptz", name: "scheduled_at", nullable: true })
   scheduledAt!: Date | null;
+  @Column({
+    type: "timestamptz",
+    name: "schedule_updated_at",
+    default: () => "now()",
+  })
+  scheduleUpdatedAt!: Date;
   @Column({ type: "timestamptz", name: "created_at" }) createdAt!: Date;
 }

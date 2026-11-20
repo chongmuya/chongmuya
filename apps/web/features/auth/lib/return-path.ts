@@ -26,6 +26,10 @@ export function safeReturnPath(
       "/owner/register",
       "/owner/menus",
       "/owner/inquiries",
+      "/owner/reservations",
+      "/owner/hours",
+      "/calendar",
+      "/notifications",
     ].includes(url.pathname)
   )
     return "/events";
@@ -65,11 +69,16 @@ export function safeReturnPath(
     if (page && /^[1-9][0-9]{0,3}$/.test(page)) params.set("page", page);
   }
   if (url.pathname.startsWith("/owner")) {
-    for (const key of ["restaurant", "target"]) {
+    for (const key of ["restaurant", "target", "reservation"]) {
       const item = url.searchParams.get(key);
       if (item && uuid.test(item)) params.set(key, item);
     }
   }
+  if (url.pathname === "/calendar")
+    for (const key of ["group", "restaurant", "schedule"]) {
+      const item = url.searchParams.get(key);
+      if (item && uuid.test(item)) params.set(key, item);
+    }
   for (const key of url.pathname === "/events"
     ? ["event", "group", "round", "participant", "review"]
     : url.pathname === "/mypage" ||

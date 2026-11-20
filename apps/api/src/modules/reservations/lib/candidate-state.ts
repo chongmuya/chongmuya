@@ -1,8 +1,8 @@
 import type { RequestTarget } from "../entities/request-target.entity.js";
 import type { MerchantReplyRevision } from "../entities/merchant-reply.entity.js";
 export function candidateState(
-  target: RequestTarget,
-  reply: MerchantReplyRevision | null,
+  target: Pick<RequestTarget, "candidateState">,
+  reply: Pick<MerchantReplyRevision, "kind" | "expiresAt"> | null,
   now: Date,
 ) {
   if (target.candidateState !== "OPEN") return target.candidateState;

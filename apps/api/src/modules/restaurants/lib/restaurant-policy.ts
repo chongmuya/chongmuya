@@ -79,6 +79,7 @@ export function savePolicies(
   return {
     ...next,
     sourceDescriptions: before.sourceDescriptions,
+    ...(before.weeklyHours ? { weeklyHours: before.weeklyHours } : {}),
     descriptionOverrides: [...replaced],
   };
 }
@@ -143,5 +144,32 @@ export function policyDescriptions(p: StoredRestaurantPolicies) {
   const replaced = p.descriptionOverrides;
   for (const key of descriptionKeys)
     if (!replaced.includes(key)) descriptions[key] = p.sourceDescriptions[key];
+  if (p.weeklyHours) {
+    const names = ["일", "월", "화", "수", "목", "금", "토"];
+    const representative = p.hours
+      ? `${p.hours.start}~${p.hours.endDayOffset ? "익일 " : ""}${p.hours.end}`
+      : "영업시간 확인 필요";
+    descriptions.operatingHours =
+      p.weeklyHours.days
+        .map((d, i) => {
+          const value =
+            d.kind === "CLOSED"
+              ? "휴무"
+              : d.kind === "OPEN"
+                ? `${d.start}~${d.endDayOffset ? "익일 " : ""}${d.end}`
+                : p.holidays.kind === "WEEKLY" &&
+                    p.holidays.weekdays.includes(i)
+                  ? "휴무 (대표 설정)"
+                  : `${representative} (대표 설정${p.holidays.kind === "UNKNOWN" ? " · 휴무 확인 필요" : p.holidays.kind === "IRREGULAR" ? " · 비정기 휴무 확인 필요" : ""})`;
+          return `${names[i]}: ${value}`;
+        })
+        .join(" · ") +
+      (p.weeklyHours.note ? ` / 비정기 안내: ${p.weeklyHours.note}` : "") +
+      (p.weeklyHours.days.some((d) => d.kind === "DEFAULT") &&
+      p.holidays.kind === "IRREGULAR" &&
+      p.holidays.note
+        ? ` / 대표 설정 요일의 비정기 휴무: ${p.holidays.note}`
+        : "");
+  }
   return descriptions;
 }
