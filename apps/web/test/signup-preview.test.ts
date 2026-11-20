@@ -65,7 +65,20 @@ async function click(container: HTMLElement, label: string) {
       item.textContent === label || item.getAttribute("aria-label") === label,
   );
   assert(button, label);
-  await act(async () => button.click());
+  if (window.history.state?.signupTerm) {
+    await traverseHistory(() => button.click());
+  } else {
+    await act(async () => button.click());
+  }
+}
+async function traverseHistory(navigate: () => void) {
+  await act(async () => {
+    const changed = new Promise<void>((resolve) => {
+      window.addEventListener("popstate", () => resolve(), { once: true });
+    });
+    navigate();
+    await changed;
+  });
 }
 async function submit(container: HTMLElement) {
   await act(async () => {
@@ -311,6 +324,15 @@ test("terms details focus their heading and return to the originating control fo
         exit === "동의하고 닫기",
       );
     }
+    const label = "개인정보 수집 및 이용동의 상세 보기";
+    await click(view.container, label);
+    await traverseHistory(() => window.history.back());
+    assert.equal(document.activeElement?.getAttribute("aria-label"), label);
+    await traverseHistory(() => window.history.forward());
+    assert.equal(document.activeElement, view.container.querySelector("h1"));
+    assert.match(document.activeElement?.textContent ?? "", /개인정보 수집/);
+    await traverseHistory(() => window.history.back());
+    assert.equal(document.activeElement?.getAttribute("aria-label"), label);
   } finally {
     await view.unmount();
   }

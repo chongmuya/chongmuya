@@ -53,22 +53,8 @@ export function SignupFlow(
             {flow.detail ? (
               <SignupTermsDetail
                 term={props.terms.find((term) => term.id === flow.detail)!}
-                onAgree={() => {
-                  if (flow.detail)
-                    flow.methods.setValue(flow.detail, true, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    });
-                  flow.setDetail(null);
-                }}
-                onClose={() => {
-                  if (flow.detail)
-                    flow.methods.setValue(flow.detail, false, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    });
-                  flow.setDetail(null);
-                }}
+                onAgree={() => flow.closeDetail(true)}
+                onClose={() => flow.closeDetail(false)}
               />
             ) : (
               <form
@@ -86,7 +72,7 @@ export function SignupFlow(
                   )}
                   {flow.step === "terms" && (
                     <SignupTerms
-                      onDetail={flow.setDetail}
+                      onDetail={flow.openDetail}
                       terms={props.terms}
                     />
                   )}

@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError } from "@/shared/http/api-error";
-import type { SignupFormRequest, SignupTerm } from "../types/signup.types";
+import type {
+  SignupFormRequest,
+  SignupTerm,
+  SignupTermId,
+} from "../types/signup.types";
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import {
   signupDefaults,
@@ -41,13 +51,7 @@ export function useSignupFlow({
     mode: "onTouched",
   });
   const [step, setStep] = useState<SignupStep>("terms");
-  const [detail, setDetail] = useState<
-    | keyof Pick<
-        SignupValues,
-        "serviceTerms" | "privacyCollection" | "privacyPolicy" | "marketing"
-      >
-    | null
-  >(null);
+  const [detail, setDetail] = useState<SignupTermId | null>(null);
   const [pending, setPending] = useState(false);
   const [complete, setComplete] = useState(false);
   const [focus, setFocus] = useState<keyof SignupValues | null>(null);
@@ -72,6 +76,28 @@ export function useSignupFlow({
     new Map(terms.map((term) => [term.id, `${term.version}:${term.required}`])),
   );
   const [termsNotice, setTermsNotice] = useState<string>();
+  const closingDetail = useRef(false);
+  const returnToTermsHistoryEntry = useCallback(() => {
+    if (closingDetail.current) return true;
+    if (!window.history.state?.signupTerm) return false;
+    closingDetail.current = true;
+    window.history.back();
+    return true;
+  }, []);
+  useEffect(() => {
+    const path = window.location.pathname;
+    const onHistoryChange = (event: PopStateEvent) => {
+      closingDetail.current = false;
+      if (window.location.pathname !== path || step !== "terms" || complete)
+        return;
+      const term = terms.find((term) => term.id === event.state?.signupTerm);
+      if (!detail && !term) return;
+      setFocus(null);
+      setDetail(term?.id ?? null);
+    };
+    window.addEventListener("popstate", onHistoryChange);
+    return () => window.removeEventListener("popstate", onHistoryChange);
+  }, [step, complete, detail, terms]);
   useEffect(() => {
     if (complete) return;
     const changed = terms.filter(
@@ -88,9 +114,9 @@ export function useSignupFlow({
     setTermsNotice(
       "약관이 변경되었어요. 변경된 항목을 확인하고 다시 동의해 주세요. 입력한 가입 정보와 인증은 유지됩니다.",
     );
-    setDetail(null);
+    if (detail) returnToTermsHistoryEntry();
     setStep("terms");
-  }, [terms, methods, complete]);
+  }, [terms, methods, complete, detail, returnToTermsHistoryEntry]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -108,7 +134,7 @@ export function useSignupFlow({
   const back = () => {
     if (lock.current) return;
     if (detail) {
-      setDetail(null);
+      if (!returnToTermsHistoryEntry()) setDetail(null);
       return;
     }
     methods.clearErrors("root");
@@ -254,9 +280,19 @@ export function useSignupFlow({
     methods,
     step,
     detail,
-    setDetail: (term: typeof detail) => {
+    openDetail: (term: SignupTermId) => {
+      // Keep the signup page and its draft in place on browser Back/Forward.
+      window.history.pushState({ signupTerm: term }, "");
       setFocus(null);
       setDetail(term);
+    },
+    closeDetail: (accepted: boolean) => {
+      if (!detail || closingDetail.current) return;
+      methods.setValue(detail, accepted, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      if (!returnToTermsHistoryEntry()) setDetail(null);
     },
     pending,
     complete,
