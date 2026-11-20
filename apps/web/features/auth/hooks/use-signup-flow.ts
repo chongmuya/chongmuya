@@ -88,16 +88,16 @@ export function useSignupFlow({
     const path = window.location.pathname;
     const onHistoryChange = (event: PopStateEvent) => {
       closingDetail.current = false;
-      if (window.location.pathname !== path || step !== "terms" || complete)
-        return;
+      if (window.location.pathname !== path || complete) return;
       const term = terms.find((term) => term.id === event.state?.signupTerm);
-      if (!detail && !term) return;
+      if ((!detail && !term) || (term && lock.current)) return;
       setFocus(null);
+      if (term) setStep("terms");
       setDetail(term?.id ?? null);
     };
     window.addEventListener("popstate", onHistoryChange);
     return () => window.removeEventListener("popstate", onHistoryChange);
-  }, [step, complete, detail, terms]);
+  }, [complete, detail, terms]);
   useEffect(() => {
     if (complete) return;
     const changed = terms.filter(
@@ -282,7 +282,9 @@ export function useSignupFlow({
     detail,
     openDetail: (term: SignupTermId) => {
       // Keep the signup page and its draft in place on browser Back/Forward.
-      window.history.pushState({ signupTerm: term }, "");
+      if (window.history.state?.signupTerm)
+        window.history.replaceState({ signupTerm: term }, "");
+      else window.history.pushState({ signupTerm: term }, "");
       setFocus(null);
       setDetail(term);
     },

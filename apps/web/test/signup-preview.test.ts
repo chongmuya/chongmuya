@@ -333,6 +333,21 @@ test("terms details focus their heading and return to the originating control fo
     assert.match(document.activeElement?.textContent ?? "", /개인정보 수집/);
     await traverseHistory(() => window.history.back());
     assert.equal(document.activeElement?.getAttribute("aria-label"), label);
+
+    for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
+      await agree(view.container, name);
+    await submit(view.container);
+    await fill(view.container, "email", "draft@example.test");
+    await traverseHistory(() => window.history.forward());
+    assert.match(document.activeElement?.textContent ?? "", /개인정보 수집/);
+    await traverseHistory(() => window.history.back());
+    assert.equal(document.activeElement?.getAttribute("aria-label"), label);
+    await submit(view.container);
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('input[name="email"]')
+        ?.value,
+      "draft@example.test",
+    );
   } finally {
     await view.unmount();
   }
