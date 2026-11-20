@@ -25,6 +25,8 @@ export class NotificationFact {
     string | null;
   @Column({ type: "integer" }) revision!: number;
   @Column({ type: "timestamptz", name: "occurred_at" }) occurredAt!: Date;
+  @Column({ type: "jsonb", name: "merchant_hold", nullable: true })
+  merchantHold!: { reason: string; replacementEventKey?: string } | null;
 }
 @Entity("notifications")
 @Index("notifications_account_sequence", { synchronize: false })

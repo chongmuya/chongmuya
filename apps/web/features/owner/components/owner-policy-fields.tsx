@@ -1,4 +1,5 @@
 "use client";
+import { FormInput } from "@/shared/ui/form-input";
 import { useFormContext, useWatch } from "react-hook-form";
 import { OwnerCheck as Checkbox } from "./owner-fields";
 import { OwnerChoice, OwnerField } from "./owner-fields";
@@ -27,16 +28,23 @@ export function OwnerPolicyFields({ step }: { step: 2 | 3 }) {
           {p.hours && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <OwnerField
-                  path="policies.hours.start"
-                  label="시작 (HH:MM)"
-                  placeholder="예: 17:00"
-                />
-                <OwnerField
-                  path="policies.hours.end"
-                  label="종료 (HH:MM)"
-                  placeholder="예: 24:00"
-                />
+                <label>
+                  시작 시간
+                  <FormInput
+                    control={control}
+                    name="policies.hours.start"
+                    type="time"
+                  />
+                </label>
+                <label>
+                  종료 시간
+                  <FormInput
+                    control={control}
+                    name="policies.hours.end"
+                    type="time"
+                    allowEndOfDay
+                  />
+                </label>
               </div>
               <Checkbox
                 checked={p.hours.endDayOffset === 1}

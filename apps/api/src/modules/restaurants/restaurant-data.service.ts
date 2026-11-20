@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import type { EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { Restaurant } from "./entities/restaurant.entity.js";
@@ -89,6 +90,101 @@ function operator(options: Run) {
 @Injectable()
 export class RestaurantDataService {
   constructor(private readonly database: DatabaseService) {}
+
+  async menus(restaurantId: string) {
+    if (!z.uuid().safeParse(restaurantId).success)
+      throw new RestaurantDataError("VALIDATION_FAILED");
+    const db = await this.database.connect();
+    return db.transaction("REPEATABLE READ", async (m) => {
+      const r = await m.findOneBy(Restaurant, { id: restaurantId });
+      if (!r) throw new RestaurantDataError("RESTAURANT_NOT_FOUND");
+      const menus = await m.find(RestaurantMenu, {
+        where: { restaurantId },
+        order: { position: "ASC", id: "ASC" },
+      });
+      return { restaurantId, version: r.version, menus };
+    });
+  }
+  async patchMenuPrices(
+    restaurantId: string,
+    raw: unknown,
+    actor: string,
+    reason: string,
+    dryRun = true,
+  ) {
+    const parsed = z
+      .object({
+        expectedVersion: z.number().int().positive(),
+        evidence: z.string().trim().min(1).max(500),
+        items: z
+          .array(
+            z
+              .object({
+                id: z.uuid(),
+                price: z.number().int().min(0).max(2_000_000_000),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(500),
+      })
+      .strict()
+      .safeParse(raw);
+    if (
+      !parsed.success ||
+      !z.uuid().safeParse(restaurantId).success ||
+      !actor?.trim() ||
+      actor.length > 100 ||
+      !reason?.trim() ||
+      reason.length > 500
+    )
+      throw new RestaurantDataError("VALIDATION_FAILED");
+    const input = parsed.data;
+    if (new Set(input.items.map((i) => i.id)).size !== input.items.length)
+      throw new RestaurantDataError("VALIDATION_FAILED");
+    return this.transaction({ actor, reason, execute: !dryRun }, async (m) => {
+      const r = await m.findOne(Restaurant, {
+        where: { id: restaurantId },
+        ...(!dryRun ? { lock: { mode: "pessimistic_write" as const } } : {}),
+      });
+      if (!r) throw new RestaurantDataError("RESTAURANT_NOT_FOUND");
+      if (r.version !== input.expectedVersion)
+        throw new RestaurantDataError("RESTAURANT_VERSION_CONFLICT");
+      const menus = await m.findBy(RestaurantMenu, { restaurantId });
+      const changes = input.items.map((item) => {
+        const menu = menus.find((v) => v.id === item.id);
+        if (!menu) throw new RestaurantDataError("RESTAURANT_NOT_FOUND");
+        return { id: menu.id, previousPrice: menu.price, price: item.price };
+      });
+      const changed = changes.filter((v) => v.previousPrice !== v.price);
+      if (!dryRun && changed.length) {
+        for (const item of changed)
+          await m.update(
+            RestaurantMenu,
+            { id: item.id, restaurantId },
+            { price: item.price },
+          );
+        r.version++;
+        await m.save(r);
+        await m.save(RestaurantOperation, {
+          id: randomUUID(),
+          restaurantId,
+          actor,
+          reason,
+          action: "MENU_PRICES_PATCHED",
+          details: { evidence: input.evidence, prices: changed },
+          createdAt: new Date(),
+        });
+      }
+      return {
+        restaurantId,
+        version: r.version,
+        dryRun,
+        changed: changed.length,
+        prices: changes,
+      };
+    });
+  }
 
   private async transaction<T>(
     options: Run,

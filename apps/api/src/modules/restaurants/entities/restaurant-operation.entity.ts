@@ -14,6 +14,8 @@ export class RestaurantOperation {
     accountId?: string;
     published?: boolean;
     contactId?: string;
+    evidence?: string;
+    prices?: { id: string; previousPrice: number | null; price: number }[];
   };
   @Column({ type: "timestamptz", name: "created_at" }) createdAt!: Date;
 }

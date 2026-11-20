@@ -90,6 +90,64 @@ test("compiled data CLI uses only DB settings and local seed rejects unsafe targ
   const applied = data(["--execute"]);
   assert.equal(applied.status, 0, applied.stderr);
   assert.equal(JSON.parse(data(["--execute"]).stdout).skipped, 4);
+  // Menu operations use the same DB-only CLI and never require runtime providers.
+  const menuCommand = (args: string[]) =>
+    spawnSync(
+      process.execPath,
+      [path.join(directory, "scripts/restaurant-data.mjs"), ...args],
+      {
+        cwd: directory,
+        env: { NODE_ENV: "test", DATABASE_URL: process.env.TEST_DATABASE_URL },
+        encoding: "utf8",
+        timeout: 15000,
+      },
+    );
+  const shown = menuCommand(["show", "--key", fixture.restaurants[0]!.key]);
+  assert.equal(shown.status, 0, shown.stderr);
+  const restaurantId = JSON.parse(shown.stdout)[0].id as string;
+  const readMenus = () => {
+    const result = menuCommand(["menus", "--id", restaurantId]);
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout) as {
+      version: number;
+      menus: { id: string; price: number | null }[];
+    };
+  };
+  const beforePrices = readMenus();
+  const priceFile = path.join(directory, "menu-prices.private.json");
+  await writeFile(
+    priceFile,
+    JSON.stringify({
+      expectedVersion: beforePrices.version,
+      evidence: "가상 가격 확인",
+      items: [{ id: beforePrices.menus[0]!.id, price: 12345 }],
+    }),
+    { mode: 0o600 },
+  );
+  const priceArgs = [
+    "menu-prices",
+    "--id",
+    restaurantId,
+    "--file",
+    priceFile,
+    "--actor",
+    "test",
+    "--reason",
+    "격리 CLI 검증",
+  ];
+  const pricePreview = menuCommand(priceArgs);
+  assert.equal(pricePreview.status, 0, pricePreview.stderr);
+  assert.equal(JSON.parse(pricePreview.stdout).dryRun, true);
+  assert.deepEqual(readMenus(), beforePrices);
+  const priceApplied = menuCommand([...priceArgs, "--execute"]);
+  assert.equal(priceApplied.status, 0, priceApplied.stderr);
+  const afterPrices = readMenus();
+  assert.equal(afterPrices.version, beforePrices.version + 1);
+  assert.equal(afterPrices.menus[0]!.price, 12345);
+  assert.deepEqual(afterPrices.menus.slice(1), beforePrices.menus.slice(1));
+  const stalePrices = menuCommand([...priceArgs, "--execute"]);
+  assert.equal(stalePrices.status, 1);
+  assert.match(stalePrices.stderr, /RESTAURANT_VERSION_CONFLICT/);
   for (const env of [
     { NODE_ENV: "production" },
     {

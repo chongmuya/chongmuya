@@ -70,6 +70,12 @@ const environmentInputSchema = z.object({
     .min(100)
     .max(10000)
     .default(5000),
+  RESERVATION_MANAGEMENT_TTL_HOURS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(720)
+    .default(168),
   MERCHANT_REPLY_TTL_HOURS: z.coerce
     .number()
     .int()
@@ -231,6 +237,7 @@ const environmentSchema = environmentInputSchema
     merchantReplyTokenEncryptionKey: env.MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY,
     providerTimeoutMs: env.PROVIDER_TIMEOUT_MS,
     merchantReplyTtlHours: env.MERCHANT_REPLY_TTL_HOURS,
+    reservationManagementTtlHours: env.RESERVATION_MANAGEMENT_TTL_HOURS,
     kakaoClientId: env.KAKAO_CLIENT_ID,
     kakaoClientSecret: env.KAKAO_CLIENT_SECRET,
     kakaoRedirectUri: env.KAKAO_REDIRECT_URI,

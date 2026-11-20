@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { SessionRequest } from "@/features/auth/types";
 import { Button } from "@/shared/ui/button";
 import { BottomSheet } from "@/shared/ui/bottom-sheet";
-import { Input } from "@/shared/ui/input";
+import { FormInput } from "@/shared/ui/form-input";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { safeErrorMessage } from "@/shared/http/error-contract";
@@ -73,9 +73,10 @@ export function EditEvent({
             error={form.formState.errors[key]?.message}
           >
             {(attrs) => (
-              <Input
+              <FormInput
                 {...attrs}
-                {...form.register(key)}
+                control={form.control}
+                name={key}
                 type={key === "name" ? "text" : key}
                 disabled={
                   save.isPending ||

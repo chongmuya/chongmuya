@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
+import { FormInput } from "@/shared/ui/form-input";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
@@ -81,17 +82,19 @@ function HoursForm({
               <div className="mt-3 flex flex-wrap gap-3">
                 <label>
                   시작{" "}
-                  <input
+                  <FormInput
                     type="time"
-                    {...form.register(`days.${i}.start`)}
+                    control={form.control}
+                    name={`days.${i}.start`}
                     required
                   />
                 </label>
                 <label>
                   마감{" "}
-                  <input
+                  <FormInput
                     type="time"
-                    {...form.register(`days.${i}.end`)}
+                    control={form.control}
+                    name={`days.${i}.end`}
                     required
                   />
                 </label>

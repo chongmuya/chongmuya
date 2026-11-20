@@ -58,12 +58,62 @@ export class ReservationAccessService {
       phoneSnapshot: recipient.contactPhone,
       generation: (old?.generation ?? 0) + 1,
       expiresAt: new Date(
-        Date.now() + this.config.environment.merchantReplyTtlHours * 3600_000,
+        Date.now() +
+          this.config.environment.reservationManagementTtlHours * 3600_000,
       ),
       revokedAt: null,
       audit,
     });
     return link;
+  }
+  // Caller holds the reservation business lock. Never infer a changed recipient.
+  async forNotification(
+    selection: SelectedReservation,
+    target: RequestTarget,
+    m: EntityManager,
+    audit: ReservationAudit,
+    inFlight: boolean,
+  ): Promise<
+    | { link: ReservationManagementLink; reason?: never }
+    | { link?: never; reason: string }
+  > {
+    const link = await m.findOneBy(ReservationManagementLink, {
+      reservationId: selection.id,
+    });
+    if (
+      selection.targetId !== target.id ||
+      target.candidateState !== "SELECTED"
+    )
+      return { reason: "RESERVATION_ACCESS_INVALID" };
+    if (!link) return { reason: "MANAGEMENT_LINK_MISSING" };
+    if (link.revokedAt) return { reason: "MANAGEMENT_LINK_REVOKED" };
+    const [reasons] = await this.restaurants.deliveryEligibility(
+      [
+        {
+          restaurantId: target.restaurantId,
+          contactId: link.contactId,
+          contactPhone: link.phoneSnapshot,
+        },
+      ],
+      m,
+      false,
+    );
+    if (reasons.length) return { reason: reasons[0]! };
+    if (link.expiresAt.getTime() > Date.now()) return { link };
+    if (inFlight) return { reason: "DELIVERY_UNRESOLVED" };
+    Object.assign(
+      link,
+      issueMerchantToken(merchantEncryptionKey(this.config.environment)),
+      {
+        generation: link.generation + 1,
+        expiresAt: new Date(
+          Date.now() +
+            this.config.environment.reservationManagementTtlHours * 3600_000,
+        ),
+        audit,
+      },
+    );
+    return { link: await m.save(link) };
   }
   private invalid(): never {
     throw new DomainHttpException("RESERVATION_ACCESS_INVALID");

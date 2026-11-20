@@ -186,6 +186,7 @@ export class ReservationCompletionService {
       where: { reservationId: r.id },
       order: { version: "DESC" },
     });
+    const now = Date.now();
     return {
       id: r.id,
       eventId: r.eventId,
@@ -200,8 +201,8 @@ export class ReservationCompletionService {
       },
       version: r.version,
       status: r.status,
-      progress: completionStatus(s),
-      issues: completionIssues(s),
+      progress: completionStatus(s, now),
+      issues: completionIssues(s, now),
       selectionSnapshot: r.snapshot,
       agreement: s.agreement,
       agreementRevision: s.agreementRevision,
@@ -258,6 +259,7 @@ export class ReservationCompletionService {
     raw: unknown,
     role: "organizer" | "merchant" | "operator",
     mutate: (c: CompletionContext, input: T) => Promise<void>,
+    dryRun = false,
   ) {
     const parsed = schema.safeParse(raw);
     if (!parsed.success) {
@@ -300,62 +302,77 @@ export class ReservationCompletionService {
     const db = await this.database.connect(),
       input = parsed.data;
     let requestId = "";
-    await db.transaction(async (m) => {
-      const c = await this.context(id, p, m, true);
-      requestId = c.request.id;
-      const actor =
-        p.kind === "link"
-          ? "link"
-          : p.kind === "operator"
-            ? p.actor
-            : p.user.id;
-      const digest = createHash("sha256")
-        .update(JSON.stringify({ action, actor, input }))
-        .digest("hex");
-      const existing = await m.findOneBy(ReservationCompletionHistory, {
-        reservationId: id,
-        requestKey: input.requestKey,
-      });
-      if (existing) {
-        if (existing.digest !== digest)
+    const rollbackPreview = Symbol("validated preview");
+    await db
+      .transaction(async (m) => {
+        const c = await this.context(id, p, m, true);
+        requestId = c.request.id;
+        const actor =
+          p.kind === "link"
+            ? "link"
+            : p.kind === "operator"
+              ? p.actor
+              : p.user.id;
+        const digest = createHash("sha256")
+          .update(JSON.stringify({ action, actor, input }))
+          .digest("hex");
+        const existing = await m.findOneBy(ReservationCompletionHistory, {
+          reservationId: id,
+          requestKey: input.requestKey,
+        });
+        if (existing) {
+          if (existing.digest !== digest)
+            throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+          return;
+        }
+        if (c.selection.version !== input.expectedVersion)
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
-        return;
-      }
-      if (c.selection.version !== input.expectedVersion)
-        throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
-      await mutate(c, input);
-      const confirmed = advanceConfirmation(c.selection, c.state, c.audit);
-      if (confirmed)
-        await this.notify(
-          c,
-          "CONFIRMED",
-          "예약이 확정됐어요. 메뉴와 필요한 실제 입금 확인이 완료됐어요.",
-          "both",
-        );
-      await this.notices.recordBatch(m, c.notifications);
-      c.selection.version++;
-      await m.save(c.selection);
-      await m.save(ReservationProgress, { reservationId: id, state: c.state });
-      await m.insert(ReservationCompletionHistory, {
-        id: randomUUID(),
-        reservationId: id,
-        requestKey: input.requestKey,
-        digest,
-        action,
-        version: c.selection.version,
-        audit: c.audit,
-        snapshot: c.state,
-        evidence: { command: input, ...c.evidence },
+        await mutate(c, input);
+        const confirmed = advanceConfirmation(c.selection, c.state, c.audit);
+        if (confirmed)
+          await this.notify(
+            c,
+            "CONFIRMED",
+            "예약이 확정됐어요. 메뉴와 필요한 실제 입금 확인이 완료됐어요.",
+            "both",
+          );
+        if (dryRun) throw rollbackPreview;
+        await this.notices.recordBatch(m, c.notifications);
+        c.selection.version++;
+        await m.save(c.selection);
+        await m.save(ReservationProgress, {
+          reservationId: id,
+          state: c.state,
+        });
+        await m.insert(ReservationCompletionHistory, {
+          id: randomUUID(),
+          reservationId: id,
+          requestKey: input.requestKey,
+          digest,
+          action,
+          version: c.selection.version,
+          audit: c.audit,
+          snapshot: c.state,
+          evidence: { command: input, ...c.evidence },
+        });
+      })
+      .catch((error: unknown) => {
+        if (error !== rollbackPreview) throw error;
       });
-    });
-    await this.sender.dispatchRequest(requestId).catch(() => undefined);
+    if (!dryRun)
+      await this.sender.dispatchRequest(requestId).catch(() => undefined);
     return this.get(id, p);
   }
   active(c: CompletionContext) {
     if (c.state.cancellation)
       throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
   }
-  async manageLink(id: string, p: ReservationPrincipal, raw: unknown) {
+  async manageLink(
+    id: string,
+    p: ReservationPrincipal,
+    raw: unknown,
+    dryRun = false,
+  ) {
     return this.write(
       id,
       p,
@@ -364,8 +381,15 @@ export class ReservationCompletionService {
         .extend({
           operation: z.enum(["ISSUE", "REVOKE"]),
           contactId: z.uuid().optional(),
+          heldEventKey: z.string().min(1).max(200).optional(),
+          heldMessageId: z.uuid().optional(),
         })
-        .strict(),
+        .strict()
+        .refine(
+          (input) =>
+            input.operation === "ISSUE" ||
+            (!input.contactId && !input.heldEventKey && !input.heldMessageId),
+        ),
       raw,
       "operator",
       async (c, input) => {
@@ -392,7 +416,7 @@ export class ReservationCompletionService {
           }
           return;
         }
-        const messages = await this.notices.messages(c.request.id, c.m);
+        const messages = await this.notices.messages(c.request.id, c.m, true);
         if (
           messages.some(
             (n) =>
@@ -415,13 +439,32 @@ export class ReservationCompletionService {
           expiresAt: issued.expiresAt,
           audit: issued.audit,
         };
-        await this.notify(
+        const replacementEventKey = await this.notify(
           c,
           "MANAGEMENT_LINK",
           "이 예약의 메뉴·입금·변경취소를 확인할 새 예약 관리 링크입니다.",
           "merchant",
         );
+        if (c.notifications.at(-1)?.merchantHold)
+          throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+        if (input.heldMessageId)
+          await this.notices.replaceHeldMessage(
+            input.heldMessageId,
+            id,
+            replacementEventKey,
+            c.audit.recorder,
+            c.audit.reason,
+            c.m,
+          );
+        if (input.heldEventKey)
+          await this.notices.replaceHeldIntent(
+            input.heldEventKey,
+            id,
+            replacementEventKey,
+            c.m,
+          );
       },
+      dryRun,
     );
   }
   async notify(
@@ -433,6 +476,7 @@ export class ReservationCompletionService {
   ) {
     const { selection: r, request, target, m } = c;
     const eventKey = `${r.id}:${kind}:${r.version + 1}`;
+    let merchantHold: NotificationInput["merchantHold"];
     const accounts: {
         id: string;
         title: string;
@@ -474,10 +518,21 @@ export class ReservationCompletionService {
           summary,
           destination: `/owner/reservations?reservation=${r.id}`,
         });
-      const link = await m.findOneBy(ReservationManagementLink, {
-        reservationId: r.id,
-      });
-      if (link && !link.revokedAt && link.expiresAt.getTime() > Date.now())
+      const prior = await this.notices.messages(request.id, m, true);
+      const result = await this.access.forNotification(
+        r,
+        target,
+        m,
+        c.audit,
+        prior.some(
+          (n) =>
+            n.recipientKey.startsWith(`reservation:${r.id}:`) &&
+            ["UNKNOWN", "PROCESSING"].includes(n.status),
+        ),
+      );
+      const link = result.link;
+      if (!link) merchantHold = { reason: result.reason };
+      else
         messages.push({
           recipientKey: `reservation:${r.id}:${link.generation}`,
           phone: link.phoneSnapshot,
@@ -496,6 +551,8 @@ export class ReservationCompletionService {
       revision: r.version + 1,
       accounts,
       messages,
+      merchantHold,
     });
+    return eventKey;
   }
 }

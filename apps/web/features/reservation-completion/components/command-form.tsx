@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Field } from "../types/command-field";
 import { commandSchema } from "../schemas/command.schema";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
+import { FormInput } from "@/shared/ui/form-input";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { ApiError } from "@/shared/http/api-error";
@@ -23,6 +23,7 @@ export function CommandForm({
   fields: fieldSource,
   build,
   onDone,
+  available = true,
 }: {
   data: Completion;
   access: CompletionAccess;
@@ -35,6 +36,7 @@ export function CommandForm({
     base: Completion,
   ) => Record<string, unknown>;
   onDone?: () => void;
+  available?: boolean;
 }) {
   const [base, setBase] = useState(data),
     id = useId(),
@@ -58,12 +60,16 @@ export function CommandForm({
     );
     onDone?.();
   };
+  const dirty = form.formState.isDirty;
+  if (!available && !dirty && !mutation.uncertain && !mutation.isPending)
+    return null;
   return (
     <form
       noValidate
       className="space-y-4 rounded-control bg-surface p-5 shadow-card"
       onSubmit={form.handleSubmit(async (v) => {
         if (
+          !available ||
           mutation.uncertain ||
           mutation.isPending ||
           base.version !== data.version
@@ -92,8 +98,13 @@ export function CommandForm({
     >
       <h3 className="font-semibold">{title}</h3>
       {description && <p className="text-xs text-muted">{description}</p>}
+      {!available && (
+        <p role="alert">
+          예약 상태가 바뀌어 이 작업을 저장할 수 없어요. 작성 내용은 보존했어요.
+        </p>
+      )}
       <fieldset
-        disabled={mutation.uncertain || mutation.isPending}
+        disabled={!available || mutation.uncertain || mutation.isPending}
         className="contents"
       >
         {fields.map((f) => (
@@ -140,10 +151,11 @@ export function CommandForm({
                   }
                 />
               ) : (
-                <Input
+                <FormInput
                   {...attrs}
                   type={f.type ?? "text"}
-                  {...form.register(f.name)}
+                  control={form.control}
+                  name={f.name}
                 />
               )
             }

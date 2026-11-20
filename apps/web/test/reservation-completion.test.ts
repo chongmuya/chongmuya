@@ -1,3 +1,4 @@
+import { chooseDate, chooseTime } from "./support/date-controls";
 import "./support/dom";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "../shared/http/api-error";
@@ -112,7 +113,8 @@ for (const lostResponse of [false, true]) {
         assert(view.container.querySelector('[name="amount"]')),
       );
       await fill(view.container, "amount", "150000");
-      await fill(view.container, "receivedAt", "2026-11-19T12:30");
+      await chooseDate(view.container, "receivedAt", "2026-11-19");
+      await chooseTime(view.container, "receivedAt", "12:30");
       await confirm();
       await submit(view.container);
       await until(() => assert.equal(writes.length, 1));
@@ -132,9 +134,10 @@ for (const lostResponse of [false, true]) {
         ),
       );
       assert.equal(
-        view.container.querySelector<HTMLInputElement>('[name="receivedAt"]')!
-          .value,
-        "2026-11-19T12:30",
+        view.container
+          .querySelector<HTMLButtonElement>('button[name="receivedAt"]')!
+          .textContent?.includes("2026-11-19"),
+        true,
       );
       assert.equal(
         view.container.querySelector<HTMLTextAreaElement>('[name="reason"]')!
@@ -677,5 +680,112 @@ test("merchant CHANGE proposals expose no refund plan; only cancellation proposa
     } finally {
       await view.unmount();
     }
+  }
+});
+
+test("external menu submission preserves dirty quantities and blocks a second save", async () => {
+  const access: CompletionAccess = {
+    kind: "organizer",
+    accountId: "retain-menu",
+    request: async () => {
+      throw new Error("unexpected write");
+    },
+  };
+  function Screen() {
+    const [data, setData] = useState(fixture());
+    return createElement(
+      "div",
+      null,
+      createElement(
+        "button",
+        {
+          onClick: () =>
+            setData({
+              ...data,
+              version: 2,
+              order: {
+                total: 2000,
+                lines: [],
+                revision: 1,
+                catalogVersion: 1,
+                currency: "KRW",
+                submittedAt: "2026-11-20T00:00:00Z",
+              },
+            }),
+        },
+        "다른 기기 전달",
+      ),
+      createElement(MenuForm, { data, access }),
+    );
+  }
+  const view = await render(createElement(Screen));
+  try {
+    await fill(view.container, "items.0.quantity", "3");
+    await click(view.container, "다른 기기 전달");
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>(
+        '[name="items.0.quantity"]',
+      )?.value,
+      "3",
+    );
+    assert.match(view.container.textContent!, /작성 내용은 보존/);
+    assert(view.container.querySelector("fieldset")?.disabled);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("external change resolution retains the merchant proposal draft without accepting the new version", async () => {
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "retain-proposal",
+    request: async () => {
+      throw new Error("unexpected write");
+    },
+  };
+  const initial = {
+    ...fixture(),
+    changes: [
+      {
+        id: "change",
+        kind: "CHANGE",
+        status: "REQUESTED",
+        reason: "일정 변경",
+      },
+    ],
+  } as Completion;
+  function Screen() {
+    const [data, setData] = useState(initial);
+    return createElement(
+      "div",
+      null,
+      createElement(
+        "button",
+        {
+          onClick: () =>
+            setData({
+              ...data,
+              version: 2,
+              changes: data.changes.map((c) => ({ ...c, status: "REJECTED" })),
+            }),
+        },
+        "다른 기기 처리",
+      ),
+      createElement(ChangeForms, { data, access }),
+    );
+  }
+  const view = await render(createElement(Screen));
+  try {
+    await fill(view.container, "expectedGuests", "17");
+    await click(view.container, "다른 기기 처리");
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('[name="expectedGuests"]')
+        ?.value,
+      "17",
+    );
+    assert.match(view.container.textContent!, /작성 내용은 보존/);
+    assert(view.container.querySelector("fieldset")?.disabled);
+  } finally {
+    await view.unmount();
   }
 });

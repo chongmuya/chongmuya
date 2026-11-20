@@ -35,27 +35,36 @@ try {
   if (v.help)
     console.log(`data:restaurants import|update --file 비공개JSON --actor 실행자 --reason 사유 [--execute]
 data:restaurants show [--id UUID | --key 고정키]
+data:restaurants menus --id UUID
+data:restaurants menu-prices --id UUID --file 비공개JSON --actor 실행자 --reason 사유 [--execute]
+가격 파일: {expectedVersion, evidence, items:[{id, price}]} — 지정 메뉴의 가격만 원자적으로 수정합니다.
 기본은 DB 쓰기가 없는 미리보기입니다. 입력은 0600 일반 파일, 최대 1MiB입니다.
 show는 최대 100개 매장의 ID/version 또는 지정 매장의 자원 ID를 표시합니다. 연락처 번호는 출력하지 않습니다.`);
   else {
     const action = positionals[0];
     if (
       positionals.length !== 1 ||
-      !["import", "update", "show"].includes(action)
+      !["import", "update", "show", "menus", "menu-prices"].includes(action)
     )
       throw new RestaurantDataError("INVALID_COMMAND");
-    if (action === "show") {
+    if (action === "menus") {
+      if (!v.id || v.key || v.file || v.actor || v.reason || v.execute)
+        throw new RestaurantDataError("INVALID_COMMAND");
+      operationId(v.id);
+    } else if (action === "show") {
       if (v.file || v.actor || v.reason || v.execute || (v.id && v.key))
         throw new RestaurantDataError("INVALID_COMMAND");
       if (v.id) operationId(v.id);
       if (v.key) restaurantDataKey.parse(v.key);
     } else {
       requireOperator(v);
-      if (!v.file || v.id || v.key)
+      if (!v.file || v.key || (action === "menu-prices" ? !v.id : v.id))
         throw new RestaurantDataError("INVALID_COMMAND");
+      if (v.id) operationId(v.id);
     }
-    const raw =
-      action === "show" ? undefined : await privateRestaurantInput(v.file);
+    const raw = ["show", "menus"].includes(action)
+      ? undefined
+      : await privateRestaurantInput(v.file);
     const env =
       process.env.NODE_ENV === "production"
         ? parseDeploymentDatabase(process.env.DATABASE_URL, "app")
@@ -69,15 +78,25 @@ show는 최대 100개 매장의 ID/version 또는 지정 매장의 자원 ID를 
       throw new RestaurantDataError("MIGRATIONS_REQUIRED");
     const service = new RestaurantDataService(new DatabaseService(db));
     const result =
-      action === "show"
-        ? await service.show(
-            v.id || v.key ? { id: v.id, key: v.key } : undefined,
-          )
-        : await service[action](raw, {
-            actor: v.actor,
-            reason: v.reason,
-            execute: v.execute,
-          });
+      action === "menus"
+        ? await service.menus(v.id)
+        : action === "menu-prices"
+          ? await service.patchMenuPrices(
+              v.id,
+              raw,
+              v.actor,
+              v.reason,
+              !v.execute,
+            )
+          : action === "show"
+            ? await service.show(
+                v.id || v.key ? { id: v.id, key: v.key } : undefined,
+              )
+            : await service[action](raw, {
+                actor: v.actor,
+                reason: v.reason,
+                execute: v.execute,
+              });
     console.log(JSON.stringify(result));
   }
 } catch (error) {

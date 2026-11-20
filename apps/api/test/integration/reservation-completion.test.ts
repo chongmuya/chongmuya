@@ -17,7 +17,25 @@ import {
   ReservationProgress,
 } from "../../src/modules/reservations/entities/reservation-progress.entity.js";
 import { RestaurantMenu } from "../../src/modules/restaurants/entities/restaurant-menu.entity.js";
-import { NotificationFact } from "../../src/modules/notifications/entities/notification.entity.js";
+import { ReservationFactsService } from "../../src/modules/reservations/reservation-facts.service.js";
+import {
+  completionStatus,
+  completionIssues,
+  initialPreparation,
+} from "../../src/modules/reservations/lib/reservation-completion.js";
+import { SelectedReservation } from "../../src/modules/reservations/entities/selected-reservation.entity.js";
+import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
+import { RestaurantContact } from "../../src/modules/restaurants/entities/restaurant-contact.entity.js";
+import { RestaurantOperation } from "../../src/modules/restaurants/entities/restaurant-operation.entity.js";
+import { RestaurantDataService } from "../../src/modules/restaurants/restaurant-data.service.js";
+import { DatabaseService } from "../../src/database/database.service.js";
+import { NotificationsService } from "../../src/modules/notifications/notifications.service.js";
+import { ReservationNotificationsService } from "../../src/modules/reservations/reservation-notifications.service.js";
+import {
+  NotificationFact,
+  Notification,
+  NotificationMessage,
+} from "../../src/modules/notifications/entities/notification.entity.js";
 import type { ReservationRequestDto } from "../../src/modules/reservations/dto/response/reservation-request.response.dto.js";
 const json = async <T>(r: Response, status = 200) => {
   const b = await r.json();
@@ -1052,6 +1070,618 @@ test("reservation completion preserves contracts, scoped links, money evidence a
         await call(`events/${v.eventId}`, organizer),
       );
       assert.equal(event.reservationScheduleLocked, false);
+    },
+  );
+  await t.test(
+    "expired management links rotate once, invalidate access, and retain every notification intent",
+    async () => {
+      let v = await fixture();
+      const original = await db.manager.findOneByOrFail(
+        ReservationManagementLink,
+        { reservationId: v.id },
+      );
+      const token = new URLSearchParams(
+        new URL(access.url(original)).hash.slice(1),
+      ).get("token")!;
+      const session = await access.exchange(v.id, token, "rotation-test");
+      await db.manager.update(
+        ReservationManagementLink,
+        { reservationId: v.id },
+        { expiresAt: new Date(Date.now() - 86400000) },
+      );
+      const input = menu(v);
+      await Promise.all([
+        post(v.id, "menu-submit", input),
+        post(v.id, "menu-submit", input),
+      ]);
+      v = await view(v.id);
+      const rotated = await db.manager.findOneByOrFail(
+        ReservationManagementLink,
+        { reservationId: v.id },
+      );
+      assert.equal(rotated.generation, original.generation + 1);
+      assert.equal(rotated.phoneSnapshot, original.phoneSnapshot);
+      await assert.rejects(access.exchange(v.id, token, "rotation-test"));
+      await assert.rejects(
+        access.authorize(v.id, session.accessToken, db.manager),
+      );
+      const facts = await db.manager.findBy(NotificationFact, {
+        reservationId: v.id,
+      });
+      assert.equal(
+        facts.filter((f) => f.eventKey.includes(":MENU_SUBMITTED:")).length,
+        1,
+      );
+      const messages = await app
+        .get(NotificationsService)
+        .messages(facts[0].requestId, db.manager);
+      assert(
+        messages.some(
+          (n) =>
+            n.recipientKey === `reservation:${v.id}:${rotated.generation}` &&
+            n.text.includes(access.url(rotated)),
+        ),
+      );
+      // A valid link survives the next independent follow-up notification.
+      await db.transaction(async (m) => {
+        const c = await completion.context(v.id, operator, m, true);
+        await completion.notify(c, "VALID_LINK_TEST", "확인", "merchant");
+        await app.get(NotificationsService).recordBatch(m, c.notifications);
+      });
+      assert.equal(
+        (
+          await db.manager.findOneByOrFail(ReservationManagementLink, {
+            reservationId: v.id,
+          })
+        ).generation,
+        rotated.generation,
+      );
+    },
+  );
+  await t.test(
+    "unsafe expiration is held with a reason; operator replaces only an explicitly selected intent",
+    async () => {
+      for (const scenario of [
+        "REVOKED",
+        "MISSING",
+        "PHONE_CHANGED",
+        "CONSENT_WITHDRAWN",
+        "CONTACT_INACTIVE",
+        "UNKNOWN",
+        "PROCESSING",
+      ] as const) {
+        const v = await fixture();
+        const old = await db.manager.findOneByOrFail(
+          ReservationManagementLink,
+          { reservationId: v.id },
+        );
+        const contact = await db.manager.findOneByOrFail(RestaurantContact, {
+          id: old.contactId,
+        });
+        await db.manager.update(
+          ReservationManagementLink,
+          { reservationId: v.id },
+          {
+            expiresAt: new Date(0),
+            ...(scenario === "REVOKED" ? { revokedAt: new Date() } : {}),
+          },
+        );
+        if (scenario === "MISSING")
+          await db.manager.delete(ReservationManagementLink, {
+            reservationId: v.id,
+          });
+        if (scenario === "PHONE_CHANGED")
+          await db.manager.update(
+            RestaurantContact,
+            { id: contact.id },
+            { phone: "01000009999" },
+          );
+        if (scenario === "CONSENT_WITHDRAWN")
+          await db.manager.update(
+            RestaurantContact,
+            { id: contact.id },
+            { requestConsentAt: null },
+          );
+        if (scenario === "CONTACT_INACTIVE")
+          await db.manager.update(
+            RestaurantContact,
+            { id: contact.id },
+            { active: false },
+          );
+        if (scenario === "UNKNOWN" || scenario === "PROCESSING") {
+          const previous = await db.manager.findOneByOrFail(
+            NotificationMessage,
+            { recipientKey: `reservation:${v.id}:${old.generation}` },
+          );
+          await db.manager.update(
+            NotificationMessage,
+            { id: previous.id },
+            { status: scenario },
+          );
+        }
+        const saved = await post(v.id, "menu-submit", menu(v));
+        assert(saved.order);
+        const fact = (
+          await db.manager.findBy(NotificationFact, { reservationId: v.id })
+        ).find((f) => f.eventKey.includes(":MENU_SUBMITTED:"))!;
+        assert.equal(
+          fact.merchantHold?.reason,
+          (
+            {
+              REVOKED: "MANAGEMENT_LINK_REVOKED",
+              MISSING: "MANAGEMENT_LINK_MISSING",
+              UNKNOWN: "DELIVERY_UNRESOLVED",
+              PROCESSING: "DELIVERY_UNRESOLVED",
+            } as Record<string, string>
+          )[scenario] ?? scenario,
+        );
+        assert(
+          (await app.get(NotificationsService).operations()).some(
+            (n) => n.eventKey === fact.eventKey && n.status === "HELD",
+          ),
+        );
+        await db.manager.save(contact);
+        if (scenario === "REVOKED") {
+          const recoverInput = {
+            ...key(saved.version),
+            operation: "ISSUE",
+            contactId: contact.id,
+            heldEventKey: fact.eventKey,
+          };
+          const linkBefore = await db.manager.findOneByOrFail(
+            ReservationManagementLink,
+            { reservationId: v.id },
+          );
+          const messageCount = await db.manager.count(NotificationMessage);
+          await completion.manageLink(v.id, operator, recoverInput, true);
+          assert.deepEqual(
+            await db.manager.findOneByOrFail(ReservationManagementLink, {
+              reservationId: v.id,
+            }),
+            linkBefore,
+          );
+          assert.equal(
+            await db.manager.count(NotificationMessage),
+            messageCount,
+          );
+          assert.equal((await view(v.id)).version, saved.version);
+          assert.equal(
+            (
+              await db.manager.findOneByOrFail(NotificationFact, {
+                eventKey: fact.eventKey,
+              })
+            ).merchantHold?.replacementEventKey,
+            undefined,
+          );
+          await assert.rejects(
+            completion.manageLink(
+              v.id,
+              operator,
+              { ...recoverInput, heldEventKey: "not-this-reservation" },
+              true,
+            ),
+          );
+          await completion.manageLink(v.id, operator, recoverInput);
+          const resolved = await db.manager.findOneByOrFail(NotificationFact, {
+            eventKey: fact.eventKey,
+          });
+          assert(resolved.merchantHold?.replacementEventKey);
+        } else {
+          assert.equal(
+            (
+              await db.manager.findOneBy(ReservationManagementLink, {
+                reservationId: v.id,
+              })
+            )?.generation ?? old.generation,
+            old.generation,
+          );
+        }
+      }
+    },
+  );
+  await t.test(
+    "rollback keeps link generation and held plans unchanged; dispatch blocks stale generations",
+    async () => {
+      const v = await fixture();
+      const old = await db.manager.findOneByOrFail(ReservationManagementLink, {
+        reservationId: v.id,
+      });
+      await db.manager.update(
+        ReservationManagementLink,
+        { reservationId: v.id },
+        { expiresAt: new Date(0) },
+      );
+      await assert.rejects(
+        db.transaction(async (m) => {
+          const c = await completion.context(v.id, operator, m, true);
+          await completion.notify(c, "ROLLBACK_TEST", "확인", "merchant");
+          await app.get(NotificationsService).recordBatch(m, c.notifications);
+          throw new Error("TEST_ROLLBACK");
+        }),
+      );
+      assert.equal(
+        (
+          await db.manager.findOneByOrFail(ReservationManagementLink, {
+            reservationId: v.id,
+          })
+        ).generation,
+        old.generation,
+      );
+      assert(
+        !(
+          await db.manager.findBy(NotificationFact, { reservationId: v.id })
+        ).some((f) => f.eventKey.includes("ROLLBACK_TEST")),
+      );
+      const prior = await db.manager.findOneByOrFail(NotificationMessage, {
+        recipientKey: `reservation:${v.id}:${old.generation}`,
+      });
+      await db.manager.update(
+        NotificationMessage,
+        { id: prior.id },
+        {
+          status: "PENDING",
+          providerMessageId: null,
+          providerGroupId: null,
+          reports: [],
+        },
+      );
+      await app.get(ReservationNotificationsService).dispatch(prior.id);
+      assert.equal(
+        (
+          await db.manager.findOneByOrFail(NotificationMessage, {
+            id: prior.id,
+          })
+        ).status,
+        "HELD",
+      );
+    },
+  );
+  await t.test(
+    "operator menu price patch is atomic, versioned, non-destructive and preserves submitted snapshots",
+    async () => {
+      let v = await fixture();
+      v = await post(v.id, "menu-submit", menu(v));
+      const service = new RestaurantDataService(app.get(DatabaseService));
+      const before = await service.menus(v.restaurantId);
+      const chosen = before.menus[0];
+      const owner = (
+        await db.manager.findOneByOrFail(Restaurant, { id: v.restaurantId })
+      ).ownerAccountId;
+      const count = await db.manager.countBy(RestaurantOperation, {
+        restaurantId: v.restaurantId,
+      });
+      const input = {
+        expectedVersion: before.version,
+        evidence: "가상 가격 확인",
+        items: [{ id: chosen.id, price: (chosen.price ?? 1000) + 100 }],
+      };
+      const preview = await service.patchMenuPrices(
+        v.restaurantId,
+        input,
+        "test",
+        "격리 검증",
+      );
+      assert.equal(preview.changed, 1);
+      assert.deepEqual(await service.menus(v.restaurantId), before);
+      assert.equal(
+        await db.manager.countBy(RestaurantOperation, {
+          restaurantId: v.restaurantId,
+        }),
+        count,
+      );
+      for (const items of [
+        [...input.items, ...input.items],
+        [{ id: randomUUID(), price: 1 }],
+        [{ id: chosen.id, price: -1 }],
+        [{ id: chosen.id, price: 0.1 }],
+        [{ id: chosen.id, price: 2_000_000_001 }],
+        [...input.items, { id: randomUUID(), price: 1 }],
+      ])
+        await assert.rejects(
+          service.patchMenuPrices(
+            v.restaurantId,
+            { ...input, items },
+            "test",
+            "격리 검증",
+            false,
+          ),
+        );
+      assert.deepEqual(await service.menus(v.restaurantId), before);
+      const results = await Promise.allSettled([
+        service.patchMenuPrices(
+          v.restaurantId,
+          input,
+          "test",
+          "격리 검증",
+          false,
+        ),
+        service.patchMenuPrices(
+          v.restaurantId,
+          input,
+          "test",
+          "동시 검증",
+          false,
+        ),
+      ]);
+      assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+      const after = await service.menus(v.restaurantId);
+      assert.equal(after.version, before.version + 1);
+      assert.deepEqual(
+        structuredClone(after.menus),
+        structuredClone(
+          before.menus.map((m) =>
+            m.id === chosen.id ? { ...m, price: input.items[0].price } : m,
+          ),
+        ),
+      );
+      await service.patchMenuPrices(
+        v.restaurantId,
+        { ...input, expectedVersion: after.version },
+        "test",
+        "동일 가격",
+        false,
+      );
+      assert.equal(
+        (await service.menus(v.restaurantId)).version,
+        after.version,
+      );
+      assert.equal(
+        await db.manager.countBy(RestaurantOperation, {
+          restaurantId: v.restaurantId,
+        }),
+        count + 1,
+      );
+      assert.deepEqual((await view(v.id)).order, v.order);
+      assert.equal(
+        (await db.manager.findOneByOrFail(Restaurant, { id: v.restaurantId }))
+          .ownerAccountId,
+        owner,
+      );
+    },
+  );
+
+  await t.test(
+    "calendar projection shares deadline rules and does not mutate saved state or expose private facts",
+    async () => {
+      const v = await fixture();
+      const r = await db.manager.findOneByOrFail(Restaurant, {
+        id: v.restaurantId,
+      });
+      const me = await json<{ id: string }>(await call("auth/me", organizer));
+      await db.manager.update(
+        Restaurant,
+        { id: r.id },
+        { ownerAccountId: me.id },
+      );
+      try {
+        const selection = await db.manager.findOneByOrFail(
+          SelectedReservation,
+          { id: v.id },
+        );
+        const row = await db.manager.save(ReservationProgress, {
+          reservationId: v.id,
+          state: initialPreparation(selection),
+        });
+        row.state.agreement.menuDeadlineAt = new Date(
+          Date.now() + 1000,
+        ).toISOString();
+        await db.manager.save(ReservationProgress, row);
+        const before = await db.manager.findOneByOrFail(SelectedReservation, {
+          id: v.id,
+        });
+        const service = app.get(ReservationFactsService);
+        const now = Date.now() + 2000;
+        const rows = await service.calendar(
+          me.id,
+          r.id,
+          new Date(0),
+          new Date("2100-01-01"),
+          db.manager,
+          now,
+        );
+        const projected = rows.find((item) => item.reservationId === v.id)!;
+        assert.equal(projected.progress, completionStatus(row.state, now));
+        assert.deepEqual(
+          projected.issueCodes,
+          completionIssues(row.state, now),
+        );
+        assert.equal(projected.progress, "CHECK_REQUIRED");
+        assert.equal(projected.status, before.status);
+        assert.equal("preparation" in projected, false);
+        assert.equal("guidance" in projected, false);
+        assert.deepEqual(
+          await db.manager.findOneByOrFail(SelectedReservation, { id: v.id }),
+          before,
+        );
+        await db.manager.delete(ReservationProgress, { reservationId: v.id });
+        const legacy = await service.calendar(
+          me.id,
+          r.id,
+          new Date(0),
+          new Date("2100-01-01"),
+          db.manager,
+          Date.now(),
+        );
+        assert.equal(
+          legacy.find((item) => item.reservationId === v.id)?.progress,
+          "MENU_REQUIRED",
+        );
+        await assert.rejects(
+          service.calendar(
+            randomUUID(),
+            r.id,
+            new Date(0),
+            new Date("2100-01-01"),
+            db.manager,
+          ),
+        );
+      } finally {
+        await db.manager.save(r);
+      }
+    },
+  );
+  await t.test(
+    "owner inbox survives a missing link and owner menu edits serialize with operator price patches",
+    async () => {
+      const account = await signup();
+      await json(
+        await call("auth/first-setup", account, "PATCH", {
+          accountType: "owner",
+        }),
+      );
+      const me = await json<{ id: string }>(await call("auth/me", account));
+      let v = await fixture();
+      const original = await db.manager.findOneByOrFail(Restaurant, {
+        id: v.restaurantId,
+      });
+      await db.manager.update(
+        Restaurant,
+        { id: original.id },
+        { ownerAccountId: me.id },
+      );
+      try {
+        await db.manager.delete(ReservationManagementLink, {
+          reservationId: v.id,
+        });
+        v = await post(v.id, "menu-submit", menu(v));
+        const fact = (
+          await db.manager.findBy(NotificationFact, { reservationId: v.id })
+        ).find((f) => f.eventKey.includes(":MENU_SUBMITTED:"))!;
+        assert.equal(fact.merchantHold?.reason, "MANAGEMENT_LINK_MISSING");
+        assert(
+          await db.manager.findOneBy(Notification, {
+            accountId: me.id,
+            eventKey: fact.eventKey,
+          }),
+        );
+        const service = new RestaurantDataService(app.get(DatabaseService));
+        const before = await service.menus(original.id);
+        const chosen = before.menus[0];
+        const [ownerResult, operatorResult] = await Promise.allSettled([
+          call(`owner/restaurants/${original.id}/menus`, account, "PUT", {
+            version: before.version,
+            menu: {
+              id: chosen.id,
+              name: chosen.name,
+              kind: chosen.kind,
+              price: (chosen.price ?? 1000) + 7,
+              unit: chosen.unit,
+              available: chosen.available,
+              position: chosen.position,
+            },
+          }).then((r) => {
+            assert([200, 409].includes(r.status));
+            return r.status;
+          }),
+          service.patchMenuPrices(
+            original.id,
+            {
+              expectedVersion: before.version,
+              evidence: "가상 확인",
+              items: [{ id: chosen.id, price: (chosen.price ?? 1000) + 11 }],
+            },
+            "test",
+            "동시 확인",
+            false,
+          ),
+        ]);
+        assert.equal(
+          (ownerResult.status === "fulfilled" && ownerResult.value === 200
+            ? 1
+            : 0) + (operatorResult.status === "fulfilled" ? 1 : 0),
+          1,
+        );
+        assert.equal(
+          (await service.menus(original.id)).version,
+          before.version + 1,
+        );
+        assert.deepEqual((await view(v.id)).order, v.order);
+      } finally {
+        await db.manager.update(
+          Restaurant,
+          { id: original.id },
+          { ownerAccountId: original.ownerAccountId },
+        );
+      }
+    },
+  );
+  await t.test(
+    "calendar progress matches detail through menu, guidance, deadline, payment and confirmation transitions",
+    async () => {
+      const me = await json<{ id: string }>(await call("auth/me", organizer));
+      const original = await db.manager.findOneByOrFail(Restaurant, {
+        id: demoRestaurantIds[0],
+      });
+      await db.manager.update(
+        Restaurant,
+        { id: original.id },
+        { ownerAccountId: me.id },
+      );
+      const assertProjection = async (v: View, now = Date.now()) => {
+        const state =
+          (
+            await db.manager.findOneBy(ReservationProgress, {
+              reservationId: v.id,
+            })
+          )?.state ??
+          initialPreparation(
+            await db.manager.findOneByOrFail(SelectedReservation, { id: v.id }),
+          );
+        const row = (
+          await app
+            .get(ReservationFactsService)
+            .calendar(
+              me.id,
+              original.id,
+              new Date(0),
+              new Date("2100-01-01"),
+              db.manager,
+              now,
+            )
+        ).find((r) => r.reservationId === v.id)!;
+        assert.equal(row.progress, completionStatus(state, now));
+        assert.deepEqual(row.issueCodes, completionIssues(state, now));
+        return row;
+      };
+      try {
+        let none = await fixture();
+        assert.equal((await assertProjection(none)).progress, none.progress);
+        none = await post(none.id, "menu-submit", menu(none));
+        assert.equal((await assertProjection(none)).progress, "CONFIRMED");
+        let paid = await fixture("UNKNOWN");
+        assert.equal((await assertProjection(paid)).progress, paid.progress);
+        paid = await payments.guidance(paid.id, operator, guide(paid));
+        paid = await post(paid.id, "menu-submit", {
+          ...menu(paid),
+          transfer: { payer: "가상 총무", amount: 10000 },
+        });
+        assert.equal(
+          (await assertProjection(paid)).progress,
+          "PAYMENT_CHECKING",
+        );
+        const overdue = await assertProjection(
+          paid,
+          Date.parse(paid.guidance.deadline!) + 1,
+        );
+        assert.equal(overdue.progress, "CHECK_REQUIRED");
+        assert(overdue.issueCodes.includes("PAYMENT_LATE"));
+        paid = await payments.receipt(paid.id, operator, {
+          ...key(paid.version),
+          guidanceRevision: paid.guidance.revision,
+          amount: 10000,
+          receivedAt: new Date().toISOString(),
+          corrects: null,
+          reason: "가상 실입금",
+        });
+        assert.equal((await assertProjection(paid)).progress, "CONFIRMED");
+        assert.equal((await view(paid.id)).progress, "CONFIRMED");
+      } finally {
+        await db.manager.update(
+          Restaurant,
+          { id: original.id },
+          { ownerAccountId: original.ownerAccountId },
+        );
+      }
     },
   );
   assert.deepEqual((await db.driver.createSchemaBuilder().log()).upQueries, []);

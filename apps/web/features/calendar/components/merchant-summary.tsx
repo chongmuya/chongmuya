@@ -1,4 +1,5 @@
 "use client";
+import { reservationLabel } from "../lib/reservation-label";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
@@ -65,15 +66,7 @@ export function MerchantSummary({
               }).format(new Date(r.startsAt))}{" "}
               · {r.title}
               <span className="mt-1 block text-brand-action">
-                {r.status === "CONFIRMED"
-                  ? "확정"
-                  : r.status === "CANCELLED"
-                    ? "취소"
-                    : r.status === "PREPARING"
-                      ? "선택됨 · 메뉴·입금 확인"
-                      : r.status === "CHECK_REQUIRED"
-                        ? "확인 필요"
-                        : "문의·제안 상태 확인"}
+                {reservationLabel(r)}
               </span>
               <ReservationFacts reservation={r} />
             </Link>

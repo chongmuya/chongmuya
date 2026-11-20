@@ -211,7 +211,10 @@ export class ReservationNotificationsService {
         id: targetId,
       });
       const reasons =
-        target && row.contactIdSnapshot
+        target &&
+        (!row.recipientKey.startsWith("reservation:") ||
+          target.candidateState === "SELECTED") &&
+        row.contactIdSnapshot
           ? (
               await this.restaurants.deliveryEligibility(
                 [

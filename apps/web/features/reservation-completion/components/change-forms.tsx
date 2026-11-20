@@ -1,3 +1,5 @@
+"use client";
+import { useState } from "react";
 import { ProposalComparison } from "./proposal-comparison";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { CommandForm } from "./command-form";
@@ -17,6 +19,9 @@ export function ChangeForms({
     pending = q.changes.find((c) =>
       ["REQUESTED", "PROPOSED"].includes(c.status),
     );
+  const [lastPending, setLastPending] = useState(pending);
+  if (pending && lastPending?.id !== pending.id) setLastPending(pending);
+  const editable = pending ?? lastPending;
   return (
     <section className="space-y-5">
       <h3 className="font-semibold">예약 변경·취소</h3>
@@ -44,8 +49,9 @@ export function ChangeForms({
           )}
         </div>
       )}
-      {!q.cancellation && !pending && organizer && (
+      {organizer && (
         <CommandForm
+          available={!q.cancellation && !pending}
           {...props}
           action="change-request"
           title="변경·취소 문의 보내기"
@@ -109,20 +115,24 @@ export function ChangeForms({
             build={() => ({ changeId: pending.id, confirmed: true })}
           />
         )}
-      {pending && !organizer && (
+      {editable && !organizer && (
         <>
-          {pending.status === "REQUESTED" && (
+          {lastPending?.status === "REQUESTED" && (
             <ProposalForm
               {...props}
-              changeId={pending.id}
-              cancel={pending.kind === "CANCEL"}
+              changeId={editable.id}
+              cancel={editable.kind === "CANCEL"}
+              available={
+                pending?.id === editable.id && pending.status === "REQUESTED"
+              }
             />
           )}
           <CommandForm
             {...props}
+            available={!!pending}
             action="change-reject"
             title={
-              pending.kind === "REFUND"
+              editable.kind === "REFUND"
                 ? "환불 제안 철회"
                 : "문의 불가 결과 안내"
             }
@@ -134,7 +144,7 @@ export function ChangeForms({
                 max: 500,
               },
             ]}
-            build={(v) => ({ changeId: pending.id, reason: v.reason })}
+            build={(v) => ({ changeId: editable.id, reason: v.reason })}
           />
         </>
       )}
@@ -230,11 +240,13 @@ function ProposalForm({
   access,
   changeId,
   cancel,
+  available,
 }: {
   data: Completion;
   access: CompletionAccess;
   changeId: string;
   cancel: boolean;
+  available: boolean;
 }) {
   const fields: Field[] = [
     { name: "reason", label: "합의할 처리 내용", type: "textarea", max: 500 },
@@ -322,6 +334,7 @@ function ProposalForm({
     <CommandForm
       data={q}
       access={access}
+      available={available}
       action="change-propose"
       title="처리 내용 제안"
       description="총무가 수락하기 전에는 기존 조건이 유지돼요. 변경 후 메뉴·금액·기한을 다시 검증해요."

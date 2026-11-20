@@ -137,6 +137,7 @@ test("configuration rejects missing/invalid required values without exposing val
       merchantReplyTokenEncryptionKey: undefined,
       providerTimeoutMs: 5000,
       merchantReplyTtlHours: 168,
+      reservationManagementTtlHours: 168,
       authSecret,
       kakaoClientId: undefined,
       kakaoClientSecret: undefined,

@@ -10,12 +10,14 @@ export function BottomSheet({
   footer,
   onClose,
   busy = false,
+  dateSelection = false,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
   busy?: boolean;
+  dateSelection?: boolean;
 }) {
   const id = useId();
   return (
@@ -23,7 +25,8 @@ export function BottomSheet({
       labelledBy={id}
       onClose={onClose}
       busy={busy}
-      className="mx-auto mt-auto mb-0 flex max-h-[85dvh] w-full max-w-[402px] flex-col overflow-hidden rounded-t-card rounded-b-none p-0 text-copy"
+      dismissOnBackdrop={dateSelection}
+      className={`mx-auto mt-auto mb-0 flex max-h-[85dvh] w-full max-w-[402px] flex-col overflow-hidden rounded-t-card rounded-b-none p-0 text-copy ${dateSelection ? "sm:my-auto sm:rounded-card" : ""}`}
     >
       <header className="shrink-0 px-5 pt-3 pb-4">
         <div
