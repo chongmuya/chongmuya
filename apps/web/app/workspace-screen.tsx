@@ -13,7 +13,11 @@ import {
   firstSetupPath,
 } from "@/features/auth/client";
 import type { SessionRequest } from "@/features/auth/types";
-import { GroupBoundary, GroupSettings } from "@/features/groups/client";
+import {
+  GroupBoundary,
+  GroupSettings,
+  GroupRosterScreen,
+} from "@/features/groups/client";
 import { AttendanceWorkspace, EventRoster } from "@/features/attendance/client";
 import { ReservationProgress } from "@/features/reservations/client";
 import {
@@ -30,6 +34,7 @@ import {
 import { AccountNavigation } from "@/features/home/client";
 import { buttonStyles } from "@/shared/ui/button";
 import { StepLayout } from "@/shared/ui/step-layout";
+import { OrganizerNavigation } from "@/shared/ui/organizer-navigation";
 
 type Mode = "events" | "mypage";
 export function WorkspaceScreen({ mode }: { mode: Mode }) {
@@ -87,7 +92,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
     );
   const detailPage =
     mode === "events" &&
-    (params.get("action") === "add" ||
+    (["add", "import"].includes(params.get("action") ?? "") ||
       !!params.get("participant") ||
       !!params.get("review"));
   const content = (
@@ -102,11 +107,34 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       eventId={params.get("event")}
       mode={mode}
       view={params.get("view")}
+      personal={params.get("scope") === "personal" && !params.get("group")}
       roundId={params.get("round")}
       detailPage={detailPage}
     />
   );
   if (detailPage) return content;
+  if (
+    mode === "events" &&
+    params.get("view") === "records" &&
+    !params.get("event")
+  )
+    return (
+      <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-5 pt-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))]">
+        <div className="min-w-0 flex-1 pb-8">{content}</div>
+        <OrganizerNavigation
+          current="records"
+          groupId={params.get("group") ?? undefined}
+          personal={params.get("scope") === "personal"}
+          className="-mx-5"
+        />
+      </main>
+    );
+  if (mode === "mypage" && params.get("view") === "roster")
+    return (
+      <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-5 pt-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))]">
+        {content}
+      </main>
+    );
   return (
     <StepLayout
       variant="flow"
@@ -127,7 +155,11 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
             : undefined;
         const group = event?.groupId ?? params.get("group");
         router.replace(
-          group ? `/?group=${group}` : event ? "/?view=personal" : "/",
+          group
+            ? `/?group=${group}${id ? `&event=${id}` : ""}`
+            : event || params.get("scope") === "personal"
+              ? `/?view=personal${id ? `&event=${id}` : ""}`
+              : "/",
         );
       }}
     >
@@ -161,6 +193,7 @@ export function WorkspaceContent({
   roundId,
   initialDate,
   detailPage = false,
+  personal = false,
 }: {
   accountId: string;
   request: SessionRequest;
@@ -170,11 +203,39 @@ export function WorkspaceContent({
   view?: string | null;
   roundId?: string | null;
   detailPage?: boolean;
+  personal?: boolean;
   initialDate?: string;
 }) {
   return (
-    <section className="text-copy">
-      {mode === "mypage" ? (
+    <section
+      className={
+        mode === "mypage" && view === "roster"
+          ? "flex flex-1 flex-col text-copy"
+          : mode === "events" && eventId && !detailPage
+            ? "-mt-2 text-copy"
+            : "text-copy"
+      }
+    >
+      {mode === "mypage" && view === "roster" ? (
+        <GroupBoundary
+          accountId={accountId}
+          request={request}
+          groupId={groupId}
+          fallbackNavigation={
+            <OrganizerNavigation current="members" personal className="-mx-5" />
+          }
+        >
+          {(selected, groups) => (
+            <GroupRosterScreen
+              key={`${accountId}:${selected.id}`}
+              accountId={accountId}
+              request={request}
+              selected={selected}
+              groups={groups}
+            />
+          )}
+        </GroupBoundary>
+      ) : mode === "mypage" ? (
         <>
           <Memberships accountId={accountId} request={request} />
           <GroupBoundary
@@ -238,6 +299,7 @@ export function WorkspaceContent({
           accountId={accountId}
           request={request}
           groupId={groupId}
+          personal={personal}
         />
       ) : (
         <EventForm

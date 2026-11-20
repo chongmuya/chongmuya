@@ -7,7 +7,6 @@ import { GroupSwitcher } from "./group-switcher";
 import type { SessionRequest } from "@/features/auth/types";
 import type { Group } from "../types/group.types";
 import { GroupForm } from "./group-form";
-import { GroupRoster } from "./group-roster";
 import { Button, buttonStyles } from "@/shared/ui/button";
 
 export function GroupSettings({
@@ -34,7 +33,7 @@ export function GroupSettings({
         <GroupSwitcher
           groups={groups}
           selected={selected.id}
-          view="roster"
+          view="groups"
           onClose={() => setSwitching(false)}
         />
       )}
@@ -50,16 +49,6 @@ export function GroupSettings({
         groupId={selected.id}
         request={request}
       />
-      <details className="mt-7 rounded-card bg-surface p-5 shadow-card">
-        <summary className="cursor-pointer font-semibold">
-          기본 명단 관리 · {selected.memberCount}명
-        </summary>
-        <GroupRoster
-          accountId={accountId}
-          groupId={selected.id}
-          request={request}
-        />
-      </details>
       <Link href="/groups/new" className={buttonStyles({ className: "mt-6" })}>
         모임 추가
       </Link>

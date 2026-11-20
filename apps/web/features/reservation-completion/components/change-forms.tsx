@@ -7,12 +7,24 @@ import { isoDate, localDate } from "../lib/command-values";
 import type { Field } from "../types/command-field";
 import { won } from "./completion-summary";
 import { guidanceFields, buildGuidance } from "../lib/guidance-fields";
+import { proposalAgreement } from "../lib/proposal-agreement";
+import {
+  spaceLabels,
+  seatingLabels,
+  usageLabel,
+} from "../lib/agreement-labels";
 export function ChangeForms({
   data: q,
   access,
+  initialKind,
+  onClose,
+  onDetails,
 }: {
   data: Completion;
   access: CompletionAccess;
+  initialKind?: "CANCEL";
+  onClose?: () => void;
+  onDetails?: () => void;
 }) {
   const props = { data: q, access },
     organizer = access.kind === "organizer",
@@ -22,29 +34,47 @@ export function ChangeForms({
   const [lastPending, setLastPending] = useState(pending);
   if (pending && lastPending?.id !== pending.id) setLastPending(pending);
   const editable = pending ?? lastPending;
+  const title =
+    pending?.status === "PROPOSED" && organizer
+      ? pending.kind === "CANCEL"
+        ? "예약 취소를 수락할까요?"
+        : pending.kind === "REFUND"
+          ? "환불 예정액을 수락할까요?"
+          : "예약 변경을 수락할까요?"
+      : "예약 변경·취소";
   return (
-    <section className="space-y-5">
-      <h3 className="font-semibold">예약 변경·취소</h3>
+    <section className="space-y-7">
+      {!pending?.proposal && (
+        <h3 className="text-center text-2xl leading-[1.5] font-bold text-brand-ink">
+          {title}
+        </h3>
+      )}
       {pending && (
-        <div className="space-y-4 rounded-control bg-choice p-5 text-sm">
-          <p>
-            {pending.kind === "REFUND"
-              ? "환불 예정액"
-              : pending.kind === "CANCEL"
-                ? "취소"
-                : "변경"}{" "}
-            문의 ·{" "}
-            {pending.status === "REQUESTED"
-              ? "매장 확인 대기"
-              : "합의 내용 확인 대기"}
-          </p>
-          <p className="whitespace-pre-wrap">{pending.reason}</p>
-          <p>문의만으로 예약 조건이나 환불이 바뀌지 않아요.</p>
+        <div className={pending.proposal ? undefined : "space-y-4 text-sm"}>
+          {!pending.proposal && (
+            <>
+              <p>
+                {pending.kind === "REFUND"
+                  ? "환불 예정액"
+                  : pending.kind === "CANCEL"
+                    ? "취소"
+                    : "변경"}{" "}
+                문의 ·{" "}
+                {pending.status === "REQUESTED"
+                  ? "매장 확인 대기"
+                  : "합의 내용 확인 대기"}
+              </p>
+              <p className="whitespace-pre-wrap">{pending.reason}</p>
+              <p>문의만으로 예약 조건이나 환불이 바뀌지 않아요.</p>
+            </>
+          )}
           {pending.proposal && (
             <ProposalComparison
               data={q}
               proposal={pending.proposal}
               kind={pending.kind}
+              onDetails={onDetails}
+              title={title}
             />
           )}
         </div>
@@ -54,12 +84,14 @@ export function ChangeForms({
           available={!q.cancellation && !pending}
           {...props}
           action="change-request"
+          onDone={onClose}
           title="변경·취소 문의 보내기"
           description="매장의 처리 제안을 확인하고 수락해야 적용돼요. 자동 취소나 자동 환불은 하지 않아요."
           fields={[
             {
               name: "kind",
               label: "문의 종류",
+              value: initialKind,
               options: [
                 { value: "CHANGE", label: "예약 변경 문의" },
                 { value: "CANCEL", label: "예약 취소 문의" },
@@ -98,20 +130,11 @@ export function ChangeForms({
           <CommandForm
             {...props}
             action="change-accept"
-            title={
-              pending.kind === "REFUND"
-                ? "환불 예정액 수락"
-                : pending.kind === "CANCEL"
-                  ? "취소 처리 내용 수락"
-                  : "변경 내용 수락"
-            }
-            fields={[
-              {
-                name: "confirmed",
-                label: "위 처리 내용과 금액·메뉴·조건을 확인했고 동의해요",
-                type: "checkbox",
-              },
-            ]}
+            onDone={onClose}
+            title="수락하기"
+            hideTitle
+            onCancel={onClose}
+            fields={[]}
             build={() => ({ changeId: pending.id, confirmed: true })}
           />
         )}
@@ -119,9 +142,11 @@ export function ChangeForms({
         <>
           {lastPending?.status === "REQUESTED" && (
             <ProposalForm
+              key={editable.id}
               {...props}
               changeId={editable.id}
               cancel={editable.kind === "CANCEL"}
+              onDone={onClose}
               available={
                 pending?.id === editable.id && pending.status === "REQUESTED"
               }
@@ -131,6 +156,7 @@ export function ChangeForms({
             {...props}
             available={!!pending}
             action="change-reject"
+            onDone={onClose}
             title={
               editable.kind === "REFUND"
                 ? "환불 제안 철회"
@@ -205,7 +231,16 @@ export function ChangeForms({
           />
         </>
       )}
-      {!!q.changes.length && (
+      {onClose && !(pending?.status === "PROPOSED" && organizer) && (
+        <button
+          type="button"
+          className="min-h-11 w-full text-sm text-muted"
+          onClick={onClose}
+        >
+          뒤로가기
+        </button>
+      )}
+      {!!q.changes.length && !onClose && (
         <details className="text-sm">
           <summary>변경·취소 문의 이력</summary>
           <ul className="mt-3 space-y-3">
@@ -226,6 +261,9 @@ export function ChangeForms({
                   }[c.status]
                 }
                 <p>{c.reason}</p>
+                {c.status === "REJECTED" && c.resolutionReason && (
+                  <p>사장님 답변: {c.resolutionReason}</p>
+                )}
                 {c.proposal && <p>{c.proposal.reason}</p>}
               </li>
             ))}
@@ -241,12 +279,14 @@ function ProposalForm({
   changeId,
   cancel,
   available,
+  onDone,
 }: {
   data: Completion;
   access: CompletionAccess;
   changeId: string;
   cancel: boolean;
   available: boolean;
+  onDone?: () => void;
 }) {
   const fields: Field[] = [
     { name: "reason", label: "합의할 처리 내용", type: "textarea", max: 500 },
@@ -271,6 +311,62 @@ function ProposalForm({
         label: "변경할 인원",
         type: "number",
         value: String(q.agreement.expectedGuests),
+        minValue: 1,
+        maxValue: 100000,
+      },
+      {
+        name: "space",
+        label: "변경할 공간",
+        value: q.agreement.space,
+        options: Object.entries(spaceLabels).map(([value, label]) => ({
+          value,
+          label,
+        })),
+      },
+      {
+        name: "seating",
+        label: "변경할 착석 조건",
+        value: q.agreement.seating,
+        options: Object.entries(seatingLabels).map(([value, label]) => ({
+          value,
+          label,
+        })),
+      },
+      {
+        name: "usageKind",
+        label: "이용시간 제한",
+        value: q.agreement.usageTime?.kind ?? "UNKNOWN",
+        options: [
+          { value: "UNKNOWN", label: "미확인" },
+          { value: "UNLIMITED", label: "제한 없음" },
+          { value: "MINUTES", label: "이용시간 지정" },
+        ],
+      },
+      {
+        name: "usageMinutes",
+        label: "이용시간 (분, 지정할 때만 입력)",
+        type: "number",
+        value:
+          q.agreement.usageTime?.minutes == null
+            ? ""
+            : String(q.agreement.usageTime.minutes),
+        optional: true,
+      },
+      {
+        name: "note",
+        label: "매장 추가 안내",
+        type: "textarea",
+        value: q.agreement.note,
+        optional: true,
+        max: 1500,
+      },
+      {
+        name: "changeCancellationPolicy",
+        label: "합의할 변경·취소 조건",
+        type: "textarea",
+        value: q.agreement.changeCancellationPolicy ?? "",
+        optional: true,
+        max: 1500,
       },
       {
         name: "menuDeadlineAt",
@@ -336,9 +432,87 @@ function ProposalForm({
       access={access}
       available={available}
       action="change-propose"
+      onDone={onDone}
       title="처리 내용 제안"
       description="총무가 수락하기 전에는 기존 조건이 유지돼요. 변경 후 메뉴·금액·기한을 다시 검증해요."
       fields={fields}
+      validate={
+        cancel
+          ? undefined
+          : (v) =>
+              v.usageKind === "MINUTES" &&
+              (!v.usageMinutes ||
+                Number(v.usageMinutes) < 1 ||
+                Number(v.usageMinutes) > 1440)
+                ? [
+                    {
+                      field: "usageMinutes",
+                      message: "이용시간을 1~1440분으로 입력해 주세요.",
+                    },
+                  ]
+                : []
+      }
+      preview={
+        cancel
+          ? undefined
+          : (values, base) => (
+              <div className="space-y-5 rounded-[12px] border border-placeholder px-5 py-6 text-sm">
+                <h4 className="text-xl font-semibold">바꾼 조건</h4>
+                <dl className="space-y-3">
+                  {[
+                    [
+                      "공간",
+                      spaceLabels[base.agreement.space],
+                      spaceLabels[values.space as keyof typeof spaceLabels],
+                    ],
+                    [
+                      "착석",
+                      seatingLabels[base.agreement.seating],
+                      seatingLabels[
+                        values.seating as keyof typeof seatingLabels
+                      ],
+                    ],
+                    [
+                      "이용시간",
+                      usageLabel(base.agreement),
+                      values.usageKind === "UNLIMITED"
+                        ? "제한 없음"
+                        : values.usageKind === "MINUTES"
+                          ? `${values.usageMinutes || "미입력"}분`
+                          : "미확인",
+                    ],
+                    [
+                      "추가 안내",
+                      base.agreement.note || "없음",
+                      values.note || "없음",
+                    ],
+                    [
+                      "변경·취소 조건",
+                      base.agreement.changeCancellationPolicy || "미확인",
+                      values.changeCancellationPolicy || "미확인",
+                    ],
+                  ].map(([label, before, after]) => (
+                    <div
+                      key={label}
+                      className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
+                    >
+                      <dt className="text-muted">{label}</dt>
+                      <dd className="space-y-1 whitespace-pre-wrap wrap-anywhere">
+                        {before === after ? (
+                          <span>{after}</span>
+                        ) : (
+                          <>
+                            <span className="block line-through">{before}</span>
+                            <span className="block text-brand">→ {after}</span>
+                          </>
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )
+      }
       build={(v, b) => ({
         changeId,
         reason: v.reason,
@@ -346,19 +520,7 @@ function ProposalForm({
           cancel && v.refundExpected ? Number(v.refundExpected) : null,
         ...(!cancel
           ? {
-              agreement: {
-                ...b.agreement,
-                startsAt: isoDate(v.startsAt),
-                expectedGuests: Number(v.expectedGuests),
-                menuDeadlineAt: v.menuDeadlineAt
-                  ? isoDate(v.menuDeadlineAt)
-                  : null,
-                minimumSpend: v.minimumSpend ? Number(v.minimumSpend) : null,
-                minimumQuantity: v.minimumQuantity
-                  ? Number(v.minimumQuantity)
-                  : null,
-                separateFee: v.separateFee ? Number(v.separateFee) : null,
-              },
+              agreement: proposalAgreement(v, b.agreement),
               ...(v.replaceMenu === "yes"
                 ? {
                     menu: {

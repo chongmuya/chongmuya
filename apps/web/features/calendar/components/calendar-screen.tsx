@@ -16,6 +16,7 @@ import { Button, buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import { OwnerNavigation } from "@/shared/ui/owner-navigation";
+import { OrganizerNavigation } from "@/shared/ui/organizer-navigation";
 import { ReservationFacts } from "./reservation-facts";
 import { Dialog } from "@/shared/ui/dialog";
 import {
@@ -399,69 +400,12 @@ function CalendarContent({
       {owner ? (
         <OwnerNavigation current="calendar" restaurantId={restaurant} />
       ) : (
-        <nav
-          aria-label="주요 메뉴"
-          className="sticky bottom-0 z-10 -mx-5 mt-auto grid min-h-[78px] grid-cols-4 bg-surface pt-3 pb-[max(20px,env(safe-area-inset-bottom))] shadow-[0_-4px_4px_rgb(0_0_0/0.1)]"
-        >
-          {[
-            {
-              label: "홈",
-              href: groupId ? `/?group=${groupId}` : "/?view=personal",
-              icon: "home",
-            },
-            { label: "캘린더", href: root, icon: "active" },
-            {
-              label: "모임명단",
-              href: `/mypage?view=groups${groupId ? `&group=${groupId}` : ""}`,
-              icon: "members",
-            },
-            {
-              label: "모임기록",
-              href: `/events?view=records${groupId ? `&group=${groupId}` : ""}`,
-              icon: "records",
-            },
-          ].map((item) => (
-            <Link
-              key={item.icon}
-              href={item.href}
-              aria-current={item.icon === "active" ? "page" : undefined}
-              className="flex min-h-11 flex-col items-center gap-1 text-[10px] leading-[15px] text-secondary"
-            >
-              <span className="relative flex size-[22px] items-center justify-center">
-                <Image
-                  style={{ height: "auto" }}
-                  src={`/images/calendar/${item.icon}.svg`}
-                  width={
-                    item.icon === "home"
-                      ? 19.75
-                      : item.icon === "members"
-                        ? 20.8683
-                        : 22
-                  }
-                  height={
-                    item.icon === "home"
-                      ? 20.7495
-                      : item.icon === "members"
-                        ? 18.2952
-                        : 22
-                  }
-                  alt=""
-                />
-                {item.icon === "home" && (
-                  <Image
-                    style={{ height: "auto" }}
-                    src="/images/calendar/home-door.svg"
-                    width={7.75}
-                    height={10.75}
-                    alt=""
-                    className="absolute bottom-0"
-                  />
-                )}
-              </span>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <OrganizerNavigation
+          current="calendar"
+          groupId={groupId}
+          personal={!groupId}
+          className="-mx-5"
+        />
       )}
     </main>
   );

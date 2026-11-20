@@ -3,6 +3,7 @@ import { CompletionWorkspace } from "@/features/reservation-completion/client";
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { Button, buttonStyles } from "@/shared/ui/button";
@@ -16,6 +17,7 @@ import { inquiryQuery, inquiryKey } from "../api/reservations.api";
 import { useReservationDecision } from "../hooks/use-reservation-decision";
 import { ConditionSummary } from "./condition-summary";
 import { ProposalCard, candidateLabels } from "./proposal-card";
+import { RebookingCard } from "./rebooking-card";
 import type {
   InquiryConditions,
   ReservationRequest,
@@ -258,14 +260,10 @@ function DecisionReceipt({
         <CompletionWorkspace
           id={inquiry.selection.id}
           access={{ kind: "organizer", accountId, request }}
+          inquiryContent={<InquiryReceipt inquiry={inquiry} />}
         />
       )}
-      {inquiry.selection ? (
-        <details className="my-6 rounded-control bg-surface p-5 text-sm shadow-card">
-          <summary>매장 선택 당시 문의·답변</summary>
-          <InquiryReceipt inquiry={inquiry} />
-        </details>
-      ) : (
+      {!inquiry.selection && (
         <InquiryReceipt
           inquiry={inquiry}
           busy={action.isPending}
@@ -346,7 +344,23 @@ export function ReservationProgress({
   eventId: string;
   request: SessionRequest;
 }) {
-  const [historyId, setHistoryId] = useState<string | null>(null);
+  const params = useSearchParams();
+  const router = useRouter();
+  const requested = params?.get("request");
+  const historyId =
+    requested &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      requested,
+    )
+      ? requested
+      : null;
+  const showRequest = (id: string | null) => {
+    const next = new URLSearchParams(params?.toString());
+    next.set("event", eventId);
+    if (id) next.set("request", id);
+    else next.delete("request");
+    router.replace(`/events?${next}`);
+  };
   const current = useQuery({
     ...inquiryQuery(accountId, eventId, request),
     refetchInterval: 15000,
@@ -362,7 +376,8 @@ export function ReservationProgress({
     staleTime: 0,
     retry: false,
   });
-  const result = historyId ? history : current;
+  const separateRound = historyId && historyId !== current.data?.id;
+  const result = separateRound ? history : current;
   if (isAccessError(current.error) || isAccessError(result.error))
     return (
       <ErrorState retry={() => void result.refetch()}>
@@ -392,6 +407,7 @@ export function ReservationProgress({
         </Link>
       </section>
     );
+  const inquiry = result.data;
   return (
     <>
       {result.isError && (
@@ -399,31 +415,51 @@ export function ReservationProgress({
           최신 문의 상태를 불러오지 못했어요. 다시 확인해 주세요.
         </ErrorState>
       )}
-      {(current.data?.history?.length ?? 0) > 1 && (
-        <label className="block text-sm">
-          문의 회차{" "}
-          <select
-            className="min-h-11 rounded-control border border-field px-3"
-            value={historyId ?? ""}
-            onChange={(e) => setHistoryId(e.target.value || null)}
+      {historyId &&
+        (!separateRound || (current.data?.history?.length ?? 0) <= 1) && (
+          <Button
+            variant="outline"
+            className="mb-5"
+            onClick={() => showRequest(null)}
           >
-            <option value="">현재 회차</option>
-            {current
-              .data!.history!.filter((r) => r.id !== current.data!.id)
-              .map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.round}회차 · 이전 문의
-                </option>
-              ))}
-          </select>
-        </label>
+            현재 예약 화면으로
+          </Button>
+        )}
+      {(!historyId || separateRound) &&
+        (current.data?.history?.length ?? 0) > 1 && (
+          <label className="block text-sm">
+            문의 회차{" "}
+            <select
+              className="min-h-11 rounded-control border border-field px-3"
+              value={historyId ?? ""}
+              onChange={(e) => showRequest(e.target.value || null)}
+            >
+              <option value="">현재 회차</option>
+              {current
+                .data!.history!.filter((r) => r.id !== current.data!.id)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.round}회차 · 이전 문의
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
+      {!historyId &&
+      inquiry.selection?.status === "CANCELLED" &&
+      inquiry.canReinquire ? (
+        <RebookingCard
+          inquiry={inquiry}
+          onHistory={() => showRequest(inquiry.id)}
+        />
+      ) : (
+        <DecisionReceipt
+          key={`${accountId}:${eventId}:${inquiry.id}`}
+          inquiry={inquiry}
+          accountId={accountId}
+          request={request}
+        />
       )}
-      <DecisionReceipt
-        key={`${accountId}:${eventId}:${result.data.id}`}
-        inquiry={result.data}
-        accountId={accountId}
-        request={request}
-      />
     </>
   );
 }

@@ -724,3 +724,229 @@ test("100 participants behind one NAT can open and save a round; name guessing r
     429,
   );
 });
+
+test("selected group import validates source versions and identities, preserves snapshots and exactly replays lost responses", async (t) => {
+  const { call, signup, db } = await startResourceApplication(t);
+  const owner = await signup(),
+    stranger = await signup();
+  const group = await json<{ id: string }>(
+    await call("groups", owner, "POST", {
+      name: "선택 명단 모임",
+      members: [
+        { name: "동명이인", phoneLast4: "0012", label: "첫째" },
+        { name: "동명이인", phoneLast4: "0012", label: "둘째" },
+        { name: "제외 예정", phoneLast4: "9999" },
+      ],
+      duplicatesConfirmed: true,
+    }),
+    201,
+  );
+  const members = await json<
+    {
+      id: string;
+      version: number;
+      name: string;
+      phoneLast4: string;
+      label: string | null;
+    }[]
+  >(await call(`groups/${group.id}/members`, owner));
+  const event = await json<{ id: string }>(
+    await call("events", owner, "POST", {
+      name: "선택할 행사",
+      groupId: group.id,
+    }),
+    201,
+  );
+  const base = `events/${event.id}/participants`,
+    selected = `${base}/import-group/selected`;
+  await json(
+    await call(base, owner, "POST", {
+      requestKey: randomUUID(),
+      members: [{ name: "동명이인", phoneLast4: "0012" }],
+    }),
+    201,
+  );
+  const command = {
+    requestKey: randomUUID(),
+    members: [{ id: members[1].id, version: members[1].version }],
+  };
+  for (const input of [
+    {},
+    { requestKey: randomUUID(), members: [] },
+    { ...command, members: [null] },
+    { ...command, members: [members[1].id] },
+    { ...command, members: [{ id: members[1].id }] },
+    { ...command, members: [...command.members, ...command.members] },
+  ])
+    assert.equal((await call(selected, owner, "POST", input)).status, 400);
+  assert.equal((await call(selected, stranger, "POST", command)).status, 404);
+  assert.equal((await call(selected, "", "POST", command)).status, 401);
+  assert.equal(
+    (await json<ParticipantDto[]>(await call(base, owner))).length,
+    1,
+  );
+  const results = await Promise.all([
+    call(selected, owner, "POST", command),
+    call(selected, owner, "POST", command),
+  ]);
+  for (const result of results)
+    assert.deepEqual(await json(result, 201), { addedCount: 1 });
+  const people = await json<ParticipantDto[]>(await call(base, owner));
+  assert.equal(people.length, 2);
+  assert.equal(
+    people.filter((person) => person.groupMemberId === null).length,
+    1,
+  );
+  const imported = people.find(
+    (person) => person.groupMemberId === members[1].id,
+  )!;
+  assert.equal(imported.label, "둘째");
+  assert(!people.some((person) => person.groupMemberId === members[0].id));
+  const round = await json<RoundDetailDto>(
+    await call(`events/${event.id}/attendance-rounds`, owner, "POST", {
+      title: "1차",
+      requestKey: randomUUID(),
+    }),
+    201,
+  );
+  await json(
+    await call(
+      `events/${event.id}/attendance-rounds/${round.id}/responses/${imported.id}`,
+      owner,
+      "PUT",
+      { expectedVersion: 0, managerOverride: "ATTENDING" },
+    ),
+  );
+  await json(
+    await call(`groups/${group.id}/members/${members[1].id}`, owner, "PATCH", {
+      ...members[1],
+      id: undefined,
+      version: undefined,
+      name: "기본 이름 수정",
+      expectedVersion: 1,
+      requestKey: randomUUID(),
+      exclude: false,
+      duplicatesConfirmed: true,
+    }),
+  );
+  assert.deepEqual(
+    await json(await call(selected, owner, "POST", command), 201),
+    { addedCount: 1 },
+  );
+  assert.equal(
+    (
+      await call(selected, owner, "POST", {
+        ...command,
+        requestKey: randomUUID(),
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await call(selected, owner, "POST", {
+        ...command,
+        members: [{ id: members[0].id, version: 1 }],
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (await json<ParticipantDto[]>(await call(base, owner))).find(
+      (person) => person.id === imported.id,
+    )?.name,
+    "동명이인",
+  );
+  assert.equal(
+    (
+      await json<RoundDetailDto>(
+        await call(`events/${event.id}/attendance-rounds/${round.id}`, owner),
+      )
+    ).counts.attending,
+    1,
+  );
+  await json(
+    await call(`groups/${group.id}/members/${members[2].id}`, owner, "PATCH", {
+      name: members[2].name,
+      phoneLast4: members[2].phoneLast4,
+      label: null,
+      expectedVersion: 1,
+      requestKey: randomUUID(),
+      exclude: true,
+    }),
+  );
+  assert.equal(
+    (
+      await call(selected, owner, "POST", {
+        requestKey: randomUUID(),
+        members: [{ id: members[2].id, version: 1 }],
+      })
+    ).status,
+    409,
+  );
+  const otherGroup = await json<{ id: string }>(
+    await call("groups", owner, "POST", {
+      name: "다른 소속",
+      members: [{ name: "다른 모임 사람" }],
+    }),
+    201,
+  );
+  const [foreign] = await json<{ id: string; version: number }[]>(
+    await call(`groups/${otherGroup.id}/members`, owner),
+  );
+  assert.equal(
+    (
+      await call(selected, owner, "POST", {
+        requestKey: randomUUID(),
+        members: [{ id: foreign.id, version: foreign.version }],
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (await json<ParticipantDto[]>(await call(base, owner))).length,
+    2,
+  );
+  // The existing whole-roster action still copies the remaining source ID once.
+  assert.deepEqual(
+    await json(await call(`${base}/import-group`, owner, "POST"), 201),
+    { addedCount: 1 },
+  );
+  assert.equal(
+    (await json<ParticipantDto[]>(await call(base, owner))).length,
+    3,
+  );
+  // Hitting the limit cannot partially import a selected batch.
+  const limitEvent = await json<{ id: string }>(
+    await call("events", owner, "POST", {
+      name: "인원 제한",
+      groupId: group.id,
+    }),
+    201,
+  );
+  const limitBase = `events/${limitEvent.id}/participants`;
+  await json(
+    await call(limitBase, owner, "POST", {
+      requestKey: randomUUID(),
+      members: Array.from({ length: 500 }, (_, i) => ({ name: `직접${i}` })),
+    }),
+    201,
+  );
+  assert.equal(
+    (
+      await call(`${limitBase}/import-group/selected`, owner, "POST", {
+        requestKey: randomUUID(),
+        members: [{ id: members[0].id, version: 1 }],
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await json<ParticipantDto[]>(await call(limitBase, owner))).length,
+    500,
+  );
+  assert.equal(
+    await db.getRepository(AttendanceResponse).countBy({ eventId: event.id }),
+    1,
+  );
+});

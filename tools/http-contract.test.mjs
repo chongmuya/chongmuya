@@ -31,7 +31,15 @@ test("login return paths preserve the same organizer context on both sides", () 
     `/events?group=${id}&date=2026-12-05`,
     "/events?date=2026-02-30",
     `/?group=${id}`,
+    `/?group=${id}&event=${id}`,
+    `/?view=personal&event=${id}`,
+    `/mypage?view=roster&group=${id}`,
+    `/events?event=${id}&view=roster&action=import`,
+    "/events?view=records&scope=personal",
+    "/events?scope=personal",
+    `/events?event=${id}&view=attendance&scope=personal`,
     `/events?event=${id}&view=attendance&round=${id}`,
+    `/events?event=${id}&request=${id}`,
     "//example.test",
   ]) {
     assert.equal(serverReturn(path), browserReturn(path), path);

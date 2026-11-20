@@ -69,6 +69,21 @@ test("restaurant data import/update preserves identities, consent, partial field
     null,
   );
   const contactId = restaurantSeedId("contact", first.key);
+  const privateContact = await db.manager.findOneByOrFail(RestaurantContact, {
+    id: contactId,
+  });
+  assert.equal((await read()).publicPhone, null);
+  await patch({ publicPhone: "02-1234-5678" });
+  assert.equal((await read()).publicPhone, "0212345678");
+  assert.deepEqual(
+    await db.manager.findOneByOrFail(RestaurantContact, { id: contactId }),
+    privateContact,
+  );
+  await assert.rejects(patch({ publicPhone: "tel:01012345678" }), {
+    code: "VALIDATION_FAILED",
+  });
+  await patch({ publicPhone: null });
+  assert.equal((await read()).publicPhone, null);
   await db.manager.update(RestaurantContact, contactId, {
     name: "보존할 담당자",
   });

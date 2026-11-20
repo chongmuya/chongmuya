@@ -87,6 +87,8 @@ export class ReservationQueriesService {
         };
       }),
     );
+    const cancelled =
+      selection?.status === "CANCELLED" && selection.cancelledAt !== null;
     return {
       id: row.id,
       eventId: row.eventId,
@@ -98,15 +100,18 @@ export class ReservationQueriesService {
       isCurrent: current?.id === row.id,
       canReinquire:
         current?.id === row.id &&
-        !selection &&
-        enriched.every((t) => terminalCandidate(t.candidateState)),
-      reinquiryBlockedReason: selection
-        ? "STORE_SELECTED"
-        : enriched.some((t) => t.candidateState === "AWAITING_REPLY")
-          ? "AWAITING_REPLY"
-          : enriched.some((t) => t.candidateState === "PROPOSED")
-            ? "VALID_PROPOSAL"
-            : null,
+        (cancelled ||
+          (!selection &&
+            row.state !== "SELECTED" &&
+            enriched.every((t) => terminalCandidate(t.candidateState)))),
+      reinquiryBlockedReason:
+        selection && !cancelled
+          ? "STORE_SELECTED"
+          : enriched.some((t) => t.candidateState === "AWAITING_REPLY")
+            ? "AWAITING_REPLY"
+            : enriched.some((t) => t.candidateState === "PROPOSED")
+              ? "VALID_PROPOSAL"
+              : null,
       history: (
         await manager.find(ReservationRequest, {
           where: { eventId: row.eventId },

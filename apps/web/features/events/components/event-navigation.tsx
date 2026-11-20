@@ -12,7 +12,7 @@ export function EventNavigation({
   return (
     <nav
       aria-label="행사 관리"
-      className="mb-7 flex gap-2 border-b border-field"
+      className="mb-7 flex border-b border-placeholder pl-1.5"
     >
       {(
         [
@@ -31,9 +31,9 @@ export function EventNavigation({
           href={`/events?event=${eventId}&view=${value}`}
           aria-current={active ? "page" : undefined}
           className={cn(
-            "relative flex min-h-control items-center px-3 pb-2 text-control",
+            "relative flex min-h-8 items-center px-3 pb-1 text-control",
             active
-              ? "font-semibold text-brand-action after:absolute after:bottom-[-3px] after:left-[calc(50%-3px)] after:size-1.5 after:rounded-full after:bg-brand"
+              ? "font-medium text-brand after:absolute after:bottom-[-3px] after:left-[calc(50%-3px)] after:size-1.5 after:rounded-full after:bg-brand"
               : "text-secondary",
           )}
         >

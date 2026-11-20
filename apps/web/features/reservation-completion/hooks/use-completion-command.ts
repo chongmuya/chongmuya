@@ -48,6 +48,15 @@ export function useCompletionCommand(id: string, access: CompletionAccess) {
         void cache.invalidateQueries({
           queryKey: ["user", access.accountId, "events"],
         });
+        if (access.kind === "organizer" && data.cancellation)
+          void cache.invalidateQueries({
+            queryKey: [
+              "user",
+              access.accountId,
+              "reservation-request",
+              data.eventId,
+            ],
+          });
         void cache.invalidateQueries({
           queryKey: ["user", access.accountId, "owner", "reservations"],
         });

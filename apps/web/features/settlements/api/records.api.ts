@@ -6,12 +6,14 @@ export const recordsQuery = (
   request: SessionRequest,
   groupId: string | null,
   filter: RecordsFilter,
+  personal = false,
 ) =>
   queryOptions({
-    queryKey: ["user", accountId, "records", groupId, filter],
+    queryKey: ["user", accountId, "records", groupId, filter, personal],
     queryFn: ({ signal }) => {
       const p = new URLSearchParams({ offset: String(filter.offset) });
       if (groupId) p.set("groupId", groupId);
+      else if (personal) p.set("scope", "personal");
       if (filter.search) p.set("search", filter.search);
       if (filter.after) p.set("after", `${filter.after}T00:00:00+09:00`);
       if (filter.before) p.set("before", `${filter.before}T23:59:59+09:00`);

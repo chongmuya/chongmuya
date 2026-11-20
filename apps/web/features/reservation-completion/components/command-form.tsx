@@ -1,5 +1,5 @@
 "use client";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Field } from "../types/command-field";
@@ -24,6 +24,10 @@ export function CommandForm({
   build,
   onDone,
   available = true,
+  validate,
+  preview,
+  hideTitle = false,
+  onCancel,
 }: {
   data: Completion;
   access: CompletionAccess;
@@ -37,6 +41,12 @@ export function CommandForm({
   ) => Record<string, unknown>;
   onDone?: () => void;
   available?: boolean;
+  validate?: (
+    values: Record<string, string>,
+  ) => { field: string; message: string }[];
+  preview?: (values: Record<string, string>, base: Completion) => ReactNode;
+  hideTitle?: boolean;
+  onCancel?: () => void;
 }) {
   const [base, setBase] = useState(data),
     id = useId(),
@@ -44,7 +54,14 @@ export function CommandForm({
   const fieldsFor = (current: Completion) =>
     typeof fieldSource === "function" ? fieldSource(current) : fieldSource;
   const fields = fieldsFor(base);
-  const schema = commandSchema(fields);
+  const schema = commandSchema(fields).superRefine((values, ctx) => {
+    for (const issue of validate?.(values) ?? [])
+      ctx.addIssue({
+        code: "custom",
+        path: [issue.field],
+        message: issue.message,
+      });
+  });
   const form = useForm<Record<string, string>>({
     resolver: zodResolver(schema),
     defaultValues: Object.fromEntries(
@@ -66,7 +83,7 @@ export function CommandForm({
   return (
     <form
       noValidate
-      className="space-y-4 rounded-control bg-surface p-5 shadow-card"
+      className="space-y-4"
       onSubmit={form.handleSubmit(async (v) => {
         if (
           !available ||
@@ -96,7 +113,7 @@ export function CommandForm({
         }
       })}
     >
-      <h3 className="font-semibold">{title}</h3>
+      {!hideTitle && <h3 className="font-semibold">{title}</h3>}
       {description && <p className="text-xs text-muted">{description}</p>}
       {!available && (
         <p role="alert">
@@ -105,7 +122,7 @@ export function CommandForm({
       )}
       <fieldset
         disabled={!available || mutation.uncertain || mutation.isPending}
-        className="contents"
+        className="space-y-4"
       >
         {fields.map((f) => (
           <FormField
@@ -171,20 +188,37 @@ export function CommandForm({
             }}
           />
         )}
+        {preview?.(
+          Object.fromEntries(
+            fields.map((field) => [field.name, values[field.name] ?? ""]),
+          ),
+          base,
+        )}
         <FormError
           message={
             form.formState.errors.root?.message ??
             (mutation.error ? safeErrorMessage(mutation.error) : undefined)
           }
         />
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={base.version !== data.version}
-          loading={mutation.isPending}
-        >
-          {title}
-        </Button>
+        <div className={onCancel ? "grid grid-cols-2 gap-3.5" : undefined}>
+          {onCancel && (
+            <Button
+              variant="brand-outline"
+              className="border-2 text-brand"
+              onClick={onCancel}
+            >
+              뒤로가기
+            </Button>
+          )}
+          <Button
+            type="submit"
+            className="w-full border-brand bg-brand"
+            disabled={base.version !== data.version}
+            loading={mutation.isPending}
+          >
+            {title}
+          </Button>
+        </div>
       </fieldset>
       {mutation.uncertain && (
         <UncertainCommand

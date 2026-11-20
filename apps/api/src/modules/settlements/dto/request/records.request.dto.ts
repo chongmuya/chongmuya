@@ -8,9 +8,11 @@ import {
   IsInt,
   Min,
   Max,
+  IsIn,
 } from "class-validator";
 export class RecordsQuery {
   @IsOptional() @IsUUID() groupId?: string;
+  @IsOptional() @IsIn(["personal"]) scope?: "personal";
   @IsOptional() @IsString() @MaxLength(100) search?: string;
   @IsOptional() @IsISO8601() before?: string;
   @IsOptional() @IsISO8601() after?: string;

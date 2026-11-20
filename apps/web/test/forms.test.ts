@@ -1724,7 +1724,7 @@ test("home preserves the selected group and never falls back to personal creatio
           );
           assert(
             view.container.querySelector(
-              'nav a[href="/mypage?view=groups&group=second"]',
+              'nav a[href="/mypage?view=roster&group=second"]',
             ),
           );
           assert.equal(
@@ -1735,7 +1735,9 @@ test("home preserves the selected group and never falls back to personal creatio
           );
         } else if (scenario === "empty") {
           await until(() =>
-            assert(view.container.querySelector('a[href="/events"]')),
+            assert(
+              view.container.querySelector('a[href="/events?scope=personal"]'),
+            ),
           );
         } else {
           await until(() =>

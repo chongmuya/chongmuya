@@ -67,6 +67,7 @@ export type Change = {
   status: "REQUESTED" | "PROPOSED" | "APPLIED" | "REJECTED";
   createdAt: string;
   resolvedAt: string | null;
+  resolutionReason?: string | null;
   proposal: {
     agreement: Agreement;
     order: Order | null;
@@ -82,7 +83,9 @@ export type Completion = {
   targetId: string;
   restaurantId: string;
   restaurantName: string;
+  restaurantAddress?: string;
   eventName: string;
+  groupName?: string | null;
   currentContact?: {
     name: string;
     maskedPhone: string;
@@ -162,4 +165,10 @@ export type Completion = {
     failureStage: string | null;
     errorCode: string | null;
   }[];
+};
+export type ReservationContact = {
+  kind: "restaurant" | "organizer";
+  name: string;
+  phone: string | null;
+  changedAt: string | null;
 };

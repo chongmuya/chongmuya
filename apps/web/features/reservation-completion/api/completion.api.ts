@@ -2,7 +2,11 @@ import { queryOptions } from "@tanstack/react-query";
 import { requestJson } from "@/shared/http/request";
 import { isAccessError } from "@/shared/http/access-error";
 import { ApiError } from "@/shared/http/api-error";
-import type { Completion, CompletionAccess } from "../types/completion.types";
+import type {
+  Completion,
+  CompletionAccess,
+  ReservationContact,
+} from "../types/completion.types";
 export const completionKey = (id: string, a: CompletionAccess) =>
   a.kind === "link"
     ? ["reservation-management", a.scope, id]
@@ -59,6 +63,33 @@ export const executeCompletion = (
   completionRequest<Completion>(a, `${completionPath(id, a)}/${action}`, {
     method: "POST",
     body: JSON.stringify({ command }),
+  });
+
+export const reservationContactQuery = (
+  id: string,
+  access: CompletionAccess,
+  visible = true,
+) =>
+  queryOptions({
+    queryKey: [...completionKey(id, access), "contact"],
+    queryFn: ({ signal }) =>
+      completionRequest<ReservationContact>(
+        access,
+        `${completionPath(id, access)}/contact`,
+        { signal },
+      ),
+    staleTime: 0,
+    enabled: (query) =>
+      visible &&
+      !isAccessError(query.state.error) &&
+      (access.kind !== "link" ||
+        Date.parse(access.accessExpiresAt) > Date.now()),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    retry: false,
+    gcTime: 0,
   });
 
 export const ownerReservationsQuery = (

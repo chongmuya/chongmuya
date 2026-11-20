@@ -83,6 +83,14 @@ export class RestaurantsService {
       })),
     };
   }
+  async reservationPhone(id: string, manager: EntityManager) {
+    const restaurant = await manager.findOne(Restaurant, {
+      where: { id },
+      select: { id: true, publicPhone: true },
+    });
+    if (!restaurant) throw new NotFoundException();
+    return restaurant.publicPhone;
+  }
   async replyDefaults(id: string, manager: EntityManager) {
     const r = await manager.findOneBy(Restaurant, { id });
     if (!r) throw new NotFoundException();

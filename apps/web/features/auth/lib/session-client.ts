@@ -52,7 +52,11 @@ export class SessionClient {
       return;
     this.invalidateAuthority(event.groupId, false);
   }
-  private state: AuthState = { status: "loading", account: null };
+  private readonly serverSnapshot: AuthState = {
+    status: "loading",
+    account: null,
+  };
+  private state: AuthState = this.serverSnapshot;
   private listeners = new Set<() => void>();
   private restoring?: Promise<void>;
   private refreshing?: Promise<void>;
@@ -90,6 +94,9 @@ export class SessionClient {
     this.onAuthorityLost(accountId, [...new Set(ids)], denied);
   };
   getSnapshot = () => this.state;
+  // A delayed Suspense boundary must hydrate the same loading markup even
+  // when session restoration has already finished elsewhere in the tree.
+  getServerSnapshot = () => this.serverSnapshot;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {

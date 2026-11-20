@@ -2,6 +2,7 @@
 
 export { AuthProvider, useAuth } from "./components/auth-provider";
 export { AuthScreen } from "./components/auth-screen";
+export { ServiceIntroduction } from "./components/service-introduction";
 export { AuthEntryScreen } from "./components/auth-entry-screen";
 export { SplashScreen } from "./components/splash-screen";
 export { SignupScreen } from "./components/signup/signup-screen";

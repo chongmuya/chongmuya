@@ -16,6 +16,8 @@ export const commandSchema = (fields: Field[]) =>
               code: "custom",
               message: `${f.max}자 이내로 입력해 주세요.`,
             });
+          if (v && f.options && !f.options.some((option) => option.value === v))
+            c.addIssue({ code: "custom", message: "목록에서 선택해 주세요." });
           if (
             f.type === "number" &&
             v &&
@@ -26,6 +28,16 @@ export const commandSchema = (fields: Field[]) =>
             c.addIssue({
               code: "custom",
               message: "0~20억 사이의 정수를 입력해 주세요.",
+            });
+          if (
+            f.type === "number" &&
+            v &&
+            ((f.minValue !== undefined && Number(v) < f.minValue) ||
+              (f.maxValue !== undefined && Number(v) > f.maxValue))
+          )
+            c.addIssue({
+              code: "custom",
+              message: "허용된 범위의 수량을 입력해 주세요.",
             });
           if (
             f.type === "datetime-local" &&

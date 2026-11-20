@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { act, createElement } from "react";
 import { focusManager, onlineManager } from "@tanstack/react-query";
 import { ReservationProgress } from "../features/reservations/components/reservation-progress";
-import { render, until, fill } from "./support/form-dom";
+import { render, until, fill, click } from "./support/form-dom";
 import type { Completion } from "../features/reservation-completion/types/completion.types";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
@@ -129,6 +129,7 @@ test("actual reservation detail polls independently, preserves dirty versions, p
     await until(() =>
       assert.match(view.container.textContent!, /매장 확인을 기다리고/),
     );
+    await click(view.container, "예약금 안내 확인하기");
     await fill(view.container, "payer", "작성 중인 총무");
     await fill(view.container, "amount", "1200");
     state = {

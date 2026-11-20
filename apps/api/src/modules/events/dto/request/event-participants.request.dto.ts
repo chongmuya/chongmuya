@@ -1,6 +1,7 @@
 import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
+  ArrayUnique,
   IsBoolean,
   ArrayMinSize,
   IsArray,
@@ -11,6 +12,7 @@ import {
   Length,
   Matches,
   Min,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 import {
@@ -58,6 +60,28 @@ export class AddEventParticipantsInput {
   @ValidateNested({ each: true })
   @Type(() => RosterPersonChoice)
   members!: RosterPersonChoice[];
+}
+export class ImportSelectedGroupMembersInput {
+  @IsUUID() requestKey!: string;
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ArrayUnique((member: ReviewedParticipant | null) => member?.id)
+  @ValidateNested({ each: true })
+  @Type(() => ReviewedParticipant)
+  members!: ReviewedParticipant[];
+  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => RosterPersonChoice)
+  directMembers?: RosterPersonChoice[];
+  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(10000)
+  @ValidateNested({ each: true })
+  @Type(() => ReviewedParticipant)
+  expectedRoster?: ReviewedParticipant[];
+  @IsOptional() @IsBoolean() duplicatesConfirmed?: boolean;
 }
 export class UpdateEventParticipantInput extends ParticipantInput {
   @IsInt() @Min(1) expectedVersion!: number;

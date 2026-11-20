@@ -1,192 +1,260 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { buttonStyles } from "@/shared/ui/button";
 import { koreanDateLabel } from "@/shared/lib/korean-date";
-import { auditLabel } from "../lib/audit-label";
 import type { Completion } from "../types/completion.types";
-export const won = (n: number | null | undefined) =>
-  n === null || n === undefined ? "미확인" : `${n.toLocaleString("ko-KR")}원`;
+import { won } from "../lib/agreement-labels";
 import { progressLabels } from "../lib/progress-labels";
-const issueLabels: Record<string, string> = {
-  EVENT_STARTED: "행사가 시작되어 매장의 명시적인 진행 확인이 필요해요",
-  MENU_LATE: "메뉴 제출 기한 경과",
-  PAYMENT_LATE: "입금 기한 경과",
-  TRANSFER_REVIEW: "신고 금액·안내 차수 또는 송금 지연 확인 필요",
-  AMOUNT_REVIEW: "실제 수령액과 안내 금액 차이 확인 필요",
-  RECEIPT_REVIEW: "변경된 안내 기준으로 실제 입금 재확인 필요",
-  DEPOSIT_UNCONFIRMED: "실제 수령 금액 확인 필요",
-  GUIDANCE_REVIEW: "최신 안내를 총무가 확인해야 해요",
-};
+export { won } from "../lib/agreement-labels";
+
+function summaryDate(value: string, year = false) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "미확인";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Seoul",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${year ? `${parts.year}.` : ""}${parts.month}.${parts.day}${year ? "." : `(${parts.weekday})`} ${parts.hour}:${parts.minute}`;
+}
+
 export function CompletionSummary({
   data: q,
   organizer,
   compact = false,
+  footer,
 }: {
   data: Completion;
   organizer: boolean;
   compact?: boolean;
+  footer?: ReactNode;
 }) {
   if (compact)
     return (
-      <section className="space-y-3">
+      <div className="space-y-3">
         <h2 className="text-xl font-bold">
           {progressLabels[q.progress] ?? "메뉴·송금 안내"}
         </h2>
-        <p className="text-sm text-secondary">
-          {q.restaurantName} · {q.agreement.expectedGuests}명<br />
-          {koreanDateLabel(q.agreement.startsAt)}
-        </p>
         {q.progress === "GUIDANCE_PENDING" && (
-          <p className="text-sm text-brand-action">
+          <p className="text-sm text-secondary">
             예약금 안내를 준비하고 있어요. 메뉴는 임시 저장할 수 있어요.
           </p>
         )}
-        {q.issues
-          .filter((i) => i !== "GUIDANCE_REVIEW" && issueLabels[i])
-          .map((i) => (
-            <p key={i} className="text-sm text-brand-action">
-              {issueLabels[i]}
-            </p>
-          ))}
-      </section>
+      </div>
     );
   return (
-    <>
-      <section className="space-y-6 rounded-card bg-surface p-5 py-8 shadow-card">
-        {q.progress === "CONFIRMED" && (
-          <Image
-            src="/images/ui/success.svg"
-            width={48}
-            height={48}
-            alt=""
-            className="mx-auto"
-          />
-        )}
-        <h2 className="text-center text-2xl font-bold">
-          {progressLabels[q.progress] ?? "예약 진행 확인"}
-        </h2>
-        <p className="text-center text-sm">
-          {q.progress === "CONFIRMED"
-            ? "메뉴 전달과 필요한 실제 입금 확인이 완료됐어요."
-            : q.cancellation
-              ? "취소와 환불은 별도로 처리돼요. 실제 반환 내역을 확인해 주세요."
-              : q.progress === "GUIDANCE_PENDING"
-                ? "사장님이 금액·계좌·기한을 확인하고 있어요. 메뉴는 임시 저장할 수 있어요."
-                : "총무의 송금 신고는 실제 입금 확인과 달라요. 필요한 조건이 모두 충족되면 예약이 확정돼요."}
-        </p>
-        {q.progress === "CONFIRMED" && organizer && (
-          <Link
-            className={buttonStyles({ className: "mx-auto w-fit" })}
-            href={`/events?event=${q.eventId}&view=attendance`}
-          >
-            참석 관리하러 가기
-          </Link>
-        )}
-        {q.currentContact && (
-          <div className="text-sm">
-            <p>
-              현재 담당자: {q.currentContact.name}{" "}
-              {q.currentContact.maskedPhone}
-            </p>
-            {q.currentContact.changedAt && (
-              <p className="text-muted">
-                인수인계로 담당자가 변경됐어요. 당시 문의·입금 확인·발송 기록은
-                그대로 남아요.
-              </p>
-            )}
-          </div>
-        )}
-        <dl className="grid grid-cols-[minmax(64px,auto)_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
-          <dt className="text-muted">매장</dt>
-          <dd>{q.restaurantName}</dd>
-          <dt className="text-muted">인원</dt>
-          <dd>{q.agreement.expectedGuests}명</dd>
-          <dt className="text-muted">날짜·시간</dt>
-          <dd>{koreanDateLabel(q.agreement.startsAt)}</dd>
-          <dt className="text-muted">예약금</dt>
-          <dd>
-            {q.guidance.kind === "NONE" ? "없음" : won(q.guidance.amount)}
+    <section className="space-y-8 rounded-control bg-surface px-[29px] pt-10 pb-7 shadow-card max-[360px]:px-5">
+      <div className="flex flex-col items-center gap-6 text-center">
+        <ReservationResultIcon />
+        <div className="space-y-4">
+          <h2 className="text-2xl leading-[normal] font-bold text-black">
+            {progressLabels[q.progress] ?? "예약 진행 확인"}
+          </h2>
+          <p className="mx-auto max-w-[162px] text-xs leading-[normal]">
+            {q.progress === "CONFIRMED"
+              ? "필요한 메뉴·입금 확인이 완료됐어요. 이제 참석 명단을 준비해볼까요?"
+              : "매장에서 예약 내용을 확인하고 있어요."}
+          </p>
+          {organizer && q.progress === "CONFIRMED" && (
+            <AttendanceLink eventId={q.eventId} />
+          )}
+        </div>
+      </div>
+      {footer}
+    </section>
+  );
+}
+export function ReservationResultIcon({
+  unavailable = false,
+}: {
+  unavailable?: boolean;
+}) {
+  return (
+    <div className="mx-auto grid size-[85px] shrink-0 place-items-center rounded-full bg-[radial-gradient(ellipse_at_96%_78%,#ffdd99_0%,#fcbe7b_21%,#f99f5e_42%,#f78141_63%,#f46224_84%)]">
+      <Image
+        src={
+          unavailable
+            ? "/images/reservations/change-unavailable.svg"
+            : "/images/reservations/change-calendar.svg"
+        }
+        width={47.5023}
+        height={48.7387}
+        alt=""
+      />
+    </div>
+  );
+}
+export function AttendanceLink({ eventId }: { eventId: string }) {
+  return (
+    <Link
+      href={`/events?event=${eventId}&view=attendance`}
+      className="inline-flex min-h-11 items-center gap-5 rounded-control bg-brand px-[14px] py-4 text-xs leading-[normal] text-white"
+    >
+      참석 관리하러 가기
+      <span className="relative h-2.5 w-3">
+        <Image
+          src="/images/reservations/attendance-next.svg"
+          width={13.7105}
+          height={10.937}
+          alt=""
+          className="absolute -top-[0.4685px] -left-[0.75px] max-w-none rotate-180"
+        />
+      </span>
+    </Link>
+  );
+}
+export function CompletionFacts({ data: q }: { data: Completion }) {
+  const latest = q.changes[0];
+  const applied =
+    latest?.kind === "CHANGE" && latest.status === "APPLIED"
+      ? q.history?.findIndex((entry) => entry.action === "CHANGE_APPLIED")
+      : undefined;
+  const previousDate =
+    applied != null && applied >= 0
+      ? q.history[applied + 1]?.agreement.startsAt
+      : undefined;
+  const rows = [
+    {
+      icon: "summary-location",
+      width: 18,
+      height: 18,
+      value: q.restaurantName,
+      label: "메뉴",
+      detail:
+        q.order?.lines.map((l) => `${l.name} ${l.quantity}개`).join(", ") ||
+        "미제출",
+    },
+    {
+      icon: "summary-guests",
+      width: 16.848,
+      height: 14.8528,
+      value: `${q.agreement.expectedGuests}명`,
+      label: "예약금",
+      detail: q.guidance.kind === "NONE" ? "없음" : won(q.guidance.amount),
+    },
+    {
+      icon: "summary-date",
+      width: 18,
+      height: 18,
+      value: summaryDate(q.agreement.startsAt),
+      label: q.cancellation ? "환불" : "확정 시각",
+      detail: q.cancellation
+        ? `예정 ${won(q.refundExpected)} · 반환 ${won(q.refundedAmount)}`
+        : q.confirmation
+          ? summaryDate(q.confirmation.at, true)
+          : "확인 중",
+    },
+  ];
+  return (
+    <dl className="space-y-4 text-xs leading-[normal]">
+      {rows.map((row) => (
+        <div
+          key={row.icon}
+          className="grid grid-cols-[minmax(0,113fr)_minmax(0,155fr)] items-center gap-x-9 max-[360px]:grid-cols-1 max-[360px]:gap-y-2"
+        >
+          <dt className="flex min-w-0 items-center gap-3">
+            <span className="flex size-[18px] shrink-0 items-center justify-center">
+              <Image
+                src={`/images/reservations/${row.icon}.svg`}
+                width={row.width}
+                height={row.height}
+                alt=""
+              />
+            </span>
+            <span className="wrap-anywhere">
+              {row.icon === "summary-date" &&
+              previousDate &&
+              previousDate !== q.agreement.startsAt ? (
+                <>
+                  <del className="block">{summaryDate(previousDate)}</del>
+                  <span className="mt-1 block text-brand min-[360px]:min-w-[94px]">
+                    →{row.value}
+                  </span>
+                </>
+              ) : (
+                row.value
+              )}
+            </span>
+          </dt>
+          <dd className="grid grid-cols-[45px_minmax(0,1fr)] gap-3">
+            <span className="text-placeholder">{row.label}</span>
+            <span className="wrap-anywhere">{row.detail}</span>
           </dd>
-          <dt className="text-muted">실제 수령</dt>
-          <dd>{q.receipt ? won(q.receivedAmount) : "확인 기록 없음"}</dd>
-          {q.confirmation && (
-            <>
-              <dt className="text-muted">확정 시각</dt>
-              <dd>{koreanDateLabel(q.confirmation.at)}</dd>
-              <dt className="text-muted">확인자·방법</dt>
-              <dd>{auditLabel(q.confirmation.audit)}</dd>
-            </>
-          )}
-          {q.cancellation && (
-            <>
-              <dt className="text-muted">취소 시각</dt>
-              <dd>{koreanDateLabel(q.cancellation.at)}</dd>
-              <dt className="text-muted">환불 예정</dt>
-              <dd>{won(q.refundExpected)}</dd>
-              <dt className="text-muted">실제 반환</dt>
-              <dd>{won(q.refundedAmount)}</dd>
-            </>
-          )}
-        </dl>
-        {q.cancellation && (
-          <p className="text-sm">
-            {q.refundExpected === null
-              ? `환불 예정액은 아직 미확인이며 실제 반환 ${won(q.refundedAmount)}을 별도로 기록했어요.`
-              : q.refundedAmount > q.refundExpected
-                ? `예정액보다 ${won(q.refundedAmount - q.refundExpected)} 더 반환한 사실이 있어요. 예정액과 차이를 확인해 주세요.`
-                : `실제 수령 잔액 ${won(q.receivedAmount - q.refundedAmount)}`}
-          </p>
-        )}
-        {q.transfer && (
-          <p className="text-sm">
-            총무 송금 신고: {q.transfer.payer} · {won(q.transfer.amount)} ·{" "}
-            {koreanDateLabel(q.transfer.reportedAt)} (안내{" "}
-            {q.transfer.guidanceRevision}차)
-          </p>
-        )}
-        {!!q.issues.filter((i) => issueLabels[i]).length && (
-          <ul className="space-y-2 text-sm text-brand-action">
-            {q.issues
-              .filter((i) => issueLabels[i])
-              .map((i) => (
-                <li key={i}>{issueLabels[i]}</li>
-              ))}
-          </ul>
-        )}
-        {q.issues.some((x) => x.endsWith("LATE")) && (
-          <p role="status" className="rounded-control bg-choice p-3 text-sm">
-            기한이 지나 매장 확인이 필요해요. 기존 예약을 자동 취소하지 않아요.
-            이미 송금한 사실은 계속 신고할 수 있어요.
-          </p>
-        )}
-      </section>
-      {q.order && (
-        <details className="rounded-card bg-surface p-5 shadow-card">
-          <summary className="cursor-pointer font-semibold">
-            전달한 메뉴 · {won(q.order.total)}
-          </summary>
-          <ul className="my-4 space-y-3">
-            {q.order.lines.map((l) => (
-              <li key={l.id} className="flex justify-between gap-3 text-sm">
-                <span>
-                  {l.name} · {l.unit} × {l.quantity}
-                </span>
-                <span className="shrink-0">{won(l.subtotal)}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="flex justify-between border-t border-border pt-4 font-bold">
-            <span>메뉴 주문 금액</span>
-            <span>{won(q.order.total)}</span>
-          </p>
-          <p className="mt-2 text-xs text-muted">
-            예약금·별도 이용료와 구분한 메뉴 금액이에요. 전달 후 변경은 변경
-            문의로 진행해요.
-          </p>
-        </details>
-      )}
-    </>
+        </div>
+      ))}
+    </dl>
+  );
+}
+export function OrderSummary({ data: q }: { data: Completion }) {
+  if (!q.order) return null;
+  return (
+    <section className="space-y-3 rounded-[16px] bg-surface p-4 shadow-card">
+      <h3 className="text-sm font-semibold text-secondary">주문 메뉴</h3>
+      <ul className="space-y-3">
+        {q.order.lines.map((l) => (
+          <li key={l.id} className="flex justify-between gap-2 text-sm">
+            <span className="min-w-0 wrap-anywhere">
+              {l.name} ×{l.quantity}
+            </span>
+            <span className="shrink-0 text-muted">{won(l.subtotal)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="flex justify-between gap-3 border-t border-border pt-3 font-semibold">
+        <span>메뉴 주문 금액</span>
+        <span className="text-brand">{won(q.order.total)}</span>
+      </p>
+    </section>
+  );
+}
+export function DepositSummary({ data: q }: { data: Completion }) {
+  const rows: [string, string][] = [
+    ["금액", q.guidance.kind === "NONE" ? "없음" : won(q.guidance.amount)],
+    ["입금자", q.transfer?.payer || "미확인"],
+    [
+      "상태",
+      q.cancellation
+        ? progressLabels[q.progress]
+        : q.receipt
+          ? `실제 수령 ${won(q.receivedAmount)}`
+          : q.transfer
+            ? "총무가 입금했다고 알림"
+            : q.guidance.kind === "NONE"
+              ? "예약금 없음"
+              : "실제 입금 확인 전",
+    ],
+  ];
+  if (q.guidance.deadline)
+    rows.push(["입금 기한", koreanDateLabel(q.guidance.deadline)]);
+  if (q.cancellation)
+    rows.push(
+      ["환불 예정", won(q.refundExpected)],
+      ["실제 반환", won(q.refundedAmount)],
+    );
+  return (
+    <section className="space-y-3 rounded-[16px] bg-surface p-4 shadow-card">
+      <h3 className="text-sm font-semibold text-secondary">예약금</h3>
+      <dl className="space-y-3 text-sm">
+        {rows.map(([label, value]) => (
+          <div
+            key={label}
+            className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
+          >
+            <dt className="text-muted">{label}</dt>
+            <dd className="wrap-anywhere">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 export function GuidanceSummary({ data: q }: { data: Completion }) {

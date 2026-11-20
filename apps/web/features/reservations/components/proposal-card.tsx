@@ -14,14 +14,14 @@ export const candidateLabels: Record<string, string> = {
   OPERATOR_CLOSED: "운영 확인 후 종료",
   SELECTED: "매장 선택 완료",
 };
-const spaceLabels = {
+export const spaceLabels = {
   HALL: "일반 홀",
   ROOM: "별도 룸",
   FLOOR: "한 층 단독",
   WHOLE: "전체 단독",
   ANY: "상관없음",
 };
-const seatingLabels = {
+export const seatingLabels = {
   CLOSE: "가까이 착석",
   SEPARATED: "떨어져도 가능",
   ANY: "상관없음",

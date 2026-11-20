@@ -5,7 +5,7 @@ import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import type { ReservationPreparation } from "./types/reservation-completion.js";
 import { Injectable } from "@nestjs/common";
-import type { EntityManager } from "typeorm";
+import { In, type EntityManager } from "typeorm";
 import { EventsService } from "../events/events.service.js";
 import { SelectedReservation } from "./entities/selected-reservation.entity.js";
 import { ReservationProgress } from "./entities/reservation-progress.entity.js";
@@ -20,6 +20,134 @@ export class ReservationFactsService {
     private readonly events: EventsService,
     private readonly restaurants: RestaurantsService,
   ) {}
+  // The aggregate reader checks event ownership in this same transaction.
+  // Read current reservation facts in batches; contact and bank details never leave it.
+  async forEvents(ownerId: string, eventIds: string[], m: EntityManager) {
+    if (!eventIds.length) return [];
+    const requests = await m.find(ReservationRequest, {
+      where: { eventId: In(eventIds), currentContactAccountId: ownerId },
+      select: {
+        id: true,
+        eventId: true,
+        round: true,
+        state: true,
+        snapshot: true,
+      },
+      order: { round: "DESC" },
+    });
+    const requestIds = requests.map((r) => r.id);
+    const latestRequests = new Map<string, (typeof requests)[number]>();
+    for (const request of requests)
+      if (!latestRequests.has(request.eventId))
+        latestRequests.set(request.eventId, request);
+    const selected = requestIds.length
+      ? await m.find(SelectedReservation, {
+          where: { eventId: In(eventIds), requestId: In(requestIds) },
+          order: { selectedAt: "DESC", id: "DESC" },
+        })
+      : [];
+    const progress = selected.length
+      ? await m.findBy(ReservationProgress, {
+          reservationId: In(selected.map((s) => s.id)),
+        })
+      : [];
+    const states = new Map(progress.map((p) => [p.reservationId, p.state]));
+    const targetRequestIds = [
+      ...new Set([
+        ...[...latestRequests.values()].map((r) => r.id),
+        ...selected.map((s) => s.requestId),
+      ]),
+    ];
+    const targets = targetRequestIds.length
+      ? await m
+          .createQueryBuilder(RequestTarget, "t")
+          .leftJoin(
+            MerchantReplyRevision,
+            "reply",
+            "reply.target_id=t.id AND reply.revision=t.reply_version",
+          )
+          .where("t.request_id IN (:...ids)", { ids: targetRequestIds })
+          .select([
+            't.id AS "id"',
+            't.request_id AS "requestId"',
+            't.restaurant_name AS "restaurantName"',
+            't.candidate_state AS "candidateState"',
+            'reply.kind AS "kind"',
+            'reply.expires_at AS "expiresAt"',
+          ])
+          .getRawMany<{
+            id: string;
+            requestId: string;
+            restaurantName: string;
+            candidateState: RequestTarget["candidateState"];
+            kind: MerchantReplyRevision["kind"] | null;
+            expiresAt: Date | null;
+          }>()
+      : [];
+    const now = new Date();
+    return eventIds.map((eventId) => {
+      const request = latestRequests.get(eventId);
+      const selection =
+        selected.find((s) => s.eventId === eventId && !s.cancelledAt) ??
+        selected.find((s) => s.requestId === request?.id);
+      const state = selection
+        ? (states.get(selection.id) ?? initialPreparation(selection))
+        : null;
+      const selectionRequest = selection
+        ? requests.find((r) => r.id === selection.requestId)
+        : null;
+      const candidateStates = request
+        ? targets
+            .filter((target) => target.requestId === request.id)
+            .map((target) =>
+              candidateState(
+                target,
+                target.kind
+                  ? {
+                      kind: target.kind,
+                      expiresAt: target.expiresAt
+                        ? new Date(target.expiresAt)
+                        : null,
+                    }
+                  : null,
+                now,
+              ),
+            )
+        : [];
+      const inquiryState =
+        request?.state !== "ACTIVE"
+          ? ("CLOSED" as const)
+          : candidateStates.includes("PROPOSED")
+            ? ("REPLIES_RECEIVED" as const)
+            : candidateStates.includes("AWAITING_REPLY")
+              ? ("AWAITING_REPLY" as const)
+              : ("CLOSED" as const);
+      return {
+        eventId,
+        expectedGuests:
+          state?.agreement.expectedGuests ??
+          request?.snapshot.expectedGuests ??
+          null,
+        region:
+          selectionRequest?.snapshot.region ?? request?.snapshot.region ?? null,
+        inquiry: request
+          ? { requestId: request.id, state: inquiryState }
+          : null,
+        reservation:
+          selection && state
+            ? {
+                reservationId: selection.id,
+                status: selection.status,
+                progress: completionStatus(state, now.getTime()),
+                restaurantName:
+                  targets.find((t) => t.id === selection.targetId)
+                    ?.restaurantName ?? null,
+                startsAt: state.agreement.startsAt,
+              }
+            : null,
+      };
+    });
+  }
   async calendar(
     ownerId: string,
     restaurantId: string,

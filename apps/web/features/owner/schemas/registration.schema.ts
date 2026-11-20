@@ -76,6 +76,7 @@ export const registrationSchema = z
     detailAddress: text(120),
     category: z.string().max(40),
     phone: text(20),
+    publicPhone: text(30).optional(),
     receiveConsent: z.boolean(),
     maxCapacity: count,
     minimumGuests: z
@@ -110,6 +111,13 @@ export function registrationIssues(
   const conditional = (required: boolean, value: number | null) =>
     required ? value !== null && value > 0 : value === null;
   check(!!data.name.trim(), "name", 0, "매장명을 입력해 주세요.");
+  const publicPhone = data.publicPhone?.replace(/[ -]/g, "") ?? "";
+  check(
+    !publicPhone || /^(?:0\d{8,11}|1[568]\d{6})$/.test(publicPhone),
+    "publicPhone",
+    0,
+    "대표번호를 확인해 주세요. 숫자, 공백, 하이픈을 사용할 수 있어요.",
+  );
   check(
     !!data.addressQuery.trim(),
     "addressQuery",

@@ -90,6 +90,28 @@ test("accepted handover preserves private history and personal ownership; member
   const roster = await json<{ id: string; name: string; version: number }[]>(
     await call(`groups/${group.id}/members`, a),
   );
+  const selectedImport = {
+    requestKey: randomUUID(),
+    members: [{ id: roster[0].id, version: roster[0].version }],
+    directMembers: [
+      {
+        name: people[0].name,
+        phoneLast4: "0012",
+        label: null,
+        existingParticipantId: people[0].id,
+      },
+    ],
+    expectedRoster: people.map(({ id, version }) => ({ id, version })),
+  };
+  await json(
+    await call(
+      `events/${event.id}/participants/import-group/selected`,
+      a,
+      "POST",
+      selectedImport,
+    ),
+    201,
+  );
   // Roster identity has no account privileges, and editing never rewrites event snapshots.
   assert.equal(
     (
@@ -440,6 +462,8 @@ test("accepted handover preserves private history and personal ownership; member
     `groups/${group.id}/members`,
     `events/${event.id}`,
     `events/${event.id}/participants`,
+    `groups/${group.id}/members/${roster[0].id}/history`,
+    `settlements/summaries?eventIds=${event.id}`,
     settlement,
     `${settlement}/notices/${noticeId}`,
     `events/${event.id}/files`,
@@ -450,6 +474,28 @@ test("accepted handover preserves private history and personal ownership; member
     assert.equal((await call(path, a)).status, 404, path);
     assert.equal((await call(path, b)).status, 200, path);
   }
+  assert.equal(
+    (
+      await call(
+        `events/${event.id}/participants/import-group/selected`,
+        a,
+        "POST",
+        selectedImport,
+      )
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await call(
+        `events/${event.id}/participants/import-group/selected`,
+        b,
+        "POST",
+        selectedImport,
+      )
+    ).status,
+    201,
+  );
   assert.equal((await call(`events/${personal.id}`, a)).status, 200);
   assert.equal((await call(`events/${personal.id}`, b)).status, 404);
   assert.equal((await call(`calendar/${personalCalendar.id}`, a)).status, 200);
@@ -1055,6 +1101,8 @@ test("reservation selection race, current merchant contact, pending SMS replanni
   const id = selected.selection!.id,
     completion = app.get(ReservationCompletionService),
     payments = app.get(ReservationPaymentsService);
+  assert.equal((await call(`reservations/${id}/contact`, a)).status, 404);
+  assert.equal((await call(`reservations/${id}/contact`, b)).status, 200);
   let view = await completion.get(id, operator);
   view = await payments.guidance(id, operator, {
     requestKey: randomUUID(),

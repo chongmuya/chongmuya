@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { EventSummary } from "../features/events/components/event-summary";
 import { WorkspaceContent } from "../app/workspace-screen";
@@ -48,9 +49,17 @@ function render(
 function summary(cache: QueryClient, groupId?: string, accountId = "a") {
   return renderToStaticMarkup(
     createElement(
-      QueryClientProvider,
-      { client: cache },
-      createElement(EventSummary, { accountId, request, groupId }),
+      AppRouterContext.Provider,
+      { value: router },
+      createElement(
+        SearchParamsContext.Provider,
+        { value: new URLSearchParams() },
+        createElement(
+          QueryClientProvider,
+          { client: cache },
+          createElement(EventSummary, { accountId, request, groupId }),
+        ),
+      ),
     ),
   );
 }

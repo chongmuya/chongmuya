@@ -11,6 +11,12 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
   const [guest, setGuest] = useState(false);
   return (
     <AuthLayout title="총무야 시작하기" start>
+      <Link
+        href={authEntryPath("/intro", returnTo)}
+        className="absolute top-6 right-5 flex min-h-11 items-center px-2 text-sm font-medium text-brand-ink underline underline-offset-4"
+      >
+        서비스 소개
+      </Link>
       <div className="mt-auto pt-16">
         <div className="flex flex-col gap-2">
           <Link

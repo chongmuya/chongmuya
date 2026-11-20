@@ -14,10 +14,12 @@ export function RecordsList({
   accountId,
   request,
   groupId,
+  personal = false,
 }: {
   accountId: string;
   request: SessionRequest;
   groupId: string | null;
+  personal?: boolean;
 }) {
   const [filter, setFilter] = useState({
       search: "",
@@ -29,7 +31,9 @@ export function RecordsList({
       resolver: zodResolver(recordsSchema),
       defaultValues: filter,
     });
-  const q = useQuery(recordsQuery(accountId, request, groupId, filter));
+  const q = useQuery(
+    recordsQuery(accountId, request, groupId, filter, personal),
+  );
   if (q.error)
     return (
       <div>
@@ -41,8 +45,8 @@ export function RecordsList({
     <section className="space-y-5">
       <h1 className="text-2xl font-bold">모임의 기억을 모아둬요</h1>
       <p className="text-sm">
-        {groupId ? "이 모임의" : "접근 가능한 모든"} 행사 정산과 증빙을 한눈에
-        확인해요.
+        {groupId ? "이 모임의" : personal ? "개인" : "접근 가능한 모든"} 행사
+        정산과 증빙을 한눈에 확인해요.
       </p>
       <form
         className="space-y-3"

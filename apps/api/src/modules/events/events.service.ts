@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import type { EntityManager } from "typeorm";
+import { In, type EntityManager } from "typeorm";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
@@ -122,11 +122,119 @@ export class EventsService {
       attendingCount: new Set(attending.map((r) => r.participantId)).size,
     };
   }
+  async memberHistoryFacts(
+    ownerId: string,
+    groupId: string,
+    memberId: string,
+    m: EntityManager,
+  ) {
+    await this.groups.memberInTransaction(ownerId, groupId, memberId, m);
+    const linked = await m
+      .createQueryBuilder(EventParticipant, "p")
+      .innerJoin(Event, "e", "e.id = p.eventId")
+      .select("e.id", "eventId")
+      .addSelect("e.name", "name")
+      .addSelect("e.scheduledAt", "startsAt")
+      .addSelect("p.id", "participantId")
+      .where("p.groupMemberId = :memberId", { memberId })
+      .andWhere("e.groupId = :groupId AND e.ownerId = :ownerId", {
+        groupId,
+        ownerId,
+      })
+      .orderBy("e.scheduledAt", "DESC", "NULLS LAST")
+      .addOrderBy("e.id", "DESC")
+      .getRawMany<{
+        eventId: string;
+        name: string;
+        startsAt: Date | null;
+        participantId: string;
+      }>();
+    const responses = linked.length
+      ? await m.findBy(AttendanceResponse, {
+          participantId: In(linked.map((p) => p.participantId)),
+        })
+      : [];
+    const attending = new Set(
+      responses
+        .filter((r) => responseDto(r).finalState === "ATTENDING")
+        .map((r) => r.participantId),
+    );
+    const history = new Map<
+      string,
+      {
+        eventId: string;
+        name: string;
+        startsAt: string | null;
+        participantIds: string[];
+        attending: boolean;
+      }
+    >();
+    for (const row of linked) {
+      const fact = history.get(row.eventId) ?? {
+        eventId: row.eventId,
+        name: row.name,
+        startsAt: row.startsAt?.toISOString() ?? null,
+        participantIds: [],
+        attending: false,
+      };
+      fact.participantIds.push(row.participantId);
+      fact.attending ||= attending.has(row.participantId);
+      history.set(row.eventId, fact);
+    }
+    return [...history.values()];
+  }
+
+  async progressFacts(ownerId: string, eventIds: string[], m: EntityManager) {
+    const ids = [...new Set(eventIds)];
+    if (!ids.length) return [];
+    const events = await m.findBy(Event, { id: In(ids), ownerId });
+    if (events.length !== ids.length) throw new NotFoundException();
+    for (const groupId of [
+      ...new Set(events.flatMap((e) => (e.groupId ? [e.groupId] : []))),
+    ].sort())
+      await this.groups.assertOwned(ownerId, groupId, m);
+    const participants = await m
+      .createQueryBuilder(EventParticipant, "p")
+      .select("p.eventId", "eventId")
+      .addSelect("COUNT(*)", "count")
+      .where("p.eventId IN (:...ids)", { ids })
+      .groupBy("p.eventId")
+      .getRawMany<{ eventId: string; count: string }>();
+    const rounds = await m
+      .createQueryBuilder(AttendanceRound, "r")
+      .select("r.eventId", "eventId")
+      .addSelect("COUNT(*)", "count")
+      .where("r.eventId IN (:...ids)", { ids })
+      .groupBy("r.eventId")
+      .getRawMany<{ eventId: string; count: string }>();
+    const attending = await m
+      .createQueryBuilder(AttendanceResponse, "a")
+      .select("a.eventId", "eventId")
+      .addSelect("COUNT(DISTINCT a.participant_id)", "count")
+      .where("a.eventId IN (:...ids)", { ids })
+      .andWhere(
+        "COALESCE(a.manager_override, a.self_answer, 'UNANSWERED') = 'ATTENDING'",
+      )
+      .groupBy("a.eventId")
+      .getRawMany<{ eventId: string; count: string }>();
+    const counts = (rows: { eventId: string; count: string }[]) =>
+      new Map(rows.map((row) => [row.eventId, Number(row.count)]));
+    const rosterCounts = counts(participants),
+      roundCounts = counts(rounds),
+      attendanceCounts = counts(attending);
+    return ids.map((eventId) => ({
+      eventId,
+      participantCount: rosterCounts.get(eventId) ?? 0,
+      roundCount: roundCounts.get(eventId) ?? 0,
+      attendingCount: attendanceCounts.get(eventId) ?? 0,
+    }));
+  }
   async recordPage(
     ownerId: string,
     m: EntityManager,
     options: {
       groupId?: string;
+      scope?: "personal";
       search?: string;
       before?: string;
       after?: string;
@@ -141,6 +249,7 @@ export class EventsService {
       .where("e.ownerId = :ownerId", { ownerId });
     if (options.groupId)
       q.andWhere("e.groupId = :groupId", { groupId: options.groupId });
+    else if (options.scope === "personal") q.andWhere("e.groupId IS NULL");
     if (options.search)
       q.andWhere("position(lower(:search) in lower(e.name)) > 0", {
         search: options.search,

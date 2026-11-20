@@ -14,6 +14,7 @@ import { ReservationAccessService } from "./reservation-access.service.js";
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 import { SelectedReservation } from "./entities/selected-reservation.entity.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
+import type { ReservationContactDto } from "./dto/response/reservation-contact.response.dto.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import {
   ReservationProgress,
@@ -143,6 +144,31 @@ export class ReservationCompletionService {
       this.view(await this.readContext(id, p, m), p),
     );
   }
+  async contact(
+    id: string,
+    p: ReservationReadPrincipal,
+  ): Promise<ReservationContactDto> {
+    const db = await this.database.connect();
+    return db.transaction("REPEATABLE READ", async (m) => {
+      const { target, request } = await this.readContext(id, p, m);
+      if (p.kind === "organizer")
+        return {
+          kind: "restaurant",
+          name: target.restaurantName,
+          phone: await this.restaurants.reservationPhone(
+            target.restaurantId,
+            m,
+          ),
+          changedAt: null,
+        };
+      return {
+        kind: "organizer",
+        name: request.currentContactName ?? request.contactName,
+        phone: request.currentContactPhone ?? request.contactPhone,
+        changedAt: request.contactChanges.at(-1)?.at ?? null,
+      };
+    });
+  }
   async list(p: ReservationPrincipal) {
     if (p.kind !== "owner") throw new DomainHttpException("OWNER_REQUIRED");
     const db = await this.database.connect();
@@ -203,7 +229,9 @@ export class ReservationCompletionService {
       targetId: r.targetId,
       restaurantId: target.restaurantId,
       restaurantName: target.restaurantName,
+      restaurantAddress: target.address,
       eventName: request.snapshot.eventName,
+      groupName: request.snapshot.groupName,
       currentContact: {
         name: request.currentContactName ?? request.contactName,
         maskedPhone: `${(request.currentContactPhone ?? request.contactPhone).slice(0, 3)}-****-${(request.currentContactPhone ?? request.contactPhone).slice(-4)}`,
@@ -236,7 +264,23 @@ export class ReservationCompletionService {
             receivedAmount: s.confirmation.receivedAmount,
           }
         : null,
-      changes: safeChanges,
+      changes: safeChanges.map((change) => ({
+        ...change,
+        // Existing immutable command evidence ties a rejection to its request.
+        resolutionReason:
+          change.status === "REJECTED"
+            ? (history.find((h) => {
+                const command = h.evidence.command;
+                return (
+                  h.action === "CHANGE_REJECTED" &&
+                  command !== null &&
+                  typeof command === "object" &&
+                  "changeId" in command &&
+                  command.changeId === change.id
+                );
+              })?.audit.reason ?? null)
+            : null,
+      })),
       history: history.map((h) => ({
         version: h.version,
         action: h.action,
@@ -501,7 +545,7 @@ export class ReservationCompletionService {
         isDemo: boolean;
       }[] = [];
     if (recipient !== "merchant") {
-      const destination = `/events?event=${r.eventId}`;
+      const destination = `/events?event=${r.eventId}&request=${r.requestId}`;
       if (request.currentContactAccountId)
         accounts.push({
           id: request.currentContactAccountId,

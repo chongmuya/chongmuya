@@ -4,6 +4,7 @@ export function authEntryPath(
   path:
     | "/auth"
     | "/start"
+    | "/intro"
     | "/auth/signup"
     | "/auth/recovery"
     | "/auth/reset-password",
