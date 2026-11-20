@@ -18,8 +18,17 @@ export function SignupFlow(
 ) {
   const flow = useSignupFlow(props);
   const container = useRef<HTMLDivElement>(null);
+  const previousDetail = useRef(flow.detail);
   useEffect(() => {
-    if (!flow.focus)
+    const closedDetail = previousDetail.current;
+    previousDetail.current = flow.detail;
+    if (closedDetail && !flow.detail && flow.step === "terms") {
+      container.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-signup-term="${closedDetail}"]`,
+        )
+        ?.focus();
+    } else if (flow.detail || !flow.focus)
       container.current?.querySelector<HTMLElement>("h1")?.focus();
   }, [flow.step, flow.detail, flow.complete, flow.focus]);
   return (

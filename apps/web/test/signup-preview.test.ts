@@ -284,6 +284,38 @@ test("signup keeps values and consent across details/back, validates steps and s
   await fresh.unmount();
 });
 
+test("terms details focus their heading and return to the originating control for every exit", async () => {
+  const view = await render(
+    createElement(SignupFlow, {
+      terms: previewTerms,
+      onExit: noop,
+      onComplete: noop,
+      onSubmit: async () => assert.fail("details must not submit signup"),
+    }),
+  );
+  try {
+    for (const exit of [
+      "이전 단계로 돌아가기",
+      "동의하고 닫기",
+      "동의하지 않고 돌아가기",
+    ]) {
+      const label = "개인정보 처리방침 상세 보기";
+      await click(view.container, label);
+      assert.equal(document.activeElement, view.container.querySelector("h1"));
+      await click(view.container, exit);
+      assert.equal(document.activeElement?.getAttribute("aria-label"), label);
+      assert.equal(
+        view.container.querySelector<HTMLInputElement>(
+          'input[name="privacyPolicy"]',
+        )!.checked,
+        exit === "동의하고 닫기",
+      );
+    }
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("final field failure returns to the input, focuses it and permits retry without exposing server text", async () => {
   let calls = 0;
   const view = await render(
@@ -336,6 +368,51 @@ test("final field failure returns to the input, focuses it and permits retry wit
     await submit(view.container);
     assert.equal(calls, 2);
     assert.match(view.container.textContent!, /가입을 축하/);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("changed terms errors do not steal focus from details or their return control", async () => {
+  const verified = {
+    request: async (value: string) => ({
+      value,
+      status: "verified" as const,
+      id: "00000000-0000-4000-8000-000000000001",
+      expiresAt: Date.now() + 600000,
+    }),
+  };
+  const view = await render(
+    createElement(SignupFlow, {
+      terms: previewTerms,
+      verification: { email: verified, phone: verified },
+      onExit: noop,
+      onComplete: noop,
+      onSubmit: async () => {
+        throw new ApiError("", 409, "SIGNUP_TERMS_CHANGED");
+      },
+    }),
+  );
+  try {
+    await information(view.container);
+    await submit(view.container);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    assert.equal(document.activeElement?.getAttribute("name"), "serviceTerms");
+    await click(view.container, "이용약관 동의 상세 보기");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    assert.equal(document.activeElement, view.container.querySelector("h1"));
+    await click(view.container, "동의하고 닫기");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    assert.equal(
+      document.activeElement?.getAttribute("aria-label"),
+      "이용약관 동의 상세 보기",
+    );
   } finally {
     await view.unmount();
   }

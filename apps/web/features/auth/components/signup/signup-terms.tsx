@@ -64,6 +64,7 @@ export function SignupTerms({
                   </span>
                 </label>
                 <IconButton
+                  data-signup-term={term.id}
                   aria-label={`${term.title} 상세 보기`}
                   onClick={() => onDetail(term.id)}
                   className="w-8"

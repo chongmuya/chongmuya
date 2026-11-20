@@ -99,7 +99,7 @@ export function useSignupFlow({
     };
   }, []);
   useEffect(() => {
-    if (!focus || pending) return;
+    if (!focus || pending || detail) return;
     // Wait until the destination fields have registered after the step mounts.
     const timer = setTimeout(() => methods.setFocus(focus), 0);
     return () => clearTimeout(timer);
@@ -254,7 +254,10 @@ export function useSignupFlow({
     methods,
     step,
     detail,
-    setDetail,
+    setDetail: (term: typeof detail) => {
+      setFocus(null);
+      setDetail(term);
+    },
     pending,
     complete,
     back,
