@@ -102,6 +102,7 @@ function MyGroups({
   const [choosing, setChoosing] = useState(false);
   const groups = isAccessError(query.error) ? undefined : query.data;
   const selected = groups?.find((g) => g.id === groupId) ?? groups?.[0];
+  const empty = groups?.length === 0;
   return (
     <section className="space-y-4">
       <div className="relative flex h-6 items-center justify-between">
@@ -109,9 +110,17 @@ function MyGroups({
         <Link
           href="/groups/new"
           aria-label="모임 만들기"
-          className="absolute -right-2 -top-2.5 flex size-control items-center justify-center text-2xl font-normal text-secondary"
+          className={
+            empty
+              ? buttonStyles({
+                  variant: "outline",
+                  className:
+                    "absolute right-0 top-0 min-h-[52px] rounded-control border-placeholder px-3 text-sm font-normal text-copy",
+                })
+              : "absolute -right-2 -top-2.5 flex size-control items-center justify-center text-2xl font-normal text-secondary"
+          }
         >
-          ＋
+          {empty ? "＋ 모임 만들기" : "＋"}
         </Link>
       </div>
       {query.isError && (

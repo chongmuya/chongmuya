@@ -34,7 +34,7 @@ export function CalendarScreen() {
   const request = useMemo(() => client.request.bind(client), [client]);
   return account && status === "authenticated" ? (
     <CalendarContent
-      key={`${account.id}:${params.get("group")}:${params.get("restaurant")}:${params.get("schedule")}`}
+      key={`${account.id}:${params.get("group")}:${params.get("restaurant")}`}
       accountId={account.id}
       owner={account.accountType === "owner"}
       request={request}
@@ -154,6 +154,7 @@ function CalendarContent({
             )}
             {detail.data && !isAccessError(detail.error) ? (
               <ScheduleForm
+                key={scheduleId}
                 accountId={accountId}
                 request={request}
                 date={selected}
