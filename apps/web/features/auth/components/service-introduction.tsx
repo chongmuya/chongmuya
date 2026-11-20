@@ -68,6 +68,7 @@ export function ServiceIntroduction() {
           {page < 2 && (
             <Link
               href={start}
+              replace
               className="flex min-h-11 items-center px-2 text-sm text-secondary"
             >
               건너뛰기
@@ -85,6 +86,7 @@ export function ServiceIntroduction() {
         ) : (
           <Link
             href={start}
+            replace
             className={buttonStyles({
               className: "w-full border-brand bg-brand",
             })}

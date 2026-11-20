@@ -2,42 +2,90 @@ import "./support/dom";
 import { act, createElement } from "react";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { client, render, until, deferred, click } from "./support/form-dom";
+import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
+import { client, render, deferred, click } from "./support/form-dom";
+import { HomeEntryProvider } from "../features/home/components/home-entry-provider";
 import { HomeScreen } from "../features/home/components/home-screen";
 import { AuthProvider } from "../features/auth/components/auth-provider";
 
-test("root restores behind the splash then offers the design entry and explicit public browsing", async () => {
+const splash = 'main[aria-label="총무야 시작 중"]';
+const anonymousSession = () =>
+  Response.json({ authenticated: false, account: null });
+
+function renderHome(next = "") {
+  return render(
+    createElement(
+      PathnameContext.Provider,
+      { value: "/" },
+      createElement(
+        HomeEntryProvider,
+        null,
+        createElement(AuthProvider, null, createElement(HomeScreen)),
+      ),
+    ),
+    client(),
+    next,
+  );
+}
+
+test("a fast anonymous restore keeps the initial splash for a second and opens the intro with next", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const original = globalThis.fetch;
   const restore = deferred<Response>();
-  globalThis.fetch = async () => restore.promise;
-  const view = await render(
-    createElement(AuthProvider, null, createElement(HomeScreen)),
-    client(),
-  );
+  const next = "/events?view=attendance";
+  const reads: string[] = [];
+  globalThis.fetch = async (input) => {
+    reads.push(String(input));
+    return restore.promise;
+  };
+  const view = await renderHome(next);
   try {
-    assert(view.container.querySelector('main[aria-label="총무야 시작 중"]'));
-    assert.equal(view.container.querySelector('a[href="/events"]'), null);
-    await act(async () =>
-      restore.resolve(Response.json({ authenticated: false, account: null })),
-    );
-    await until(() =>
-      assert.match(view.container.textContent!, /처음 가입해요/),
-    );
-    assert.doesNotMatch(
-      view.container.textContent!,
-      /첫 행사를 준비|내 행사와 명단/,
-    );
-    assert(view.container.querySelector('a[href^="/intro?next="]'));
-    await click(view.container, "회원가입 없이 사용해볼래요");
-    assert(view.container.querySelector('dialog a[href="/restaurants"]'));
+    assert(view.container.querySelector(splash));
+    assert.equal(reads.length, 1);
+    assert.match(reads[0]!, /\/auth\/session\/restore$/);
+    await act(async () => restore.resolve(anonymousSession()));
+    await act(async () => t.mock.timers.tick(999));
+    assert(view.container.querySelector(splash));
+    assert.deepEqual(view.navigations, []);
+    await act(async () => t.mock.timers.tick(1));
+    assert.deepEqual(view.navigations, [
+      `/intro?next=${encodeURIComponent(next)}`,
+    ]);
+    assert.doesNotMatch(view.container.textContent!, /처음 가입해요/);
   } finally {
-    restore.resolve(Response.json({ authenticated: false, account: null }));
+    restore.resolve(anonymousSession());
     await view.unmount();
     globalThis.fetch = original;
   }
 });
 
-test("root sends owners and unfinished accounts to their own entry instead of a second dashboard", async () => {
+test("the initial splash waits for a slow restore and a failed restore keeps session recovery", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const original = globalThis.fetch;
+  const restore = deferred<Response>();
+  let attempts = 0;
+  globalThis.fetch = async () =>
+    ++attempts === 1 ? restore.promise : anonymousSession();
+  const view = await renderHome("/");
+  try {
+    await act(async () => t.mock.timers.tick(1500));
+    assert(view.container.querySelector(splash));
+    assert.deepEqual(view.navigations, []);
+    await act(async () => restore.resolve(new Response(null, { status: 503 })));
+    assert.equal(view.container.querySelector(splash), null);
+    assert.match(view.container.textContent!, /연결 재확인/);
+    assert.deepEqual(view.navigations, []);
+    await click(view.container, "연결 재확인");
+    assert.deepEqual(view.navigations, ["/intro?next=%2F"]);
+  } finally {
+    restore.resolve(anonymousSession());
+    await view.unmount();
+    globalThis.fetch = original;
+  }
+});
+
+test("root keeps the splash before sending owners and unfinished accounts to their own entry", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const original = globalThis.fetch;
   try {
     for (const [accountType, destination] of [
@@ -58,12 +106,12 @@ test("root sends owners and unfinished accounts to their own entry instead of a 
           },
         });
       };
-      const view = await render(
-        createElement(AuthProvider, null, createElement(HomeScreen)),
-        client(),
-      );
+      const view = await renderHome();
       try {
-        await until(() => assert.deepEqual(view.navigations, [destination]));
+        assert(view.container.querySelector(splash));
+        assert.deepEqual(view.navigations, []);
+        await act(async () => t.mock.timers.tick(1000));
+        assert.deepEqual(view.navigations, [destination]);
         assert.equal(
           reads.filter(
             (path) => path.endsWith("/groups") || path.endsWith("/events"),

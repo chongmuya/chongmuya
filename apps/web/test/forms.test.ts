@@ -15,6 +15,7 @@ import {
 import { RecoveryScreen } from "../features/auth/components/recovery/recovery-screen";
 import { KakaoCompleteScreen } from "../features/auth/components/kakao-complete-screen";
 import { KakaoConnection } from "../features/auth/components/kakao-connection";
+import { HomeEntryProvider } from "../features/home/components/home-entry-provider";
 import { HomeScreen } from "../features/home/components/home-screen";
 import { WorkspaceContent } from "../app/workspace-screen";
 import { EventForm } from "../features/events/components/event-form";
@@ -1656,7 +1657,11 @@ test("home preserves the selected group and never falls back to personal creatio
       };
       const cache = client();
       const view = await render(
-        createElement(AuthProvider, null, createElement(HomeScreen)),
+        createElement(
+          HomeEntryProvider,
+          null,
+          createElement(AuthProvider, null, createElement(HomeScreen)),
+        ),
         cache,
         "",
         "",
