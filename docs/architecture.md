@@ -1,320 +1,113 @@
-# 기본 아키텍처
+# 아키텍처
 
-총무야는 Next.js App Router 웹과 NestJS API로 구성한다. 프론트는 라우팅·기능·공용 코드의 책임을 나누고, 인증 계약은 [authentication.md](authentication.md)를 따른다. 행사는 생성한 계정이 소유한다. 모임은 생성 시 선택적으로 확정하며 이후 연결·변경하지 않는다. 이메일·비밀번호 또는 카카오로 로그인한 뒤 API의 HttpOnly 세션 쿠키를 사용한다.
+Next.js 웹과 NestJS API로 구성한다. 브라우저가 API를 직접 호출하며 Next BFF·인증 SSR·웹의 DB 접근은 사용하지 않는다. 인증 세부 기준은 [인증](authentication.md), 실행 명령은 [README](../README.md), 운영 절차는 [운영](operations.md)에 둔다.
 
-## 책임과 폴더
+## 책임과 의존 방향
 
-```text
-apps/web/
-  app/                       라우트, 레이아웃, Provider, 페이지 조합
-    workspace-screen.tsx     인증 화면과 모임·행사 화면 조합, URL별 화면 key
-  features/
-    auth/
-      api/                   profile·가입 약관 요청·query options·이메일/휴대폰 API
-      components/            Provider, 인증·복구 화면, 로그인·가입 폼
-      hooks/                 인증 mutation
-      lib/                   SessionClient 생명주기·갱신·잠금
-      schemas/               credentials·signup schema
-      types/                 계정·인증 상태·요청 타입
-      client.ts / types.ts   외부 공개 진입점
-    onboarding/
-      components/            가입 후 이용 유형·총무 닉네임·이용 방식·환영 화면
-      hooks/                 첫 설정 저장 mutation, 화면 이탈 취소
-      schemas/               이용 유형·닉네임 검증
-      client.ts              GettingStartedScreen 공개
-    groups/
-      api/                   groups.api.ts, groups.queries.ts
-      components/            등록·명단 미리보기, GroupBoundary, GroupSettings
-      hooks/                 use-save-group.ts, 공개 use-groups.ts
-      lib/                   TXT·붙여넣기 해석, 동명이인 확인
-      schemas/               모임 이름·선택 유형·명단 검증
-      types/                 group.types.ts
-      client.ts / types.ts   외부 컴포넌트·모임 타입 공개
-    home/
-      components/            실제 계정·모임·행사 첫 홈, 모임 안내와 선택창
-      client.ts              HomeScreen 공개
-    events/
-      api/                   events.api.ts, events.queries.ts
-      components/            EventSummary, EventDetail, EventForm
-      hooks/                 생성 mutation
-      lib/                   한국 시간 표시·행사 캐시 갱신
-      schemas/               event.schema.ts
-      types/                 event.types.ts
-      client.ts              외부 컴포넌트 공개
-  shared/
-    http/                    JSON 전송, 취소·타임아웃, ApiError
-    hooks/use-active-screen  화면 이탈 후 지연 저장 응답 방어
-    lib/cn                   조건부 className과 Tailwind 충돌 병합
-    ui/                      Button, Input, Select, FormError, 로딩·오류·빈 상태
-  test/                      세션·HTTP·렌더링·폼 DOM 회귀 테스트
-apps/api/
-  src/
-    main.ts             앱 실행과 정상 종료 훅
-    bootstrap/          실제 서버와 E2E가 공유하는 HTTP 설정
-    config/             환경변수 로딩·검증, 타입이 있는 설정
-    common/http/        안전한 업무/필드 오류·requestId·요청 로그
-    modules/auth/       인증·세션·시도 제한, 공개 Guard/사용자 타입/데코레이터
-    modules/groups/     모임·기본 명단 저장과 소유권 검증, GroupsService 공개
-    modules/events/     행사 소유권·조회·생성·수정
-    modules/health/     DB와 독립된 liveness·실제 쿼리 readiness
-    # 각 업무 모듈의 파일 배치
-      *.module.ts / *.controller.ts / *.service.ts
-      dto/request/      생성·조회·수정·연결 요청 DTO
-      dto/response/     응답 DTO
-      entities/         DB Entity
-    # auth의 인증 구현
-      guards/ / strategies/ / decorators/
-      repositories/ / types/ / utils/ / exceptions/
-    database/           TypeORM 옵션·CLI DataSource·연결 생명주기·오류 분류
-      migrations/       명시적으로 적용하는 스키마 변경
-      seeds/            독립 CLI·시드 함수·입력 데이터
-  test/                 설정·HTTP 계약 테스트와 DB 통합 테스트
-tools/                  ESLint 의존 경계 규칙과 회귀 테스트
-compose.yaml            로컬 PostgreSQL만 실행
-.github/workflows/ci.yml 검증 워크플로
-```
+| 위치                                         | 책임                                           |
+| -------------------------------------------- | ---------------------------------------------- |
+| `apps/web/app`                               | 라우트·레이아웃·Provider와 화면 조합           |
+| `apps/web/features`                          | 기능별 API·캐시·mutation·폼·화면               |
+| `apps/web/shared`                            | 업무를 모르는 HTTP·UI·공용 함수                |
+| `apps/api/src/modules`                       | 업무별 Controller·Service·Entity·DTO           |
+| `apps/api/src/config`, `bootstrap`, `common` | 설정 검증·HTTP 조립·기술 공통 처리             |
+| `apps/api/src/database`                      | 연결 설정·생명주기·migration·독립 개발 fixture |
+| `apps/api/scripts`                           | 운영 CLI의 입력·조립·안전한 출력               |
+| `tools/eslint-boundaries.mjs`                | 앱·feature·업무 모듈 의존 경계 검사            |
 
-웹에 별도 entities/widgets 계층, 공통 패키지, 빈 폴더는 만들지 않는다. feature 내부는 게더와 같이 역할별 폴더로 구분한다. `api/`에는 API 함수와 query key/options, `hooks/`에는 mutation 등 React 훅, `components/`에는 화면과 폼, `schemas/`에는 입력 검증, `types/`에는 데이터 계약, `lib/`에는 React와 무관한 로직을 둔다. API 함수가 단순해도 경로·HTTP 계약을 화면에서 분리한다. 다른 feature가 사용하는 모임 조회는 공개 useGroups 훅으로 제공한다. 내부에서만 사용하는 query options에는 불필요한 래퍼를 만들지 않는다.
+웹은 `app → features → shared`를 따른다. 다른 feature는 `client.ts`의 훅·컴포넌트와 `types.ts`의 타입만 사용한다. 서버 기능이 필요해질 때만 `server-only`로 보호한 `server.ts`를 추가한다. 내부 파일 참조·feature 순환·서버/클라이언트 혼합 export·앱 간 소스 import는 금지한다.
 
-## 프론트엔드
+API는 모듈형 모놀리스다. Controller는 HTTP 입출력, Service는 업무·권한·트랜잭션을 맡는다. 단순 CRUD는 Service에서 Repository를 사용하고 반복되는 복잡한 조회·잠금만 별도로 분리한다. BaseService·단순 위임 계층·빈 공통 패키지를 만들지 않는다.
 
-### 공개 경계와 페이지 조합
+다른 모듈은 Nest imports/exports와 `apiPublicImports`에 명시한 Service·Guard·타입·데코레이터만 사용한다. 타 모듈 Entity·내부 Repository 참조, `.module.ts` 재수출, 순환 의존은 금지한다. `forwardRef`나 전역 모듈로 우회하지 않는다. 요청·응답 DTO는 `dto/request`, `dto/response`, Entity는 `entities`에 둔다.
 
-`app → features → shared`가 기본 방향이다. app은 인증·행사·모임 관리 화면을 조합한다. `/events`는 개인 행사 생성 폼이며, 홈의 EventSummary가 행사 목록을 보여준다. `/events?event=<id>`의 상세도 모임 조회와 독립적이다. `/events?group=<id>`는 홈에서 선택한 모임에 고정된 행사 생성 폼이며 `/mypage?view=groups&group=<id>`는 관리할 모임 선택이다. `/getting-started`는 auth의 공개 client/types로 인증을 확인하고 로그인된 본인의 이용 유형·총무 닉네임을 저장하고 정기 모임/일회성 행사 안내를 제공한다. 첫 설정은 기존 nullable accountType/nickname으로 판단하고 미완료 단계만 다시 표시한다. 선택은 이동을 위한 UI 상태이며 DB에 온보딩 완료 상태를 추가하지 않는다. auth는 onboarding을 import하지 않고 완료 시 경로로 이동한다. 이용 유형 확인창의 문구·아이콘·저장은 onboarding이 맡고, shared/ui의 Dialog는 native showModal·초기 포커스·취소·포커스 복귀·스크롤 잠금만 담당한다. 단계 화면 틀(StepLayout/StepHeading)과 라디오 선택 카드(ChoiceCard)는 shared/ui에 두고 기존 색상·타이포·버튼과 카드 radius/shadow 토큰을 사용한다. GroupBoundary는 마이페이지의 모임 조회·선택·빈 상태만 담당한다. `/onboarding`은 `/getting-started`로 이동하는 이전 링크다.
+## 업무 소유권
 
-`/`는 세션 복원 중 스플래시를 보여 주고, 비로그인 상태에서는 가입·로그인·비회원 탐색 진입 화면을 보여 준다. 별도 익명 대시보드는 두지 않는다. 비회원 탐색은 `/restaurants`로 연결하며, 로그인 후 총무는 home의 모임·행사 화면, 사장님은 `/owner`로 이동한다. home은 auth·groups·events의 공개 진입점으로 실제 계정·선택 모임·행사를 조합한다. `/groups/new`는 첫 설정과 홈에서 재사용하는 등록 화면이다. 모임 등록 결과에서 해당 모임의 홈이나 행사 생성 화면으로 이동한다. 기존 모임에 구성원을 추가했을 때는 같은 모임의 명단으로 돌아갈 수 있다. 모임 없는 홈에서는 개인 행사로 바로 진입한다. `/start`와 기존 `/intro` 링크는 같은 가입 진입 화면을 사용한다. 행사 화면의 예약·참석 탭에서 업무를 나누고, 명단 관리는 참석 화면에서 연다. 개발 화면은 데모 계정의 실제 서비스 경로로 확인한다.
+| 모듈                        | 주요 책임                                                         |
+| --------------------------- | ----------------------------------------------------------------- |
+| `auth`                      | 계정·인증·세션·프로필·번호 변경                                   |
+| `groups`                    | 모임·기본 명단·계정 멤버십·초대·현재 총무 판정                    |
+| `events`                    | 개인/모임 행사·행사 권한·참석·행사 명단                           |
+| `restaurants`               | 매장·공간·메뉴·정책·연락처·사장님 수정·운영 데이터 관리           |
+| `reservations`              | 문의 회차·응답·선택·메뉴·실입금·확정·변경취소·관리 링크·문자 전달 |
+| `settlements`, `files`      | 지출·입금 사실·정산문·기록 / 비공개 증빙                          |
+| `calendar`, `notifications` | 기타 일정·리마인더 / 알림 사실·알림함·문자 예정 이력              |
+| `handovers`, `favorites`    | 공개 서비스들을 통한 인수인계 / 개인·모임 즐겨찾기                |
+| `health`                    | liveness·DB readiness                                             |
 
-개인 화면은 인증 상태를 확인하고 로그인 링크에 원래 경로를 전달한다. auth의 safeReturnPath는 지원하는 내부 페이지와 UUID query만 재구성하며 외부 URL·프로토콜 상대 URL·역슬래시·제어 문자·인증/API 경로를 반환하지 않는다. next가 없는 새 가입·로그인은 홈으로 이동하고, 유효하지 않은 next의 안전한 기본값은 `/events`다. 실제 자료 권한은 Nest에서 검사한다.
+모임·행사·기타 일정의 `creatorId`는 불변이며 `ownerId`는 현재 관리자다. 행사 `groupId`는 생성할 때만 정하고 이후 일반 수정으로 바꾸지 않는다. 개인 행사는 모임 없이 생성한다. 모임 소속만으로 명단·행사·정산 관리권한이 생기지는 않는다.
 
-app과 다른 feature에서 접근하는 공개 경로는 다음과 같다.
+모임 유형은 `동아리·학생회·학회·친목 모임·기타` 중 선택하며 이름과 함께 수정할 수 있다. 모임의 비회원 기본 명단과 로그인 계정 멤버십은 별개다. 이름·뒤 4자리로 계정을 자동 연결하지 않는다. 행사로 가져온 명단은 모임 명단과 독립적이며 과거 참석·부담자 정보는 소급 변경하지 않는다.
 
-- `features/<name>/client`: `use client` 진입점. 실제로 외부에서 사용하는 훅·컴포넌트만 이름을 명시해 export한다.
-- `features/<name>/types`: 다른 feature에서 실제 사용하는 타입만 재공개하는 루트 `types.ts`. 내부 타입 정의는 `types/` 폴더에 둔다. 예를 들어 groups/events API는 auth의 공개 `SessionRequest` 타입을 사용하고 events는 groups의 공개 `useGroups` 훅으로 선택지를 조회한다.
-- `features/<name>/server`: 서버 기능이 실제로 생기면 추가하고 `server-only`로 보호한다. 현재는 필요하지 않아 만들지 않았다.
+인수인계는 활성 계정 멤버에게 요청하고 상대가 명시적으로 수락해야 적용된다. 일반 멤버 참여 수락과 총무 인수 수락은 별개다. 링크는 24시간 유효하며 사용자가 직접 공유한다. 수락 시 모임·연결 행사·모임 일정의 현재 관리자를 원자적으로 이전하고 개인 행사·일정·개인 계좌 기본값·과거 작성자·발송 스냅샷은 보존한다. 이전 수락의 재시도로 과거 관리권한을 복원하지 않는다.
 
-서버·클라이언트 코드를 공통 index에서 재공개하지 않는다. feature 내부는 상대 경로를 사용하고 자신의 공개 진입점을 역으로 참조하지 않는다. 다른 feature 내부를 직접 import하지 않으며 타입 의존도 feature 간 순환 검사에 포함한다. shared가 업무 feature를 참조하거나 웹이 API 앱 소스를 import하는 것은 금지한다.
+## 트랜잭션과 잠금
 
-페이지/layout은 Server Component를 유지하고 상호작용 경계만 Client Component로 둔다. 인증 상태와 QueryClient는 Provider의 마운트 인스턴스에 속하며 서버 전역 사용자 상태를 만들지 않는다. 현재 업무 API는 클라이언트 세션 요청을 사용한다. SSR prefetch/hydration이나 Next에서 DB를 직접 다루는 코드는 없다.
+Service가 트랜잭션을 열고 내부 권한·조회·저장에 **같은 EntityManager**를 전달한다. 중간에 전역 Repository나 별도 연결로 벗어나지 않는다. DB 연결 전에는 `DatabaseService.connect()`를 기다린다.
 
-### API와 캐시
+- 모임 자원 쓰기·인수인계: 실제 모임 → 행사(ID 순) → 업무 자원. 저장된 `groupId`로 범위를 확인하고 잠금 후 현재 관리권한을 재검사한다.
+- 예약: 위 행사 잠금 아래 문의 → 대상(ID 순) → 대상 advisory lock → 발송 행 순서를 공유한다. 수신자 적격성도 같은 트랜잭션에서 확인한다.
+- 여러 알림 사실을 기록하는 트랜잭션은 `NotificationsService.recordBatch`에 전체 수신자를 전달해 계정 ID 순서로 잠근다. 호출별 정렬만으로 전체 순서를 대신하지 않는다.
+- 계정 자격 증명 변경·세션 작업은 Account → AuthSession 순서를 지킨다. 외부 로그인 식별자 연결은 issuer/sub advisory lock을 먼저 사용한다.
 
-컴포넌트 → query options / mutation → feature API → SessionClient.request → shared JSON 전송 → Nest API 순서다. 세션의 Access 만료 갱신, 한 번 재시도, 계정 변경 감지, 로그아웃 대기·실패 복구는 기존 SessionClient를 유지한다. 업무 API 함수를 단독 fetch로 우회하지 않는다. profile은 인증 feature가 소유한다.
+요청 키와 정규화 digest는 재시도를 식별하고 `expectedVersion`은 동시 수정을 막는다. 응답 유실은 원본 키·버전·입력을 유지해 결과를 재확인한다. 명시적 충돌이 확인된 뒤에만 최신 상태를 검토하고 새 작업으로 적용한다. 목록 재조회로 작성 중 기준 버전을 자동 교체하지 않는다.
 
-| 데이터         | Query key                                       | 정책                            |
-| -------------- | ----------------------------------------------- | ------------------------------- |
-| profile        | `user / accountId / profile`                    | 인증 상태에서만 조회            |
-| 내 모임        | `user / accountId / groups`                     | 계정마다 별도 목록              |
-| 모임 기본 명단 | `user / accountId / groups / groupId / members` | 소유자만 조회, 행사 명단과 별개 |
-| 내 행사        | `user / accountId / events / list`              | 개인·모임 연결 행사 전체        |
-| 모임별 내 행사 | `user / accountId / groups / groupId / events`  | 모임 필터에도 행사 소유권 적용  |
-| 행사 상세      | `user / accountId / events / detail / eventId`  | 모임과 독립된 식별              |
+외부 문자·메일·파일 I/O를 기다리는 동안 업무 트랜잭션을 유지하지 않는다. 문자 예정은 업무와 함께 저장하고 커밋 후 발송한다. 파일 결과는 작업 ID·version·lease로 확인하여 늦은 성공/실패가 최신 결과를 덮지 못하게 한다. 실공급자 실패를 fake 성공으로 바꾸지 않는다.
 
-업무 query는 `staleTime: 0`, `retry: false`이며 Query 기본 마운트·포커스·재연결 재조회를 사용한다. 실패는 오류 UI와 사용자의 다시 시도로 복구한다. placeholder로 이전 계정·모임 데이터를 재사용하지 않는다. 최초 조회 실패는 오류 화면으로 표시한다. 같은 자원의 배경 재조회 실패는 기존 데이터와 입력을 유지하며 안내하고, 권한 상실은 쓰기를 차단한다. Query의 AbortSignal을 API까지 전달한다.
+## 업무 불변 조건
 
-mutation은 자동 재시도하지 않는다. 모임 저장 성공 시 진행 중인 목록 조회를 취소하고 해당 계정의 목록을 응답으로 갱신한 뒤 stale로 표시한다. 캐시 갱신과 생성 후 이동은 같은 보호된 콜백에서 처리한다.
+### 예약
 
-행사 생성 성공 시 전체 내 행사 목록, 연결된 모임별 목록과 상세의 진행 중 조회를 취소한다. 기존 목록의 해당 항목과 행사 상세를 응답으로 갱신하고 두 목록을 무효화한다. 활성 목록은 재조회하며 비활성 목록은 다음 사용 시 재조회한다. 다른 계정·다른 모임의 목록은 건드리지 않는다. 재조회 실패는 생성을 자동 반복하지 않는다.
+- 문의는 행사별 회차로 보존하며 재문의가 가능하다. 동시에 활성 회차와 유효 선택 예약은 각각 하나다. 매장 선택은 준비 상태이며 예약 확정과 다르다.
+- 메뉴는 필수다. 제출 시 이름·단가·수량·합계·메뉴판 버전을 보존하고 이후 가격·품절 변경은 명시적 재검토를 요구한다.
+- 예약금 미확인을 0원으로 간주하지 않는다. 총무 송금 신고, 사장님 실제 수령, 실제 반환은 별개 사실이다. SMS 전용 계좌는 총무 웹 DTO에서 제외한다.
+- 메뉴 마감 미정인 미확정 예약이 행사 시작을 지나면 `CHECK_REQUIRED`로 두고 매장·운영자의 명시적 확인을 요구한다.
+- 변경·취소·환불 예정액은 제안 → 총무 수락 또는 양측 합의를 확인한 운영 기록으로 적용한다. 사장님의 환불 제안만으로 기존 합의액·환불 대기를 없애지 않는다. 실제 반환은 수령 잔액 안에서 별도로 기록한다. 은행 송금·환불을 실행하지 않는다.
+- 문의 답변 링크와 예약 관리 링크는 목적·예약·세대를 구분한다. 현재 연락처·동의·공개 여부·만료를 재검사한다. 토큰은 fragment에서 읽고 제거하며 메모리에만 둔다.
+- 다른 모듈은 `ReservationFactsService`로 실제 상태·수령·반환·잔여액을 읽는다. 과거 주문·확인자·최초 문의·발송 스냅샷을 현재 정보로 덮지 않는다.
 
-계정·모드·URL이 바뀌면 화면 key를 바꿔 폼과 mutation observer를 분리한다. 캐시 처리 전후 화면 생존을 검사하고 이동은 마운트된 observer의 콜백에서 실행한다. SessionClient도 계정 변경·로그아웃 이전 요청의 결과를 거부한다. AuthProvider는 `user` query 취소·제거와 mutation cache 정리를 담당한다. 늦은 응답이 이전 캐시나 화면 이동을 복원하면 안 된다.
+### 정산·증빙
 
-### 폼과 공용 UI
+전체 이용금액 T는 예약금을 포함한 실제 전체 지출이다. 정산 대상은 `T − (예약금 제외 시 D, 포함 시 0) − 회비·지원금 S`이며 음수는 거부한다. 균등 몫은 정수로 나누고 나머지는 지정인 한 명에게 배정한다. 0원 전액지원과 데이터 없음은 구분한다.
 
-폼은 React Hook Form + Zod resolver로 관리하고 제출된 유효 값만 mutation에 보낸다. 모임·행사명은 공백 제거 후 1~100자, 인증은 이메일과 공백 없는 ASCII 영문·숫자·특수문자 8~16자 비밀번호를 검증한다. 문자 종류별 필수 조합은 없다. 비밀번호를 trim하거나 Query mutation 변수에 저장하지 않는다. 일정은 선택 입력이며 유효한 한국 시각을 UTC ISO 문자열로 변환한다. 서버 DTO와 권한 검증은 최종 검증으로 유지한다.
+예약금 참고액은 실제 수령−반환이다. 같은 예약금을 여러 지출에 과다 적용하지 못하며 이후 잔액이 줄어도 과거 지출을 자동 변경하지 않는다. 적용 합계가 실제 잔액을 넘으면 지출 보완 전 새 정산문 발행을 막는다.
 
-서버 상태는 Query, 폼 입력·오류는 RHF, 로그인/가입 탭은 useState다. 공용 UI에는 도메인 타입이나 API 호출을 넣지 않는다. fieldErrors는 허용한 서버 필드를 폼 필드에 매핑해 setError로 표시한다. 예를 들어 scheduledAt은 date 입력에 연결한다. 알 수 없는 필드·업무 오류는 root.server에 표시하고 입력을 보존한다. Button은 기본 `type="button"`이며 제출 버튼만 submit을 명시한다. Input은 ref와 표준 속성을 그대로 전달하고 오류 텍스트는 label·aria-invalid·aria-describedby와 연결한다. 로딩·오류 메시지는 status/alert로 전달한다.
+입금·반환·정정과 정산문 원본을 보존한다. 정산문 수정은 새 생성본이며 계산·대상·잔액이 달라지면 재확인을 요구한다. 파일은 현재 행사 관리자만 접근하고 지출 삭제는 파일 연결만 해제한다. 업로드 완료·다운로드 응답에도 현재 권한을 재검사한다. 정산은 송금 기능이 아니다.
 
-Tailwind 4는 `@tailwindcss/postcss`를 웹의 PostCSS 설정에 등록하고 루트 CSS에서 import한다. 색상·radius는 CSS `@theme`로 정의하며 기존 화면의 색상과 폭을 유지한다. 컴포넌트 스타일은 utility, 공통 문서 기본값은 base layer, 폼 패널은 components layer에 둔다. `cn`은 clsx와 tailwind-merge를 합쳐 호출부의 className 재정의를 허용한다. 모임 없음·행사 없음·조회 실패는 별도로 표시한다. 모임 조회가 실패해도 개인 행사 생성과 행사 상세 조회는 사용할 수 있다.
+### 일정·알림
 
-### 의존성
+행사 일정은 Events의 현재 값, 기타 일정은 Calendar의 자료를 사용한다. 날짜·월 경계와 리마인더는 KST 기준이며 종일 날짜와 절대 시각을 구분한다. 시간 변경의 `scheduleRevision`은 제목·메모 수정과 분리한다.
 
-의존성은 모두 `apps/web/package.json`에 정확한 버전으로 선언한다. Next 16.4.3 / React 19.3.1 / TanStack Query 5.104.5는 유지한다.
+알림함의 예약·정산·일정 설정은 운영 문자 동의와 별개다. 전체 읽음은 sequence cutoff까지만 적용하고 이후 도착한 알림은 남긴다. 설정으로 생략한 알림도 업무 fact를 보존하여 재처리로 되살리지 않는다. 과거 알림 클릭 시 대상 자원의 현재 권한을 다시 확인한다.
 
-| 항목                                  | 버전            | 용도                                         |
-| ------------------------------------- | --------------- | -------------------------------------------- |
-| react-hook-form / @hookform/resolvers | 7.92.0 / 7.0.6  | 폼 상태와 Zod 연동                           |
-| zod                                   | 4.6.7           | 기능별 입력 스키마, 타입 추론                |
-| clsx / tailwind-merge                 | 2.1.1 / 3.7.0   | 공통 cn                                      |
-| tailwindcss / @tailwindcss/postcss    | 4.3.5 / 4.3.5   | CSS 토큰과 Next PostCSS 빌드                 |
-| postcss                               | 8.5.32          | 배포 유예 예외가 필요 없는 호환 안정 버전    |
-| @tanstack/react-query-devtools        | 5.104.5         | 기존 Query와 peer 범위를 맞춘 개발 전용 도구 |
-| jsdom / @types/jsdom                  | 31.0.1 / 30.0.0 | Node 26.13.1에서 실제 React 폼 DOM 회귀 검사 |
+## 웹 상태와 입력
 
-스타일 빌드·Devtools·DOM 테스트 의존성은 devDependencies다. Devtools는 `NODE_ENV === "development"`에서만 렌더링하며 패키지의 production 비활성 export도 사용한다. pnpm 단일 lockfile과 기존 설치 스크립트 허용 정책을 유지한다. Zustand·Axios·Vite·별도 라우터는 추가하지 않는다.
+feature의 `api`는 HTTP·query key/options, `hooks`는 mutation, `components`는 화면, `schemas`는 검증, `types`는 계약, `lib`는 순수 로직을 맡는다. 실제 필요한 폴더만 만든다. 서버 상태는 TanStack Query, 폼은 React Hook Form + Zod, 단순 UI 상태는 useState로 관리한다.
 
-게더 develop의 [아키텍처](https://github.com/KUIT-GATHER/gather-front/blob/develop/docs/architecture.md), [query options](https://github.com/KUIT-GATHER/gather-front/blob/develop/src/features/team/api/team.queries.ts), [mutation](https://github.com/KUIT-GATHER/gather-front/blob/develop/src/features/team/hooks/useCreateMeetingMutation.ts)을 읽고 책임별 파일·실사용 공용 UI·필요한 feature 간 의존 원칙을 참고했다. Vite, React Router, Zustand 인증, 게더의 제품 정책과 API는 옮기지 않았다.
+인증 업무 요청은 `feature API → SessionClient.request → shared/http → Nest`로 전달한다. 별도 fetch로 갱신·계정 전환 방어를 우회하지 않는다. 사용자 Query key는 `user / accountId / ...`이며 로그아웃·계정 전환 시 취소·제거한다. 화면 이탈 후 늦은 저장 결과로 캐시를 복원하거나 이동하지 않는다.
 
-## 백엔드와 HTTP 계약
+배경 조회는 작성 중 입력·원본 요청을 덮어쓰지 않는다. 저장 성공 시 현재 금액·시각과 기준 version을 함께 갱신하고 다음 별개 작업의 사유·확인값은 구분해서 초기화한다. 명시적인 권한 상실은 조회·쓰기를 중단하고 개인정보를 숨긴다.
 
-하나의 Nest API에서 업무별 모듈을 추가하는 모듈형 모놀리스입니다. Controller는 HTTP 입출력, Service는 업무 처리·트랜잭션 조정을 맡습니다. Service는 DatabaseService.connect()로 초기화된 DataSource를 받아 Repository·EntityManager·트랜잭션 API를 사용합니다. DB Entity는 해당 modules/<업무> 안에 두고 외부 응답 DTO와 구분합니다. 단순 위임용 Repository·BaseService 계층은 없습니다.
+활성 화면의 예약 상세는 15초, 달력·사장 홈의 일정과 알림함은 30초 간격으로 갱신한다. 공통 미읽음 observer는 계정별 하나다. 숨김 탭·로그아웃·권한 상실 중 조회를 멈추고 복귀·포커스·재연결에 재조회한다. SSE/WebSocket은 사용하지 않는다.
 
-업무 모듈 루트에는 `*.module.ts`, `*.controller.ts`, `*.service.ts`를 둡니다. 요청 DTO는 `dto/request/*.request.dto.ts`, 응답 DTO는 `dto/response/*.response.dto.ts`, Entity는 `entities/*.entity.ts`에 둡니다. 인증 구현은 guards·strategies·decorators·repositories·types·utils·exceptions로 나눕니다. 실제 파일이 있는 폴더만 만들며 단순 CRUD를 위해 별도 Repository나 Mapper 계층을 만들지 않습니다. Event DTO는 Group DTO를 상속하지 않습니다. 응답은 작은 변환 함수로 만들고 Entity를 노출하지 않습니다. 기존 Swagger 스키마 클래스 이름은 유지합니다.
+날짜·시간 입력은 shared UI와 KST 변환을 사용한다. 스타일은 Tailwind 토큰과 `cn`으로 조합하고 공용 UI에는 업무 API를 넣지 않는다. Dialog는 초기 포커스·Escape·닫기 후 포커스 복귀를 처리한다. Query Devtools는 개발에서만 표시한다.
 
-의존 방향은 `events → groups → auth`, `events → auth`입니다. `handovers`는 Groups/Events/Reservations/Settlements/Files/Calendar/Favorites의 공개 서비스를 조립하며 역참조하지 않습니다. GroupsModule은 GroupsService를, AuthModule은 AccessGuard·AuthService를 Nest `exports`에 공개합니다. 사용하는 쪽은 해당 Module을 `imports`에 넣고 실제 Service/Guard 파일에서 named import합니다. `AuthUser`와 `CurrentUser`는 공개 타입·데코레이터로 직접 사용합니다. `.module.ts`는 DI 조립만 맡으며 내부 구현을 TypeScript로 재수출하지 않습니다. 내부 Repository/Entity는 외부 모듈에서 직접 사용하지 않습니다. Event FK는 테이블 이름 `accounts`·`groups`로 지정해 Entity import 없이 기존 제약 이름과 스키마를 유지합니다.
+## HTTP와 오류
 
-`AccessGuard`가 인증을 확인하고 `@CurrentUser()`가 검증된 id/email을 제공합니다. 모임 소유권은 GroupsService, 행사 소유권은 EventsService가 검사합니다. 행사 상세·수정은 id와 ownerId로 조회하며 타인 자원과 없는 자원은 모두 404입니다. 목록을 모임으로 필터링해도 행사 ownerId 조건을 유지합니다. 이름 trim·길이, nullable 일정·시간대 검증, 고정 목록 정렬과 no-store를 적용합니다.
+실제 서버와 E2E는 `configureHttp`를 공유한다. 업무 경로는 `/api/v1`, 상태 확인은 `/health`·`/ready`, 개발 OpenAPI는 `/docs`·`/docs-json`이다. 구체적인 endpoint·DTO·페이지네이션은 각 Controller와 OpenAPI를 기준으로 확인한다.
 
-### 모임·행사 API
+HTTP 입력은 class-validator DTO, 환경변수는 Zod로 검증한다. 허용하지 않은 필드를 거부하고 Entity와 응답 DTO를 구분한다. 오류는 `statusCode`, 허용된 `code`·안전 문구, 서버 UUID `requestId`, 필요한 경우 안전한 `fieldErrors`만 반환한다. 웹은 허용한 코드·필드 매핑으로 표시하며 임의 서버 문구를 출력하지 않는다.
 
-업무 경로는 `/api/v1`입니다. 성공 응답은 DTO, 목록은 배열이며 페이지네이션이나 공통 성공 wrapper를 사용하지 않습니다.
-
-| 메서드·경로                                  | 입력·동작                                                                                                  |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| GET /groups, POST /groups                    | 내 모임 목록, `{ name, groupType?, creationKey?, members?, duplicatesConfirmed? }`로 모임·명단 원자적 생성 |
-| GET /groups/:groupId, PATCH /groups/:groupId | 소유 모임 조회, `{ name }`으로 이름 수정                                                                   |
-| GET /groups/:groupId/members                 | 소유자에게만 기본 명단의 ID·이름·구분 표시·선택 뒤 4자리 반환                                              |
-| GET /events                                  | 전체 내 행사. 선택적 `groupId` query로 필터                                                                |
-| POST /events                                 | `{ name, scheduledAt?, groupId? }`. ownerId는 인증 계정                                                    |
-| GET /events/:eventId                         | 행사 소유자 상세 조회                                                                                      |
-| PATCH /events/:eventId                       | `{ expectedVersion, name?, scheduledAt? }`. ownerId·groupId 입력 금지                                      |
-
-EventDto는 `id`, `ownerId`, nullable `groupId`, `name`, nullable `scheduledAt`, `version`입니다. 이름은 trim 후 1~100자, 일정은 생략/null 또는 시간대가 있는 ISO 8601입니다. groupId는 생성에서만 생략/null 또는 본인 모임 UUID를 허용합니다. expectedVersion은 1 이상의 정수입니다. 서버 결정 필드와 알 수 없는 입력을 ValidationPipe가 거부합니다. 이전 `/groups/:groupId/events` 중첩 API는 제공하지 않습니다.
-
-### DB 작업과 트랜잭션
-
-모임 등록은 groups 업무에서 Group·GroupMember를 같은 EntityManager로 저장한다. `(owner_id, creation_key)` 고유 인덱스와 입력 해시로 같은 등록의 동시 요청·통신 재시도를 처리한다. 명단은 계정이나 행사 명단과 관계없는 비공개 기본 자료다. 동명이인은 총무가 확인하고 선택적인 구분 표시(label)를 가진 별도 행으로 보존한다. 이름과 구분 표시는 별도 컬럼이며 전화번호 뒤 4자리는 앞의 0을 보존하는 nullable 문자열이다. 그룹 단위 조회에 소유권을 검사하고 응답에 인증·권한 필드를 포함하지 않는다. JSON body는 500명의 긴 UTF-8 이름을 수용하도록 256KB까지 허용하고, DTO의 행 수·필드 길이 제한도 적용한다.
-
-`POST /groups/:groupId/members`는 `{ requestKey, members, duplicatesConfirmed? }`로 기존 명단에 구성원을 추가한다. 소유한 Group 행을 먼저 잠근 뒤 최신 명단과 이름·구분 표시를 비교한다. 기존 구성원을 선택하면 `existingMemberId`와 해당 구성원의 이름·구분 표시·뒤 4자리를 검증하고 추가나 수정 없이 유지한다. 새 동명이인은 총무가 확인한 별도 ID로 저장하며 구분 메모는 선택이다. GroupMember 추가와 GroupRosterAddition의 `(group_id, request_key)` 재시도 기록을 같은 트랜잭션에서 저장한다. 같은 키의 다른 입력은 409이며 기존 행·순서·ID나 행사 명단을 교체하지 않는다. 최초 등록과 `/groups/new?group=<id>`의 추가 등록은 GroupRegistration의 입력·TXT·미리보기를 재사용한다. 변경된 원문만 다시 해석하고 원문이 같으면 편집·제외 결과를 보존한다.
-
-홈의 모임 선택은 `/?group=<id>`, 개인 행사 선택은 `/?view=personal`에 유지한다. 행사 상세에서 돌아오면 선택한 목록을 다시 연다. 모임 재조회가 일시적으로 실패해도 이전에 읽은 목록을 유지한다. 특정 모임에 접근할 수 없으면 그 모임의 행사 생성을 차단한다. 모임을 지정하지 않은 홈에서는 모임 조회 실패 시에도 개인 행사를 시작할 수 있다.
-
-단순 CRUD는 Service에서 `await database.connect()` 후 `getRepository()`로 처리합니다. 요청 제한 공통 함수는 원자적인 upsert를 수행하며 호출자가 전달한 EntityManager로 실행합니다. 범용 `run()`/예외 변환 래퍼는 두지 않습니다. 향후 반복되는 복잡한 조회·잠금이 생기면 해당 업무 내부 Repository 또는 QueryService로 분리합니다.
-
-업무 트랜잭션은 Service의 `dataSource.transaction(async manager => ...)`에서 시작·종료합니다. 내부 조회·쓰기·권한 확인은 모두 그 manager를 사용해야 하며 중간에 전역 Repository나 `database.connect()`로 다른 매니저를 얻지 않습니다. EventsService.create는 groupId가 있으면 GroupsService.assertOwned에 같은 manager를 전달하고 행사를 저장합니다. 행사 수정은 id/ownerId 조건의 FOR UPDATE 잠금과 expectedVersion 검사로 경합을 처리하며 groupId는 변경하지 않습니다. 모임 인수인계는 실제 모임 → 행사 → 업무 자원 잠금 순서로 현재 관리자와 버전을 재검증합니다. `creatorId`는 불변이며 `ownerId`는 현재 관리자 projection입니다. 계정 멤버십·명단·이전 범위·기존 기록 보존 계약은 [모임 인수인계](group-handover.md)를 따릅니다.
-
-AuthService는 이메일·휴대폰 인증 소비·가입 계정·동의·세션·Refresh 저장과 Access 서명을 한 트랜잭션에 유지합니다. 비밀번호 해싱과 시도 제한 기록은 그 밖에 둡니다. Refresh 회전·재사용 폐기와 로그아웃의 세션 행 잠금도 유지합니다. 재사용 탐지 시 폐기를 먼저 커밋한 후 인증 오류를 반환합니다. 지연 초기화·동시 연결 대기·실패 후 재시도는 DatabaseService의 기존 책임이며 변경하지 않습니다.
-
-실제 서버와 E2E 모두 `configureHttp`를 호출합니다. 업무 API는 `/api/v1`, liveness는 `/health`입니다. 브라우저는 공개 API origin에 직접 요청하며 Next rewrite를 사용하지 않습니다. configureHttp의 CORS는 정확한 WEB_ORIGIN에 credentials와 요청 ID 응답 헤더 노출을 허용하고, preflight를 Guard 전에 처리합니다.
-
-| 경로                      | 의미                                     | 결과                                             |
-| ------------------------- | ---------------------------------------- | ------------------------------------------------ |
-| `GET /health`             | 프로세스 liveness, DB와 독립             | 200, `{"status":"ok","service":"chongmuya-api"}` |
-| `GET /ready`              | TypeORM으로 PostgreSQL에 `SELECT 1` 실행 | 정상 200 + `database: "up"`, 장애 503            |
-| `GET /docs`, `/docs-json` | Swagger UI·OpenAPI                       | 개발 기본 활성, production 기본 비활성           |
-
-웹의 연결 화면은 **liveness**를 보여줍니다. DB까지 정상이라는 의미가 아니며 DB 상태는 `/ready`로 확인합니다.
-
-입력 검증은 Nest ValidationPipe + class-validator/class-transformer 한 방식으로 통일했습니다. Swagger와 호환되는 클래스 DTO를 사용하고, 허용되지 않은 필드는 400으로 거부합니다. DTO 인스턴스 변환은 켜되 문자열의 숫자·boolean 암묵 변환은 끕니다. 업무 요청·응답 DTO는 각 업무 모듈에 둡니다. 검증 동작 확인용 Controller는 테스트에만 존재합니다.
-
-오류는 원래 오류 HTTP 상태를 유지하며 다음 최소 규격을 반환합니다.
-
-```json
-{
-  "statusCode": 503,
-  "code": "SERVICE_UNAVAILABLE",
-  "message": "서비스가 준비되지 않았습니다.",
-  "requestId": "서버가 생성한 UUID"
-}
-```
-
-오류 메시지는 코드가 정의한 안전 문구로 제한합니다. DomainHttpException에 정의한 업무 오류 코드와 문구만 명시적으로 전달합니다. 임의 HttpException의 code/message는 신뢰하지 않으며 인증의 ACCESS_EXPIRED·SESSION_INVALID·INVALID_CREDENTIALS와 기존 공통 코드는 유지합니다.
-
-DTO 검증 오류는 선택적 `fieldErrors: Array<{ field: string; code: string }>`를 제공합니다. code는 INVALID_TYPE·INVALID_LENGTH·INVALID_EMAIL·INVALID_UUID·INVALID_FORMAT·INVALID_VALUE 중 하나입니다. field는 DTO property path이며 알 수 없는 입력 키와 validator 원문·target·value는 포함하지 않습니다. 예: `[{ "field": "name", "code": "INVALID_LENGTH" }]`. 메시지·SQL·stack·비밀번호·토큰 등 입력이나 예외 원문을 응답·로그에 남기지 않습니다.
-
-웹 requestJson은 상태 일치, code, message의 형식, UUID requestId와 fieldErrors를 검증합니다. 안전한 메시지는 클라이언트의 허용 코드 매핑으로 선택하며 서버 message 자체는 출력하지 않습니다. HTML·깨진 JSON·알 수 없는 구조는 HTTP_ERROR, 잘못된 성공 JSON은 INVALID_RESPONSE입니다. 취소·타임아웃·204와 POST/PUT/PATCH의 CSRF 처리는 같은 전송 함수를 사용합니다.
-
-모든 요청에 서버가 새 requestId를 만들고 `X-Request-Id` 헤더와 오류 본문에 연결합니다. 클라이언트가 보낸 ID를 신뢰하지 않습니다. 로그는 requestId·메서드·라우트 패턴·상태·처리 시간과 허용된 오류 진단을 기록합니다. 오류 진단은 `failure.category`(http/database_unavailable/unexpected), 고정된 오류 타입, 허용된 DB 코드와 최대 5개 앱 소스 위치(상대 경로·행·열)입니다. 예외 메시지·원본 stack·동적 함수 이름·비밀번호·토큰·쿠키·DB URL·SQL 파라미터는 기록하지 않습니다. URL의 실제 파라미터·query·body·인증 헤더를 기록하지 않습니다. 운영 로그 수집기는 이 안전한 로그 형식을 유지해야 합니다.
-
-예상한 입력·권한·중복은 Service/Guard/ValidationPipe에서 400/401/403/404/409로 처리합니다. 이메일 동시 가입 충돌도 기존 409 처리입니다. 공통 필터는 알려진 PostgreSQL 연결 장애·서버 종료·연결 고갈·쿼리 시간 초과만 503으로 분류합니다. 알 수 없는 예외, TypeError, 스키마/쿼리 오류, 처리되지 않은 제약 위반은 500입니다. 모든 unique/FK 오류를 전역에서 입력 오류로 치환하지 말고, 사용자가 해결할 수 있는 예상된 충돌만 해당 업무 Service에서 해석합니다. DB 비밀번호·스키마 설정 오류는 일시적인 가용성 장애로 숨기지 않습니다. `/ready`도 실제 가용성 장애는 503이며 코드 오류는 500입니다.
-
-## ESM과 환경변수 검증
-
-API package.json은 `type: module`이며 기존 TypeScript `module/moduleResolution: NodeNext`를 유지합니다. 상대 import는 실행될 `.js` 확장자를 명시하고, 경로 계산에는 Node 26의 `import.meta.dirname`을 사용합니다. Nest CLI watch·프로덕션 실행·Node test runner·TypeORM CLI 모두 컴파일된 ESM을 사용합니다. 테스트는 tsc로 decorator metadata를 보존하며 별도 실험적 로더를 쓰지 않습니다.
-
-Nest 12와 @nestjs/typeorm 12의 ESM 패키지를 사용합니다. API 환경은 Zod로 검증합니다. AUTH_SECRET은 32자 이상, WEB_ORIGIN은 경로 없는 http/https origin이며 production은 https만 허용합니다. DATABASE_URL은 호스트·DB 이름이 있는 PostgreSQL URL입니다. API_PORT는 정수 1~65535, API_DOCS_ENABLED는 정확한 true/false 문자열만 받으며 production 기본값은 false입니다. OCTOMO_API_KEY는 선택적이지만 설정되면 공백 없는 비어 있지 않은 문자열이어야 하며 서버에서만 사용합니다. SIGNUP_TERMS_JSON은 네 약관의 식별자·버전·HTTPS URL 배열을 검증합니다. 두 변수는 Turbo의 API dev 작업에만 전달합니다. 오류에는 변수 이름만 표시합니다.
-
-HTTP DTO는 기존 class-validator/class-transformer 및 Swagger 연동을 유지합니다. 환경변수와 HTTP 입력은 다른 경계이므로 같은 입력을 두 도구로 중복 검증하지 않습니다. 웹의 Zod는 실제 인증·모임·행사 폼 입력 검증에 별도로 사용합니다.
+예상된 입력·권한·중복 오류는 해당 업무에서 처리한다. 알려진 DB 가용성 장애는 503, 코드·스키마 오류는 500이다. 모든 예외를 503으로 바꾸지 않는다. 로그는 requestId·라우트 패턴·상태·소요 시간·허용 오류 분류와 소스 위치만 기록한다. body·query·인증 헤더·토큰·SQL 파라미터·DB URL·예외 원문을 남기지 않는다.
 
 ## PostgreSQL·TypeORM
 
-- PostgreSQL `17.11-alpine` 로컬 컨테이너와 기존 볼륨을 유지합니다. 호스트의 `127.0.0.1:15432`로만 연결합니다.
-- TypeORM **1.1.2**, @nestjs/typeorm **12.0.2**, pg **8.23.1**을 정확히 고정합니다. Node·Nest 버전은 packageManager·engines·lockfile과 함께 관리합니다.
-- `database-options.ts`는 Nest 런타임과 CLI가 공유하는 옵션입니다. Entity는 컴파일된 `modules/**/*.entity.js`, 마이그레이션은 `database/migrations/*.js`에서 읽습니다. 상대 경로는 현재 작업 디렉터리 대신 해당 파일 위치를 기준으로 계산합니다. src와 dist를 동시에 읽지 않습니다.
-- `data-source.ts`는 CLI 전용 DataSource 진입점입니다. Nest는 이 파일을 import하지 않고 ConfigService와 공통 옵션으로 연결을 구성합니다. `.env` 로딩은 dotenv, 검증은 Zod가 담당합니다.
-- `synchronize: false`, `migrationsRun: false`, `dropSchema: false`입니다. 인증·모임·행사 Entity와 migration을 install/build/start에서 자동 적용하지 않습니다.
-- `TypeOrmModule.forRootAsync`의 `manualInitialization: true`로 DB 연결 없이 API를 시작합니다. DatabaseService.connect()가 첫 DB 요청에서 initialize하고 동시 요청은 같은 초기화 Promise를 기다립니다. 실패한 시도는 다음 요청에서 다시 연결합니다.
-- DB 작업은 `await database.connect()` 후 반환된 DataSource의 Repository/transaction을 사용합니다. 초기화 전 @InjectRepository/DataSource를 바로 호출하지 않습니다. 업무 로직을 이 연결 서비스에 넣거나 GenericRepository를 만들지 않습니다.
-- pool 크기는 5, 접속·SQL 제한 시간은 2초입니다. 종료 시 진행 중인 초기화를 기다린 다음 Nest TypeOrmModule이 DataSource.destroy()로 pool을 종료합니다.
-- DB가 중단되어도 `/health`는 200이며 `/ready`의 실제 SELECT 1은 503입니다. 재시작 후 다음 readiness 요청에서 회복합니다. 응답·요청 로그에 SQL·접속 URL·예외 원문을 노출하지 않습니다.
+API는 네이티브 ESM/NodeNext이며 상대 import에 `.js`를 사용한다. Entity와 migration은 컴파일된 JS만 로드한다. 빌드와 스키마 적용은 별개이며 `synchronize`, `migrationsRun`, `dropSchema`는 false다.
 
-### 빌드·마이그레이션
+`database-options.ts`를 런타임과 CLI가 공유한다. DB 연결은 지연 초기화하며 동시 요청은 같은 Promise를 기다리고 실패 후 다음 요청에서 재시도한다. DB 장애에도 liveness를 제공하고 readiness는 실제 쿼리로 판단한다. 환경변수 오류에는 변수 이름만 출력한다.
 
-ORM Client 코드 생성 단계가 없습니다. API `build`는 Nest/TypeScript 컴파일이며 Turbo는 `dist/**`만 캐시합니다. Entity·마이그레이션·옵션 파일은 기본 입력에 포함됩니다. Nest 빌드와 test:compile은 각 출력 폴더를 비워 이동 전 Entity 산출물이 중복 로드되지 않도록 합니다. Entity 탐색은 `modules/**/*.entity.js`로 역할별 하위 폴더를 포함합니다. 런타임 DATABASE_URL은 빌드에 포함하지 않습니다. 웹의 NEXT_PUBLIC_API_ORIGIN·환경변수 캐시 규칙은 유지합니다.
+Entity 변경은 개발 DB에서 migration을 생성·검토하고 다시 빌드한 뒤 명시적으로 적용한다. 기존 migration을 수정하거나 실제 매장 데이터를 migration에 넣지 않는다. `migration:show`도 이력 테이블을 만들 수 있어 읽기 전용 검증으로 취급하지 않는다. 운영 reset/drop은 제공하지 않으며 감사 자료를 잃는 down 대신 후속 migration으로 복구한다.
 
-Entity는 `modules/<업무>/entities/*.entity.ts`에 실제로 필요한 모델만 추가합니다. 개발 DB에서 `pnpm --filter @chongmuya/api db:migration:generate src/database/migrations/<변경이름>`을 실행하면 먼저 빌드한 후 Entity와 DB 차이를 비교해 TypeScript 파일을 만듭니다. 생성 SQL을 검토하고 **다시 build**한 후 `db:migration:show`, `db:migration:run`을 실행합니다.
+개발 seed는 Entity·최소 DB 설정·ESLint에 허용한 무부작용 codec만 참조하고 업무 Service·AppModule·외부 공급자를 실행하지 않는다. 운영 데이터 업무는 `RestaurantDataService`가 맡고 `scripts/restaurant-data.mjs`만 DB 전용으로 조립한다. 실제 JSON과 개발 seed/reset 코드는 운영 이미지에서 제외한다. 세부 계약은 [매장 데이터](restaurant-data.md)에 둔다.
 
-배포에서는 검토·커밋된 마이그레이션을 포함한 빌드 결과에 `db:migration:run`을 별도 단계에서 한 번 적용합니다. CLI는 ESM `dist/database/data-source.js`를 사용합니다. ts-node/실험적 ESM 로더를 추가하지 않았으며, build와 migrate를 서버 replica 시작에 묶지 않습니다. CLI의 대상 DATABASE_URL은 실행 전에 확인합니다.
-
-`PersonalEvents` migration은 하나의 트랜잭션에서 owner_id nullable 추가 → 연결된 groups.owner_id로 backfill → 누락 검증 → NOT NULL/FK/index 적용 → group_id nullable 변경과 version 추가를 수행합니다. 기존 인증·모임·행사 ID, 일정·생성 시각을 보존하며 기존 migration 파일은 수정하지 않습니다. DDL 잠금이 적용 중 쓰기를 막으므로 서비스 쓰기를 멈추고 migration과 호환되는 앱을 함께 배포합니다. 새 API는 owner_id를 필수로 쓰므로 구버전 서버와 혼합 실행하지 않습니다.
-
-`down`은 개인 행사, 모임 소유자와 다른 행사 소유자, version이 1이 아닌 기록이 있으면 중단합니다. 이러한 데이터는 이전 스키마에서 표현할 수 없습니다. 되돌리기 위해 데이터를 삭제하거나 모임을 만들지 않으며, 데이터가 생긴 뒤에는 보존 가능한 후속 migration과 앱 수정으로 복구합니다. 테스트는 격리 PostgreSQL의 빈 DB 전체 적용·기존 데이터 backfill·누락 검출·rollback 거부와 Entity schema diff를 검사합니다.
-
-`1794787200000-VerifiedSignup`은 기존 Account의 id/email/password_hash/created_at과 기존 모임·행사·세션을 보존하고 이름·닉네임·전화번호·휴대폰/이메일 인증 시각을 nullable로 추가합니다. 기존 계정은 미인증 상태(null)를 유지하며 임의 backfill을 하지 않습니다. account_consents와 phone_verifications를 추가하고 전화번호·닉네임 unique 제약은 만들지 않습니다. 새 가입 필드·동의·인증 기록이 존재하면 down은 데이터 손실을 막기 위해 거부합니다. 운영 DB를 지우지 말고 후속 migration으로 복구합니다. 새 계약을 사용하는 API와 웹을 함께 배포합니다. 만료된 휴대폰 요청과 오래된 시도 제한 기록의 운영 정리 정책은 별도로 적용해야 합니다.
-
-`1794790800000-AccountTypes`는 account_type nullable 컬럼과 organizer/owner 허용 제약을 추가합니다. 기존 계정의 이용 유형은 추측하지 않고 null로 유지하며 계정·모임·행사 ID를 보존합니다. 신규 가입의 유형은 null이며 인증된 본인의 첫 설정 API로 저장합니다. 세션 응답으로 전달하지만 자원 권한에는 사용하지 않습니다. 유형 기록이 생긴 뒤 down은 데이터 손실을 막기 위해 거부합니다.
-
-TypeORM 1.1.2의 `migration:show`는 이력 테이블이 없으면 생성할 수 있으므로 대상 DB를 확인합니다. 운영 DB reset/drop은 수행하지 않습니다.
-
-### 시드 실행 경계
-
-`src/database/seeds`는 로컬 개발 fixture와 시나리오 전용이다. Entity·최소 DB/링크 설정·허용한 무부작용 codec(입력 스키마·고정 ID·정책 변환 포함)만 사용하고 AppModule·업무 Service·발송 provider를 실행하지 않는다. 운영 데이터 업무는 `modules/restaurants/restaurant-data.service.ts`가 처리하며, `scripts/restaurant-data.mjs`는 DB만 구성해 해당 서비스를 실행한다. 이 CLI의 허용 import는 ESLint로 제한한다. HTTP 서버·문자 발송·스케줄러를 시작하지 않는다. 실제 JSON은 명시적 외부 파일만 읽으며, 개발 시드와 reset·fixture도 Docker build context에서 제외한다. 명령·입력 계약·EC2 사용법은 [매장 데이터 관리](restaurant-data.md)를 따른다.
-
-## 의존 경계 검사와 CI
-
-ESLint 로컬 규칙으로 의존 경계를 검사합니다. 상대 경로·웹 `@/` 별칭·`@chongmuya/` 패키지 경로의 정적 import/export, 문자열 리터럴 dynamic import/require를 검사합니다.
-
-- 앱 간 직접 소스 import 금지.
-- 웹 shared → features/app, features → app 역방향 금지. app과 다른 feature는 client/types/server 공개 진입점만 사용하며, feature 간 순환 의존은 타입 참조까지 검사한다.
-- API common/config/database 실행 코드 → 업무 modules 금지. 독립 실행하는 database/seeds는 Entity·최소 설정·허용한 무부작용 codec만 참조하며, 서버 코드 → seeds 및 seeds → 업무 Service·AppModule 참조는 금지. 운영 scripts/restaurant-data.mjs의 restaurants 데이터 서비스 조립 예외는 해당 CLI에만 허용한다. 업무 module에서 bootstrap·app.module 역참조 금지.
-- API 업무 모듈 간 `.module` 및 명시적 공개 Service·Guard·타입·데코레이터 import를 허용합니다. `tools/eslint-boundaries.mjs`의 `apiPublicImports` 목록은 실제 Nest exports와 함께 관리합니다. 모든 `*.service`를 무조건 공개하지 않으며 내부 Repository·Entity·미공개 Service와 module 재수출을 차단합니다. 소스 정적 import/export 그래프의 순환은 테스트에서 검사하고, 실제 DI 연결은 HTTP/통합 테스트로 검증합니다. 편의상 forwardRef·전역 모듈을 추가하지 않습니다.
-
-계산된 dynamic import, 새로 추가한 별칭, 런타임 DI 의존 관계는 정적 규칙이 모두 검사하지 못합니다. 우회 경로를 만들지 않고 새 별칭 도입 시 규칙과 테스트를 함께 수정합니다. 타입 전용 import도 같은 경계를 지킵니다. ESLint 오류는 내부 파일 직접 참조, feature 순환 의존, 클라이언트의 서버 전용 참조를 구분해 표시합니다.
-
-CI는 고정된 Node·pnpm과 커밋 SHA로 고정한 공식 Actions를 사용합니다. 외부 비밀 없이 임시 PostgreSQL 서비스에서 frozen 설치·lint·빌드·typecheck·일반 테스트·DB 통합 테스트를 실행합니다. PR 및 main push가 트리거이며 실행 결과는 PR Checks와 Actions에서 확인합니다.
-
-pnpm 설치 스크립트는 테스트 런타임의 esbuild, 기존 린트 resolver의 정확한 버전만 허용합니다. Swagger의 선택적 Scarf 설치 분석은 비활성화합니다.
-
-`1794873600000-EmailVerification`은 요청자별 현재 이메일 인증을 email_verifications에 추가합니다. 기존 Account의 nullable 필드로 첫 설정 상태를 표현하므로 계정 상태 컬럼을 추가하지 않습니다. 기존 계정·모임·행사·세션과 인증 시각을 변경하지 않습니다. 인증 기록이 존재하면 down을 거부하며 운영 복구는 후속 마이그레이션으로 처리합니다.
-
-가입 요청자 쿠키는 두 인증이 공유합니다. EmailVerificationService와 PhoneVerificationService는 각각 발급·검증·소비를 관리하고, ResendMailService와 OctomoService는 외부 통신만 담당합니다. 외부 응답을 기다리는 동안 DB 트랜잭션을 유지하지 않습니다. AuthService가 두 인증 행을 이메일→휴대폰 순서로 잠그고 소비·계정·동의·최초 세션을 원자적으로 저장합니다. 첫 설정 API는 AccessGuard/CurrentUser로 본인 계정을 결정하고 계정 행 잠금 안에서 이용 유형의 불변성을 검증합니다.
-
-약관 Query는 공개 데이터입니다. 이미 받은 약관의 배경 재조회 실패에는 폼과 인증을 보존하고 안내만 표시합니다. 약관 버전 변경은 해당 동의만 다시 받으며 전체 폼 key로 쓰지 않습니다. 첫 설정 저장은 SessionClient가 결과를 현재 계정에 적용하고 계정 전환·로그아웃·화면 이탈 뒤 응답은 버립니다. 비밀번호와 두 인증의 비밀값은 Query·브라우저 영구 저장소에 보관하지 않습니다.
-
-## 복구와 외부 로그인 저장 경계
-
-PasswordResetService는 복구 토큰 발급·소비, KakaoFlowService는 브라우저별 OAuth 시도와 가입/연결 트랜잭션, KakaoOidcService는 외부 OIDC 검증을 담당합니다. SessionIssuerService는 기존 세션/JWT 발급을 공유하며 ResendMailService는 계속 발송만 담당합니다. 새 제공자 프레임워크나 공통 패키지는 없습니다.
-
-자격 증명 경합은 Account 행 잠금으로 직렬화합니다. 로그인은 트랜잭션 밖에서 scrypt를 검증한 후 잠긴 Account의 passwordHash가 같은지 확인합니다. refresh/logout/link는 Account → AuthSession 순서입니다. 재설정도 Account를 먼저 잠그고 토큰 재검증·비밀번호·세션 폐기·남은 증명 무효화를 원자적으로 처리합니다. 외부 식별자를 생성/연결하는 경로는 issuer/sub advisory lock → Account(기존 계정) → 세션 → 시도 순서입니다. 일반 OAuth 콜백은 시도만 잠그며 외부 통신 전에 잠금을 풉니다. 계정 잠금 이전에 시작한 작업도 최종 잠금 안에서 현재 자격 증명/세션을 재검사합니다.
-
-`1794960000000-PasswordResetKakao`는 password_resets, kakao_attempts, external_identities와 FK·인덱스·고유 제약을 추가합니다. 기존 password_hash만 nullable로 완화하고 email_verification_source/credentials_changed_at을 nullable로 추가합니다. 기존 Account·AuthSession·모임·행사 ID, 비밀번호와 인증 시각은 변경하지 않습니다. 기존 migration 뒤 API build → 대상 DB 확인 → db:migration:show → db:migration:run → 새 API/웹 배포 순서입니다. 구 API는 null 비밀번호 계정을 처리하지 못하므로 카카오를 활성화하기 전에 모든 API replica를 새 버전으로 전환합니다.
-
-새 테이블 기록, null 비밀번호, 인증 출처/자격 변경 기록이 있으면 down은 중단합니다. 이전 스키마로 돌리기 위해 소셜 계정을 지우거나 가짜 비밀번호를 넣지 않습니다. 데이터가 생긴 뒤에는 nullable 비밀번호를 지원하는 코드와 보존 가능한 후속 migration으로 복구합니다. 자동 migrate/synchronize/dropSchema는 계속 false이며 운영 DB를 초기화하지 않습니다. 만료된 시도/복구 이력의 보존·정리는 운영 정책에 따라 별도로 수행해야 합니다.
-
-브라우저의 HTTP 전송은 shared/http가 NEXT_PUBLIC_API_ORIGIN에 credentials를 포함해 요청합니다. 인증된 업무 요청은 SessionClient를 사용합니다. 운영 상태는 Nest의 `/health`와 `/ready`에서 확인합니다. 인증 SSR과 BFF는 없으며 AuthProvider가 클라이언트에서 세션을 복원합니다. API 호스트의 host-only 쿠키는 Next 서버로 전달되지 않습니다.
-
-카카오 GET 콜백은 명시적인 KAKAO_REDIRECT_URI의 Nest 엔드포인트에서만 처리합니다. 임시 결과를 DB에 저장한 뒤 WEB_ORIGIN의 깨끗한 완료 화면으로 이동하고, 프론트가 Origin·CSRF 헤더를 갖춘 POST로 API에 최종 확정을 요청합니다. 콜백 query는 프론트 URL이나 애플리케이션 로그에 전달하지 않습니다. 운영 ingress·CDN·APM의 query 수집도 배포 설정에서 제외해야 합니다.
-
-### 공급자 경계와 편집 복구
-
-DB CLI는 `database-environment`만 검증하고 런타임 환경은 그 정의를 조합한다. Nest 조립 지점에서 MessageGateway/SolapiMessageGateway/FakeMessageGateway, Geocoder/NaverGeocoder/FakeGeocoder를 선택한다. 공급자 인증·원본 payload·서명·상태 코드 해석은 어댑터에 두고 발송 서비스는 정규화한 결과와 처리권/상태 전환을 담당한다. 실제 공급자 오류를 fake로 전환하지 않는다. 가상 주소로 신규 생성한 매장은 isDemo이며 실제 매장의 주소를 fake 결과로 교체하지 않는다.
-
-링크 접근은 현재 연락처·동의·공개·문의·generation·만료를 검사하되 로컬 데모 접근을 허용한다. 실제 메시지 경계에는 추가로 데모/가상 수신자 차단을 적용한다. 예약 쓰기는 행사 → 문의 → target ID 순 후보 행 → target advisory lock → delivery 행 순서로 잠근다. 답변 저장·총무 선택·재문의·만료·문의 문자 재발급/재처리/웹훅이 같은 ReservationLocksService를 사용한다. 웹훅 묶음은 보고 하나씩 별도 트랜잭션으로 처리해 서로 다른 행사의 역순 잠금을 만들지 않는다. 신규 문의는 이 경계 안에서 restaurant ID 순 매장 → 연락처를 확인하며, 외부 발송은 commit 후 실행한다. Redis/워커는 없다.
-
-운영 조회는 읽기 전용이며 이전 PENDING은 수신자 전환 트랜잭션에서 CANCELLED로 보존한다. UNKNOWN/PROCESSING은 세대와 관계없이 우회하지 않는다. `merchant:operations --action deliveries`가 현재 generation/연락처 판정과 상태 필터를 사용하는 단일 운영 조회다. 터미널은 마스킹된 projection만 출력하며 명시적 비공개 파일 내보내기에만 원래 수신자 이력을 포함한다. 만료 lease의 영속 변경은 실행자·사유가 있는 `reconcile --execute`에서 공급자 결과 확인에 앞서 수행한다. 활성 lease와 불명 결과는 재발송하지 않으며 dry-run은 외부 조회·DB 변경을 하지 않는다.
-
-사장님 문의 목록은 소유 매장을 SQL에서 제한한 projection이며 접수 시각+target ID 커서로 20개씩 조회한다. 웹은 endpoint별 typed API와 필요한 캐시만 갱신한다. 메뉴의 편집 snapshot/baseVersion은 배경 조회로 교체하지 않고 명시적 다시 적용/불러오기로 복구한다. 비회원 accessExpiresAt(최대 1시간)과 linkExpiresAt은 별개다. 일시 장애에는 입력을 유지하고 명시적 재시도를 제공한다. 접근 만료·권한 상실 시 과거 문의 개인정보를 숨기고 재조회/쓰기를 멈춘다. 원래 문자 링크를 다시 열어야 하며 capability는 영구 브라우저 저장소에 보관하지 않는다.
-
-### 행사 생성·예약 회차와 알림
-
-행사 생성은 계정/creationKey 유일성·정규화 digest로 응답 유실과 동시 요청을 복구한다. 생성과 모임 명단 복사는 한 트랜잭션이다. 행사 PATCH는 행사 잠금·expectedVersion 아래 이름과 기본 일정을 편집하되 `reservationScheduleLocked`인 일정은 유지한다. 재문의 또는 매장 선택 명령이 합의한 일정으로 대표 일정을 같은 행사 잠금 안에서 갱신한다.
-
-행사 명단 추가는 `expectedRoster: [{id,version}]`, `existingParticipantId`, `newPersonConfirmed`, `duplicatesConfirmed`를 검증한다. 기존 인물 연결은 행/ID/응답을 추가·교체하지 않는다. 명단 검토 기준은 저장 재시도 동안 고정하며 새 명단은 명시적으로 다시 검토한다. 명단 추가·모임 가져오기의 신규 인원 한도는 500명이고 기존 초과 자료는 보존한다.
-
-`reservations → notifications` 공개 기록 API는 같은 EntityManager로 업무 사실·계정별 인앱 항목·문자 예정 이력을 저장한다. notifications는 예약 모듈에 의존하지 않는다. 예약금·메뉴·예약 확정은 이 PR의 선택 기록 `PREPARING` 다음 단계다. 문의는 행사별 회차로 보존하며 동시에 활성 회차와 유효 선택 예약은 각각 한 건이다.
-
-예약 후속 문자는 현재 문의 링크의 수신자 변경 계약으로 연락처 ID·전화번호를 함께 스냅샷에 저장하고, 발송 적격성도 그 스냅샷으로 확인한다. 최초 문의 대상과 과거 발송 이력은 변경하지 않는다. `1795752000000-NotificationRecipientSnapshot`은 nullable 연락처 스냅샷을 추가한다. 과거 문자 수신자를 현재 링크로 추정하지 않으며, 스냅샷이 없는 기존 매장 알림은 발송 시 보류한다. 기존 문자 결과는 보존한다. 스냅샷 기록이 생긴 뒤 down은 거부하며 전진 복구한다. migration → API 순서로 적용하고 구 API의 알림 생성을 종료한 뒤 새 발송을 진행한다. 새 환경변수는 없다.
-
-명백한 SOLAPI 접수 거절(설정 오류·408을 제외한 HTTP 4xx)은 SUBMISSION 실패로 기록하여 원인 해결 후 운영 명시 재시도를 허용한다. 타임아웃·접수 불명 UNKNOWN/PROCESSING과 실제 DELIVERY 실패는 이 경로로 다시 발송하지 않는다. 사장님 문의 조회는 공통 후보 상태 계산으로 제안 만료를 표시하며 조회에서 상태를 저장하지 않는다. 행사 수정의 기준 버전은 최신 내용을 확인한 뒤 명시적 재적용에서만 교체하며, 명단 재검토 시 변경·삭제된 기존 인물 선택도 다시 확인한다.
-
-## 예약 마무리
-
-선택된 예약의 메뉴·예약금·변경취소는 reservations 내부의 Completion(트랜잭션/권한/이력), Menus, Payments, Changes, Access 서비스로 나눈다. 문의 응답 링크와 예약 관리 링크는 서로 다른 권한이다. `ReservationFactsService`의 공개 projection으로 실제 수령·반환·잔여 사실을 전달하며 notifications 기록은 같은 EntityManager를 사용하고 커밋 후 발송한다. 웹 `reservation-completion/client.ts`는 총무와 사장님의 예약 관리 화면을 공개한다. 상세 API·운영·migration·디자인 검증은 [예약 마무리](reservation-completion.md)를 따른다.
+정적 의존 경계는 [ESLint 규칙](../tools/eslint-boundaries.mjs)과 테스트로 검사한다. 이 검사가 화면 내부 책임 분리나 모든 런타임 DI 관계까지 보장하는 것은 아니다. 새로운 공개 항목은 실제 Nest exports와 규칙을 함께 갱신한다.

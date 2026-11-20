@@ -41,7 +41,7 @@ test("browser transport handles real HTTP errors, invalid data, cancellation and
     retry: false,
   });
   let mode = "healthy";
-  const server = createServer((request, response) => {
+  const server = createServer((_request, response) => {
     if (mode === "slow") return;
     response.setHeader("x-request-id", "9fcf95b6-8b32-4f78-9e16-4b32f04c693b");
     if (mode === "down") {

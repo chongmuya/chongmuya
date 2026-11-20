@@ -9,7 +9,7 @@ import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { Calendar } from "@/shared/ui/calendar";
 import { calendarQuery } from "../api/calendar.api";
 import { ReservationFacts } from "./reservation-facts";
-import { kstDate } from "../lib/dates";
+import { koreanDateOnly } from "@/shared/lib/korean-date";
 import { usePageVisible } from "@/shared/hooks/use-page-visible";
 export function MerchantSummary({
   accountId,
@@ -20,7 +20,7 @@ export function MerchantSummary({
   restaurantId: string;
   request: SessionRequest;
 }) {
-  const today = kstDate();
+  const today = koreanDateOnly();
   const visible = usePageVisible();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selected, setSelected] = useState(today);
@@ -29,7 +29,7 @@ export function MerchantSummary({
   );
   const rows = isAccessError(q.error) ? undefined : q.data?.reservations;
   const selectedRows = rows
-    ?.filter((r) => kstDate(new Date(r.startsAt)) === selected)
+    ?.filter((r) => koreanDateOnly(new Date(r.startsAt)) === selected)
     .sort(
       (a, b) =>
         a.startsAt.localeCompare(b.startsAt) || a.id.localeCompare(b.id),
@@ -42,7 +42,9 @@ export function MerchantSummary({
         showYear={false}
         value={selected}
         month={month}
-        markedDates={rows?.map((r) => kstDate(new Date(r.startsAt))) ?? []}
+        markedDates={
+          rows?.map((r) => koreanDateOnly(new Date(r.startsAt))) ?? []
+        }
         onMonthChange={(value) => {
           setMonth(value);
           setSelected(`${value}-01`);

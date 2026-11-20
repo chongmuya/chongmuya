@@ -1,5 +1,4 @@
-export const REMINDER_TIME_ZONE = "Asia/Seoul";
-export const REMINDER_HOUR = 9;
+const REMINDER_HOUR = 9;
 export function koreanDate(at: Date) {
   return new Date(at.getTime() + 9 * 3600000).toISOString().slice(0, 10);
 }
