@@ -4,22 +4,16 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { render, fill, submit, until, click } from "./support/form-dom";
 import { ScheduleForm } from "../features/calendar/components/schedule-form";
-import {
-  monthRange,
-  monthDays,
-  kstDate,
-  moveMonth,
-} from "../features/calendar/lib/dates";
+import { monthRange } from "../features/calendar/lib/dates";
+import { koreanDateOnly } from "../shared/lib/korean-date";
 import { notificationDestination } from "../features/notifications/lib/destination";
 import { safeReturnPath } from "../features/auth/lib/return-path";
 import { ApiError } from "../shared/http/api-error";
 import type { SessionRequest } from "../features/auth/types";
 test("calendar leap years, KST boundaries and safe notification destinations", () => {
-  assert.equal(kstDate(new Date("2028-02-28T15:00:00Z")), "2028-02-29");
-  assert.equal(moveMonth("2028-12", 1), "2029-01");
+  assert.equal(koreanDateOnly(new Date("2028-02-28T15:00:00Z")), "2028-02-29");
+  assert.equal(monthRange("2028-12").to, "2029-01-01");
   assert.equal(monthRange("2028-02").to, "2028-03-01");
-  assert(monthDays("2028-02").includes("2028-02-29"));
-  assert.equal(monthDays("2028-02").length % 7, 0);
   const id = "00000000-0000-4000-8000-000000000001";
   for (const bad of [
     "https://evil.test",

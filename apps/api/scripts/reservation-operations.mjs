@@ -12,6 +12,8 @@ import {
   printOperationError,
 } from "./merchant-cli.mjs";
 config({ quiet: true });
+// One-off commands must not start unrelated background writes.
+process.env.REMINDERS_ENABLED = "false";
 let app;
 try {
   const { values: v } = parseArgs({

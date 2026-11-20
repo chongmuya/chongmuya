@@ -216,7 +216,7 @@ export class CalendarService {
       return { ok: true };
     });
   }
-  // PR5 may invoke this in its ownership transaction; personal schedules are excluded.
+  // Runs inside the handover transaction; personal schedules are excluded.
   async transferGroup(
     groupId: string,
     from: string,

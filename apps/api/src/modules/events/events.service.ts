@@ -205,10 +205,6 @@ export class EventsService {
     return rows.map(eventDto);
   }
 
-  async groupCount(groupId: string, m: EntityManager) {
-    return m.countBy(Event, { groupId });
-  }
-
   async assertOwned(
     ownerId: string,
     id: string,
