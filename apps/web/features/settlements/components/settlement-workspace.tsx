@@ -191,7 +191,7 @@ function People({ a, data }: { a: Access; data: Detail }) {
       <p className="text-xs text-secondary">
         좁은 화면에서는 표를 좌우로 움직여 차수별 금액을 확인할 수 있어요.
       </p>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto p-1">
         <table className="w-full min-w-[300px] text-xs">
           <caption className="sr-only">개인별 정산과 차수별 부담액</caption>
           <thead>

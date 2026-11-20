@@ -99,7 +99,7 @@ export function ActiveEventBanner({
   return (
     <section
       aria-label={`${event.name} 진행 안내`}
-      className={cn("min-h-[270px] p-5 pb-3", background)}
+      className={cn("focus-on-brand min-h-[270px] p-5 pb-3", background)}
     >
       <div className="flex items-end gap-3">
         <h3 className="text-2xl leading-[1.2] font-bold whitespace-pre-line">

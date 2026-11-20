@@ -39,7 +39,7 @@ export function OrganizerNavigation({
     <nav
       aria-label="주요 메뉴"
       className={cn(
-        "sticky bottom-0 z-10 mt-auto grid min-h-[72px] shrink-0 grid-cols-4 bg-surface pt-3 pb-[max(12px,env(safe-area-inset-bottom))] text-center shadow-[0_-4px_4px_rgb(0_0_0/0.1)]",
+        "bottom-navigation shrink-0 grid-cols-4 gap-1 px-1 text-center",
         className,
       )}
     >

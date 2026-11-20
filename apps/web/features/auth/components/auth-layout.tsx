@@ -15,7 +15,7 @@ export function AuthLayout({
   backHref?: string;
 }) {
   return (
-    <main className="min-h-svh bg-brand bg-[url(/images/auth/background.svg)] bg-size-[100%_100%] bg-no-repeat">
+    <main className="focus-on-brand min-h-svh bg-brand bg-[url(/images/auth/background.svg)] bg-size-[100%_100%] bg-no-repeat">
       <div
         className={cn(
           "relative mx-auto flex min-h-svh w-full max-w-[402px] flex-col px-4 pt-[clamp(96px,25.2643svh,239px)] pb-[max(40px,env(safe-area-inset-bottom))]",
