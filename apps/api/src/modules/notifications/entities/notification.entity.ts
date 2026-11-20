@@ -24,6 +24,8 @@ export class NotificationFact {
   @Column({ type: "uuid", name: "target_id", nullable: true }) targetId!:
     string | null;
   @Column({ type: "integer" }) revision!: number;
+  @Column({ type: "integer", name: "sms_policy_version", nullable: true })
+  smsPolicyVersion!: number | null;
   @Column({ type: "timestamptz", name: "occurred_at" }) occurredAt!: Date;
   @Column({ type: "jsonb", name: "merchant_hold", nullable: true })
   merchantHold!: { reason: string; replacementEventKey?: string } | null;
@@ -79,6 +81,8 @@ export class NotificationMessage {
   @Column({ type: "boolean", name: "is_demo", default: false })
   isDemo!: boolean;
   @Column({ type: "varchar", length: 16, default: "PENDING" }) status!: string;
+  @Column({ type: "varchar", length: 8, nullable: true }) channel!:
+    "SMS" | "LMS" | null;
   @Column({ type: "varchar", length: 16, nullable: true }) provider!:
     "fake" | "solapi" | null;
   @Column({

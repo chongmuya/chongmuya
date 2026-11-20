@@ -8,6 +8,7 @@ import {
   MessageGateway,
   type MessageReport,
 } from "./providers/message.gateway.js";
+import { merchantSms, spaceNames } from "./lib/reservation-sms.js";
 import { newMessageDelivery } from "./lib/message-delivery.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
@@ -130,6 +131,7 @@ export class MessageDeliveryService {
       }
       row.status = "PROCESSING";
       row.linkGeneration = c.link!.generation;
+      row.channel = null;
       row.providerMessageId = null;
       row.providerGroupId = null;
       row.attempts++;
@@ -152,7 +154,15 @@ export class MessageDeliveryService {
       const v = row.variables;
       return {
         row,
-        text: `[총무야] ${v.restaurantName}\n${v.eventName} 예약 문의\n${new Date(v.startsAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} / ${v.expectedGuests}명 / ${({ HALL: "일반 홀", ROOM: "룸", FLOOR: "한 층 대관", WHOLE: "전체 대관", ANY: "공간 무관" } as Record<string, string>)[v.space] ?? "공간 문의"}\n가능·조건 변경·불가 답변: ${url}\n예약 확정 전 문의입니다. 링크를 공유하지 마세요.`,
+        text: merchantSms(
+          c.request.snapshot.groupName &&
+            c.request.snapshot.groupName !== v.eventName
+            ? `${c.request.snapshot.groupName} / ${v.eventName}`
+            : v.eventName,
+          v,
+          `예약 문의 (${spaceNames[v.space] ?? "공간 문의"}${c.request.snapshot.seating === "CLOSE" ? ", 가까운 자리" : c.request.snapshot.seating === "SEPARATED" ? ", 분리 좌석" : ""}). 가능 여부를 답변해 주세요.`,
+          url,
+        ),
       };
     });
     if (!claimed) return { dispatchAttempted: false };
@@ -171,6 +181,7 @@ export class MessageDeliveryService {
         lock: { mode: "pessimistic_write" },
       });
       row.provider = result.provider;
+      row.channel ??= result.channel ?? null;
       row.providerMessageId ??= result.messageId ?? null;
       row.providerGroupId ??= result.groupId ?? null;
       // A report may arrive before this API result. Terminal delivery evidence wins.
@@ -230,6 +241,7 @@ export class MessageDeliveryService {
     row.providerMessageId = report.messageId;
     row.providerGroupId ??= report.groupId ?? null;
     row.provider = report.provider;
+    row.channel = report.channel ?? row.channel;
     const outcome = report;
     if (outcome.status === "DELIVERED") {
       row.status = "DELIVERED";
@@ -497,6 +509,7 @@ export class MessageDeliveryService {
           failureStage: row.failureStage,
           errorCode: row.errorCode,
           provider: row.provider,
+          channel: row.channel,
           providerMessageId: row.providerMessageId,
           providerGroupId: row.providerGroupId,
           createdAt: row.createdAt,

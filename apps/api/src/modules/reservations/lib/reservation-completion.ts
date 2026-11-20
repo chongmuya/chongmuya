@@ -214,7 +214,7 @@ export function advanceConfirmation(
         : "PREPARING";
     return false;
   }
-  const newlyConfirmed = selection.status !== "CONFIRMED";
+  const newlyConfirmed = !s.confirmation || selection.status !== "CONFIRMED";
   if (!s.confirmation)
     s.confirmation = {
       at: new Date().toISOString(),

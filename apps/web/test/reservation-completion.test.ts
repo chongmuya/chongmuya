@@ -195,6 +195,7 @@ test("latest rejection is visible outside history and does not claim that the re
   const view = await render(
     createElement(ChangeResult, {
       data,
+      latest: data.changes[0],
       organizer: true,
       onReview() {},
       onDetails() {
@@ -998,11 +999,16 @@ test("organizer proposal preview shows all applied limits, fees and deadlines be
   }
 });
 
-test("merchant CHANGE proposals expose no refund plan; only cancellation proposals request it", async () => {
+test("change and cancellation proposals keep refund amounts out of the form and route cancellation to phone", async () => {
+  const proposals: Record<string, unknown>[] = [];
   const access: CompletionAccess = {
     kind: "owner",
     accountId: "owner",
-    request: async <T>() => fixture() as T,
+    request: async <T>(path: string, options?: RequestInit) => {
+      if (path.endsWith("/change-propose"))
+        proposals.push(JSON.parse(String(options?.body)).command);
+      return fixture() as T;
+    },
   };
   for (const kind of ["CHANGE", "CANCEL"] as const) {
     const data = {
@@ -1030,8 +1036,27 @@ test("merchant CHANGE proposals expose no refund plan; only cancellation proposa
     try {
       assert.equal(
         view.container.querySelectorAll('[name="refundExpected"]').length,
-        kind === "CANCEL" ? 1 : 0,
+        0,
       );
+      assert.equal(
+        view.container.textContent?.includes("전화로"),
+        kind === "CANCEL",
+      );
+      if (kind === "CANCEL") {
+        const reason = view.container.querySelector<HTMLTextAreaElement>(
+          'textarea[name="reason"]',
+        )!;
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype,
+            "value",
+          )!.set!.call(reason, "취소 처리 가능");
+          reason.dispatchEvent(new window.Event("input", { bubbles: true }));
+        });
+        await submit(view.container);
+        await until(() => assert.equal(proposals.length, 1));
+        assert.equal(proposals[0].refundExpected, null);
+      }
     } finally {
       await view.unmount();
     }

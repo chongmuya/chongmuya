@@ -87,16 +87,13 @@ export function ProposalComparison({
     ],
     ["매장 추가 안내", a.note || "없음", b.note || "없음"],
   ];
-  if (kind === "REFUND") rows.length = 0;
-  if (kind === "CANCEL" || kind === "REFUND")
-    rows.push(["환불 예정 총액", won(q.refundExpected), won(p.refundExpected)]);
   const visibleRows =
     kind === "CHANGE"
       ? rows.filter(
           ([label, before, after]) =>
             before !== after || ["날짜·시간", "인원", "공간"].includes(label),
         )
-      : rows;
+      : [];
   return (
     <div className="space-y-7 text-base">
       <header className="space-y-2 text-center">
@@ -109,19 +106,11 @@ export function ProposalComparison({
           <p className="whitespace-pre-wrap">{p.reason}</p>
           <p>
             {kind === "CANCEL"
-              ? "수락하면 예약이 취소돼요. 환불은 별도로 처리돼요."
-              : kind === "REFUND"
-                ? "수락하면 환불 예정액에 합의해요."
-                : "수락하면 바꾼 조건대로 예약이 수정돼요."}
+              ? "수락하면 예약이 취소돼요."
+              : "수락하면 바꾼 조건대로 예약이 수정돼요."}
           </p>
         </div>
       </header>
-      {kind === "REFUND" && (
-        <p>
-          실제 반환액 {won(q.refundedAmount)}은 그대로 유지돼요. 수락해도 송금은
-          실행되지 않아요.
-        </p>
-      )}
       {kind === "CHANGE" && p.refundExpected !== null && (
         <p role="alert">
           변경 제안에는 환불 예정액을 적용할 수 없어요. 매장에 처리 내용을 다시
@@ -129,34 +118,38 @@ export function ProposalComparison({
         </p>
       )}
       <div className="space-y-4">
-        <div className="space-y-5 rounded-[12px] border border-placeholder px-5 py-6">
-          <h4 className="text-xl leading-[normal] font-semibold">바꾼 조건</h4>
-          <dl className="space-y-4 leading-[normal] font-medium">
-            {visibleRows.map(([label, before, after]) => (
-              <div
-                key={label}
-                className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
-              >
-                <dt className="text-muted">{label}</dt>
-                <dd
-                  className={cn(
-                    "space-y-2 whitespace-pre-wrap",
-                    label === "날짜·시간" ? "break-keep" : "wrap-anywhere",
-                  )}
+        {visibleRows.length > 0 && (
+          <div className="space-y-5 rounded-[12px] border border-placeholder px-5 py-6">
+            <h4 className="text-xl leading-[normal] font-semibold">
+              바꾼 조건
+            </h4>
+            <dl className="space-y-4 leading-[normal] font-medium">
+              {visibleRows.map(([label, before, after]) => (
+                <div
+                  key={label}
+                  className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
                 >
-                  {before === after ? (
-                    after
-                  ) : (
-                    <>
-                      <del className="block">{before}</del>
-                      <span className="block text-brand">→ {after}</span>
-                    </>
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
+                  <dt className="text-muted">{label}</dt>
+                  <dd
+                    className={cn(
+                      "space-y-2 whitespace-pre-wrap",
+                      label === "날짜·시간" ? "break-keep" : "wrap-anywhere",
+                    )}
+                  >
+                    {before === after ? (
+                      after
+                    ) : (
+                      <>
+                        <del className="block">{before}</del>
+                        <span className="block text-brand">→ {after}</span>
+                      </>
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
         {onDetails && (
           <button
             type="button"

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { MessageGateway } from "../../src/modules/reservations/providers/message.gateway.js";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { startResourceApplication } from "../support/resource-application.js";
@@ -345,6 +346,441 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       assert.deepEqual(v.agreement, baseline);
     },
   );
+  await t.test(
+    "fake delivery combines menu and latest transfer, respects the earlier menu deadline and keeps receipt authority",
+    async (t) => {
+      const gateway = app.get(MessageGateway);
+      const send = gateway.send.bind(gateway);
+      const sent: string[] = [];
+      t.mock.method(
+        gateway,
+        "send",
+        async (...args: Parameters<MessageGateway["send"]>) => {
+          sent.push(args[2]);
+          return send(...args);
+        },
+      );
+      const take = () => sent.splice(0);
+      await json(
+        await call("auth/first-setup", organizer, "PATCH", {
+          accountType: "organizer",
+          nickname: "문자 테스트",
+        }),
+      );
+      const { id: accountId } = await json<{ id: string }>(
+        await call("auth/me", organizer),
+      );
+      const notices = app.get(NotificationsService);
+
+      let paid = await fixture("UNKNOWN");
+      const selected = take().filter((text) => text.includes("매장 선택"));
+      assert.equal(selected.length, 1);
+      assert.match(selected[0], /확정 전/);
+      const url = new URL(selected[0].split("\n").at(-1)!);
+      const token = new URLSearchParams(url.hash.slice(1)).get("token")!;
+      const session = await json<{ accessToken: string }>(
+        await call(`reservation-management/${paid.id}/access`, "", "POST", {
+          token,
+        }),
+      );
+      const merchant = { kind: "link" as const, access: session.accessToken };
+
+      const web = guide(paid, "WEB");
+      paid = await payments.guidance(paid.id, merchant, web);
+      const webMessages = take();
+      assert.equal(webMessages.length, 1);
+      assert.match(webMessages[0], /\/notifications$/);
+      assert.doesNotMatch(
+        webMessages[0],
+        /123-TEST-SECRET|테스트은행|가짜매장/,
+      );
+      assert.equal((await view(paid.id)).guidance.account, web.account);
+      const guidanceRevision = paid.guidance.revision;
+      paid = await payments.guidance(paid.id, merchant, {
+        ...web,
+        ...key(paid.version),
+      });
+      assert.equal(paid.guidance.revision, guidanceRevision);
+      assert.deepEqual(take(), []);
+
+      const preferences = await notices.preferences(accountId);
+      await notices.savePreferences(accountId, {
+        reservation: false,
+        settlement: preferences.settlement,
+        event: preferences.event,
+        expectedVersion: preferences.version,
+      });
+      const sms = { ...guide(paid), amount: 12000 };
+      paid = await payments.guidance(paid.id, merchant, sms);
+      const [accountMessage] = take();
+      assert.match(
+        accountMessage,
+        /12,000원 \(기한 \d{4}\/\d+\/\d+ \d\d:\d\d\)/,
+      );
+      assert.match(
+        accountMessage,
+        /테스트은행 123-TEST-SECRET 예금주 가짜매장/,
+      );
+      assert.match(
+        accountMessage,
+        new RegExp(`/events\\?event=${paid.eventId}&request=`),
+      );
+      assert.equal((await view(paid.id)).guidance.account, "");
+
+      paid = await post(paid.id, "menu-draft", {
+        ...key(paid.version),
+        catalogVersion: paid.catalog.version,
+        items: [],
+      });
+      assert.deepEqual(take(), []);
+      const submit = {
+        ...menu(paid),
+        transfer: { amount: sms.amount, payer: "총무" },
+      };
+      paid = await post(paid.id, "menu-submit", submit);
+      await post(paid.id, "menu-submit", submit);
+      const merged = take();
+      assert.equal(merged.length, 1);
+      assert.match(merged[0], /20명\n메뉴와 송금 신고.*실입금을 확인/);
+      assert.equal(paid.receivedAmount, 0);
+
+      paid = await payments.receipt(paid.id, merchant, {
+        ...key(paid.version),
+        guidanceRevision: paid.guidance.revision,
+        amount: sms.amount,
+        receivedAt: new Date().toISOString(),
+        corrects: null,
+        reason: "은행 대조",
+      });
+      assert.equal(paid.status, "CONFIRMED");
+      const confirmation = take();
+      assert.equal(confirmation.length, 1);
+      assert.match(confirmation[0], /예약 확정/);
+      assert.doesNotMatch(confirmation[0], /reservation-manage/);
+      assert.equal(
+        await db.manager.countBy(NotificationFact, {
+          reservationId: paid.id,
+          eventKey: `${paid.id}:RECEIPT_RECORDED:${paid.version}`,
+        }),
+        1,
+      );
+
+      for (const scenario of [
+        "menu-first",
+        "transfer-first",
+        "earlier-deadline",
+        "no-report",
+      ] as const) {
+        let v = await fixture("UNKNOWN");
+        take();
+        if (scenario === "earlier-deadline") {
+          const selection = await db.manager.findOneByOrFail(
+            SelectedReservation,
+            { id: v.id },
+          );
+          selection.snapshot.offered!.menuDeadlineAt = new Date(
+            Date.now() + 10 * 60000,
+          ).toISOString();
+          await db.manager.save(selection);
+        }
+        v = await payments.guidance(v.id, operator, guide(v));
+        take();
+        const transfer = () =>
+          post(v.id, "transfer", {
+            ...key(v.version),
+            guidanceRevision: v.guidance.revision,
+            amount: 10000,
+            payer: "총무",
+          });
+        if (scenario === "transfer-first") {
+          v = await transfer();
+          assert.deepEqual(take(), []);
+        }
+        v = await post(v.id, "menu-submit", menu(v));
+        const menuMessages = take();
+        if (scenario === "transfer-first") {
+          assert.equal(menuMessages.length, 1);
+          assert.match(menuMessages[0], /메뉴와 송금 신고/);
+        } else if (scenario === "earlier-deadline") {
+          assert.equal(menuMessages.length, 1);
+          assert.match(menuMessages[0], /메뉴 마감이 먼저/);
+        } else assert.deepEqual(menuMessages, []);
+
+        if (scenario === "no-report") {
+          v = await payments.receipt(v.id, operator, {
+            ...key(v.version),
+            guidanceRevision: v.guidance.revision,
+            amount: 10000,
+            receivedAt: new Date().toISOString(),
+            corrects: null,
+            reason: "은행 대조",
+          });
+          assert.equal(v.status, "CONFIRMED");
+          assert.equal(v.transfer, null);
+          const delegated = take();
+          assert.equal(delegated.length, 2);
+          assert.equal(
+            delegated.filter((text) => text.includes("reservation-manage"))
+              .length,
+            1,
+          );
+        } else {
+          v = await transfer();
+          const messages = take();
+          assert.equal(messages.length, scenario === "transfer-first" ? 0 : 1);
+          if (messages.length) assert.match(messages[0], /메뉴와 송금 신고/);
+          await transfer();
+          assert.deepEqual(take(), []);
+        }
+      }
+
+      let none = await fixture();
+      take();
+      none = await payments.guidance(none.id, operator, {
+        ...guide(none),
+        kind: "NONE",
+        amount: 0,
+        deadline: null,
+      });
+      assert.deepEqual(take(), []);
+      none = await post(none.id, "menu-submit", menu(none));
+      assert.equal(none.status, "CONFIRMED");
+      const noDeposit = take();
+      assert.equal(noDeposit.length, 2);
+      assert.equal(
+        noDeposit.filter((text) => text.includes("reservation-manage")).length,
+        1,
+      );
+      assert(noDeposit.some((text) => text.includes("예약 확정 및 메뉴 접수")));
+      none = await post(none.id, "change-request", {
+        ...key(none.version),
+        kind: "CHANGE",
+        subject: "MENU",
+        reason: "메뉴 수량 조정",
+      });
+      const changeId = none.changes[0].id;
+      none = await changes.propose(none.id, operator, {
+        ...key(none.version),
+        changeId,
+        reason: "수량 조정 가능",
+        menu: {
+          catalogVersion: none.catalog.version,
+          items: menu(none).items.map((line) => ({ ...line, quantity: 3 })),
+        },
+      });
+      take();
+      none = await changes.acceptOperator(none.id, operator, {
+        ...key(none.version),
+        changeId,
+        confirmed: true,
+        organizerConfirmer: "총무",
+        merchantConfirmer: "사장",
+        agreementEvidence: "전화 합의 확인",
+      });
+      assert.equal(none.status, "CONFIRMED");
+      const changeMessages = take();
+      assert.equal(changeMessages.length, 2);
+      assert(
+        changeMessages.every((text) => text.includes("예약 변경 적용 및 확정")),
+      );
+      assert.equal(
+        changeMessages.filter((text) => text.includes("reservation-manage"))
+          .length,
+        1,
+      );
+
+      const disabled = await notices.preferences(accountId);
+      await notices.savePreferences(accountId, {
+        reservation: true,
+        settlement: disabled.settlement,
+        event: disabled.event,
+        expectedVersion: disabled.version,
+      });
+    },
+  );
+
+  await t.test(
+    "cancellation keeps request, response and result delivery while legacy refund rows stay held",
+    async (t) => {
+      const gateway = app.get(MessageGateway);
+      const send = gateway.send.bind(gateway);
+      const sent: string[] = [];
+      t.mock.method(
+        gateway,
+        "send",
+        async (...args: Parameters<MessageGateway["send"]>) => {
+          sent.push(args[2]);
+          return send(...args);
+        },
+      );
+      let v = await fixture("UNKNOWN");
+      v = await payments.guidance(v.id, operator, guide(v));
+      v = await payments.receipt(v.id, operator, {
+        ...key(v.version),
+        guidanceRevision: v.guidance.revision,
+        amount: 10000,
+        receivedAt: new Date().toISOString(),
+        corrects: null,
+        reason: "입금 확인",
+      });
+      sent.length = 0;
+      const requestCancel = () =>
+        post(v.id, "change-request", {
+          ...key(v.version),
+          kind: "CANCEL",
+          subject: "OTHER",
+          reason: "행사 취소",
+        });
+      v = await requestCancel();
+      assert.equal(sent.length, 1);
+      assert.match(sent[0], /취소 요청.*처리안/);
+      v = await changes.reject(v.id, operator, {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        reason: "다른 처리안 요청",
+      });
+      assert.equal(sent.length, 2);
+      assert.match(sent[1], /취소 요청 처리 불가/);
+      v = await requestCancel();
+      v = await changes.propose(v.id, operator, {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        reason: "취소 처리 가능",
+      });
+      assert.match(sent.at(-1)!, /취소 처리안 확인/);
+      v = await post(v.id, "change-accept", {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        confirmed: true,
+      });
+      assert.match(sent.at(-1)!, /취소 완료.*전화로/);
+      assert.equal(sent.filter((text) => text.includes("취소 완료")).length, 1);
+      assert.equal(v.refundExpected, null);
+      const cancelVersion = v.version;
+      const facts = () =>
+        db.manager.findBy(NotificationFact, { reservationId: v.id });
+      const cancel = (await facts()).find(
+        (f) => f.eventKey === `${v.id}:CHANGE_APPLIED:${cancelVersion}`,
+      )!;
+      sent.length = 0;
+
+      v = await changes.refund(v.id, operator, {
+        ...key(v.version),
+        amount: 1000,
+        refundedAt: new Date().toISOString(),
+        reason: "반환",
+      });
+      assert.equal(v.refundedAmount, 1000);
+      assert.equal(v.refundExpected, null);
+      assert.equal(
+        v.history.find((h) => h.action === "REFUND_RECORDED")!.refund!.expected,
+        null,
+      );
+      const recorded = v.version;
+      v = await changes.refundPlan(v.id, operator, {
+        ...key(v.version),
+        amount: 5000,
+        reason: "기존 환불 제안 호환",
+      });
+      const proposed = v.version;
+      v = await changes.reject(v.id, operator, {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        reason: "철회",
+      });
+      const rejected = v.version;
+      v = await changes.refundPlan(v.id, operator, {
+        ...key(v.version),
+        amount: 5000,
+        reason: "기존 환불 제안 호환",
+      });
+      v = await post(v.id, "change-accept", {
+        ...key(v.version),
+        changeId: v.changes[0].id,
+        confirmed: true,
+      });
+      const applied = v.version;
+      assert.deepEqual(sent, []);
+
+      const messages = app.get(NotificationsService);
+      const dispatcher = app.get(ReservationNotificationsService);
+      const previous = await messages.messages(cancel.requestId, db.manager);
+      const organizerRow = previous.find((row) =>
+        row.recipientKey.startsWith("organizer:"),
+      )!;
+      const cancelledMerchant = previous.find(
+        (row) => row.eventKey === cancel.eventKey,
+      )!;
+      const pending = [];
+      for (const [kind, revision, status] of [
+        ["REFUND_RECORDED", recorded, "PENDING"],
+        ["REFUND_PROPOSED", proposed, "PENDING"],
+        ["CHANGE_REJECTED", rejected, "FAILED"],
+        ["CHANGE_APPLIED", applied, "FAILED"],
+        ["CHANGE_APPLIED", applied, "UNKNOWN"],
+        ["CHANGE_APPLIED", cancelVersion, "PENDING"],
+      ] as const) {
+        const eventKey = `${v.id}:${kind}:${revision}`;
+        await db.manager.update(
+          NotificationFact,
+          { eventKey },
+          { smsPolicyVersion: null },
+        );
+        if (revision === cancelVersion)
+          await db.manager.delete(NotificationMessage, {
+            id: cancelledMerchant.id,
+          });
+        const source =
+          kind === "CHANGE_APPLIED" ? cancelledMerchant : organizerRow;
+        pending.push(
+          await db.manager.save(NotificationMessage, {
+            id: randomUUID(),
+            eventKey,
+            recipientKey:
+              status === "UNKNOWN"
+                ? organizerRow.recipientKey
+                : source.recipientKey,
+            phoneSnapshot:
+              status === "UNKNOWN"
+                ? organizerRow.phoneSnapshot
+                : source.phoneSnapshot,
+            contactIdSnapshot:
+              status === "UNKNOWN" ? null : source.contactIdSnapshot,
+            text: "동일한 과거 본문",
+            isDemo: true,
+            status,
+            failureStage: status === "FAILED" ? "SUBMISSION" : null,
+            attempts: status === "PENDING" ? 0 : 1,
+            updatedAt: new Date(),
+          }),
+        );
+      }
+      for (const row of pending) {
+        await dispatcher.dispatch(
+          row.id,
+          row.status === "FAILED"
+            ? { actor: "test", reason: "접수 실패 확인" }
+            : undefined,
+        );
+        const current = await db.manager.findOneByOrFail(NotificationMessage, {
+          id: row.id,
+        });
+        assert.equal(
+          current.status,
+          row.eventKey === cancel.eventKey
+            ? "ACCEPTED"
+            : row.status === "UNKNOWN"
+              ? "UNKNOWN"
+              : "HELD",
+        );
+        if (current.status === "HELD")
+          assert.equal(current.errorCode, "SMS_POLICY_SUPPRESSED");
+      }
+      assert.equal(sent.length, 1);
+      assert.match(sent[0], /취소 완료/);
+    },
+  );
+
   await t.test(
     "operator reads omit evidence but cannot authorize mutations",
     async () => {

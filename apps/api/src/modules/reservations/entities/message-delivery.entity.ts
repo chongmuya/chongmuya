@@ -13,7 +13,6 @@ import type { DeliveryState } from "../types/merchant-reply.js";
   "targetId",
   "purpose",
   "contactId",
-  "channel",
   "linkGeneration",
 ])
 @Index("message_deliveries_provider_id", ["providerMessageId"])
@@ -30,7 +29,8 @@ export class MessageDelivery {
   targetId!: string;
   @Column({ type: "varchar", length: 32, default: "NEW_INQUIRY" })
   purpose!: string;
-  @Column({ type: "varchar", length: 8, default: "LMS" }) channel!: string;
+  @Column({ type: "varchar", length: 8, nullable: true }) channel!:
+    "SMS" | "LMS" | null;
   @Column({ type: "uuid", name: "contact_id" }) contactId!: string;
   @Column({ type: "varchar", length: 20, name: "phone_snapshot" })
   phoneSnapshot!: string;

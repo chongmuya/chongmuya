@@ -9,9 +9,15 @@ import {
   type MessageReport,
   type MessageLookup,
 } from "./message.gateway.js";
+import { invalidMessage, textMessageFormat } from "../lib/reservation-sms.js";
+
+const reportedChannel = (type?: string | null) =>
+  type === "SMS" || type === "LMS" ? type : undefined;
+
 export const solapiMessageSchema = z.object({
   messageId: z.string().max(100),
   groupId: z.string().max(100).optional(),
+  type: z.string().nullish(),
   statusCode: z.string().regex(/^\d{4}$/),
   customFields: z
     .object({
@@ -75,6 +81,7 @@ export class SolapiMessageGateway extends MessageGateway {
         failureStage: "SUBMISSION",
         provider: "solapi",
       };
+    if (!textMessageFormat(text)) return invalidMessage("solapi");
     let response: Response;
     try {
       // Exactly one direct API call: no SDK retry or group creation, even on 503/timeouts.
@@ -89,8 +96,6 @@ export class SolapiMessageGateway extends MessageGateway {
               {
                 to,
                 from: e.solapiSenderNumber,
-                type: "LMS",
-                subject: "총무야 예약 문의",
                 text,
                 customFields: { deliveryId, deliveryAttempt: String(attempt) },
               },
@@ -154,6 +159,7 @@ export class SolapiMessageGateway extends MessageGateway {
         : { status: "ACCEPTED" as const }),
       groupId: groupInfo.groupId,
       messageId: message?.messageId,
+      channel: reportedChannel(message?.type),
       provider: "solapi",
     };
   }
@@ -222,6 +228,7 @@ export function normalizeSolapiReport(
     ...solapiOutcome(row.statusCode),
     provider: "solapi",
     messageId: row.messageId,
+    channel: reportedChannel(row.type),
     groupId: row.groupId,
     statusCode: row.statusCode,
     deliveryId: row.customFields?.deliveryId,

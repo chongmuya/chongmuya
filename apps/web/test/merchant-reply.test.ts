@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { render, until, fill, submit, click } from "./support/form-dom";
+import { ClosedInquiry } from "../features/merchant-replies/components/closed-inquiry";
 import { ReplyWorkspace } from "../features/merchant-replies/components/reply-workspace";
 import {
   koreanDateInput,
@@ -320,5 +321,19 @@ test("expired inquiry renders notice instead of editable reply", async () => {
     assert.equal(view.container.querySelector("form"), null);
   } finally {
     await view.unmount();
+  }
+});
+
+test("closed inquiry links show why the seat hold ended", async () => {
+  for (const [state, reason] of [
+    ["OTHER_SELECTED", "총무가 다른 매장을 선택했어요."],
+    ["ORGANIZER_DECLINED", "총무가 이 매장의 제안을 거절했어요."],
+  ]) {
+    const result = await render(createElement(ClosedInquiry, { state }));
+    try {
+      assert(result.container.textContent?.includes(reason));
+    } finally {
+      await result.unmount();
+    }
   }
 });

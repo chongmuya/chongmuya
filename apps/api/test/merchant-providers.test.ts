@@ -6,6 +6,8 @@ import { parseEnvironment } from "../src/config/environment.js";
 import { SolapiMessageGateway } from "../src/modules/reservations/providers/solapi-message.gateway.js";
 import { NaverGeocoder } from "../src/modules/restaurants/providers/naver.geocoder.js";
 import { validSolapiSignature } from "../src/modules/reservations/providers/solapi-webhook.js";
+import { textMessageFormat } from "../src/modules/reservations/lib/reservation-sms.js";
+import { FakeMessageGateway } from "../src/modules/reservations/providers/fake-message.gateway.js";
 import { safeReturnPath } from "../src/modules/auth/utils/return-path.js";
 const id = "752fb868-6dc0-4ef8-8f4a-0ed7049ff010";
 const config = () =>
@@ -25,7 +27,7 @@ const config = () =>
       NAVER_MAP_CLIENT_SECRET: "fake-naver-secret",
     }),
   }) as ConfigService;
-test("direct SOLAPI LMS contract, scoped endpoint, no automatic retry and filtered lookup", async (t) => {
+test("direct SOLAPI automatic SMS/LMS contract, scoped endpoint, no automatic retry and filtered lookup", async (t) => {
   const provider = new SolapiMessageGateway(config());
   let calls = 0;
   t.mock.method(
@@ -44,7 +46,9 @@ test("direct SOLAPI LMS contract, scoped endpoint, no automatic retry and filter
       );
       const body = JSON.parse(String(options.body));
       assert.equal(body.messages.length, 1);
-      assert.equal(body.messages[0].type, "LMS");
+      assert.equal(Object.hasOwn(body.messages[0], "type"), false);
+      assert.equal(Object.hasOwn(body.messages[0], "subject"), false);
+      assert.equal(body.messages[0].text, "가짜 문의 #token=test");
       assert.equal(body.messages[0].customFields.deliveryId, id);
       assert.equal(body.showMessageList, true);
       return Response.json({
@@ -53,6 +57,7 @@ test("direct SOLAPI LMS contract, scoped endpoint, no automatic retry and filter
         messageList: [
           {
             messageId: "M1",
+            type: "SMS",
             groupId: "G1",
             statusCode: "2000",
             customFields: { deliveryId: id },
@@ -63,7 +68,13 @@ test("direct SOLAPI LMS contract, scoped endpoint, no automatic retry and filter
   );
   assert.deepEqual(
     await provider.send(id, "01099990000", "가짜 문의 #token=test"),
-    { status: "ACCEPTED", provider: "solapi", groupId: "G1", messageId: "M1" },
+    {
+      status: "ACCEPTED",
+      provider: "solapi",
+      groupId: "G1",
+      messageId: "M1",
+      channel: "SMS",
+    },
   );
   assert.equal(calls, 1);
   t.mock.method(globalThis, "fetch", async () => {
@@ -205,6 +216,10 @@ test("server return path retains attendance tab/round and bounded owner routes",
     `/owner/inquiries?target=${id}`,
   );
   assert.equal(safeReturnPath("/events?view=evil&round=bad"), "/events");
+  assert.equal(
+    safeReturnPath(`/events?event=${id}&request=${id}`),
+    `/events?event=${id}&request=${id}`,
+  );
   assert.equal(safeReturnPath("//evil.test/owner"), "/events");
 });
 
@@ -248,4 +263,50 @@ test("restaurant page and roster continuation queries are bounded and preserved"
     safeReturnPath(`/events?event=${id}&view=roster&action=add`),
     `/events?event=${id}&action=add&view=roster`,
   );
+});
+
+test("SOLAPI EUC-KR boundaries use the full body and the fake gateway shares validation", async (t) => {
+  const fake = new FakeMessageGateway();
+  const real = new SolapiMessageGateway(config());
+  const link = "\nhttps://example.test/notifications";
+  for (const limit of [90, 91, 2000]) {
+    const body = "가".repeat(20) + "a".repeat(limit - link.length - 40) + link;
+    const channel = limit <= 90 ? "SMS" : "LMS";
+    const fetch = t.mock.method(
+      globalThis,
+      "fetch",
+      async (_url: string, options: RequestInit) => {
+        const {
+          messages: [message],
+        } = JSON.parse(String(options.body));
+        assert.equal(message.text, body);
+        assert.equal(Object.hasOwn(message, "type"), false);
+        assert.equal(Object.hasOwn(message, "subject"), false);
+        return Response.json({
+          failedMessageList: [],
+          groupInfo: { groupId: "G" },
+          messageList: [{ messageId: "M", statusCode: "2000", type: channel }],
+        });
+      },
+    );
+    assert.deepEqual(textMessageFormat(body), { bytes: limit, channel });
+    assert(Buffer.byteLength(body) > limit);
+    assert.equal((await fake.send(id, "01099990000", body)).channel, channel);
+    assert.equal((await real.send(id, "01099990000", body)).channel, channel);
+    assert.equal(fetch.mock.callCount(), 1);
+    fetch.mock.restore();
+  }
+
+  const fetch = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("unexpected send");
+  });
+  for (const body of ["a".repeat(2001), "가나다🙂", "가\u0000", "뷁"]) {
+    assert.equal(textMessageFormat(body), null);
+    for (const gateway of [fake, real]) {
+      const rejected = await gateway.send(id, "01099990000", body);
+      assert.equal(rejected.failureStage, "SUBMISSION");
+      assert.equal(rejected.errorCode, "MESSAGE_BODY_INVALID");
+    }
+  }
+  assert.equal(fetch.mock.callCount(), 0);
 });

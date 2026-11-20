@@ -15,6 +15,7 @@ import {
   SelectedReservation,
   ReservationDecision,
 } from "./entities/selected-reservation.entity.js";
+import { heldSeats } from "./lib/inquiry-sms-policy.js";
 import { candidateState, terminalCandidate } from "./lib/candidate-state.js";
 import type { ReservationDecisionInput } from "./dto/request/reservation-decision.request.dto.js";
 import type { CreateReservationRequestInput } from "./dto/request/create-reservation-request.request.dto.js";
@@ -204,6 +205,15 @@ export class ReservationSelectionService {
     now: Date,
   ) {
     if (target.candidateState !== "OPEN") return;
+    const releaseSeats =
+      (state === "OTHER_SELECTED" || state === "ORGANIZER_DECLINED") &&
+      heldSeats(
+        await m.findOneBy(MerchantReplyRevision, {
+          targetId: target.id,
+          revision: target.replyVersion,
+        }),
+        now,
+      );
     target.candidateState = state;
     target.closedAt = now;
     target.closedBy = actor;
@@ -215,6 +225,8 @@ export class ReservationSelectionService {
         request,
         target,
         state === "EXPIRED" ? "PROPOSAL_EXPIRED" : "CANDIDATE_CLOSED",
+        undefined,
+        releaseSeats,
       );
   }
   async closeForReinquiry(

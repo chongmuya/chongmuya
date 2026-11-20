@@ -14,6 +14,8 @@ import {
   type ReservationPrincipal,
   type DepositGuidance,
 } from "./types/reservation-completion.js";
+import { sameGuidance } from "./lib/completion-sms-policy.js";
+
 @Injectable()
 export class ReservationPaymentsService {
   constructor(private readonly completion: ReservationCompletionService) {}
@@ -70,18 +72,16 @@ export class ReservationPaymentsService {
         this.completion.active(c);
         if (c.state.confirmation)
           throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
-        c.state.guidance = this.validateGuidance(c, input);
+        const guidance = this.validateGuidance(c, input);
+        if (sameGuidance(c.state.guidance, guidance)) return;
+        c.state.guidance = guidance;
         c.state.acknowledgedRevision = null;
         c.state.exceptionResolution = null;
-        const g = c.state.guidance;
         await this.completion.notify(
           c,
           "GUIDANCE",
           "예약금 안내가 도착했어요. 금액·기한·변경 조건을 확인해 주세요.",
           "organizer",
-          g.kind === "REQUIRED"
-            ? `${g.amount}원 · ${g.deadline}\n${g.bank} ${g.account} ${g.holder}`
-            : "예약금 없음",
         );
       },
     );
@@ -115,6 +115,13 @@ export class ReservationPaymentsService {
         this.completion.active(c);
         if (input.guidanceRevision > c.state.guidance.revision)
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+        const previous = c.state.transfer;
+        if (
+          previous?.guidanceRevision === input.guidanceRevision &&
+          previous.payer === input.payer &&
+          previous.amount === input.amount
+        )
+          return;
         c.state.transfer = {
           guidanceRevision: input.guidanceRevision,
           payer: input.payer,

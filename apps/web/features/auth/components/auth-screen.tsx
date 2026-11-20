@@ -14,10 +14,10 @@ import { profileQueryOptions } from "../api/auth.queries";
 import { useAuthActions } from "../hooks/use-auth-actions";
 import { authErrorMessage } from "../lib/auth-error-message";
 
-export function AuthScreen() {
+export function AuthScreen({ returnPath }: { returnPath?: string } = {}) {
   const { client, status, account } = useAuth();
   const params = useSearchParams();
-  const returnTo = safeReturnPath(params?.get("next"));
+  const returnTo = safeReturnPath(returnPath ?? params?.get("next"));
   const { logout, restore } = useAuthActions();
   const pending = logout.isPending || restore.isPending;
   const profile = useQuery(
