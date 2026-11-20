@@ -219,7 +219,7 @@ function CompletionContent({
               {pending
                 ? "변경 확인 필요"
                 : q.cancellation
-                  ? "예약 취소"
+                  ? "예약 취소 완료"
                   : q.progress === "CONFIRMED"
                     ? "예약 확정"
                     : q.guidance.kind === "REQUIRED"

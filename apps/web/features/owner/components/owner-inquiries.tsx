@@ -22,18 +22,18 @@ export function OwnerInquiries({
     ...inquiriesQuery(account.id, request),
     enabled: !targetId,
   });
+  if (targetId)
+    return (
+      <ReplyWorkspace
+        key={targetId}
+        targetId={targetId}
+        onDone={() => onNavigate("/owner/inquiries")}
+        access={{ kind: "owner", accountId: account.id, request }}
+      />
+    );
   return (
-    <StepLayout
-      title={targetId ? "받은 문의" : ""}
-      onBack={() => onNavigate(targetId ? "/owner/inquiries" : "/owner")}
-    >
-      {targetId ? (
-        <ReplyWorkspace
-          targetId={targetId}
-          onDone={() => onNavigate("/owner/inquiries")}
-          access={{ kind: "owner", accountId: account.id, request }}
-        />
-      ) : q.isError && !q.data ? (
+    <StepLayout title="" onBack={() => onNavigate("/owner")}>
+      {q.isError && !q.data ? (
         <ErrorState retry={() => void q.refetch()} />
       ) : !q.data ? (
         <LoadingState>문의 불러오는 중…</LoadingState>

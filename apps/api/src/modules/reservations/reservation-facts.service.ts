@@ -139,6 +139,7 @@ export class ReservationFactsService {
                 reservationId: selection.id,
                 status: selection.status,
                 progress: completionStatus(state, now.getTime()),
+                refundedAmount: state.refunded,
                 restaurantName:
                   targets.find((t) => t.id === selection.targetId)
                     ?.restaurantName ?? null,
@@ -302,5 +303,16 @@ export class ReservationFactsService {
         };
       }),
     );
+  }
+
+  async depositBalances(reservationIds: string[], m: EntityManager) {
+    if (!reservationIds.length) return [];
+    const rows = await m.findBy(ReservationProgress, {
+      reservationId: In(reservationIds),
+    });
+    return rows.map(({ reservationId, state }) => ({
+      reservationId,
+      remainingAmount: (state.receipt?.amount ?? 0) - state.refunded,
+    }));
   }
 }

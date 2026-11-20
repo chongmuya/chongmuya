@@ -46,6 +46,19 @@ function PublicReply({ targetId }: { targetId: string }) {
       });
     return () => controller.abort();
   }, [targetId, attempt]);
+  if (access && !access.closedState)
+    return (
+      <ReplyWorkspace
+        targetId={targetId}
+        access={{
+          kind: "link",
+          access: access.accessToken,
+          accessExpiresAt: access.accessExpiresAt,
+          linkExpiresAt: access.linkExpiresAt,
+          scope,
+        }}
+      />
+    );
   return (
     <main className="mx-auto flex min-h-svh max-w-[402px] flex-col bg-background px-5 pt-10 pb-[max(24px,env(safe-area-inset-bottom))]">
       <Image
@@ -68,21 +81,10 @@ function PublicReply({ targetId }: { targetId: string }) {
             ? error.message
             : safeErrorMessage(error)}
         </ErrorState>
-      ) : !access ? (
-        <LoadingState>문의 링크 확인 중…</LoadingState>
-      ) : access.closedState ? (
+      ) : access?.closedState ? (
         <ClosedInquiry state={access.closedState} />
       ) : (
-        <ReplyWorkspace
-          targetId={targetId}
-          access={{
-            kind: "link",
-            access: access.accessToken,
-            accessExpiresAt: access.accessExpiresAt,
-            linkExpiresAt: access.linkExpiresAt,
-            scope,
-          }}
-        />
+        <LoadingState>문의 링크 확인 중…</LoadingState>
       )}
     </main>
   );

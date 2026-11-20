@@ -20,6 +20,9 @@ export function EventCard({
   summary?: EventSummary;
   summaryUnavailable?: boolean;
 }) {
+  const settled =
+    summary?.settlement.status === "COMPLETE" &&
+    !summary.settlement.needsReview;
   return (
     <article className="rounded-[4px] bg-surface shadow-card">
       <Link
@@ -33,16 +36,14 @@ export function EventCard({
           <span
             className={cn(
               "flex shrink-0 items-center gap-2 text-xs",
-              summary?.settlement.status === "COMPLETE"
-                ? "text-brand-ink"
-                : "text-brand",
+              settled ? "text-brand-ink" : "text-brand",
             )}
           >
             {summary && summary.settlement.status !== "EMPTY" && (
               <Image
-                src={`/images/home/${summary.settlement.status === "COMPLETE" ? "complete-status" : "settlement-status"}.svg`}
-                width={summary.settlement.status === "COMPLETE" ? 19 : 18.5}
-                height={summary.settlement.status === "COMPLETE" ? 19 : 18}
+                src={`/images/home/${settled ? "complete-status" : "settlement-status"}.svg`}
+                width={settled ? 19 : 18.5}
+                height={settled ? 19 : 18}
                 alt=""
               />
             )}

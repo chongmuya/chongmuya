@@ -1,3 +1,4 @@
+import { HandoversController } from "../../src/modules/handovers/handovers.controller.js";
 import { ReservationHandoverService } from "../../src/modules/reservations/reservation-handover.service.js";
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
@@ -41,7 +42,7 @@ import {
   seedDemoRestaurants,
   demoRestaurantIds,
 } from "../../src/database/seeds/restaurants-demo.seed.js";
-const json = async <T>(r: Response, status = 200) => {
+const json = async <T = Record<string, unknown>>(r: Response, status = 200) => {
   const b = await r.json();
   assert.equal(r.status, status, JSON.stringify(b));
   return b as T;
@@ -113,6 +114,11 @@ test("accepted handover preserves private history and personal ownership; member
     201,
   );
   // Roster identity has no account privileges, and editing never rewrites event snapshots.
+  const rosterGate = t.mock.method(
+    app.get(HandoversController),
+    "assertTransferEnabled",
+    () => {},
+  );
   assert.equal(
     (
       await call(`handovers/groups/${group.id}`, a, "POST", {
@@ -124,6 +130,7 @@ test("accepted handover preserves private history and personal ownership; member
     ).status,
     400,
   );
+  rosterGate.mock.restore();
   await json(
     await call(`groups/${group.id}/members/${roster[0].id}`, a, "PATCH", {
       name: "수정된 기본 명단",
@@ -371,10 +378,30 @@ test("accepted handover preserves private history and personal ownership; member
       requestKey: randomUUID(),
       expectedVersion: 1,
     };
+  assert.equal(
+    (
+      await json(
+        await call(`handovers/groups/${group.id}`, a, "POST", body),
+        409,
+      )
+    ).code,
+    "GROUP_HANDOVER_UNAVAILABLE",
+  );
+  assert.equal(
+    await db.manager.countBy(GroupHandover, { groupId: group.id }),
+    0,
+  );
+  // Use the existing transfer path to fixture a pending request from before the pilot.
+  const enabled = t.mock.method(
+    app.get(HandoversController),
+    "assertTransferEnabled",
+    () => {},
+  );
   const h = await json<{ id: string }>(
     await call(`handovers/groups/${group.id}`, a, "POST", body),
     201,
   );
+  enabled.mock.restore();
   assert.equal((await call(`events/${event.id}`, a)).status, 200);
   assert.equal((await call(`events/${event.id}`, b)).status, 404);
   const preview = await json<{
@@ -404,6 +431,26 @@ test("accepted handover preserves private history and personal ownership; member
     expectedVersion: 1,
     requestKey: randomUUID(),
   };
+  assert.equal(
+    (
+      await json(
+        await call(`handovers/${h.id}/accept`, b, "POST", acceptBody),
+        409,
+      )
+    ).code,
+    "GROUP_HANDOVER_UNAVAILABLE",
+  );
+  assert.equal(
+    (await db.manager.findOneByOrFail(GroupHandover, { id: h.id })).status,
+    "PENDING",
+  );
+  assert.equal((await call(`events/${event.id}`, a)).status, 200);
+  assert.equal((await call(`events/${event.id}`, b)).status, 404);
+  t.mock.method(
+    app.get(HandoversController),
+    "assertTransferEnabled",
+    () => {},
+  );
   const accepted = await json<{
     id: string;
     status: string;
@@ -553,6 +600,11 @@ test("accepted handover preserves private history and personal ownership; member
 
 test("group lock serializes handover against stale writers, upload completion and competing handovers", async (t) => {
   const { app, db, call, signup } = await startResourceApplication(t);
+  t.mock.method(
+    app.get(HandoversController),
+    "assertTransferEnabled",
+    () => {},
+  );
   const a = await signup(),
     b = await signup(),
     c = await signup();
@@ -802,6 +854,11 @@ test("forward migration backfills known creators and admin membership without re
 
 test("reservation selection race, current merchant contact, pending SMS replanning and real receipt audit survive handover", async (t) => {
   const { app, db, call, signup } = await startResourceApplication(t);
+  t.mock.method(
+    app.get(HandoversController),
+    "assertTransferEnabled",
+    () => {},
+  );
   await seedDemoRestaurants(db);
   const a = await signup(),
     b = await signup();
@@ -1191,7 +1248,12 @@ test("reservation selection race, current merchant contact, pending SMS replanni
 });
 
 test("handover cancellation, expiry, membership loss and stale group version block acceptance; old completion replay stays minimal", async (t) => {
-  const { db, call, signup } = await startResourceApplication(t);
+  const { app, db, call, signup } = await startResourceApplication(t);
+  t.mock.method(
+    app.get(HandoversController),
+    "assertTransferEnabled",
+    () => {},
+  );
   const a = await signup(),
     b = await signup();
   const aa = await json<{ id: string; email: string }>(

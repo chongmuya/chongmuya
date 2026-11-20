@@ -85,7 +85,9 @@ export function ActiveEventBanner({
       width: 25.4976,
       height: 29.184,
       state: settlementLabel(summary).replace(/^정산 /, ""),
-      complete: summary?.settlement.status === "COMPLETE",
+      complete:
+        summary?.settlement.status === "COMPLETE" &&
+        !summary.settlement.needsReview,
     },
     {
       view: "record",

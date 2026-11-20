@@ -27,6 +27,7 @@ export const recordsQuery = (
           total: number;
           confirmed: number;
           status: "EMPTY" | "COMPLETE" | "IN_PROGRESS";
+          needsReview?: boolean;
           files: { id: string; name: string }[];
         }[];
       }>(`/api/v1/records?${p}`, { signal });

@@ -1,9 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Button, buttonStyles } from "@/shared/ui/button";
-import { koreanDateLabel } from "@/shared/lib/korean-date";
+import { koreanDateInput, koreanDateLabel } from "@/shared/lib/korean-date";
 import type { Reply, RequestSnapshot } from "../types/reply.types";
 import { inquiryClosureMessage } from "./closed-inquiry";
+import { replyDateLabel } from "../lib/reply-date";
 export const spaceLabel = {
   ANY: "상관없음",
   HALL: "일반 홀",
@@ -95,9 +96,10 @@ export function SubmittedReply({
   const declined = response.kind === "DECLINE";
   const request = response.snapshot.requested;
   const offer = response.snapshot.offered;
+  const buttonClass = "w-full border-brand bg-brand text-soft";
   return (
-    <section className="mx-auto flex w-full max-w-[360px] flex-1 flex-col justify-center gap-4 py-10">
-      <header className="space-y-3 text-center">
+    <main className="grid min-h-svh place-items-center bg-field px-3.5 pt-[11px] pb-[17px]">
+      <section className="flex min-h-[min(804px,calc(100svh-28px))] w-full max-w-[360px] flex-col justify-center gap-3.5 rounded-[16px] bg-surface px-6 pt-7 pb-6 shadow-[0_3px_14px_rgb(0_0_0/0.12)]">
         <Image
           src={
             declined
@@ -109,91 +111,110 @@ export function SubmittedReply({
           height={declined ? 41.5002 : 42}
           className="mx-auto"
         />
-        <h1 className="text-lg font-bold">이미 답변을 보냈어요</h1>
-        <p className="text-sm text-muted">
-          {closedState
-            ? inquiryClosureMessage(closedState)
-            : declined
-              ? "예약이 어렵다는 답변을 총무에게 전달했어요."
-              : "총무가 매장을 선택하면 문자로 알려드릴게요."}
+        <h1 className="text-center text-lg font-bold text-[#1c1c1f]">
+          {response.kind === "AVAILABLE"
+            ? "이미 수락 답변을 보냈어요"
+            : response.kind === "CHANGE"
+              ? "이미 변경 제안을 보냈어요"
+              : "이미 ‘예약 불가’로 답했어요"}
+        </h1>
+        <p className="text-center text-[13px] leading-[1.55] text-[#808087]">
+          {closedState ? (
+            inquiryClosureMessage(closedState)
+          ) : declined ? (
+            "예약이 어렵다는 답변을 총무에게 전달했어요."
+          ) : (
+            <>
+              총무가 선택하면 문자로 알려드릴게요.
+              <br />
+              다른 매장이 먼저 선택되면 이 문의는 종료돼요.
+            </>
+          )}
         </p>
-      </header>
-      {declined ? (
-        <p className="mx-auto max-w-full rounded-control bg-choice px-3 py-2 text-sm whitespace-pre-wrap wrap-anywhere">
-          <span className="mr-2 text-muted">전한 사유</span>
-          {response.reason}
-        </p>
-      ) : (
-        <>
-          {offer && (
-            <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-4 rounded-control border border-field bg-surface px-5 py-4 text-sm">
-              <div className="space-y-2 text-center text-brand">
-                <Image
-                  src="/images/merchant-replies/sent-date.svg"
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="mx-auto"
-                />
-                <p>{koreanDateLabel(offer.startsAt)}</p>
-              </div>
-              <div className="space-y-2">
-                <p className="flex items-center gap-2">
+        {declined ? (
+          <p className="mx-auto max-w-full rounded-control bg-choice px-3 py-2 text-sm whitespace-pre-wrap wrap-anywhere">
+            <span className="mr-2 text-muted">전한 사유</span>
+            {response.reason}
+          </p>
+        ) : (
+          <>
+            {offer && (
+              <div className="-mx-[5px] flex items-center gap-4 rounded-[16px] border border-placeholder bg-surface px-5 py-5 leading-[normal] min-[360px]:gap-9 min-[360px]:px-7">
+                <div className="shrink-0 space-y-2.5 text-center font-medium text-brand">
                   <Image
-                    src="/images/restaurants/guests.svg"
+                    src="/images/merchant-replies/sent-date.svg"
                     alt=""
-                    width={16.848}
-                    height={14.8528}
+                    width={16}
+                    height={16}
+                    className="mx-auto"
                   />
-                  {offer.expectedGuests}명
-                </p>
-                {request.budgetAmount !== null && (
+                  <p>
+                    {replyDateLabel(offer.startsAt, ". ")}
+                    <br />
+                    {koreanDateInput(offer.startsAt).split("T")[1]}
+                  </p>
+                </div>
+                <div className="min-w-0 space-y-3 font-medium">
                   <p className="flex items-center gap-2">
                     <Image
-                      src="/images/calendar/budget.svg"
+                      src="/images/restaurants/guests.svg"
                       alt=""
-                      width={17.2}
-                      height={13.2}
+                      width={18}
+                      height={18}
+                      className="shrink-0"
                     />
-                    {request.budgetBasis === "PER_PERSON" ? "1인 " : "전체 "}
-                    {money(request.budgetAmount)}
+                    {offer.expectedGuests}명
                   </p>
-                )}
-                <p className="flex items-center gap-2">
-                  <Image
-                    src="/images/restaurants/location.svg"
-                    alt=""
-                    width={18}
-                    height={18}
-                  />
-                  {request.region}
-                </p>
+                  {request.budgetAmount !== null && (
+                    <p className="flex items-center gap-2">
+                      <Image
+                        src="/images/calendar/budget.svg"
+                        alt=""
+                        width={16}
+                        height={12}
+                        className="shrink-0"
+                      />
+                      {request.budgetBasis === "PER_PERSON" ? "1인 " : "전체 "}
+                      {money(request.budgetAmount)}
+                    </p>
+                  )}
+                  <p className="flex items-center gap-2">
+                    <Image
+                      src="/images/restaurants/location.svg"
+                      alt=""
+                      width={18}
+                      height={18}
+                      className="shrink-0"
+                    />
+                    {request.region}
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
-          <ReplySummary response={response} showHold={!closedState} />
-          <details className="space-y-3 text-sm">
-            <summary className="cursor-pointer text-right font-semibold text-brand">
-              전체 예약문의 보기
-            </summary>
-            <RequestSummary snapshot={request} />
-          </details>
-        </>
-      )}
-      <p className="text-center text-xs text-muted">
-        오입력이 있거나 좌석을 유지하기 어려우면 기존 연락처로 총무에게 전화해
-        주세요.
-      </p>
-      {onDone ? (
-        <Button className="w-full" onClick={onDone}>
-          확인
-        </Button>
-      ) : (
-        <Link className={buttonStyles({ className: "w-full" })} href="/">
-          확인
-        </Link>
-      )}
-    </section>
+            )}
+            <details className="-mx-[5px] text-sm open:space-y-4">
+              <summary className="block cursor-pointer text-right leading-tight font-semibold text-brand">
+                전체 예약문의 보기
+              </summary>
+              <ReplySummary response={response} showHold={!closedState} />
+              <RequestSummary snapshot={request} />
+              <p className="text-xs text-muted">
+                오입력이 있거나 좌석을 유지하기 어려우면 기존 연락처로 총무에게
+                전화해 주세요.
+              </p>
+            </details>
+          </>
+        )}
+        {onDone ? (
+          <Button className={buttonClass} onClick={onDone}>
+            확인
+          </Button>
+        ) : (
+          <Link className={buttonStyles({ className: buttonClass })} href="/">
+            확인
+          </Link>
+        )}
+      </section>
+    </main>
   );
 }
 

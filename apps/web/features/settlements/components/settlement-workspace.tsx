@@ -449,9 +449,8 @@ export function SettlementWorkspace({
       )}
       {q.data.depositConflicts?.length ? (
         <p role="alert">
-          예약금 실제 잔액이 변경되어 기존 적용액을 초과했습니다. 연결 지출의
-          예약금을 재확인·수정한 뒤 새 정산문을 발행해 주세요. 기존 기록은
-          보존됩니다.
+          <strong>정산 재확인 필요</strong> · 지출에 적용한 예약금이 실제
+          잔액보다 큽니다. 연결 지출을 수정한 뒤 새 정산문을 만들어 주세요.
         </p>
       ) : null}
       <Loaded access={a} data={q.data} record={record} />

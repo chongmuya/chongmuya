@@ -99,6 +99,19 @@ export const replySchema = (original: Proposal) =>
         );
       if (Date.parse(p.startsAt) <= Date.now())
         issue(["proposal", "startsAt"], "미래의 행사 일시를 입력해 주세요.");
+      if (p.deposit.amount === null)
+        issue(
+          ["proposal", "deposit", "amount"],
+          "예약금을 입력해 주세요. 없으면 0원을 입력해 주세요.",
+        );
+      if (
+        input.kind === "AVAILABLE" &&
+        (!p.usageTime || p.usageTime.kind === "UNKNOWN")
+      )
+        issue(
+          ["proposal", "usageTime", "minutes"],
+          "이용 시간을 입력하거나 자유롭게 이용 가능함을 선택해 주세요.",
+        );
       if (
         input.kind === "CHANGE" &&
         !p.note.trim() &&

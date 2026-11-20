@@ -21,6 +21,7 @@ import { MerchantReplyRevision } from "../../src/modules/reservations/entities/m
 import { SelectedReservation } from "../../src/modules/reservations/entities/selected-reservation.entity.js";
 import { NotificationMessage } from "../../src/modules/notifications/entities/notification.entity.js";
 import { MessageGateway } from "../../src/modules/reservations/providers/message.gateway.js";
+import { textMessageFormat } from "../../src/modules/reservations/lib/reservation-sms.js";
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
 import { NotificationFact } from "../../src/modules/notifications/entities/notification.entity.js";
@@ -56,10 +57,10 @@ test("selection, reinquiry and durable notifications serialize competing command
         await callResponse(eventId),
       )
     ).request;
-  async function fixture(jar = owner) {
+  async function fixture(jar = owner, name = "선택 검증") {
     const event = await json<{ id: string; version: number }>(
       await call("events", jar, "POST", {
-        name: "선택 검증",
+        name,
         creationKey: randomUUID(),
       }),
       201,
@@ -142,14 +143,21 @@ test("selection, reinquiry and durable notifications serialize competing command
         "expired",
         "unheld",
       ] as const) {
-        const f = await fixture();
+        const f = await fixture(owner, "선택 검증 🎉");
         const inquiry = sent.splice(0);
+        assert.equal(f.request.snapshot.eventName, "선택 검증 🎉");
         assert.equal(inquiry.length, 2);
         assert.equal(
           new Set(inquiry.map((text) => text.split("\n").at(-1))).size,
           2,
         );
-        assert(inquiry.every((text) => /24명\n예약 문의.*답변/.test(text)));
+        assert(
+          inquiry.every(
+            (text) =>
+              /선택 검증 .*24명\n예약 문의.*답변/.test(text) &&
+              textMessageFormat(text) !== null,
+          ),
+        );
         const [selected, other] = f.request.targets;
         const first = proposal(f.request);
         await replies.save(selected.id, principal, first, "sms-policy");
