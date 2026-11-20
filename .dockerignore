@@ -12,6 +12,7 @@
 !apps/api/src/
 !apps/api/src/**
 !apps/api/scripts/
+!apps/api/scripts/operations-application.mjs
 !apps/api/scripts/merchant-operations.mjs
 !apps/api/scripts/reservation-operations.mjs
 !apps/api/scripts/reservation-completion.mjs

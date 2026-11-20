@@ -1,6 +1,7 @@
 import { ReservationsModule } from "../reservations/reservations.module.js";
 import { ConfigModule } from "../../config/config.module.js";
 import { RemindersService } from "./reminders.service.js";
+import { ReminderSchedulerService } from "./reminder-scheduler.service.js";
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../../database/database.module.js";
 import { AuthModule } from "../auth/auth.module.js";
@@ -20,7 +21,7 @@ import { CalendarController } from "./calendar.controller.js";
     NotificationsModule,
   ],
   controllers: [CalendarController],
-  providers: [CalendarService, RemindersService],
+  providers: [CalendarService, RemindersService, ReminderSchedulerService],
   exports: [CalendarService],
 })
 export class CalendarModule {}

@@ -38,17 +38,21 @@ export class EventsService {
     private readonly groups: GroupsService,
   ) {}
 
-  async reminderCandidates(now: Date, m: EntityManager, after?: string) {
+  async reminderCandidates(
+    range: { from: Date; to: Date; due: Date },
+    m: EntityManager,
+    after?: string,
+  ) {
     const q = m
       .createQueryBuilder(Event, "e")
-      .where("e.scheduledAt > :now AND e.scheduledAt < :until", {
-        now,
-        until: new Date(now.getTime() + 172800000),
-      });
+      .select(["e.id", "e.scheduleRevision"])
+      .where("e.scheduledAt >= :from AND e.scheduledAt < :to", range)
+      .andWhere("e.scheduleUpdatedAt <= :due", range);
     if (after) q.andWhere("e.id > :after", { after });
-    return (await q.orderBy("e.id", "ASC").take(100).getMany()).map(
-      (e) => e.id,
-    );
+    return (await q.orderBy("e.id", "ASC").take(100).getMany()).map((e) => ({
+      id: e.id,
+      revision: e.scheduleRevision,
+    }));
   }
   async reminderCurrent(id: string, m: EntityManager) {
     await this.lockGroup(id, m);

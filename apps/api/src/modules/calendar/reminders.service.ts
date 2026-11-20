@@ -1,81 +1,51 @@
-import {
-  Injectable,
-  Logger,
-  type OnModuleInit,
-  type OnModuleDestroy,
-} from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service.js";
-import { ConfigService } from "../../config/config.service.js";
 import { EventsService } from "../events/events.service.js";
 import { GroupsService } from "../groups/groups.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
 import { CalendarSchedule } from "./entities/calendar-schedule.entity.js";
-import { koreanDate, reminderAt } from "./lib/calendar-time.js";
+import { koreanDate, reminderBatch } from "./lib/calendar-time.js";
 @Injectable()
-export class RemindersService implements OnModuleInit, OnModuleDestroy {
-  private timer?: ReturnType<typeof setInterval>;
-  private running = false;
-  private readonly logger = new Logger(RemindersService.name);
+export class RemindersService {
   constructor(
     private readonly database: DatabaseService,
     private readonly events: EventsService,
     private readonly groups: GroupsService,
     private readonly notifications: NotificationsService,
-    private readonly config: ConfigService,
   ) {}
-  onModuleInit() {
-    if (this.config.environment.remindersEnabled) {
-      this.timer = setInterval(() => {
-        void this.tick();
-      }, 60000);
-      this.timer.unref();
-      void this.tick();
-    }
-  }
-  onModuleDestroy() {
-    if (this.timer) clearInterval(this.timer);
-  }
-  private async tick() {
-    if (this.running) return;
-    this.running = true;
-    try {
-      const result = await this.run();
-      if (result.failed)
-        this.logger.warn(
-          `Reminder batch checked=${result.checked} failed=${result.failed}`,
-        );
-    } catch {
-      this.logger.warn("Reminder batch unavailable; next tick will retry");
-    } finally {
-      this.running = false;
-    }
-  }
-  async run(now = new Date()) {
-    const db = await this.database.connect();
+  async run(now = new Date(), isActive: () => boolean = () => true) {
+    const batch = reminderBatch(now);
     const result = { checked: 0, failed: 0 };
+    if (now < batch.due || !isActive()) return result;
+    const db = await this.database.connect();
     for (const kind of ["EVENT", "OTHER"] as const) {
       let after: string | undefined;
       for (;;) {
-        const ids =
+        if (!isActive()) return result;
+        const candidates =
           kind === "EVENT"
-            ? await this.events.reminderCandidates(now, db.manager, after)
+            ? await this.events.reminderCandidates(batch, db.manager, after)
             : (
                 await db.manager
                   .createQueryBuilder(CalendarSchedule, "s")
-                  .where(
-                    "s.deletedAt IS NULL AND s.date >= :today AND s.date <= :until",
-                    {
-                      today: koreanDate(now),
-                      until: koreanDate(new Date(now.getTime() + 172800000)),
-                    },
-                  )
+                  .select(["s.id", "s.scheduleRevision"])
+                  .where("s.deletedAt IS NULL AND s.date = :targetDate", batch)
+                  .andWhere("s.scheduleUpdatedAt <= :due", batch)
                   .andWhere(after ? "s.id > :after" : "true", { after })
                   .orderBy("s.id", "ASC")
                   .take(100)
                   .getMany()
-              ).map((r) => r.id);
-        if (!ids.length) break;
-        for (const id of ids) {
+              ).map((r) => ({ id: r.id, revision: r.scheduleRevision }));
+        if (!candidates.length) break;
+        const recorded = await this.notifications.recordedEventKeys(
+          candidates.map(
+            ({ id, revision }) => `reminder:${kind}:${id}:${revision}`,
+          ),
+          db.manager,
+        );
+        for (const { id, revision } of candidates) {
+          if (!isActive()) return result;
+          if (recorded.has(`reminder:${kind}:${id}:${revision}`)) continue;
           try {
             await db.transaction(async (m) => {
               if (kind === "OTHER") {
@@ -98,8 +68,7 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
                   : row.startsAt
                     ? koreanDate(row.startsAt)
                     : null;
-              if (!date) return;
-              const due = reminderAt(date);
+              if (date !== batch.targetDate) return;
               const changedAt =
                 row instanceof CalendarSchedule
                   ? row.scheduleUpdatedAt
@@ -108,8 +77,11 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
                 row instanceof CalendarSchedule
                   ? row.scheduleRevision
                   : row.version;
-              if (due > now || changedAt > due || date <= koreanDate(now))
-                return;
+              if (changedAt > batch.due || !isActive()) return;
+              // Settings/inbox writes can hold the recipient lock across midnight too.
+              // record() reuses this transaction's lock before its final deduplication.
+              await this.notifications.lockAccount(m, row.ownerId);
+              if (!isActive()) return;
               // Resource lock + unique fact are the durable processing receipt. Crash before
               // commit rolls back both; crash after commit is a no-op on the next runner.
               await this.notifications.record(m, {
@@ -138,8 +110,8 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
             result.failed++;
           }
         }
-        after = ids.at(-1);
-        if (ids.length < 100) break;
+        after = candidates.at(-1)!.id;
+        if (candidates.length < 100) break;
       }
     }
     return result;

@@ -18,21 +18,15 @@ PR3 검증 head `8989273f6195d37c9c4c9fb60ffe627e37713463`에서 시작한다. �
 
 웹은 활성 화면에서 미읽음 30초 갱신, 알림함에서는 최신 목록도 갱신한다. 인증된 앱 공통 위치에 계정별 미읽음 observer 하나를 두고 배지는 캐시만 구독한다. 과거 페이지는 탐색 시 조회하고 주기 조회를 추가하지 않는다. visibilitychange 복귀, focus, 네트워크 재연결 시 갱신한다. 숨긴 탭은 query 자체를 비활성화하여 초기 진입·재연결도 조회하지 않고 로그아웃/계정 전환은 기존 SessionClient의 사용자 query 취소·삭제와 화면 unmount를 사용한다. SSE/WebSocket은 없다. 이것은 서버 리마인더 실행과 무관하다.
 
-리마인더 기본값은 `calendar/lib/calendar-time.ts`의 전날 09:00 Asia/Seoul이다. `REMINDERS_ENABLED=false`가 기본이며, true인 API 인스턴스는 60초마다 due를 조회한다. 다중 인스턴스는 원본 자원 행 잠금과 `reminder:<종류>:<ID>:<scheduleRevision>` fact unique로 중복을 막는다. 별도 영속 lease가 필요 없는 단일 DB 트랜잭션이며, commit 전 프로세스 종료는 rollback, commit 후 재시도는 fact로 복구한다. 새 일정/시간 변경이 이미 알림 시점 이후면 소급 생성하지 않는다. 행사/기타 일정의 시간 변경에만 scheduleRevision과 scheduleUpdatedAt을 갱신하며 이름·메모 수정은 미처리 리마인더 복구와 기존 fact를 보존한다. 삭제·현재 소유권·최신 일정 세대·설정을 commit 직전에 다시 확인한다. 개인 일정은 그룹 이전 대상이 아니다. PR5는 `CalendarService.transferGroup(groupId,from,to,manager)`를 같은 권한 이전 트랜잭션에서 호출할 수 있다.
-
-승인된 운영 스케줄러에서만 다음 명령을 배치로 실행할 수 있다. 이 구현에서는 실제 운영 활성화·스케줄 등록을 수행하지 않는다.
-
-```sh
-pnpm --filter @chongmuya/api calendar:reminders --execute
-```
-
-명령은 checked/failed 건수만 출력하고 실패가 있으면 종료 코드 1이다. 한 건 실패는 나머지 배치를 막지 않는다. 실패 원인 해결 후 동일 명령을 재실행하며, 처리한 fact는 중복되지 않는다. 반복 실행을 위한 due 조회는 미래 일정으로 한정되므로 일정 당일 이후에는 과거 알림을 재생하지 않는다. SMS UNKNOWN은 이 작업의 대상이 아니며 기존 발송 운영 계약에서만 조정한다.
+리마인더 기본값은 `calendar/lib/calendar-time.ts`의 전날 09:00 Asia/Seoul이다. `REMINDERS_ENABLED=false`가 기본이며, true인 API 인스턴스는 매일 한국 시간 오전 9시에 다음 날 일정만 처리한다. 오전 9시 이후 시작하면 그날 배치의 미처리 항목을 한 번 보완하며, 9시 이전에는 정시 실행을 기다린다. 실패한 배치만 각 실패 후 1분·5분·15분 간격으로 최대 3회 추가 시도하고 한국 날짜가 바뀌면 종료한다. 정상 완료 후에는 다음 정시까지 조회하지 않는다. 다중 인스턴스는 원본 자원 행 잠금과 `reminder:<종류>:<ID>:<scheduleRevision>` fact unique로 중복을 막는다. 별도 영속 lease가 필요 없는 단일 DB 트랜잭션이며, commit 전 프로세스 종료는 rollback, commit 후 재시도는 fact로 복구한다. 새 일정/시간 변경이 이미 알림 시점 이후면 소급 생성하지 않는다. 행사/기타 일정의 시간 변경에만 scheduleRevision과 scheduleUpdatedAt을 갱신하며 이름·메모 수정은 미처리 리마인더 복구와 기존 fact를 보존한다. 삭제·현재 소유권·최신 일정 세대·설정을 commit 직전에 다시 확인한다. 개인 일정은 그룹 이전 대상이 아니다. PR5는 `CalendarService.transferGroup(groupId,from,to,manager)`를 같은 권한 이전 트랜잭션에서 호출할 수 있다.
 
 ## 전진 migration과 운영 점검
 
 `1795761000000-CalendarInbox`는 기존 notification의 발생 시각을 fact에서 복원해 created_at으로 보존하고 sequence/read_at을 추가한다. 기존 항목은 읽음 여부를 추정하지 않고 미읽음으로 시작한다. 새 preferences/calendar_schedules/calendar_commands/phone_changes 테이블, Event의 schedule_updated_at을 추가한다. 과거 행사 알림을 몰아서 생성하지 않도록 기존 행의 schedule_updated_at은 migration 시각이다. 자동 synchronize/migrate는 없다. migration → 새 API 전체 전환 → 웹 → 리마인더 활성화 순서다. 새 자료가 생긴 뒤 down은 금지하며 보존 가능한 전진 복구를 한다.
 
-운영 확인 항목: REMINDERS_ENABLED 또는 승인된 CLI 스케줄, API 서버 시각/DB 가용성, Octomo 설정·실기기 문자 앱과 번호 인증, 기존 SOLAPI 콜백, SIGNUP_TERMS_JSON의 실제 법률 문서/버전. 서버가 초안 약관을 반환하면 화면에도 초안임을 표시한다. 실제 SMS/메일, 운영 DB/인프라, 실기기 인증은 이 PR 테스트에서 실행하지 않는다.
+관리 CLI는 공통 초기화에서 해당 프로세스의 `REMINDERS_ENABLED=false`를 Nest 초기화 전에 설정한다. API·Parameter Store 설정은 바꾸지 않는다. 수동 리마인더 CLI는 제거했으며 운영 이미지에는 관리 CLI 공통 초기화 파일을 포함한다. 이 변경에 별도 인프라·필수 환경변수·DB migration은 필요하지 않으며 새 API 이미지를 빌드·배포하면 된다.
+
+운영 확인 항목: REMINDERS_ENABLED와 `REMINDER_RETRIES_EXHAUSTED` 오류 로그, API 서버 시각/DB 가용성, Octomo 설정·실기기 문자 앱과 번호 인증, 기존 SOLAPI 콜백, SIGNUP_TERMS_JSON의 실제 법률 문서/버전. 서버가 초안 약관을 반환하면 화면에도 초안임을 표시한다. 실제 SMS/메일, 운영 DB/인프라, 실기기 인증은 이 PR 테스트에서 실행하지 않는다.
 
 ## 원본과 차이
 

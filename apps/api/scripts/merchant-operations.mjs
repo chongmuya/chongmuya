@@ -2,8 +2,7 @@ import "reflect-metadata";
 import { config } from "dotenv";
 import { parseArgs } from "node:util";
 import { open } from "node:fs/promises";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "../dist/app.module.js";
+import { createOperationsApplication } from "./operations-application.mjs";
 import { RestaurantOperationsService } from "../dist/modules/restaurants/restaurant-operations.service.js";
 import { MessageDeliveryService } from "../dist/modules/reservations/message-delivery.service.js";
 import { MerchantRepliesService } from "../dist/modules/reservations/merchant-replies.service.js";
@@ -94,10 +93,7 @@ async function run() {
   if (v.action === "change-recipient") uuid(v.contact);
   // Reserve the export before a mutation, so an existing file cannot hide a completed action.
   if (v.output) output = await open(v.output, "wx", 0o600);
-  app = await NestFactory.createApplicationContext(AppModule, {
-    logger: false,
-    abortOnError: false,
-  });
+  app = await createOperationsApplication();
   const deliveries = app.get(MessageDeliveryService);
   let result;
   if (["owner-link", "publish"].includes(v.action))

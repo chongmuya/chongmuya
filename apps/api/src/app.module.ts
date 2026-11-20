@@ -7,6 +7,7 @@ import { ReservationsModule } from "./modules/reservations/reservations.module.j
 import { EventsModule } from "./modules/events/events.module.js";
 import { GroupsModule } from "./modules/groups/groups.module.js";
 import { Module } from "@nestjs/common";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ConfigModule } from "./config/config.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 
@@ -14,6 +15,7 @@ import { AuthModule } from "./modules/auth/auth.module.js";
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     HandoversModule,
     FavoritesModule,
     ConfigModule,

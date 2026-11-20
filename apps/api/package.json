@@ -22,7 +22,6 @@
     "merchant:operations": "node scripts/merchant-operations.mjs",
     "db:demo:links": "node dist/database/seeds/run-demo.js links",
     "reservation:completion": "node scripts/reservation-completion.mjs",
-    "calendar:reminders": "node scripts/calendar-reminders.mjs",
     "db:seed": "node dist/database/seeds/run-demo.js seed",
     "db:reset": "node dist/database/seeds/run-demo.js reset",
     "data:restaurants": "node scripts/restaurant-data.mjs"
@@ -34,6 +33,7 @@
     "@nestjs/jwt": "12.0.3",
     "@nestjs/passport": "12.0.0",
     "@nestjs/platform-express": "12.2.0",
+    "@nestjs/schedule": "12.0.4",
     "@nestjs/swagger": "12.0.4",
     "@nestjs/typeorm": "12.0.2",
     "cfb": "^1.2.2",
