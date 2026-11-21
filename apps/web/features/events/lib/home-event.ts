@@ -224,19 +224,3 @@ export function homeActionPath(
   }
   return homeEventPath(event, next.view);
 }
-
-export function compactEventDate(value: string | null) {
-  if (!value) return "일정 미정";
-  const parts = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "numeric",
-    day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(value));
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((item) => item.type === type)?.value ?? "";
-  return `${part("month")}.${part("day")} (${part("weekday")}) ${part("hour")}:${part("minute")}`;
-}

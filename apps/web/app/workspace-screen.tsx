@@ -143,7 +143,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
     !params.get("event")
   )
     return (
-      <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-5 pt-[max(clamp(16px,6.0254svh,57px),env(safe-area-inset-top))]">
+      <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background px-5 pt-[max(clamp(24px,8.14svh,77px),env(safe-area-inset-top))]">
         <div className="min-w-0 flex-1 pb-8">{content}</div>
         <OrganizerNavigation
           current="records"

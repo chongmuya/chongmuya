@@ -10,31 +10,60 @@ export function GroupSwitcher({
   groups,
   selected,
   view,
+  personal = false,
   createPath = "/groups/new",
   onClose,
   children,
 }: {
   groups: Group[];
   selected?: string;
-  view: "home" | "roster" | "groups" | "mypage";
+  view: "home" | "roster" | "groups" | "mypage" | "records";
+  personal?: boolean;
   createPath?: string;
   onClose: () => void;
   children?: ReactNode;
 }) {
-  const destination =
-    view === "home"
-      ? "/?group="
-      : view === "mypage"
-        ? "/mypage?group="
-        : view === "roster"
-          ? "/mypage?view=roster&group="
-          : "/mypage?view=groups&group=";
+  const destination = {
+    home: "/?group=",
+    mypage: "/mypage?group=",
+    roster: "/mypage?view=roster&group=",
+    groups: "/mypage?view=groups&group=",
+    records: "/events?view=records&group=",
+  }[view];
   return (
     <BottomSheet
       title={view === "home" ? "모임·행사 선택" : "모임 전환"}
       onClose={onClose}
     >
       <ul className="my-5 space-y-2">
+        {view === "records" &&
+          [
+            {
+              label: "전체 행사",
+              href: "/events?view=records",
+              current: !selected && !personal,
+            },
+            {
+              label: "개인 행사",
+              href: "/events?view=records&scope=personal",
+              current: !selected && personal,
+            },
+          ].map(({ label, href, current }) => (
+            <li key={href}>
+              <Link
+                replace
+                href={href}
+                aria-current={current ? "page" : undefined}
+                onClick={onClose}
+                className={buttonStyles({
+                  variant: current ? "solid" : "outline",
+                  className: "w-full justify-start",
+                })}
+              >
+                {label}
+              </Link>
+            </li>
+          ))}
         {view === "home" && (
           <li>
             <Link

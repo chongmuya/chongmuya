@@ -1,10 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/shared/lib/cn";
+import { compactEventDate } from "@/shared/lib/korean-date";
 import type { EventSummary } from "@/features/settlements/types";
 import type { Event } from "../types/event.types";
 import {
-  compactEventDate,
   eventCardView,
   homeEventPath,
   reservationLabel,
