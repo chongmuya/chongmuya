@@ -9,7 +9,7 @@ export function ChangeResult({
   latest,
   organizer,
   onReview,
-  onDetails,
+  onContinue,
   onCancel,
   footer,
 }: {
@@ -17,7 +17,7 @@ export function ChangeResult({
   latest: Change;
   organizer: boolean;
   onReview: () => void;
-  onDetails?: () => void;
+  onContinue: () => void;
   onCancel?: () => void;
   footer?: ReactNode;
 }) {
@@ -138,7 +138,7 @@ export function ChangeResult({
       )}
       {rejected && (
         <div className="space-y-2">
-          <Button className="w-full" onClick={onDetails ?? onReview}>
+          <Button className="w-full" onClick={onContinue}>
             {q.cancellation ? "환불 내역 확인하기" : "기존 예약으로 진행하기"}
           </Button>
           {!q.cancellation && (

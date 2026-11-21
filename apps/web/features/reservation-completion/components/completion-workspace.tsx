@@ -103,6 +103,7 @@ function CompletionContent({
     if (panel) dialogTitle.current?.focus();
   }, [panel]);
   const [cancelFirst, setCancelFirst] = useState(false);
+  const [continuedChangeId, setContinuedChangeId] = useState<string>();
   const query = useQuery(completionQuery(id, access, visible));
   const denied = isAccessError(query.error);
   useEffect(() => {
@@ -129,7 +130,21 @@ function CompletionContent({
       c.kind !== "REFUND" &&
       (c.status === "REQUESTED" || c.status === "PROPOSED"),
   );
-  const latest = pending ?? q.changes.find((c) => c.kind !== "REFUND");
+  const mostRecent = pending ?? q.changes.find((c) => c.kind !== "REFUND");
+  const latest =
+    organizer &&
+    !q.cancellation &&
+    mostRecent?.status === "REJECTED" &&
+    mostRecent.id === continuedChangeId
+      ? undefined
+      : mostRecent;
+  const rejectionReason =
+    latest?.status === "REJECTED" ? latest.resolutionReason : undefined;
+  const needsReceipt =
+    !q.cancellation &&
+    q.guidance.kind === "REQUIRED" &&
+    guidanceReady &&
+    !q.receipt;
   const review = () => {
     setCancelFirst(false);
     setPanel("changes");
@@ -186,7 +201,10 @@ function CompletionContent({
               latest={latest}
               organizer
               onReview={review}
-              onDetails={() => setPanel("details")}
+              onContinue={() => {
+                if (q.cancellation) setPanel("details");
+                else setContinuedChangeId(latest.id);
+              }}
               onCancel={() => {
                 setCancelFirst(true);
                 setPanel("changes");
@@ -249,19 +267,27 @@ function CompletionContent({
           <AgreementTerms data={q} compact onOpen={() => setPanel("details")} />
           <OrderSummary data={q} />
           <DepositSummary data={q} />
-          {(pending ||
-            latest?.status === "REJECTED" ||
-            (!q.cancellation &&
-              q.guidance.kind === "REQUIRED" &&
-              guidanceReady &&
-              !q.receipt)) && (
-            <p className="rounded-[12px] bg-[#fff2e0] px-3.5 py-3 text-xs text-[#b46a00]">
-              {pending
-                ? "총무의 문의 내용을 확인하고 바꿀 조건을 제안해 주세요. 총무가 수락하면 적용돼요."
-                : latest?.status === "REJECTED"
-                  ? latest.resolutionReason
-                  : "실제 입금을 확인한 뒤 ‘입금을 확인했어요’를 눌러 주세요. 필요한 확인이 완료되면 예약이 확정돼요."}
-            </p>
+          {(pending || rejectionReason || needsReceipt) && (
+            <div className="space-y-2 rounded-[12px] bg-[#fff2e0] px-3.5 py-3 text-xs text-[#b46a00]">
+              {pending ? (
+                <p>
+                  총무의 문의 내용을 확인하고 바꿀 조건을 제안해 주세요. 총무가
+                  수락하면 적용돼요.
+                </p>
+              ) : (
+                <>
+                  {rejectionReason && (
+                    <p>문의 처리 불가 안내 · {rejectionReason}</p>
+                  )}
+                  {needsReceipt && (
+                    <p>
+                      실제 입금을 확인한 뒤 ‘입금을 확인했어요’를 눌러 주세요.
+                      필요한 확인이 완료되면 예약이 확정돼요.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
           )}
           <Button
             className="w-full"
