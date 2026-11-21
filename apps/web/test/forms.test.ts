@@ -19,6 +19,9 @@ import { HomeEntryProvider } from "../features/home/components/home-entry-provid
 import { HomeScreen } from "../features/home/components/home-screen";
 import { WorkspaceContent } from "../app/workspace-screen";
 import { EventForm } from "../features/events/components/event-form";
+import { eventKeys } from "../features/events/api/events.queries";
+import { ConditionsForm } from "../features/reservations/components/conditions-form";
+import { initialConditions } from "../features/reservations/schemas/conditions.schema";
 import { GroupForm } from "../features/groups/components/group-form";
 import { AuthProvider } from "../features/auth/components/auth-provider";
 import { AuthEntryScreen } from "../features/auth/components/auth-entry-screen";
@@ -28,6 +31,130 @@ import { previewTerms } from "./support/signup-terms";
 import { AuthScreen } from "../features/auth/components/auth-screen";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
+import { koreanDateOnly } from "../shared/lib/korean-date";
+
+test("event creation hands the reservation date and guest estimate to the next step", async () => {
+  const eventId = "00000000-0000-4000-8000-000000000221";
+  const date = koreanDateOnly(new Date(Date.now() + 3 * 86400_000));
+  let body: Record<string, unknown> | undefined;
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method !== "POST") return [] as T;
+    body = JSON.parse(String(options.body));
+    return {
+      id: eventId,
+      name: body?.name,
+      scheduledAt: body?.scheduledAt,
+    } as T;
+  };
+  const cache = client();
+  const view = await render(
+    createElement(EventForm, { accountId: "a", request }),
+    cache,
+  );
+  try {
+    await fill(view.container, "name", "예약 행사");
+    const reserve = [
+      ...view.container.querySelectorAll<HTMLInputElement>("input[type=radio]"),
+    ].find((radio) =>
+      radio.closest("label")?.textContent?.includes("예약이 필요해요"),
+    );
+    assert(reserve);
+    await act(async () => reserve.click());
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /날짜를 입력해 주세요/),
+    );
+    assert.equal(body, undefined);
+    await chooseDate(view.container, "date", date);
+    await chooseTime(view.container, "time", "00:00");
+    await fill(view.container, "expectedGuests", "24");
+    await submit(view.container);
+    await until(() =>
+      assert.deepEqual(view.navigations, [
+        `/restaurants?event=${eventId}&inquiry=1`,
+      ]),
+    );
+    assert.equal(
+      (body as Record<string, unknown> | undefined)?.scheduledAt,
+      new Date(`${date}T00:00:00+09:00`).toISOString(),
+    );
+    assert.equal(
+      cache.getQueryData(eventKeys.guestEstimate("a", eventId)),
+      "24",
+    );
+    assert.equal(
+      cache.getQueryData(eventKeys.guestEstimate("b", eventId)),
+      undefined,
+    );
+    assert.equal(
+      (body as Record<string, unknown> | undefined)?.expectedGuests,
+      undefined,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("first inquiry summarizes a saved date and disables reverse auction, while editable schedules keep both pickers", async () => {
+  const startsAt = "2099-12-01T09:30:45.000Z";
+  const initial = {
+    ...initialConditions(
+      { name: "총무", phone: "01000000000" } as Parameters<
+        typeof initialConditions
+      >[0],
+      startsAt,
+    ),
+    expectedGuests: "24",
+  };
+  for (const savedStartsAt of [startsAt, undefined]) {
+    let next: typeof initial | undefined;
+    const view = await render(
+      createElement(ConditionsForm, {
+        initial,
+        savedStartsAt,
+        onContinue: (values) => {
+          next = values;
+        },
+      }),
+    );
+    try {
+      assert.match(view.container.textContent!, /건대입구 · 세종대/);
+      assert.match(
+        view.container.textContent!,
+        /사장님 제안 받기 \(역경매\)준비 중/,
+      );
+      assert.equal(
+        view.container.querySelectorAll('input[name="findingMethod"]:disabled')
+          .length,
+        1,
+      );
+      assert.equal(
+        !!view.container.querySelector("#inquiry-date"),
+        !savedStartsAt,
+      );
+      assert.equal(
+        !!view.container.querySelector("#inquiry-time"),
+        !savedStartsAt,
+      );
+      assert.equal(
+        view.container.querySelector("#inquiry-expectedGuests"),
+        null,
+      );
+      if (savedStartsAt) assert.match(view.container.textContent!, /18:30/);
+      await submit(view.container);
+      await until(() => assert.equal(next?.time, "18:30"));
+      await click(view.container, "예상 인원 변경");
+      await fill(view.container, "expectedGuests", "25");
+      await submit(view.container);
+      await until(() => assert.equal(next?.expectedGuests, "25"));
+    } finally {
+      await view.unmount();
+    }
+  }
+});
 
 test("empty group management links to the reusable optional registration flow", async () => {
   const cache = client();

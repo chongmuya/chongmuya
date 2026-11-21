@@ -25,6 +25,14 @@ export function AttendanceRoster({
 }) {
   const [search, setSearch] = useState("");
   const [attendingOnly, setAttendingOnly] = useState(false);
+  const term = search.trim();
+  const shown = people.filter(
+    (person) =>
+      (!attendingOnly || person.response.finalState === "ATTENDING") &&
+      [person.name, person.label, person.phoneLast4].some((value) =>
+        value?.includes(term),
+      ),
+  );
   return (
     <>
       <label className="block text-sm">
@@ -52,69 +60,66 @@ export function AttendanceRoster({
         참석만 보기
       </label>
       <ul className="divide-y divide-border">
-        {people
-          .filter(
-            (person) =>
-              (!attendingOnly || person.response.finalState === "ATTENDING") &&
-              [person.name, person.label, person.phoneLast4].some((value) =>
-                value?.includes(search.trim()),
-              ),
-          )
-          .map((person) => (
-            <li key={person.id} className="py-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <strong className="break-words text-sm">{person.name}</strong>
-                  {(person.phoneLast4 || person.label) && (
-                    <p className="text-xs text-muted">
-                      {[person.phoneLast4, person.label]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  )}
-                </div>
-                <div className="shrink-0 text-right">
-                  {person.response.finalState === "UNANSWERED" && (
-                    <span className="mr-2 text-xs text-secondary">미응답</span>
-                  )}
-                  <div
-                    role="group"
-                    aria-label={person.name + " 참석 상태"}
-                    className="inline-flex gap-1 rounded-pill bg-soft p-1"
-                  >
-                    {(["ATTENDING", "ABSENT"] as const).map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={person.response.finalState === value}
-                        disabled={saving}
-                        onClick={() => onCorrect(person, value)}
-                        className={cn(
-                          "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold",
-                          person.response.finalState === value
-                            ? "bg-brand text-copy"
-                            : "text-secondary",
-                        )}
-                      >
-                        {stateLabel(value)}
-                      </button>
-                    ))}
-                  </div>
-                  {person.response.managerOverride !== null && (
-                    <button
-                      type="button"
-                      className="ml-auto block py-1 text-xs text-secondary underline"
-                      disabled={saving}
-                      onClick={() => onCorrect(person, null)}
-                    >
-                      정정 해제
-                    </button>
-                  )}
-                </div>
+        {shown.map((person) => (
+          <li key={person.id} className="py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <strong className="break-words text-sm">{person.name}</strong>
+                {(person.phoneLast4 || person.label) && (
+                  <p className="text-xs text-muted">
+                    {[person.phoneLast4, person.label]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
               </div>
-            </li>
-          ))}
+              <div className="shrink-0 text-right">
+                {person.response.finalState === "UNANSWERED" && (
+                  <span className="mr-2 text-xs text-secondary">미응답</span>
+                )}
+                <div
+                  role="group"
+                  aria-label={person.name + " 참석 상태"}
+                  className="inline-flex gap-1 rounded-pill bg-soft p-1"
+                >
+                  {(["ATTENDING", "ABSENT"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={person.response.finalState === value}
+                      disabled={saving}
+                      onClick={() => onCorrect(person, value)}
+                      className={cn(
+                        "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold",
+                        person.response.finalState === value
+                          ? "bg-brand text-copy"
+                          : "text-secondary",
+                      )}
+                    >
+                      {stateLabel(value)}
+                    </button>
+                  ))}
+                </div>
+                {person.response.managerOverride !== null && (
+                  <button
+                    type="button"
+                    className="ml-auto block py-1 text-xs text-secondary underline"
+                    disabled={saving}
+                    onClick={() => onCorrect(person, null)}
+                  >
+                    정정 해제
+                  </button>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
       </ul>
+      {people.length > 0 && shown.length === 0 && (
+        <p role="status" className="text-sm text-secondary">
+          조건에 맞는 참여자가 없어요.
+        </p>
+      )}
       {!people.length && (
         <Link
           className="text-sm text-link underline"

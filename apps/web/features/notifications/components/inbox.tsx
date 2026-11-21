@@ -232,16 +232,6 @@ function InboxContent({
                 })}
               </ul>
             )}
-            <div className="flex gap-3">
-              {before && (
-                <Button variant="outline" onClick={() => setBefore(undefined)}>
-                  최신 알림
-                </Button>
-              )}
-              {data.next && (
-                <Button onClick={() => setBefore(data.next!)}>이전 알림</Button>
-              )}
-            </div>
           </>
         ) : (
           !q.isError &&
@@ -249,6 +239,16 @@ function InboxContent({
             <LoadingState>불러오는 중…</LoadingState>
           )
         )}
+        <div className="flex gap-3">
+          {before && (
+            <Button variant="outline" onClick={() => setBefore(undefined)}>
+              최신 알림
+            </Button>
+          )}
+          {data?.next && (
+            <Button onClick={() => setBefore(data.next!)}>이전 알림</Button>
+          )}
+        </div>
       </div>
     </StepLayout>
   );

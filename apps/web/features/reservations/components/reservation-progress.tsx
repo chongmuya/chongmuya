@@ -394,18 +394,45 @@ export function ReservationProgress({
     return <LoadingState>문의 확인 중…</LoadingState>;
   if (!result.data)
     return (
-      <section className="my-6 rounded-control bg-surface p-5 shadow-card">
-        <h2 className="text-xl font-bold">장소도 함께 알아볼까요?</h2>
-        <p className="my-3 text-sm text-muted">
-          모임이나 명단 없이도 1~3곳에 예약 조건을 문의할 수 있어요.
-        </p>
-        <Link
-          href={`/restaurants?event=${eventId}&inquiry=1`}
-          className={buttonStyles({ className: "w-full" })}
-        >
-          예약 조건 입력 · 매장 찾기
-        </Link>
-      </section>
+      <div className="my-6 space-y-6">
+        <section className="rounded-control bg-surface px-5 py-10 text-center shadow-card">
+          <Image
+            src="/images/reservations/change-calendar.svg"
+            alt=""
+            width={48}
+            height={49}
+            loading="eager"
+            className="mx-auto mb-5"
+          />
+          <h2 className="text-xl font-bold break-keep">
+            아직 보낸 예약 문의가 없어요
+          </h2>
+          <p className="mt-3 text-sm text-muted">
+            참석 확인과 정산부터 시작할 수 있어요.
+          </p>
+          <Link
+            href={`/events?event=${eventId}&view=attendance`}
+            className={buttonStyles({ className: "mt-5 rounded-control" })}
+          >
+            참석 관리하기 <span aria-hidden="true">→</span>
+          </Link>
+        </section>
+        <section className="rounded-control bg-surface p-5 shadow-card">
+          <h2 className="text-base font-semibold">나중에 예약이 필요해지면?</h2>
+          <p className="mt-2 mb-4 text-xs text-muted">
+            원하는 조건을 입력해 최대 3곳에 한 번에 문의할 수 있어요.
+          </p>
+          <Link
+            href={`/restaurants?event=${eventId}&inquiry=1`}
+            className={buttonStyles({
+              variant: "outline",
+              className: "w-full",
+            })}
+          >
+            예약 준비 시작하기
+          </Link>
+        </section>
+      </div>
     );
   const inquiry = result.data;
   return (

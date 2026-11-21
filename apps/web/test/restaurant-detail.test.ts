@@ -49,6 +49,7 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
         selected: true,
         full: false,
         selectionBlocked: false,
+        opensInquirySheet: false,
         targetCount: 1,
         onSelect: () => {
           removed++;
@@ -156,6 +157,7 @@ test("detail cannot continue while another selected restaurant is unverified", a
   const other = { ...restaurant, id: "other", name: "다른 매장" };
   let otherResponse = () => firstRead.promise;
   let inquiries = 0;
+  let remaining: string[] | undefined;
   globalThis.fetch = async (input) => {
     const path = new URL(String(input)).pathname;
     if (path.endsWith("/restaurants/other")) return otherResponse();
@@ -172,7 +174,9 @@ test("detail cannot continue while another selected restaurant is unverified", a
         restaurantId: restaurant.id,
         view: "detail",
         page: 1,
-        onSelect() {},
+        onSelect(ids) {
+          remaining = ids;
+        },
         onNavigate() {},
         onInquiry() {
           inquiries++;
@@ -205,6 +209,24 @@ test("detail cannot continue while another selected restaurant is unverified", a
       await act(async () => proceed.click());
       assert.equal(inquiries, inquiryAvailable ? 1 : 0);
     }
+
+    const recheck = deferred<Response>();
+    otherResponse = () => recheck.promise;
+    await act(async () => {
+      void view.cache.refetchQueries({ queryKey: otherQuery });
+    });
+    await until(() => assert.equal(proceed.disabled, true));
+    assert.equal(view.cache.getQueryState(otherQuery)?.status, "success");
+    assert.equal(view.cache.getQueryState(otherQuery)?.fetchStatus, "fetching");
+    await act(async () => proceed.click());
+    assert.equal(inquiries, 1);
+    await click(view.container, "문의 담기 취소");
+    assert.deepEqual(remaining, [other.id]);
+
+    await act(async () => recheck.resolve(Response.json(other)));
+    await until(() => assert.equal(proceed.disabled, false));
+    await act(async () => proceed.click());
+    assert.equal(inquiries, 2);
   } finally {
     await view.unmount();
     globalThis.fetch = original;
