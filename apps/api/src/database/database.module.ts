@@ -4,6 +4,7 @@ import { ConfigModule } from "../config/config.module.js";
 import { ConfigService } from "../config/config.service.js";
 import { databaseOptions } from "./database-options.js";
 import { DatabaseService } from "./database.service.js";
+import { RequestLimitCleanupService } from "./request-limit-cleanup.service.js";
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { DatabaseService } from "./database.service.js";
       }),
     }),
   ],
-  providers: [DatabaseService],
+  providers: [DatabaseService, RequestLimitCleanupService],
   exports: [DatabaseService],
 })
 export class DatabaseModule {}

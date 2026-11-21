@@ -23,10 +23,9 @@ async function json<T>(response: Response, status = 200): Promise<T> {
 }
 test("event roster imports preserve 20 identities; round responses, public first-link race, overrides, closing and reservation snapshots", async (t) => {
   const { call, signup, db, logs } = await startResourceApplication(t);
-  for (const key of ["info", "open", "save"])
-    await db
-      .getRepository(AuthAttempt)
-      .delete({ key: tokenHash(`attendance:${key}:ip:127.0.0.1`) });
+  await db
+    .getRepository(AuthAttempt)
+    .delete({ key: tokenHash("attendance:ip:127.0.0.1") });
   const owner = await signup(),
     other = await signup();
   const members = Array.from({ length: 20 }, (_, i) => ({
@@ -346,10 +345,9 @@ test("event roster imports preserve 20 identities; round responses, public first
 
 test("pending identity reviews remain separate from counts, resolve atomically with conflict checks and never pin duplicate identities", async (t) => {
   const { call, signup, db } = await startResourceApplication(t);
-  for (const key of ["info", "open", "save"])
-    await db
-      .getRepository(AuthAttempt)
-      .delete({ key: tokenHash(`attendance:${key}:ip:127.0.0.1`) });
+  await db
+    .getRepository(AuthAttempt)
+    .delete({ key: tokenHash("attendance:ip:127.0.0.1") });
   const owner = await signup();
   const event = await json<{ id: string }>(
       await call("events", owner, "POST", { name: "예약 없는 개인 행사" }),
