@@ -347,7 +347,7 @@ export class KakaoFlowService {
     input: KakaoSignupDto,
     refresh?: string,
   ) {
-    this.terms.validate(input.consents);
+    const consents = this.terms.validate(input.consents);
     const { db, hint } = await this.prepare(browser, ip);
     return db.transaction(async (manager) => {
       await this.identityLock(manager, hint.sub!);
@@ -417,7 +417,7 @@ export class KakaoFlowService {
       });
       await manager.insert(
         AccountConsent,
-        input.consents.map((consent) => ({
+        consents.map((consent) => ({
           accountId: account.id,
           termId: consent.id,
           version: consent.version,

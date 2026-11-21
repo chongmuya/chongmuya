@@ -17,6 +17,15 @@ export function SignupFlow(
   },
 ) {
   const flow = useSignupFlow(props);
+  const detail = props.terms.find((term) => term.id === flow.detail);
+  const choose = (accepted: boolean) => {
+    if (detail && detail !== flow.readOnlyPolicy)
+      flow.methods.setValue(detail.id, accepted, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    flow.setDetail(null);
+  };
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!flow.focus)
@@ -41,25 +50,15 @@ export function SignupFlow(
           <SignupComplete onContinue={props.onComplete} />
         ) : (
           <FormProvider {...flow.methods}>
-            {flow.detail ? (
+            {detail ? (
               <SignupTermsDetail
-                term={props.terms.find((term) => term.id === flow.detail)!}
-                onAgree={() => {
-                  if (flow.detail)
-                    flow.methods.setValue(flow.detail, true, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    });
-                  flow.setDetail(null);
-                }}
-                onClose={() => {
-                  if (flow.detail)
-                    flow.methods.setValue(flow.detail, false, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    });
-                  flow.setDetail(null);
-                }}
+                term={detail}
+                onAgree={
+                  detail === flow.readOnlyPolicy
+                    ? undefined
+                    : () => choose(true)
+                }
+                onClose={() => choose(false)}
               />
             ) : (
               <form
@@ -78,7 +77,8 @@ export function SignupFlow(
                   {flow.step === "terms" && (
                     <SignupTerms
                       onDetail={flow.setDetail}
-                      terms={props.terms}
+                      terms={flow.consentTerms}
+                      privacyPolicy={flow.readOnlyPolicy}
                     />
                   )}
                   {flow.step === "information" && (

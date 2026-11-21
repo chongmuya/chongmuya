@@ -19,7 +19,13 @@ const termSchema = z.object({
   version: z.string(),
   url: z
     .url()
-    .refine((value) => new URL(value).protocol === "https:")
+    .refine((value) => {
+      const url = new URL(value);
+      return (
+        url.protocol === "https:" ||
+        (url.protocol === "http:" && url.origin === globalThis.location?.origin)
+      );
+    })
     .nullable(),
   body: z.array(z.string()),
   draft: z.boolean(),

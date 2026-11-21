@@ -80,7 +80,7 @@ export class AuthService {
     });
   }
   async signup(input: SignupDto, ip: string, requester?: string) {
-    this.terms.validate(input.consents);
+    const consents = this.terms.validate(input.consents);
     const db = await this.limit(ip, input.email);
     const passwordHash = await hashPassword(input.password);
     return db.transaction(async (manager) => {
@@ -121,7 +121,7 @@ export class AuthService {
         throw new DomainHttpException("EMAIL_ALREADY_REGISTERED");
       await manager.insert(
         AccountConsent,
-        input.consents.map((consent) => ({
+        consents.map((consent) => ({
           accountId: account.id,
           termId: consent.id,
           version: consent.version,

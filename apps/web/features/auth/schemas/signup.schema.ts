@@ -21,7 +21,7 @@ export const signupSchema = z
   .object({
     serviceTerms: requiredConsent,
     privacyCollection: requiredConsent,
-    privacyPolicy: requiredConsent,
+    privacyPolicy: z.boolean(),
     marketing: z.boolean(),
     email: signupEmailSchema,
     name: z

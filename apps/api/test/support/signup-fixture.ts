@@ -8,6 +8,12 @@ import {
   signupTermsVersion,
 } from "../../src/modules/auth/utils/signup-terms.js";
 
+export const legacyPolicyConsent = {
+  id: "privacyPolicy",
+  version: "old-policy-version",
+  accepted: false,
+} as const;
+
 // Test-only precondition for session/resource tests. Actual verification endpoints
 // and the upstream adapter are exercised separately in phone-signup/octomo tests.
 export async function signupFixture(
@@ -46,11 +52,13 @@ export async function signupFixture(
       name: "테스트 이름",
       phone: "01012345678",
       phoneVerificationId: id,
-      consents: signupTerms.map((term) => ({
-        id: term.id,
-        version: signupTermsVersion,
-        accepted: term.required,
-      })),
+      consents: signupTerms
+        .filter((term) => term.id !== "privacyPolicy")
+        .map((term) => ({
+          id: term.id,
+          version: signupTermsVersion,
+          accepted: term.required,
+        })),
     },
   };
 }

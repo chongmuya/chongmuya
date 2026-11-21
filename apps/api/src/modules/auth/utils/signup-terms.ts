@@ -1,9 +1,11 @@
 // Editable draft, not a representation that operational/legal review is complete.
 // Publish a new version whenever text changes; historical consent versions stay intact.
-export const signupTermsVersion = "draft-2026-11-18";
+export const legacySignupTermsVersion = "draft-2026-11-18";
+export const signupTermsVersion = "2026-11-21";
 export const signupTerms = [
   {
     id: "serviceTerms",
+    anchor: "service-terms",
     title: "이용약관 동의",
     required: true,
     body: [
@@ -16,6 +18,7 @@ export const signupTerms = [
   },
   {
     id: "privacyCollection",
+    anchor: "privacy-collection",
     title: "개인정보 수집 및 이용동의",
     required: true,
     body: [
@@ -28,8 +31,9 @@ export const signupTerms = [
   },
   {
     id: "privacyPolicy",
+    anchor: "privacy-policy",
     title: "개인정보 처리방침",
-    required: true,
+    required: false,
     body: [
       "이 문서는 총무야 개인정보 처리방침 초안입니다. 운영자·개인정보 담당자와 연락처, 보관·파기 및 권리 행사 절차는 정식 운영 전에 확정해야 합니다.",
       "총무야는 회원 식별, 로그인과 서비스 제공을 위해 가입 정보와 동의 기록을 처리합니다. 비밀번호는 원문 대신 단방향 해시로 저장하고 로그인 세션은 HttpOnly 쿠키를 사용합니다.",
@@ -41,6 +45,7 @@ export const signupTerms = [
   },
   {
     id: "marketing",
+    anchor: "marketing",
     title: "마케팅 정보 수신",
     required: false,
     body: [

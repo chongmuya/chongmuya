@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError } from "@/shared/http/api-error";
-import type { SignupFormRequest, SignupTerm } from "../types/signup.types";
+import type {
+  SignupTermId,
+  SignupFormRequest,
+  SignupTerm,
+} from "../types/signup.types";
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import {
   signupDefaults,
@@ -34,20 +38,24 @@ export function useSignupFlow({
   terms: SignupTerm[];
   kakao?: { email: string | null; trustedEmail: boolean };
 }) {
+  const privacyPolicy = terms.find((term) => term.id === "privacyPolicy");
+  const schema = kakao ? kakaoSignupSchema : signupSchema;
   const methods = useForm<SignupValues>({
-    resolver: zodResolver(kakao ? kakaoSignupSchema : signupSchema),
+    // The API may still require an explicit policy choice during a web-first release.
+    resolver: zodResolver(
+      privacyPolicy?.required
+        ? schema.refine((values) => values.privacyPolicy, {
+            path: ["privacyPolicy"],
+            message: "필수 약관에 동의해 주세요.",
+          })
+        : schema,
+    ),
     defaultValues: { ...signupDefaults, email: kakao?.email ?? "" },
     shouldUnregister: false,
     mode: "onTouched",
   });
   const [step, setStep] = useState<SignupStep>("terms");
-  const [detail, setDetail] = useState<
-    | keyof Pick<
-        SignupValues,
-        "serviceTerms" | "privacyCollection" | "privacyPolicy" | "marketing"
-      >
-    | null
-  >(null);
+  const [detail, setDetail] = useState<SignupTermId | null>(null);
   const [pending, setPending] = useState(false);
   const [complete, setComplete] = useState(false);
   const [focus, setFocus] = useState<keyof SignupValues | null>(null);
@@ -68,19 +76,25 @@ export function useSignupFlow({
   const providerEmailVerified =
     !!kakao?.trustedEmail &&
     (values.email ?? "").trim().toLowerCase() === kakao.email;
+  const consentTerms = useMemo(
+    () => terms.filter((term) => term.id !== "privacyPolicy" || term.required),
+    [terms],
+  );
   const previousTerms = useRef(
-    new Map(terms.map((term) => [term.id, `${term.version}:${term.required}`])),
+    new Map(
+      consentTerms.map((term) => [term.id, `${term.version}:${term.required}`]),
+    ),
   );
   const [termsNotice, setTermsNotice] = useState<string>();
   useEffect(() => {
     if (complete) return;
-    const changed = terms.filter(
+    const changed = consentTerms.filter(
       (term) =>
         previousTerms.current.get(term.id) !==
         `${term.version}:${term.required}`,
     );
     previousTerms.current = new Map(
-      terms.map((term) => [term.id, `${term.version}:${term.required}`]),
+      consentTerms.map((term) => [term.id, `${term.version}:${term.required}`]),
     );
     if (!changed.length) return;
     for (const term of changed)
@@ -90,7 +104,7 @@ export function useSignupFlow({
     );
     setDetail(null);
     setStep("terms");
-  }, [terms, methods, complete]);
+  }, [consentTerms, methods, complete]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -166,7 +180,7 @@ export function useSignupFlow({
                   ? { emailVerificationId: email.state.id! }
                   : {}),
                 phoneVerificationId: phone.state.id!,
-                consents: terms.map((term) => ({
+                consents: consentTerms.map((term) => ({
                   id: term.id,
                   version: term.version,
                   accepted: input[term.id],
@@ -252,6 +266,8 @@ export function useSignupFlow({
   };
   return {
     methods,
+    consentTerms,
+    readOnlyPolicy: privacyPolicy?.required ? undefined : privacyPolicy,
     step,
     detail,
     setDetail,

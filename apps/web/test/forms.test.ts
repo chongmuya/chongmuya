@@ -839,6 +839,10 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     );
     assert.equal(body.passwordConfirm, undefined);
     assert.equal(body.verified, undefined);
+    assert.deepEqual(
+      body.consents.map((term: { id: string }) => term.id),
+      ["serviceTerms", "privacyCollection", "marketing"],
+    );
     return Response.json({ authenticated: true, account }, { status: 201 });
   };
   const view = await render(
@@ -864,7 +868,7 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     await until(() =>
       assert(view.container.querySelector('input[name="serviceTerms"]')),
     );
-    for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"]) {
+    for (const name of ["serviceTerms", "privacyCollection"]) {
       await act(async () =>
         view.container
           .querySelector<HTMLInputElement>(`input[name="${name}"]`)!
@@ -938,6 +942,14 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     assert.match(view.container.textContent!, /휴대폰 인증이 완료/);
     termsFail = false;
     terms = previewTerms.map((term) =>
+      term.id === "privacyPolicy" ? { ...term, version: "new-policy" } : term,
+    );
+    await act(async () => {
+      await view.cache.invalidateQueries({ queryKey: ["signup", "terms"] });
+    });
+    assert.deepEqual(values(), before);
+    assert.doesNotMatch(view.container.textContent!, /약관이 변경되었어요/);
+    terms = previewTerms.map((term) =>
       term.id === "serviceTerms" ? { ...term, version: "new-version" } : term,
     );
     await act(async () => {
@@ -954,7 +966,7 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     );
     assert.equal(
       view.container.querySelector<HTMLInputElement>(
-        'input[name="privacyPolicy"]',
+        'input[name="privacyCollection"]',
       )!.checked,
       true,
     );
@@ -1447,6 +1459,16 @@ test("Kakao signup keeps verified provider email separate, never asks for a pass
     assert.equal(body.emailVerificationId, undefined);
     assert.equal(body.name, account.name);
     assert.equal(body.phoneVerificationId, id);
+    assert.deepEqual(
+      body.consents.map(
+        ({ id, accepted }: { id: string; accepted: boolean }) => [id, accepted],
+      ),
+      [
+        ["serviceTerms", true],
+        ["privacyCollection", true],
+        ["marketing", false],
+      ],
+    );
     joined++;
     return Response.json({ authenticated: true, account }, { status: 201 });
   };
@@ -1457,7 +1479,7 @@ test("Kakao signup keeps verified provider email separate, never asks for a pass
     await until(() =>
       assert(view.container.querySelector('input[name="serviceTerms"]')),
     );
-    for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
+    for (const name of ["serviceTerms", "privacyCollection"])
       await act(async () =>
         view.container
           .querySelector<HTMLInputElement>(`input[name="${name}"]`)!
