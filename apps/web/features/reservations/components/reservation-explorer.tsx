@@ -51,6 +51,8 @@ import { InquiryReceipt } from "./reservation-progress";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const restaurantDetailLayout =
+  "bg-surface pt-[max(8px,env(safe-area-inset-top))] pb-[max(16px,env(safe-area-inset-bottom))] [&>header]:mb-2";
 const koreanWeekday = new Intl.DateTimeFormat("ko-KR", {
   weekday: "short",
   timeZone: "Asia/Seoul",
@@ -219,6 +221,7 @@ export function ReservationExplorer() {
   return (
     <StepLayout
       variant="flow"
+      className={browse.view === "detail" ? restaurantDetailLayout : undefined}
       title={
         browse.view === "map"
           ? "매장 지도"
@@ -569,6 +572,11 @@ function InquiryDraft({
   return (
     <StepLayout
       variant="flow"
+      className={
+        step === "browse" && browseView === "detail"
+          ? restaurantDetailLayout
+          : undefined
+      }
       title={
         step === "review"
           ? "문의 보내기"

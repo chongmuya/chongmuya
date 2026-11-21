@@ -18,12 +18,26 @@ const restaurant = {
   facilities: null,
   photoPath: null,
   spacePhotos: [],
-  spaces: [],
+  bookingPolicy: "하루 전 문의 권장",
+  spaces: [
+    {
+      id: "hall",
+      label: "일반 홀",
+      kind: "HALL",
+      availability: "AVAILABLE",
+      togetherSeating: "YES",
+      capacity: 20,
+      minGuests: 0,
+      minSpend: 0,
+      separateFee: 0,
+      conditions: null,
+    },
+  ],
   menus: [],
   inquiryAvailable: true,
 };
 
-test("detail retains the active section on refetch failure, blocks inquiry and recovers without losing selection", async () => {
+test("detail sheets show restaurant data and retain their contents on refetch failure", async () => {
   const original = globalThis.fetch;
   let failed = false;
   let available = true;
@@ -63,6 +77,27 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
   );
   try {
     await until(() => assert.match(view.container.textContent!, /검수 매장/));
+    assert.equal(view.container.querySelector("dialog"), null);
+    assert.match(view.container.textContent!, /예시 이미지/);
+    const closeSheet = async () => {
+      const close = view.container.querySelector<HTMLButtonElement>(
+        'dialog[open] button[aria-label="닫기"]',
+      )!;
+      await act(async () => close.click());
+      assert.equal(view.container.querySelector("dialog"), null);
+    };
+    await click(view.container, "예약 정보");
+    assert.match(
+      view.container.querySelector("dialog[open]")?.textContent ?? "",
+      /하루 전 문의 권장/,
+    );
+    await closeSheet();
+    await click(view.container, "공간 정보");
+    assert.match(
+      view.container.querySelector("dialog[open]")?.textContent ?? "",
+      /공간별 이용조건.*일반 홀.*최대 20명/,
+    );
+    await closeSheet();
     await click(view.container, "메뉴판");
     failed = true;
     await act(async () => {
@@ -76,7 +111,12 @@ test("detail retains the active section on refetch failure, blocks inquiry and r
         /최신 매장 정보를/,
       ),
     );
-    assert.match(view.container.textContent!, /메뉴 정보 확인이 필요/);
+    assert.match(
+      view.container.querySelector("dialog[open]")?.textContent ?? "",
+      /메뉴 정보 확인이 필요/,
+    );
+    await closeSheet();
+    assert.equal(document.activeElement?.textContent, "메뉴판");
     assert.equal(
       view.container.querySelectorAll("#restaurant-detail-title").length,
       1,

@@ -42,7 +42,7 @@ export function configureHttp(
     if (
       req.path.startsWith("/api/v1/merchant-replies/") ||
       req.path.startsWith("/api/v1/owner/") ||
-      /^\/api\/v1\/(groups|handovers|favorites)(?:\/|$)/.test(req.path)
+      /^\/api\/v1\/(groups|handovers)(?:\/|$)/.test(req.path)
     ) {
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Referrer-Policy", "no-referrer");

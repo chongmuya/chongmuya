@@ -32,7 +32,7 @@ API는 모듈형 모놀리스다. Controller는 HTTP 입출력, Service는 업�
 | `reservations`              | 문의 회차·응답·선택·메뉴·실입금·확정·변경취소·관리 링크·문자 전달 |
 | `settlements`, `files`      | 지출·입금 사실·정산문·기록 / 비공개 증빙                          |
 | `calendar`, `notifications` | 기타 일정·리마인더 / 알림 사실·알림함·문자 예정 이력              |
-| `handovers`, `favorites`    | 공개 서비스들을 통한 인수인계 / 개인·모임 즐겨찾기                |
+| `handovers`                 | 공개 서비스들을 통한 총무 인수인계                                |
 | `health`                    | liveness·DB readiness                                             |
 
 모임·행사·기타 일정의 `creatorId`는 불변이며 `ownerId`는 현재 관리자다. 행사 `groupId`는 생성할 때만 정하고 이후 일반 수정으로 바꾸지 않는다. 개인 행사는 모임 없이 생성한다. 모임 소속만으로 명단·행사·정산 관리권한이 생기지는 않는다.

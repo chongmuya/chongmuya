@@ -6,7 +6,6 @@ import { GroupsModule } from "../groups/groups.module.js";
 import { EventsModule } from "../events/events.module.js";
 import { FilesModule } from "../files/files.module.js";
 import { SettlementsModule } from "../settlements/settlements.module.js";
-import { FavoritesModule } from "../favorites/favorites.module.js";
 import { CalendarModule } from "../calendar/calendar.module.js";
 import { ReservationsModule } from "../reservations/reservations.module.js";
 import { HandoversService } from "./handovers.service.js";
@@ -20,7 +19,6 @@ import { HandoversController } from "./handovers.controller.js";
     EventsModule,
     FilesModule,
     SettlementsModule,
-    FavoritesModule,
     CalendarModule,
     ReservationsModule,
   ],

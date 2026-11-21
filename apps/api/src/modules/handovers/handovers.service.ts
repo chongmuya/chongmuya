@@ -9,7 +9,6 @@ import { EventsService } from "../events/events.service.js";
 import { CalendarService } from "../calendar/calendar.service.js";
 import { FilesService } from "../files/files.service.js";
 import { SettlementsService } from "../settlements/settlements.service.js";
-import { FavoritesService } from "../favorites/favorites.service.js";
 import { ReservationHandoverService } from "../reservations/reservation-handover.service.js";
 import { GroupHandover } from "./entities/group-handover.entity.js";
 import type {
@@ -34,7 +33,6 @@ export class HandoversService {
     private readonly calendar: CalendarService,
     private readonly files: FilesService,
     private readonly settlements: SettlementsService,
-    private readonly favorites: FavoritesService,
     private readonly reservations: ReservationHandoverService,
   ) {}
   private async scope(groupId: string, m: EntityManager) {
@@ -44,7 +42,6 @@ export class HandoversService {
       events: ids.length,
       ...(await this.settlements.handoverCounts(ids, m)),
       files: await this.files.handoverCount(ids, m),
-      favorites: await this.favorites.count(groupId, m),
       ...(await this.reservations.ongoing(ids, m)),
     };
   }

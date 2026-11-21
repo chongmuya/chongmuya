@@ -257,24 +257,6 @@ test("accepted handover preserves private history and personal ownership; member
     ["MEMBER"],
   );
   assert.equal((await call(`groups/${group.id}/accounts`, b)).status, 404);
-  await seedDemoRestaurants(db);
-  for (const groupId of [undefined, group.id])
-    await json(
-      await call("favorites", a, "POST", {
-        restaurantId: demoRestaurantIds[0],
-        saved: true,
-        ...(groupId ? { groupId } : {}),
-      }),
-      201,
-    );
-  await json(
-    await call("favorites", a, "POST", {
-      restaurantId: demoRestaurantIds[0],
-      groupId: group.id,
-      saved: true,
-    }),
-    201,
-  );
   const calendar = await json<{ id: string }>(
     await call("calendar", a, "POST", {
       requestKey: randomUUID(),
@@ -437,7 +419,6 @@ test("accepted handover preserves private history and personal ownership; member
     scope: {
       events: number;
       files: number;
-      favorites: number;
       settlements: number;
     };
   }>(
@@ -447,13 +428,8 @@ test("accepted handover preserves private history and personal ownership; member
     201,
   );
   assert.deepEqual(
-    [
-      preview.scope.events,
-      preview.scope.files,
-      preview.scope.favorites,
-      preview.scope.settlements,
-    ],
-    [1, 1, 1, 1],
+    [preview.scope.events, preview.scope.files, preview.scope.settlements],
+    [1, 1, 1],
   );
   const acceptBody = {
     token: handoverToken,
@@ -545,7 +521,6 @@ test("accepted handover preserves private history and personal ownership; member
     `events/${event.id}/files`,
     `events/${event.id}/files/${fileId}/download`,
     `calendar/${calendar.id}`,
-    `favorites?groupId=${group.id}`,
   ]) {
     assert.equal((await call(path, a)).status, 404, path);
     assert.equal((await call(path, b)).status, 200, path);
@@ -576,8 +551,6 @@ test("accepted handover preserves private history and personal ownership; member
   assert.equal((await call(`events/${personal.id}`, b)).status, 404);
   assert.equal((await call(`calendar/${personalCalendar.id}`, a)).status, 200);
   assert.equal((await call(`calendar/${personalCalendar.id}`, b)).status, 404);
-  assert.equal((await json<unknown[]>(await call("favorites", a))).length, 1);
-  assert.equal((await json<unknown[]>(await call("favorites", b))).length, 0);
   const newView = await json<View>(await call(settlement, b));
   assert.equal(newView.bankDefault, null);
   const inheritedNotice = await json<Record<string, unknown>>(
