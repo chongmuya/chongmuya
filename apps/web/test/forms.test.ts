@@ -572,6 +572,10 @@ test("start links and legacy signup redirect preserve safe destinations without 
         );
         await click(view.container, "회원가입 없이 사용해볼래요");
         assert(document.querySelector('dialog a[href="/restaurants"]'));
+        assert.equal(
+          document.activeElement,
+          document.querySelector("dialog h2"),
+        );
         await act(async () =>
           document
             .querySelector<HTMLButtonElement>('dialog [aria-label="닫기"]')!

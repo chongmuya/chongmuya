@@ -177,18 +177,13 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
           <KakaoConnection key={`kakao:${account.id}`} accountId={account.id} />
         </div>
       ) : mode === "mypage" && params.get("view") !== "groups" ? (
-        <div>
-          <AccountNavigation
-            groupId={params.get("group")}
-            accountId={account.id}
-            request={client.request.bind(client)}
-            owner={account.accountType === "owner"}
-            name={account.nickname ?? account.name ?? "회원"}
-          />
-          <div className="mx-[9px]">
-            <WithdrawalEntry />
-          </div>
-        </div>
+        <AccountNavigation
+          groupId={params.get("group")}
+          accountId={account.id}
+          request={client.request.bind(client)}
+          owner={account.accountType === "owner"}
+          name={account.nickname ?? account.name ?? "회원"}
+        />
       ) : (
         content
       )}

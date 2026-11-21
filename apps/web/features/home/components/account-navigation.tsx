@@ -1,9 +1,11 @@
 "use client";
+import { WithdrawalEntry } from "@/features/account/client";
 import { NotificationSettings } from "@/features/notifications/client";
 import { useState } from "react";
 import { useGroups, GroupSwitcher } from "@/features/groups/client";
 import type { SessionRequest } from "@/features/auth/types";
 import { Button, buttonStyles } from "@/shared/ui/button";
+import { MenuArrow, MenuLink } from "@/shared/ui/menu-link";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import Link from "next/link";
@@ -23,16 +25,14 @@ export function AccountNavigation({
   accountId: string;
   request: SessionRequest;
 }) {
+  const accountHref = groupId
+    ? `/mypage?view=account&group=${groupId}`
+    : "/mypage?view=account";
+  const favoritesHref = groupId ? `/favorites?group=${groupId}` : "/favorites";
+
   return (
     <div className="mx-[9px] pt-3">
-      <Link
-        href={
-          groupId
-            ? `/mypage?view=account&group=${groupId}`
-            : "/mypage?view=account"
-        }
-        className="mb-10 flex items-center gap-5"
-      >
+      <Link href={accountHref} className="mb-10 flex items-center gap-5">
         <span className="relative size-16 shrink-0">
           <Image
             src="/images/home/profile-large.svg"
@@ -61,29 +61,11 @@ export function AccountNavigation({
       <NotificationSettings accountId={accountId} request={request} />
       <section className="space-y-1">
         <h2 className="mb-3 text-xl font-semibold">계정 관리</h2>
-        {[
-          "연락처 인증 및 변경",
-          "약관 및 개인정보 처리방침",
-          "즐겨찾는 매장",
-          "로그아웃 및 계정 연결",
-        ].map((label) => (
-          <Link
-            key={label}
-            href={
-              label === "즐겨찾는 매장"
-                ? groupId
-                  ? `/favorites?group=${groupId}`
-                  : "/favorites"
-                : groupId
-                  ? `/mypage?view=account&group=${groupId}`
-                  : "/mypage?view=account"
-            }
-            className="flex min-h-11 items-center justify-between gap-3 py-2 text-base"
-          >
-            {label}
-            <MenuArrow />
-          </Link>
-        ))}
+        <MenuLink href={accountHref}>연락처 인증 및 변경</MenuLink>
+        <MenuLink href={accountHref}>약관 및 개인정보 처리방침</MenuLink>
+        <MenuLink href={favoritesHref}>즐겨찾는 매장</MenuLink>
+        <MenuLink href={accountHref}>로그아웃 및 계정 연결</MenuLink>
+        <WithdrawalEntry />
       </section>
     </div>
   );
@@ -183,17 +165,5 @@ function MyGroups({
         !query.isError && <LoadingState>모임 불러오는 중…</LoadingState>
       )}
     </section>
-  );
-}
-
-function MenuArrow() {
-  return (
-    <Image
-      src="/images/notifications/next.svg"
-      width={10.0879}
-      height={15.75}
-      alt=""
-      className="shrink-0 rotate-180"
-    />
   );
 }

@@ -9,7 +9,7 @@ type Props = { "aria-label": string } & (
 
 export function IconButton(props: Props) {
   const className = cn(
-    "inline-flex size-control shrink-0 items-center justify-center rounded-pill transition-colors hover:bg-brand-ink/5 disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex size-control shrink-0 cursor-pointer items-center justify-center rounded-control disabled:cursor-not-allowed disabled:opacity-60",
     props.className,
   );
   if (props.href !== undefined)
