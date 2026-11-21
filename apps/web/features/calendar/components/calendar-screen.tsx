@@ -348,7 +348,7 @@ function CalendarContent({
                           : "/images/restaurants/date.svg"
                       }
                       width={i.kind === "event" ? 30 : 18}
-                      height={i.kind === "event" ? 30.9712 : 18}
+                      height={i.kind === "event" ? 32 : 18}
                       alt=""
                     />
                   </span>
