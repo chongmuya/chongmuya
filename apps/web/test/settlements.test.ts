@@ -596,6 +596,76 @@ test("switching settlement tabs preserves an unresolved return command", async (
   }
 });
 
+test("the record heading opens finalization and requires confirmation when there are no expenses", async () => {
+  const { SettlementWorkspace } =
+    await import("../features/settlements/components/settlement-workspace");
+  let data = fixture();
+  const writes: Record<string, unknown>[] = [];
+  const view = await render(
+    createElement(SettlementWorkspace, {
+      accountId: "record-owner",
+      eventId: "record-event",
+      record: true,
+      request: async <T>(path: string, options?: RequestInit) => {
+        if (path.endsWith("/files"))
+          return {
+            files: [],
+            limits: {
+              bytesPerFile: 10485760,
+              count: 100,
+              totalBytes: 524288000,
+            },
+          } as T;
+        if (options?.body) {
+          writes.push(JSON.parse(String(options.body)).command);
+          data = {
+            ...data,
+            state: {
+              ...data.state,
+              version: 2,
+              finalizedAt: "2026-11-21T00:00:00Z",
+            },
+          };
+        }
+        return data as T;
+      },
+    }),
+  );
+  try {
+    const heading = () => view.container.querySelector("h2");
+    await until(() => assert.equal(heading()?.textContent, "행사 기록"));
+    assert.match(
+      view.container.textContent!,
+      /예약 식당.*참석 인원.*메모.*정산 기록.*첨부 자료/,
+    );
+    assert.doesNotMatch(view.container.textContent!, /운영 한도|완료 자료/);
+    await click(heading()!.parentElement!, "행사 마무리");
+    const dialog = view.container.querySelector("dialog")!;
+    assert(dialog.open);
+    const confirm = [...dialog.querySelectorAll("button")].find(
+      (button) => button.textContent === "마무리 확인",
+    )!;
+    assert(confirm.disabled);
+    await act(async () => dialog.querySelector("input")!.click());
+    assert.equal(confirm.disabled, false);
+    await click(dialog, "마무리 확인");
+    await until(() =>
+      assert.match(heading()!.parentElement!.textContent!, /마무리 완료/),
+    );
+    assert.equal(view.container.querySelector("dialog"), null);
+    assert.deepEqual(
+      writes.map(({ action, expectedVersion, noExpenses }) => ({
+        action,
+        expectedVersion,
+        noExpenses,
+      })),
+      [{ action: "FINALIZE_EVENT", expectedVersion: 1, noExpenses: true }],
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("a deleted receipt can be explicitly deselected before saving an expense", async () => {
   const { EventFiles } =
     await import("../features/files/components/event-files");
