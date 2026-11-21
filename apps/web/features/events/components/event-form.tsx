@@ -3,7 +3,8 @@
 import { isDateOnly } from "@/shared/lib/korean-date";
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useQueryClient } from "@tanstack/react-query";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { SessionRequest } from "@/features/auth/types";
 import { applyFormError } from "@/shared/lib/apply-form-error";
@@ -23,6 +24,7 @@ import {
 } from "../schemas/event.schema";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { useCreateEvent } from "../hooks/use-create-event";
+import { eventKeys } from "../api/events.queries";
 
 export function EventForm({
   accountId,
@@ -40,14 +42,15 @@ export function EventForm({
   const active = useActiveScreen();
   const id = useId();
   const router = useRouter();
+  const cache = useQueryClient();
   const [importRoster, setImportRoster] = useState(true);
-  const [findVenue, setFindVenue] = useState(false);
   const {
     register,
     control,
     handleSubmit,
     reset,
     setError,
+    setValue,
     clearErrors,
     formState: { errors },
   } = useForm<EventFormValues>({
@@ -56,8 +59,11 @@ export function EventForm({
       name: "",
       date: isDateOnly(initialDate) ? initialDate : "",
       time: "",
+      findVenue: !!onCreated,
+      expectedGuests: "",
     },
   });
+  const findVenue = useWatch({ control, name: "findVenue" });
   const create = useCreateEvent(accountId, request);
   const groups = useGroups(accountId, request);
   const group = groups.data?.find((group) => group.id === groupId);
@@ -94,11 +100,16 @@ export function EventForm({
             },
             onSuccess: (event) => {
               if (!active.current) return;
+              if (values.findVenue && values.expectedGuests)
+                cache.setQueryData(
+                  eventKeys.guestEstimate(accountId, event.id),
+                  values.expectedGuests,
+                );
               reset();
               if (onCreated) onCreated(event);
               else
                 router.push(
-                  findVenue
+                  values.findVenue
                     ? `/restaurants?event=${event.id}&inquiry=1`
                     : `/events?event=${encodeURIComponent(event.id)}`,
                 );
@@ -114,7 +125,11 @@ export function EventForm({
         {groupId ? (
           <div className="space-y-3">
             <p>모임</p>
-            {group && <p className="text-base font-medium">{group.name}</p>}
+            {group && (
+              <p className="flex min-h-input items-center rounded-pill border border-field bg-soft px-3 text-sm text-secondary">
+                {group.name}
+              </p>
+            )}
             {groups.isError ? (
               <ErrorState retry={() => void groups.refetch()} />
             ) : !groups.data ? (
@@ -142,13 +157,20 @@ export function EventForm({
           <FormError id={`${id}-name-error`} message={errors.name?.message} />
         </div>
         <fieldset>
-          <legend className="sr-only">일정 (선택 · 한국 시간)</legend>
+          <legend className="sr-only">일정 (한국 시간)</legend>
           <div className="grid grid-cols-2 gap-3">
             {(["date", "time"] as const).map((field) => (
               <FormField
                 key={field}
                 id={`${id}-${field}`}
-                label={field === "date" ? "날짜 (선택)" : "시간 (한국 시간)"}
+                label={
+                  field === "date" && !findVenue
+                    ? "날짜 (선택)"
+                    : field === "date"
+                      ? "날짜"
+                      : "시간 (한국 시간)"
+                }
+                required={findVenue}
                 error={errors[field]?.message}
                 className="min-w-0 gap-3"
               >
@@ -167,6 +189,27 @@ export function EventForm({
             ))}
           </div>
         </fieldset>
+        {findVenue && (
+          <FormField
+            id={`${id}-expected-guests`}
+            label="예상 인원"
+            hint="정확한 참석 명단은 나중에 정해도 괜찮아요."
+            error={errors.expectedGuests?.message}
+            className="gap-3"
+          >
+            {(attrs) => (
+              <Input
+                {...attrs}
+                {...register("expectedGuests")}
+                variant="form"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="예) 17"
+                disabled={create.isPending}
+              />
+            )}
+          </FormField>
+        )}
         {group && group.memberCount > 0 && (
           <label className="flex min-h-11 items-center gap-3 text-sm">
             <Checkbox
@@ -185,7 +228,7 @@ export function EventForm({
             <div className="grid grid-cols-2 gap-4">
               {[
                 { value: true, label: "예약이 필요해요" },
-                { value: false, label: "행사만 만들게요" },
+                { value: false, label: "참석 · 정산만 할게요" },
               ].map((option) => (
                 <label
                   key={String(option.value)}
@@ -196,10 +239,16 @@ export function EventForm({
                     type="radio"
                     name="findVenue"
                     checked={findVenue === option.value}
-                    onChange={() => setFindVenue(option.value)}
+                    onChange={() => {
+                      setValue("findVenue", option.value);
+                      if (!option.value) {
+                        setValue("expectedGuests", "");
+                        clearErrors(["expectedGuests", "date", "time"]);
+                      }
+                    }}
                     disabled={create.isPending}
                   />
-                  <span>{option.label}</span>
+                  <span className="break-keep">{option.label}</span>
                   <Image
                     src={
                       findVenue === option.value
@@ -209,6 +258,7 @@ export function EventForm({
                     alt=""
                     width={26}
                     height={26}
+                    className="shrink-0"
                   />
                 </label>
               ))}
@@ -223,6 +273,7 @@ export function EventForm({
             aria-busy={create.isPending}
           >
             {create.isPending ? "저장 중…" : "행사 만들기"}
+            {!create.isPending && <span aria-hidden="true">→</span>}
           </Button>
         </div>
         <FormError message={errors.root?.server?.message} />

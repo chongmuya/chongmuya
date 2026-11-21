@@ -17,20 +17,33 @@ export function SignupFlow(
   },
 ) {
   const flow = useSignupFlow(props);
+  const detail = props.terms.find((term) => term.id === flow.detail);
+  const detailId = detail?.id ?? null;
+  const choose = (accepted: boolean) => {
+    if (detail && detail !== flow.readOnlyPolicy)
+      flow.methods.setValue(detail.id, accepted, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    flow.setDetail(null);
+  };
   const container = useRef<HTMLDivElement>(null);
-  const previousDetail = useRef(flow.detail);
+  const previousDetail = useRef(detailId);
   useEffect(() => {
     const closedDetail = previousDetail.current;
-    previousDetail.current = flow.detail;
-    if (closedDetail && !flow.detail && flow.step === "terms") {
-      container.current
-        ?.querySelector<HTMLButtonElement>(
-          `[data-signup-term="${closedDetail}"]`,
-        )
-        ?.focus();
-    } else if (flow.detail || !flow.focus)
+    previousDetail.current = detailId;
+    if (closedDetail && !detailId && flow.step === "terms") {
+      const opener = container.current?.querySelector<HTMLElement>(
+        `[data-signup-term="${closedDetail}"]`,
+      );
+      if (opener) {
+        opener.focus();
+        return;
+      }
+    }
+    if (detailId || !flow.focus)
       container.current?.querySelector<HTMLElement>("h1")?.focus();
-  }, [flow.step, flow.detail, flow.complete, flow.focus]);
+  }, [flow.step, detailId, flow.complete, flow.focus]);
   return (
     <div ref={container}>
       <StepLayout
@@ -50,11 +63,15 @@ export function SignupFlow(
           <SignupComplete onContinue={props.onComplete} />
         ) : (
           <FormProvider {...flow.methods}>
-            {flow.detail ? (
+            {detail ? (
               <SignupTermsDetail
-                term={props.terms.find((term) => term.id === flow.detail)!}
-                onAgree={() => flow.closeDetail(true)}
-                onClose={() => flow.closeDetail(false)}
+                term={detail}
+                onAgree={
+                  detail === flow.readOnlyPolicy
+                    ? undefined
+                    : () => choose(true)
+                }
+                onClose={() => choose(false)}
               />
             ) : (
               <form
@@ -73,7 +90,8 @@ export function SignupFlow(
                   {flow.step === "terms" && (
                     <SignupTerms
                       onDetail={flow.openDetail}
-                      terms={props.terms}
+                      terms={flow.consentTerms}
+                      privacyPolicy={flow.readOnlyPolicy}
                     />
                   )}
                   {flow.step === "information" && (

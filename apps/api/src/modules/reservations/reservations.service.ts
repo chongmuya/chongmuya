@@ -1,3 +1,4 @@
+import { AuthService } from "../auth/auth.service.js";
 import { MessageDeliveryService } from "./message-delivery.service.js";
 
 import { ReservationQueriesService } from "./reservation-queries.service.js";
@@ -22,6 +23,7 @@ import type { InquiryConditions } from "./types/inquiry.js";
 @Injectable()
 export class ReservationsService {
   constructor(
+    private readonly auth: AuthService,
     private readonly database: DatabaseService,
     private readonly events: EventsService,
     private readonly groups: GroupsService,
@@ -122,6 +124,7 @@ export class ReservationsService {
         conditions.expectedGuests,
         manager,
       );
+      await this.auth.lockActiveAccount(user.id, manager);
       const group = event.groupId
         ? await this.groups.getLabel(user.id, event.groupId, manager)
         : null;

@@ -1,7 +1,7 @@
 import { ReservationNotificationsService } from "./reservation-notifications.service.js";
 import { isDeepStrictEqual } from "node:util";
 import { materiallyChangedReply } from "./lib/inquiry-sms-policy.js";
-import { candidateState } from "./lib/candidate-state.js";
+import { candidateState, terminalCandidate } from "./lib/candidate-state.js";
 import { replyView } from "./lib/reply-view.js";
 import { Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
@@ -11,6 +11,7 @@ import { DomainHttpException } from "../../common/http/domain-http.exception.js"
 import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
+import { ReservationLocksService } from "./reservation-locks.service.js";
 import { MerchantLinksService } from "./merchant-links.service.js";
 import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
 import { replySchema } from "./types/merchant-reply.js";
@@ -38,6 +39,7 @@ export class MerchantRepliesService {
     private readonly database: DatabaseService,
     private readonly restaurants: RestaurantsService,
     private readonly links: MerchantLinksService,
+    private readonly locks: ReservationLocksService,
     private readonly notifications: ReservationNotificationsService,
   ) {}
   private async authorize(
@@ -277,6 +279,11 @@ export class MerchantRepliesService {
         isDeepStrictEqual(current.snapshot.offered, proposal)
       )
         return { response: replyView(current), version: current.revision };
+      if (
+        proposal &&
+        terminalCandidate(candidateState(c.target, current, new Date()))
+      )
+        await this.locks.responsibleAccounts(c.request, m);
       const actor: ReplyActor =
         principal.kind === "link"
           ? { kind: "MERCHANT_LINK", id: `${targetId}:${c.link!.generation}` }

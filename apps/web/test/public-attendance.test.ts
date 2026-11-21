@@ -57,31 +57,45 @@ test("public attendance distinguishes manager tally from own saved answer and pr
     await fill(v.container, "name", "참여자");
     await fill(v.container, "phoneLast4", "0012");
     await click(v.container, "내 응답 열기");
-    await until(() =>
-      assert.match(v.container.textContent!, /현재 참석 상태불참/),
+    const headline = () => v.container.querySelector("h1")?.textContent;
+    const previouslySubmitted = /내가 마지막으로 제출한 응답은 참석이에요/;
+    await until(() => assert.equal(headline(), "현재 참석 상태: 불참"));
+    assert.equal(v.container.querySelectorAll("h1").length, 1);
+    assert.match(
+      v.container.querySelector("header")!.textContent!,
+      previouslySubmitted,
     );
-    assert.match(v.container.textContent!, /내가 제출한 응답: 참석/);
     assert.equal(v.container.querySelectorAll('input[type="radio"]').length, 0);
     assert(!v.container.textContent!.includes("private-token"));
+    assert.equal(commands.length, 0);
     await click(v.container, "응답 수정");
     const choices = v.container.querySelectorAll<HTMLInputElement>(
       'input[type="radio"]',
     );
     assert.equal(choices[0].checked, true);
     assert.equal(choices[1].checked, false);
+    assert.equal(document.activeElement, choices[0]);
     await act(async () => choices[1].click());
+    assert.equal(commands.length, 0);
+    assert.match(v.container.textContent!, previouslySubmitted);
     await click(v.container, "응답 저장");
     await until(() =>
       assert.match(v.container.textContent!, /연결 상태를 확인/),
     );
     assert.equal(choices[1].checked, true);
-    assert.match(v.container.textContent!, /현재 참석 상태불참/);
+    assert.equal(headline(), "현재 참석 상태: 불참");
+    assert.match(v.container.textContent!, previouslySubmitted);
     await click(v.container, "응답 저장");
     await until(() =>
       assert.match(v.container.textContent!, /내 응답을 저장했어요/),
     );
     assert.equal(v.container.querySelectorAll('input[type="radio"]').length, 0);
-    assert.match(v.container.textContent!, /내가 제출한 응답: 불참/);
+    assert.equal(document.activeElement?.textContent, "응답 수정");
+    assert.equal(headline(), "현재 참석 상태: 불참");
+    assert.match(
+      v.container.textContent!,
+      /내가 마지막으로 제출한 응답은 불참이에요/,
+    );
     assert.match(v.container.textContent!, /총무가 정정한 상태로 집계/);
     assert.deepEqual(commands, [
       { answer: "ABSENT", accessToken: "private-token" },

@@ -1,3 +1,4 @@
+import { AuthService } from "../auth/auth.service.js";
 import { saveRestaurantContact } from "./lib/restaurant-contact.js";
 import {
   restaurantIdentityKey,
@@ -38,6 +39,7 @@ import type { DraftSaveInput } from "./dto/request/owner-restaurant.request.dto.
 @Injectable()
 export class RestaurantManagementService {
   constructor(
+    private readonly auth: AuthService,
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
     private readonly restaurants: RestaurantsService,
@@ -416,6 +418,7 @@ export class RestaurantManagementService {
       const previous = d.restaurantId
         ? await this.restaurants.assertOwned(user.id, d.restaurantId, m, true)
         : null;
+      await this.auth.lockActiveAccount(user.id, m);
       if (previous && previous.version !== d.restaurantVersion)
         throw new DomainHttpException("RESTAURANT_VERSION_CONFLICT");
       if (previous && !previous.isDemo && address.source === "fake")

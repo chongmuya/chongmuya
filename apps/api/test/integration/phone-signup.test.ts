@@ -103,6 +103,15 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
   const a = await context();
   const row = await create(a);
   const input = payload(row);
+  // Version/choice for the read-only policy may be stale in an old browser tab.
+  const legacyInput = {
+    ...input,
+    consents: input.consents.map((term) =>
+      term.id === "privacyPolicy"
+        ? { ...term, version: "old-policy", accepted: false }
+        : term,
+    ),
+  };
   assert.equal(
     (await call("auth/signup", a, "POST", { ...input, verified: true })).status,
     400,
@@ -128,11 +137,26 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
     (
       await call("auth/signup", a, "POST", {
         ...input,
-        consents: input.consents.map((term) => ({ ...term, accepted: false })),
+        consents: input.consents.map((term) =>
+          term.id === "privacyCollection" ? { ...term, accepted: false } : term,
+        ),
       })
     ).status,
     400,
   );
+  for (const invalid of [
+    input.consents.filter((term) => term.id !== "serviceTerms"),
+    input.consents.map((term) =>
+      term.id === "privacyCollection" ? input.consents[0]! : term,
+    ),
+  ]) {
+    const response = await call("auth/signup", a, "POST", {
+      ...input,
+      consents: invalid,
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "SIGNUP_TERMS_CHANGED");
+  }
   assert.equal(
     (
       await call("auth/signup", a, "POST", {
@@ -187,13 +211,13 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
     );
   }
   const race = await Promise.all([
-    call("auth/signup", a, "POST", input),
-    call("auth/signup", a, "POST", input),
+    call("auth/signup", a, "POST", legacyInput),
+    call("auth/signup", a, "POST", legacyInput),
   ]);
   assert.deepEqual(race.map((r) => r.status).sort(), [201, 400]);
   const success = race.find((r) => r.status === 201)!;
   const account = (await success.json()).account;
-  assert.equal(account.accountType, null);
+  assert.equal(account.accountType, "organizer");
   assert.equal(account.name, input.name);
   assert.equal(account.nickname, null);
   assert.equal(account.phone, input.phone);
@@ -202,7 +226,11 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
   const consents = await db
     .getRepository(AccountConsent)
     .findBy({ accountId: account.id });
-  assert.equal(consents.length, 4);
+  assert.deepEqual(consents.map(({ termId }) => termId).sort(), [
+    "marketing",
+    "privacyCollection",
+    "serviceTerms",
+  ]);
   assert.equal(
     consents.find((entry) => entry.termId === "marketing")?.accepted,
     false,

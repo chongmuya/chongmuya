@@ -1,19 +1,13 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError } from "@/shared/http/api-error";
 import type {
+  SignupTermId,
   SignupFormRequest,
   SignupTerm,
-  SignupTermId,
 } from "../types/signup.types";
 import { applyFormError } from "@/shared/lib/apply-form-error";
 import {
@@ -44,8 +38,18 @@ export function useSignupFlow({
   terms: SignupTerm[];
   kakao?: { email: string | null; trustedEmail: boolean };
 }) {
+  const privacyPolicy = terms.find((term) => term.id === "privacyPolicy");
+  const schema = kakao ? kakaoSignupSchema : signupSchema;
   const methods = useForm<SignupValues>({
-    resolver: zodResolver(kakao ? kakaoSignupSchema : signupSchema),
+    // The API may still require an explicit policy choice during a web-first release.
+    resolver: zodResolver(
+      privacyPolicy?.required
+        ? schema.refine((values) => values.privacyPolicy, {
+            path: ["privacyPolicy"],
+            message: "필수 약관에 동의해 주세요.",
+          })
+        : schema,
+    ),
     defaultValues: { ...signupDefaults, email: kakao?.email ?? "" },
     shouldUnregister: false,
     mode: "onTouched",
@@ -72,41 +76,25 @@ export function useSignupFlow({
   const providerEmailVerified =
     !!kakao?.trustedEmail &&
     (values.email ?? "").trim().toLowerCase() === kakao.email;
+  const consentTerms = useMemo(
+    () => terms.filter((term) => term.id !== "privacyPolicy" || term.required),
+    [terms],
+  );
   const previousTerms = useRef(
-    new Map(terms.map((term) => [term.id, `${term.version}:${term.required}`])),
+    new Map(
+      consentTerms.map((term) => [term.id, `${term.version}:${term.required}`]),
+    ),
   );
   const [termsNotice, setTermsNotice] = useState<string>();
-  const closingDetail = useRef(false);
-  const returnToTermsHistoryEntry = useCallback(() => {
-    if (closingDetail.current) return true;
-    if (!window.history.state?.signupTerm) return false;
-    closingDetail.current = true;
-    window.history.back();
-    return true;
-  }, []);
-  useEffect(() => {
-    const path = window.location.pathname;
-    const onHistoryChange = (event: PopStateEvent) => {
-      closingDetail.current = false;
-      if (window.location.pathname !== path || complete) return;
-      const term = terms.find((term) => term.id === event.state?.signupTerm);
-      if ((!detail && !term) || (term && lock.current)) return;
-      setFocus(null);
-      if (term) setStep("terms");
-      setDetail(term?.id ?? null);
-    };
-    window.addEventListener("popstate", onHistoryChange);
-    return () => window.removeEventListener("popstate", onHistoryChange);
-  }, [complete, detail, terms]);
   useEffect(() => {
     if (complete) return;
-    const changed = terms.filter(
+    const changed = consentTerms.filter(
       (term) =>
         previousTerms.current.get(term.id) !==
         `${term.version}:${term.required}`,
     );
     previousTerms.current = new Map(
-      terms.map((term) => [term.id, `${term.version}:${term.required}`]),
+      consentTerms.map((term) => [term.id, `${term.version}:${term.required}`]),
     );
     if (!changed.length) return;
     for (const term of changed)
@@ -114,9 +102,9 @@ export function useSignupFlow({
     setTermsNotice(
       "약관이 변경되었어요. 변경된 항목을 확인하고 다시 동의해 주세요. 입력한 가입 정보와 인증은 유지됩니다.",
     );
-    if (detail) returnToTermsHistoryEntry();
+    setDetail(null);
     setStep("terms");
-  }, [terms, methods, complete, detail, returnToTermsHistoryEntry]);
+  }, [consentTerms, methods, complete]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -134,7 +122,7 @@ export function useSignupFlow({
   const back = () => {
     if (lock.current) return;
     if (detail) {
-      if (!returnToTermsHistoryEntry()) setDetail(null);
+      setDetail(null);
       return;
     }
     methods.clearErrors("root");
@@ -192,7 +180,7 @@ export function useSignupFlow({
                   ? { emailVerificationId: email.state.id! }
                   : {}),
                 phoneVerificationId: phone.state.id!,
-                consents: terms.map((term) => ({
+                consents: consentTerms.map((term) => ({
                   id: term.id,
                   version: term.version,
                   accepted: input[term.id],
@@ -278,24 +266,15 @@ export function useSignupFlow({
   };
   return {
     methods,
+    consentTerms,
+    readOnlyPolicy: privacyPolicy?.required ? undefined : privacyPolicy,
     step,
     detail,
     openDetail: (term: SignupTermId) => {
-      // Keep the signup page and its draft in place on browser Back/Forward.
-      if (window.history.state?.signupTerm)
-        window.history.replaceState({ signupTerm: term }, "");
-      else window.history.pushState({ signupTerm: term }, "");
       setFocus(null);
       setDetail(term);
     },
-    closeDetail: (accepted: boolean) => {
-      if (!detail || closingDetail.current) return;
-      methods.setValue(detail, accepted, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-      if (!returnToTermsHistoryEntry()) setDetail(null);
-    },
+    setDetail,
     pending,
     complete,
     back,

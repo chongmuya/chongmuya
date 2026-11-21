@@ -263,13 +263,20 @@ test("merchant access expiration hides private inquiry and stops writes and focu
 test("usage hours and deposit explain blocked submission accessibly and recover", async () => {
   const inquiry = merchantInquiryFixture();
   inquiry.defaults.proposal.usageTime = { kind: "MINUTES", minutes: 120 };
+  const menuDeadline = Date.now() + 6 * 3600_000;
+  inquiry.defaults.proposal.menuDeadlineAt = new Date(
+    menuDeadline,
+  ).toISOString();
+  inquiry.defaults.expiresAt = null;
   let saves = 0;
+  let savedDeadline: string | undefined;
   const request: SessionRequest = async <T>(
     _p: string,
     options?: RequestInit,
   ) => {
     if (options?.method === "POST") {
       saves++;
+      savedDeadline = JSON.parse(String(options.body)).reply.expiresAt;
       return { version: 1, response: null } as T;
     }
     return structuredClone(inquiry) as T;
@@ -308,6 +315,10 @@ test("usage hours and deposit explain blocked submission accessibly and recover"
     const hold = view.container.querySelector<HTMLInputElement>(
       '[name="holdConfirmed"]',
     )!;
+    const holdLabel = hold.closest("label")!;
+    const shownDeadline = holdLabel.querySelector("time")?.dateTime;
+    assert.equal(shownDeadline, new Date(menuDeadline - 1000).toISOString());
+    assert.match(holdLabel.textContent!, /한국 시간.*필요한 좌석을 유지/);
     assert.equal(hold.getAttribute("aria-invalid"), "true");
     assert.ok(document.getElementById(hold.getAttribute("aria-describedby")!));
     assert.equal(saves, 0);
@@ -316,6 +327,7 @@ test("usage hours and deposit explain blocked submission accessibly and recover"
     await act(async () => hold.click());
     await submit(view.container);
     await until(() => assert.equal(saves, 1));
+    assert.equal(savedDeadline, shownDeadline);
   } finally {
     await view.unmount();
   }

@@ -11,6 +11,7 @@ import {
 } from "../shared/lib/korean-date";
 import { safeReturnPath } from "../features/auth/lib/return-path";
 import { DatePicker } from "../shared/ui/date-picker";
+import { DateTimePicker } from "../shared/ui/date-time-picker";
 import { TimePicker } from "../shared/ui/time-picker";
 import { render, click } from "./support/form-dom";
 import { chooseDate, chooseTime } from "./support/date-controls";
@@ -176,6 +177,60 @@ test("minute precision, clearing and explicitly enabled 24:00 remain date-free",
     await click(view.container, "×");
     assert.equal(selects[0].value, "");
     assert.equal(selects[1].value, "");
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("time placeholders stay empty until midnight is explicitly selected", async () => {
+  let formValue = "";
+  function Form() {
+    const [value, setValue] = useState("");
+    return createElement(DateTimePicker, {
+      name: "startsAt",
+      "aria-label": "행사 일시",
+      value,
+      onChange: (next) => {
+        formValue = next;
+        setValue(next);
+      },
+    });
+  }
+  const view = await render(createElement(Form));
+  try {
+    const [hour, minute] = view.container.querySelectorAll("select");
+    const clearButton = () =>
+      view.container.querySelector('button[aria-label="시간 지우기"]');
+    assert.equal(hour.getAttribute("aria-label"), "행사 일시 시");
+    assert.equal(minute.getAttribute("aria-label"), "행사 일시 분");
+    assert.equal(hour.nextElementSibling?.textContent, "00");
+    assert.equal(minute.nextElementSibling?.textContent, "00");
+    assert.equal(hour.options[1].textContent, "00");
+    assert.equal(minute.options[55].textContent, "54");
+    assert.equal(clearButton(), null);
+    await chooseDate(view.container, "startsAt", "2026-12-05");
+    assert.equal(formValue, "2026-12-05T");
+    assert.equal(fromKoreanDateInput(formValue), null);
+    assert.equal(hour.value, "");
+    assert.equal(minute.value, "");
+
+    await act(async () => {
+      hour.value = "00";
+      hour.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    assert.equal(formValue, "2026-12-05T00:");
+    assert.equal(fromKoreanDateInput(formValue), null);
+    assert(clearButton());
+    await chooseTime(view.container, "startsAt", "00:00");
+    assert.equal(formValue, "2026-12-05T00:00");
+    assert.equal(fromKoreanDateInput(formValue), "2026-12-04T15:00:00.000Z");
+    await chooseTime(view.container, "startsAt", "01:54");
+    assert.equal(hour.nextElementSibling?.textContent, "01");
+    assert.equal(minute.nextElementSibling?.textContent, "54");
+    await click(view.container, "×");
+    assert.equal(formValue, "2026-12-05T");
+    assert.equal(clearButton(), null);
+    assert.equal(document.activeElement, hour);
   } finally {
     await view.unmount();
   }

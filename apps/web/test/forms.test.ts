@@ -19,6 +19,9 @@ import { HomeEntryProvider } from "../features/home/components/home-entry-provid
 import { HomeScreen } from "../features/home/components/home-screen";
 import { WorkspaceContent } from "../app/workspace-screen";
 import { EventForm } from "../features/events/components/event-form";
+import { eventKeys } from "../features/events/api/events.queries";
+import { ConditionsForm } from "../features/reservations/components/conditions-form";
+import { initialConditions } from "../features/reservations/schemas/conditions.schema";
 import { GroupForm } from "../features/groups/components/group-form";
 import { AuthProvider } from "../features/auth/components/auth-provider";
 import { AuthEntryScreen } from "../features/auth/components/auth-entry-screen";
@@ -28,6 +31,130 @@ import { previewTerms } from "./support/signup-terms";
 import { AuthScreen } from "../features/auth/components/auth-screen";
 import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
+import { koreanDateOnly } from "../shared/lib/korean-date";
+
+test("event creation hands the reservation date and guest estimate to the next step", async () => {
+  const eventId = "00000000-0000-4000-8000-000000000221";
+  const date = koreanDateOnly(new Date(Date.now() + 3 * 86400_000));
+  let body: Record<string, unknown> | undefined;
+  const request: SessionRequest = async <T>(
+    _path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method !== "POST") return [] as T;
+    body = JSON.parse(String(options.body));
+    return {
+      id: eventId,
+      name: body?.name,
+      scheduledAt: body?.scheduledAt,
+    } as T;
+  };
+  const cache = client();
+  const view = await render(
+    createElement(EventForm, { accountId: "a", request }),
+    cache,
+  );
+  try {
+    await fill(view.container, "name", "예약 행사");
+    const reserve = [
+      ...view.container.querySelectorAll<HTMLInputElement>("input[type=radio]"),
+    ].find((radio) =>
+      radio.closest("label")?.textContent?.includes("예약이 필요해요"),
+    );
+    assert(reserve);
+    await act(async () => reserve.click());
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /날짜를 입력해 주세요/),
+    );
+    assert.equal(body, undefined);
+    await chooseDate(view.container, "date", date);
+    await chooseTime(view.container, "time", "00:00");
+    await fill(view.container, "expectedGuests", "24");
+    await submit(view.container);
+    await until(() =>
+      assert.deepEqual(view.navigations, [
+        `/restaurants?event=${eventId}&inquiry=1`,
+      ]),
+    );
+    assert.equal(
+      (body as Record<string, unknown> | undefined)?.scheduledAt,
+      new Date(`${date}T00:00:00+09:00`).toISOString(),
+    );
+    assert.equal(
+      cache.getQueryData(eventKeys.guestEstimate("a", eventId)),
+      "24",
+    );
+    assert.equal(
+      cache.getQueryData(eventKeys.guestEstimate("b", eventId)),
+      undefined,
+    );
+    assert.equal(
+      (body as Record<string, unknown> | undefined)?.expectedGuests,
+      undefined,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("first inquiry summarizes a saved date and disables reverse auction, while editable schedules keep both pickers", async () => {
+  const startsAt = "2099-12-01T09:30:45.000Z";
+  const initial = {
+    ...initialConditions(
+      { name: "총무", phone: "01000000000" } as Parameters<
+        typeof initialConditions
+      >[0],
+      startsAt,
+    ),
+    expectedGuests: "24",
+  };
+  for (const savedStartsAt of [startsAt, undefined]) {
+    let next: typeof initial | undefined;
+    const view = await render(
+      createElement(ConditionsForm, {
+        initial,
+        savedStartsAt,
+        onContinue: (values) => {
+          next = values;
+        },
+      }),
+    );
+    try {
+      assert.match(view.container.textContent!, /건대입구 · 세종대/);
+      assert.match(
+        view.container.textContent!,
+        /사장님 제안 받기 \(역경매\)준비 중/,
+      );
+      assert.equal(
+        view.container.querySelectorAll('input[name="findingMethod"]:disabled')
+          .length,
+        1,
+      );
+      assert.equal(
+        !!view.container.querySelector("#inquiry-date"),
+        !savedStartsAt,
+      );
+      assert.equal(
+        !!view.container.querySelector("#inquiry-time"),
+        !savedStartsAt,
+      );
+      assert.equal(
+        view.container.querySelector("#inquiry-expectedGuests"),
+        null,
+      );
+      if (savedStartsAt) assert.match(view.container.textContent!, /18:30/);
+      await submit(view.container);
+      await until(() => assert.equal(next?.time, "18:30"));
+      await click(view.container, "예상 인원 변경");
+      await fill(view.container, "expectedGuests", "25");
+      await submit(view.container);
+      await until(() => assert.equal(next?.expectedGuests, "25"));
+    } finally {
+      await view.unmount();
+    }
+  }
+});
 
 test("empty group management links to the reusable optional registration flow", async () => {
   const cache = client();
@@ -712,6 +839,10 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     );
     assert.equal(body.passwordConfirm, undefined);
     assert.equal(body.verified, undefined);
+    assert.deepEqual(
+      body.consents.map((term: { id: string }) => term.id),
+      ["serviceTerms", "privacyCollection", "marketing"],
+    );
     return Response.json({ authenticated: true, account }, { status: 201 });
   };
   const view = await render(
@@ -737,7 +868,7 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     await until(() =>
       assert(view.container.querySelector('input[name="serviceTerms"]')),
     );
-    for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"]) {
+    for (const name of ["serviceTerms", "privacyCollection"]) {
       await act(async () =>
         view.container
           .querySelector<HTMLInputElement>(`input[name="${name}"]`)!
@@ -811,6 +942,14 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     assert.match(view.container.textContent!, /휴대폰 인증이 완료/);
     termsFail = false;
     terms = previewTerms.map((term) =>
+      term.id === "privacyPolicy" ? { ...term, version: "new-policy" } : term,
+    );
+    await act(async () => {
+      await view.cache.invalidateQueries({ queryKey: ["signup", "terms"] });
+    });
+    assert.deepEqual(values(), before);
+    assert.doesNotMatch(view.container.textContent!, /약관이 변경되었어요/);
+    terms = previewTerms.map((term) =>
       term.id === "serviceTerms" ? { ...term, version: "new-version" } : term,
     );
     await act(async () => {
@@ -827,7 +966,7 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     );
     assert.equal(
       view.container.querySelector<HTMLInputElement>(
-        'input[name="privacyPolicy"]',
+        'input[name="privacyCollection"]',
       )!.checked,
       true,
     );
@@ -903,12 +1042,12 @@ test("post-signup entry requires a restored session and skipping rejects externa
   }
 });
 
-test("first setup resumes the missing step, updates session and preserves next without creating a group", async () => {
+test("fresh and legacy organizers go straight to nickname setup and preserve next without creating a group", async () => {
   const original = globalThis.fetch;
   try {
     for (const scenario of [
       "new-organizer",
-      "resume",
+      "legacy-untyped",
       "owner",
       "configured",
     ] as const) {
@@ -919,9 +1058,9 @@ test("first setup resumes the missing step, updates session and preserves next w
         accountType:
           scenario === "owner"
             ? "owner"
-            : scenario === "resume" || scenario === "configured"
-              ? "organizer"
-              : (null as string | null),
+            : scenario === "legacy-untyped"
+              ? (null as string | null)
+              : "organizer",
         nickname:
           scenario === "configured" ? "이미 설정" : (null as string | null),
       };
@@ -947,181 +1086,30 @@ test("first setup resumes the missing step, updates session and preserves next w
           assert.equal(writes.length, 0);
           continue;
         }
-        if (scenario !== "resume") {
-          await until(() =>
-            assert(view.container.querySelector('input[name="accountType"]')),
-          );
-          const value = "organizer";
-          assert.equal(
-            view.container.querySelector<HTMLInputElement>(
-              'input[value="owner"]',
-            )!.disabled,
-            false,
-          );
-          assert.match(view.container.textContent!, /사장님이에요/);
-          await act(async () =>
-            view.container
-              .querySelector<HTMLInputElement>(`input[value="${value}"]`)!
-              .click(),
-          );
-          await submit(view.container);
-          await until(() =>
-            assert(view.container.querySelector("dialog[open]")),
-          );
-          assert.equal(writes.length, 0);
-          await click(view.container, "총무로 계속하기");
-          await until(() => assert.equal(writes.length, 1));
-        }
-        {
-          await until(() =>
-            assert(view.container.querySelector('input[name="nickname"]')),
-          );
-          assert.equal(
-            view.container.querySelector('input[name="accountType"]'),
-            null,
-          );
-          await fill(view.container, "nickname", "우리 총무");
-          await submit(view.container);
-          await until(() =>
-            assert(view.container.querySelector('input[name="usage"]')),
-          );
-          assert.equal(account.nickname, "우리 총무");
-          await click(view.container, "나중에 선택하기");
-        }
+        await until(() =>
+          assert(view.container.querySelector('input[name="nickname"]')),
+        );
+        assert.equal(
+          view.container.querySelector('input[name="accountType"]'),
+          null,
+        );
+        assert.doesNotMatch(view.container.textContent!, /사장님이에요/);
+        await fill(view.container, "nickname", "우리 총무");
+        await submit(view.container);
+        await until(() =>
+          assert(view.container.querySelector('input[name="usage"]')),
+        );
+        assert.deepEqual(writes, [
+          { accountType: "organizer", nickname: "우리 총무" },
+        ]);
+        assert.equal(account.nickname, "우리 총무");
+        await click(view.container, "나중에 선택하기");
         assert.deepEqual(view.navigations, ["/mypage"]);
       } finally {
         await view.unmount();
       }
     }
   } finally {
-    globalThis.fetch = original;
-  }
-});
-
-test("role confirmation cancels without saving, restores focus and prevents duplicate or cancelled pending writes", async () => {
-  const original = globalThis.fetch;
-  const pending = deferred<Response>();
-  let writes = 0;
-  const account = {
-    id: "confirm-user",
-    email: "confirm@example.test",
-    name: "사장님 이름",
-    accountType: null,
-    nickname: null,
-  };
-  globalThis.fetch = async (path, options) => {
-    if (String(path).endsWith("restore"))
-      return Response.json({ authenticated: true, account });
-    assert(String(path).endsWith("first-setup"));
-    assert.deepEqual(JSON.parse(String(options?.body)), {
-      accountType: "organizer",
-    });
-    writes++;
-    return writes === 1
-      ? pending.promise
-      : Response.json({ ...account, accountType: "organizer" });
-  };
-  const view = await render(
-    createElement(AuthProvider, null, createElement(GettingStartedScreen)),
-    client(),
-    "/mypage",
-  );
-  try {
-    await until(() =>
-      assert(view.container.querySelector('input[value="organizer"]')),
-    );
-    await act(async () =>
-      view.container
-        .querySelector<HTMLInputElement>('input[value="organizer"]')!
-        .click(),
-    );
-    const trigger = view.container.querySelector<HTMLButtonElement>(
-      'button[type="submit"]',
-    )!;
-    for (const cancel of ["button", "escape"]) {
-      trigger.focus();
-      await submit(view.container);
-      const dialog = view.container.querySelector("dialog[open]")!;
-      assert(dialog);
-      assert.match(dialog.textContent!, /총무로 계속하시겠어요/);
-      assert.match(dialog.textContent!, /사용자 유형은 이후 변경할 수 없어요/);
-      assert.equal(document.activeElement?.textContent, "닫기");
-      assert.equal(document.body.style.overflow, "hidden");
-      assert(dialog.getAttribute("aria-labelledby"));
-      assert(dialog.getAttribute("aria-describedby"));
-      if (cancel === "button") await click(view.container, "닫기");
-      else
-        await act(async () => {
-          dialog.dispatchEvent(
-            new window.Event("cancel", { cancelable: true }),
-          );
-        });
-      assert.equal(view.container.querySelector("dialog"), null);
-      assert.equal(document.activeElement, trigger);
-      assert.equal(document.body.style.overflow, "");
-      assert.equal(writes, 0);
-      assert.equal(
-        view.container.querySelector<HTMLInputElement>(
-          'input[value="organizer"]',
-        )!.checked,
-        true,
-      );
-    }
-    await act(async () =>
-      view.container
-        .querySelector<HTMLInputElement>('input[value="organizer"]')!
-        .click(),
-    );
-    trigger.focus();
-    await submit(view.container);
-    const dialog = view.container.querySelector("dialog")!;
-    assert.match(dialog.textContent!, /총무로 계속하시겠어요/);
-    const confirm = [...dialog.querySelectorAll("button")].find(
-      (button) => button.textContent === "총무로 계속하기",
-    )!;
-    await act(async () => {
-      confirm.click();
-      confirm.click();
-    });
-    await until(() => {
-      assert.equal(writes, 1);
-      assert(
-        [...dialog.querySelectorAll("button")].every(
-          (button) => button.disabled,
-        ),
-      );
-    });
-    await act(async () => {
-      dialog.dispatchEvent(new window.Event("cancel", { cancelable: true }));
-    });
-    assert(view.container.querySelector("dialog[open]"));
-    await act(async () =>
-      pending.resolve(
-        Response.json(
-          {
-            statusCode: 503,
-            code: "SERVICE_UNAVAILABLE",
-            message: "PRIVATE PROVIDER DETAIL",
-            requestId: "00000000-0000-4000-8000-000000000001",
-          },
-          { status: 503 },
-        ),
-      ),
-    );
-    await until(() => assert.equal(confirm.disabled, false));
-    assert(view.container.querySelector("dialog[open]"));
-    assert(dialog.querySelector('[role="alert"]'));
-    assert.doesNotMatch(dialog.textContent!, /PRIVATE/);
-    await click(view.container, "총무로 계속하기");
-    await until(() =>
-      assert.match(view.container.textContent!, /어떻게 불러드릴까요/),
-    );
-    assert.equal(writes, 2);
-    assert.equal(view.container.querySelector("dialog"), null);
-    assert.equal(document.body.style.overflow, "");
-  } finally {
-    await act(async () => pending.resolve(new Response(null, { status: 503 })));
-    await view.unmount();
     globalThis.fetch = original;
   }
 });
@@ -1471,6 +1459,16 @@ test("Kakao signup keeps verified provider email separate, never asks for a pass
     assert.equal(body.emailVerificationId, undefined);
     assert.equal(body.name, account.name);
     assert.equal(body.phoneVerificationId, id);
+    assert.deepEqual(
+      body.consents.map(
+        ({ id, accepted }: { id: string; accepted: boolean }) => [id, accepted],
+      ),
+      [
+        ["serviceTerms", true],
+        ["privacyCollection", true],
+        ["marketing", false],
+      ],
+    );
     joined++;
     return Response.json({ authenticated: true, account }, { status: 201 });
   };
@@ -1481,7 +1479,7 @@ test("Kakao signup keeps verified provider email separate, never asks for a pass
     await until(() =>
       assert(view.container.querySelector('input[name="serviceTerms"]')),
     );
-    for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
+    for (const name of ["serviceTerms", "privacyCollection"])
       await act(async () =>
         view.container
           .querySelector<HTMLInputElement>(`input[name="${name}"]`)!

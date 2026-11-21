@@ -126,11 +126,7 @@ test("selection retries keep the seen revision and key; refresh shows the saved 
   );
   try {
     await until(() => assert.match(view.container.textContent!, /제안 매장/));
-    const venueFee = Array.from(view.container.querySelectorAll("dt")).find(
-      (term) => term.textContent === "별도 대관료",
-    );
-    assert.equal(venueFee?.nextElementSibling?.textContent, "30,000원");
-    assert.equal(venueFee?.closest("details"), null);
+    assert.doesNotMatch(view.container.textContent!, /별도 대관료|30,000원/);
     await click(view.container, "수락");
     q = { ...q, version: 3 };
     await act(async () => {

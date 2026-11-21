@@ -46,6 +46,10 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     db.entityMetadatas.map((metadata) => metadata.tableName).sort(),
     [
       "account_consents",
+      "account_kakao_withdrawal_apps",
+      "account_kakao_withdrawals",
+      "account_withdrawal_request_keys",
+      "account_withdrawal_requests",
       "accounts",
       "attendance_responses",
       "attendance_reviews",
@@ -63,7 +67,6 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "external_identities",
       "favorites",
       "group_handovers",
-      "group_invitations",
       "group_members",
       "group_memberships",
       "group_roster_additions",
@@ -170,6 +173,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     "phoneVerifiedAt",
   ]);
   assert.equal(identity.account.email, email);
+  assert.equal(identity.account.accountType, "organizer");
   assert(
     signup.headers
       .getSetCookie()

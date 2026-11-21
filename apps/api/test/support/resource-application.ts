@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { TestContext } from "node:test";
 import { startTestApplication } from "./test-application.js";
 import { DatabaseService } from "../../src/database/database.service.js";
+import { Account } from "../../src/modules/auth/entities/account.entity.js";
 import { AuthAttempt } from "../../src/modules/auth/entities/auth-attempt.entity.js";
 import { tokenHash } from "../../src/modules/auth/utils/token-hash.js";
 
@@ -49,10 +50,18 @@ export async function startResourceApplication(
       .map((value) => value.split(";")[0])
       .join("; ");
   };
+  const existingOwner = async () => {
+    const jar = await signup();
+    const me = await call("auth/me", jar);
+    assert.equal(me.status, 200);
+    const { id } = (await me.json()) as { id: string };
+    await db.manager.update(Account, { id }, { accountType: "owner" });
+    return jar;
+  };
   const createGroup = async (name: string, jar: string) => {
     const response = await call("groups", jar, "POST", { name });
     assert.equal(response.status, 201);
     return (await response.json()) as { id: string; name: string };
   };
-  return { ...result, db, call, signup, createGroup };
+  return { ...result, db, call, signup, existingOwner, createGroup };
 }

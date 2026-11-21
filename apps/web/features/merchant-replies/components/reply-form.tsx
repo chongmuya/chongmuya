@@ -540,10 +540,17 @@ export function ReplyForm({
                         이 날짜·시간에{" "}
                         {offered?.expectedGuests ?? q.snapshot.expectedGuests}명
                         자리를 비워둘게요
-                        <span className="mt-1 block text-xs font-normal text-muted">
-                          {deadline && deadline !== q.defaults.expiresAt
-                            ? `${koreanDateLabel(deadline)}까지 다른 예약을 받지 않아요`
-                            : "총무가 정할 때까지(약 12시간) 다른 예약을 받지 않아요"}
+                        <span className="mt-1 block text-xs font-normal break-keep text-muted">
+                          {deadline ? (
+                            <>
+                              <time dateTime={deadline}>
+                                {koreanDateLabel(deadline)}
+                              </time>
+                              (한국 시간)까지 필요한 좌석을 유지해요.
+                            </>
+                          ) : (
+                            "선택 기한까지 필요한 좌석을 유지해요."
+                          )}
                         </span>
                       </span>
                     </label>

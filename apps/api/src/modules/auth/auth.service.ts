@@ -1,4 +1,10 @@
-import type { EntityManager } from "typeorm";
+import { IsNull, MoreThan, type EntityManager } from "typeorm";
+import type { AuthUser } from "./types/auth-user.js";
+import { KAKAO_ISSUER } from "./kakao-oidc.service.js";
+import { ExternalIdentity } from "./entities/external-identity.entity.js";
+import { KakaoAttempt } from "./entities/kakao-attempt.entity.js";
+import { PasswordReset } from "./entities/password-reset.entity.js";
+import { PhoneChange } from "./entities/phone-change.entity.js";
 import { SessionIssuerService } from "./session-issuer.service.js";
 import { EmailVerificationService } from "./email-verification.service.js";
 import type { FirstSetupDto } from "./dto/request/first-setup.request.dto.js";
@@ -30,14 +36,112 @@ export class AuthService {
     private readonly phone: PhoneVerificationService,
     private readonly terms: SignupTermsService,
   ) {}
-  // Exact, verified identity only; deliberately no account search endpoint.
-  async groupAccount(
-    m: EntityManager,
-    identity: { id: string } | { email: string },
+  // Existing business locks stay first. Withdrawal never locks business rows.
+  async lockActiveAccount(id: string, manager: EntityManager) {
+    const account = await manager.findOne(Account, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!account || account.withdrawnAt || account.withdrawalStartedAt)
+      throw new AuthError("SESSION_INVALID");
+    return account;
+  }
+
+  async lockWithdrawalSession(user: AuthUser, manager: EntityManager) {
+    await this.lockActiveAccount(user.id, manager);
+    const active = await manager.existsBy(AuthSession, {
+      id: user.sessionId,
+      accountId: user.id,
+      revokedAt: IsNull(),
+      expiresAt: MoreThan(new Date()),
+    });
+    if (!active) throw new AuthError("SESSION_INVALID");
+  }
+
+  async withdrawalKakaoSubject(id: string, manager: EntityManager) {
+    const link = await manager.findOneBy(ExternalIdentity, {
+      accountId: id,
+      issuer: KAKAO_ISSUER,
+    });
+    return link?.sub ?? null;
+  }
+
+  async markWithdrawalStarted(id: string, manager: EntityManager) {
+    const now = new Date();
+    await manager.update(Account, { id }, { withdrawalStartedAt: now });
+    await manager.update(
+      AuthSession,
+      { accountId: id, revokedAt: IsNull() },
+      { revokedAt: now },
+    );
+  }
+
+  async lockKakaoWithdrawal(id: string, manager: EntityManager) {
+    const account = await manager.findOne(Account, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    return account?.withdrawalStartedAt && !account.withdrawnAt
+      ? this.withdrawalKakaoSubject(id, manager)
+      : null;
+  }
+
+  async closeAccount(
+    id: string,
+    receiptHash: string,
+    manager: EntityManager,
+    unlinkedSubject: string | null = null,
   ) {
-    const a = await m.findOneBy(Account, identity);
+    if ((await this.withdrawalKakaoSubject(id, manager)) !== unlinkedSubject)
+      throw new DomainHttpException("KAKAO_INVALID");
+    const now = new Date();
+    await manager.update(
+      Account,
+      { id },
+      {
+        withdrawnAt: now,
+        withdrawalStartedAt: null,
+        withdrawalReceiptHash: receiptHash,
+        email: `${id}@withdrawn.invalid`,
+        emailVerifiedAt: null,
+        emailVerificationSource: null,
+        name: null,
+        nickname: null,
+        phone: null,
+        phoneVerifiedAt: null,
+        passwordHash: null,
+        credentialsChangedAt: now,
+        accountType: null,
+      },
+    );
+    await manager.update(
+      AuthSession,
+      { accountId: id, revokedAt: IsNull() },
+      { revokedAt: now },
+    );
+    await manager.delete(PasswordReset, { accountId: id });
+    await manager.delete(PhoneChange, { accountId: id });
+    await manager.delete(
+      KakaoAttempt,
+      unlinkedSubject
+        ? [{ accountId: id }, { issuer: KAKAO_ISSUER, sub: unlinkedSubject }]
+        : { accountId: id },
+    );
+    await manager.delete(ExternalIdentity, { accountId: id });
+  }
+
+  async hasWithdrawalReceipt(receiptHash: string, manager: EntityManager) {
+    return manager.existsBy(Account, {
+      withdrawalReceiptHash: receiptHash,
+      withdrawnAt: MoreThan(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+    });
+  }
+
+  async groupAccount(m: EntityManager, id: string) {
+    const a = await m.findOneBy(Account, { id });
     if (
       !a ||
+      a.withdrawalStartedAt ||
       a.accountType !== "organizer" ||
       !a.emailVerifiedAt ||
       !a.phoneVerifiedAt ||
@@ -52,10 +156,14 @@ export class AuthService {
       id,
       accountType: "organizer",
     });
-    return !!account?.nickname?.trim();
+    return !account?.withdrawalStartedAt && !!account?.nickname?.trim();
   }
   async assertOwnerAccount(id: string, manager: EntityManager) {
-    if (!(await manager.existsBy(Account, { id, accountType: "owner" })))
+    const account = await manager.findOne(Account, {
+      where: { id, accountType: "owner" },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!account || account.withdrawnAt || account.withdrawalStartedAt)
       throw new DomainHttpException("OWNER_REQUIRED");
   }
   private async limit(ip: string, email: string) {
@@ -78,13 +186,18 @@ export class AuthService {
         where: { id: account.id },
         lock: { mode: "pessimistic_write" },
       });
-      if (!current || current.passwordHash !== account.passwordHash)
+      if (
+        !current ||
+        current.withdrawnAt ||
+        current.withdrawalStartedAt ||
+        current.passwordHash !== account.passwordHash
+      )
         throw new AuthError("INVALID_CREDENTIALS");
       return this.sessions.createSession(manager, current);
     });
   }
   async signup(input: SignupDto, ip: string, requester?: string) {
-    this.terms.validate(input.consents);
+    const consents = this.terms.validate(input.consents);
     const db = await this.limit(ip, input.email);
     const passwordHash = await hashPassword(input.password);
     return db.transaction(async (manager) => {
@@ -103,7 +216,7 @@ export class AuthService {
       const account = Object.assign(new Account(), {
         id: randomUUID(),
         email: input.email,
-        accountType: null,
+        accountType: "organizer" as const,
         passwordHash,
         createdAt: new Date(),
         name: input.name,
@@ -125,7 +238,7 @@ export class AuthService {
         throw new DomainHttpException("EMAIL_ALREADY_REGISTERED");
       await manager.insert(
         AccountConsent,
-        input.consents.map((consent) => ({
+        consents.map((consent) => ({
           accountId: account.id,
           termId: consent.id,
           version: consent.version,
@@ -143,7 +256,10 @@ export class AuthService {
         where: { id: accountId },
         lock: { mode: "pessimistic_write" },
       });
-      if (!account) throw new AuthError("SESSION_INVALID");
+      if (!account || account.withdrawnAt || account.withdrawalStartedAt)
+        throw new AuthError("SESSION_INVALID");
+      if (account.accountType === null && input.accountType === "owner")
+        throw new DomainHttpException("PILOT_ORGANIZER_SIGNUP_ONLY");
       if (
         input.accountType &&
         account.accountType &&

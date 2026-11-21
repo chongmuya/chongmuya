@@ -33,7 +33,7 @@ export class KakaoSignupDto {
   @IsOptional() @IsUUID("4") emailVerificationId?: string;
   @IsUUID("4") phoneVerificationId!: string;
   @IsArray()
-  @ArrayMinSize(4)
+  @ArrayMinSize(3)
   @ArrayMaxSize(4)
   @ValidateNested({ each: true })
   @Type(() => SignupConsentDto)

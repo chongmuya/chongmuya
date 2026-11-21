@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { fromKoreanDateInput } from "@/shared/lib/korean-date";
+import { guestCountSchema } from "@/shared/lib/guest-count";
 
 export const eventSchema = z
   .object({
@@ -12,19 +14,28 @@ export const eventSchema = z
       z.literal(""),
       z.iso.time({ precision: -1, error: "시간을 확인해 주세요." }),
     ]),
+    findVenue: z.boolean().optional(),
+    expectedGuests: z.union([guestCountSchema, z.literal("")]).optional(),
   })
   .superRefine((v, ctx) => {
-    if (v.date && !v.time)
+    if ((v.date || v.findVenue) && !v.time)
       ctx.addIssue({
         code: "custom",
         path: ["time"],
         message: "시작 시간을 입력해 주세요.",
       });
-    if (v.time && !v.date)
+    if ((v.time || v.findVenue) && !v.date)
       ctx.addIssue({
         code: "custom",
         path: ["date"],
         message: "날짜를 입력해 주세요.",
+      });
+    const startsAt = fromKoreanDateInput(`${v.date}T${v.time}`);
+    if (v.findVenue && startsAt && Date.parse(startsAt) <= Date.now())
+      ctx.addIssue({
+        code: "custom",
+        path: ["date"],
+        message: "미래 날짜와 시작 시간으로 입력해 주세요.",
       });
   });
 export type EventFormValues = z.infer<typeof eventSchema>;
@@ -33,8 +44,7 @@ export function eventInput(values: EventFormValues, groupId?: string) {
   return {
     name: values.name,
     groupId,
-    scheduledAt: values.date
-      ? new Date(`${values.date}T${values.time}:00+09:00`).toISOString()
-      : undefined,
+    scheduledAt:
+      fromKoreanDateInput(`${values.date}T${values.time}`) ?? undefined,
   };
 }

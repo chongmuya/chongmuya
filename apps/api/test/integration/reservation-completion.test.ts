@@ -46,7 +46,8 @@ const json = async <T>(r: Response, status = 200) => {
   return b as T;
 };
 test("reservation completion preserves contracts, scoped links, money evidence and concurrent decisions", async (t) => {
-  const { app, db, call, signup, url } = await startResourceApplication(t);
+  const { app, db, call, signup, existingOwner, url } =
+    await startResourceApplication(t);
   await seedDemoRestaurants(db);
   const organizer = await signup(),
     alien = await signup();
@@ -1534,12 +1535,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
   await t.test(
     "logged owner matches link authority and post-commit sender failure preserves completion",
     async (t) => {
-      const owner = await signup();
-      await json(
-        await call("auth/first-setup", owner, "PATCH", {
-          accountType: "owner",
-        }),
-      );
+      const owner = await existingOwner();
       const identity = await json<{ id: string }>(await call("auth/me", owner));
       let v = await fixture();
       const { Restaurant } =
@@ -2325,12 +2321,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
   await t.test(
     "owner inbox survives a missing link and owner menu edits serialize with operator price patches",
     async () => {
-      const account = await signup();
-      await json(
-        await call("auth/first-setup", account, "PATCH", {
-          accountType: "owner",
-        }),
-      );
+      const account = await existingOwner();
       const me = await json<{ id: string }>(await call("auth/me", account));
       let v = await fixture();
       const original = await db.manager.findOneByOrFail(Restaurant, {

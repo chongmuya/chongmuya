@@ -71,6 +71,9 @@ export function EventFiles({
       <Button variant="outline" onClick={() => void q.refetch()}>
         파일 상태 새로 조회
       </Button>
+      {q.isPending && q.isFetching && (
+        <p role="status">파일을 불러오는 중입니다.</p>
+      )}
       {q.data && (
         <p className="text-xs text-secondary">
           운영 한도: 행사당 {q.data.limits.count}개 · 총{" "}

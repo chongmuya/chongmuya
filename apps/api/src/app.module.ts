@@ -1,3 +1,4 @@
+import { AccountWithdrawalModule } from "./modules/account-withdrawal/account-withdrawal.module.js";
 import { HandoversModule } from "./modules/handovers/handovers.module.js";
 import { FavoritesModule } from "./modules/favorites/favorites.module.js";
 import { CalendarModule } from "./modules/calendar/calendar.module.js";
@@ -21,6 +22,7 @@ import { AuthModule } from "./modules/auth/auth.module.js";
     ConfigModule,
     HealthModule,
     AuthModule,
+    AccountWithdrawalModule,
     GroupsModule,
     EventsModule,
     RestaurantsModule,

@@ -56,9 +56,9 @@ export class SignupDto {
   phone!: string;
   @ApiProperty({ format: "uuid" }) @IsUUID("4") emailVerificationId!: string;
   @ApiProperty({ format: "uuid" }) @IsUUID("4") phoneVerificationId!: string;
-  @ApiProperty({ type: [SignupConsentDto] })
+  @ApiProperty({ type: [SignupConsentDto], minItems: 3, maxItems: 4 })
   @IsArray()
-  @ArrayMinSize(4)
+  @ArrayMinSize(3)
   @ArrayMaxSize(4)
   @ValidateNested({ each: true })
   @Type(() => SignupConsentDto)

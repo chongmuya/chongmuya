@@ -49,6 +49,7 @@ export type Notice = {
   calculationVersion: number;
   createdAt: string;
   actorId: string;
+  reservationVersions?: Record<string, number>;
   snapshot: {
     expenses: Expense[];
     people: {

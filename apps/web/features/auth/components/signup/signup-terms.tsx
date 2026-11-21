@@ -11,9 +11,11 @@ import type { SignupTerm, SignupTermId } from "../../types/signup.types";
 export function SignupTerms({
   onDetail,
   terms,
+  privacyPolicy,
 }: {
   onDetail: (term: SignupTermId) => void;
   terms: SignupTerm[];
+  privacyPolicy?: SignupTerm;
 }) {
   const {
     register,
@@ -22,7 +24,8 @@ export function SignupTerms({
     formState: { errors },
   } = useFormContext<SignupValues>();
   const values = useWatch({ control });
-  const all = terms.every((term) => values[term.id]);
+  const requiredTerms = terms.filter((term) => term.required);
+  const allRequired = requiredTerms.every((term) => values[term.id]);
   return (
     <div className="flex flex-1 flex-col">
       <div className="px-3.5 pt-[clamp(24px,9.2svh,87px)]">
@@ -64,8 +67,8 @@ export function SignupTerms({
                   </span>
                 </label>
                 <IconButton
-                  data-signup-term={term.id}
                   aria-label={`${term.title} 상세 보기`}
+                  data-signup-term={term.id}
                   onClick={() => onDetail(term.id)}
                   className="w-8"
                 >
@@ -87,9 +90,9 @@ export function SignupTerms({
           ))}
           <label className="flex min-h-11 cursor-pointer items-center gap-3 text-label text-muted">
             <Checkbox
-              checked={all}
+              checked={allRequired}
               onChange={(event) =>
-                terms.forEach((term) =>
+                requiredTerms.forEach((term) =>
                   setValue(term.id, event.target.checked, {
                     shouldDirty: true,
                     shouldValidate: true,
@@ -97,10 +100,30 @@ export function SignupTerms({
                 )
               }
             />
-            전체 동의
+            필수 항목 모두 동의
           </label>
         </div>
       </fieldset>
+      {privacyPolicy?.url ? (
+        <a
+          href={privacyPolicy.url}
+          data-signup-term={privacyPolicy.id}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 w-fit text-caption text-link underline"
+        >
+          개인정보 처리방침 보기 (새 창)
+        </a>
+      ) : privacyPolicy ? (
+        <button
+          type="button"
+          data-signup-term={privacyPolicy.id}
+          className="mt-3 w-fit text-caption text-link underline"
+          onClick={() => onDetail(privacyPolicy.id)}
+        >
+          개인정보 처리방침 보기
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -111,7 +134,7 @@ export function SignupTermsDetail({
   onClose,
 }: {
   term: SignupTerm;
-  onAgree: () => void;
+  onAgree?: () => void;
   onClose: () => void;
 }) {
   return (
@@ -139,11 +162,13 @@ export function SignupTermsDetail({
         </div>
       )}
       <div className="mt-auto space-y-2 pt-8">
-        <Button className="w-full" variant="brand-outline" onClick={onAgree}>
-          동의하고 닫기
-        </Button>
+        {onAgree && (
+          <Button className="w-full" variant="brand-outline" onClick={onAgree}>
+            동의하고 닫기
+          </Button>
+        )}
         <Button className="w-full" variant="outline" onClick={onClose}>
-          동의하지 않고 돌아가기
+          {onAgree ? "동의하지 않고 돌아가기" : "돌아가기"}
         </Button>
       </div>
     </article>

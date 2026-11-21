@@ -885,3 +885,146 @@ test("new manager editing an inherited notice preserves its text but must enter 
     await v.unmount();
   }
 });
+
+test("notice load failure recovers in place and a pending share runs only once", async () => {
+  const data = deadlineFixture();
+  let fail = true;
+  let shares = 0;
+  let finishShare!: () => void;
+  const previousShare = Object.getOwnPropertyDescriptor(navigator, "share");
+  Object.defineProperty(navigator, "share", {
+    configurable: true,
+    value: () => {
+      shares++;
+      return new Promise<void>((resolve) => {
+        finishShare = resolve;
+      });
+    },
+  });
+  const a: Access = {
+    accountId: "a",
+    eventId: "notice-recovery",
+    request: async <T>() => {
+      if (fail) throw new ApiError("", 503, "SERVICE_UNAVAILABLE");
+      return {
+        ...data.state.notices[0],
+        text: "보존된 정산문",
+        actorId: "a",
+      } as T;
+    },
+  };
+  const view = await render(createElement(NoticePanel, { access: a, data }));
+  try {
+    await act(async () =>
+      [...view.container.querySelectorAll("button")]
+        .find((b) => b.textContent?.startsWith("확인 안내"))!
+        .click(),
+    );
+    await until(() => assert(view.container.querySelector('[role="alert"]')));
+    fail = false;
+    await click(view.container, "정산문 다시 조회");
+    await until(() =>
+      assert.equal(
+        view.container.querySelector("pre")?.textContent,
+        "보존된 정산문",
+      ),
+    );
+    await click(view.container, "공유하기");
+    await click(view.container, "공유하기");
+    assert.equal(shares, 1);
+    for (const label of ["복사하기", "공유하기"])
+      assert.equal(
+        [...view.container.querySelectorAll("button")].find(
+          (b) => b.textContent === label,
+        )?.disabled,
+        true,
+      );
+    await act(async () => finishShare());
+    await until(() =>
+      assert.match(view.container.textContent!, /공유 창 작업을 마쳤습니다/),
+    );
+    assert.equal(
+      [...view.container.querySelectorAll("button")].find(
+        (b) => b.textContent === "공유하기",
+      )?.disabled,
+      false,
+    );
+  } finally {
+    await view.unmount();
+    if (previousShare) Object.defineProperty(navigator, "share", previousShare);
+    else Reflect.deleteProperty(navigator, "share");
+  }
+});
+
+test("a refund-affected notice stays readable with sharing blocked after the linked expense is corrected", async () => {
+  const data = deadlineFixture();
+  data.state.version = 2;
+  data.state.calculationVersion = 2;
+  data.state.notices[0]!.outdated = true;
+  data.depositConflicts = [];
+  data.bankDefault = {
+    bank: "가상은행",
+    account: "000-000",
+    holder: "QA 총무",
+  };
+  const previous = data.state.notices[0]!;
+  let replaces: string | undefined;
+  const a: Access = {
+    accountId: "a",
+    eventId: "e",
+    request: async <T>(path: string, options?: RequestInit) => {
+      if (options?.method === "POST") {
+        replaces = JSON.parse(String(options.body)).command.replaces;
+        return { ...data, createdNoticeId: "updated" } as T;
+      }
+      const historical = path.endsWith(previous.id);
+      return {
+        ...previous,
+        text: historical ? "반환 전 정산문 원문" : "정정 후 새로 계산한 정산문",
+        scope: "ALL",
+        message: "가상 정산 안내",
+        actorId: a.accountId,
+        bank: data.bankDefault,
+        needsReview: false,
+        outdated: historical,
+        refundRequiresRegeneration: historical,
+      } as T;
+    },
+  };
+  const view = await render(createElement(NoticePanel, { access: a, data }));
+  const shareControls = () =>
+    [...view.container.querySelectorAll("button")].filter((b) =>
+      ["복사하기", "공유하기"].includes(b.textContent ?? ""),
+    );
+  try {
+    const original = [...view.container.querySelectorAll("button")].find((b) =>
+      b.textContent?.startsWith(previous.title),
+    )!;
+    await act(async () => original.click());
+    await until(() =>
+      assert.equal(
+        view.container.querySelector("pre")?.textContent,
+        "반환 전 정산문 원문",
+      ),
+    );
+    assert.deepEqual(
+      shareControls().map((b) => b.disabled),
+      [true, true],
+    );
+    await click(view.container, "입력 내용 수정본 만들기");
+    await submit(view.container);
+    await until(() =>
+      assert.equal(
+        view.container.querySelector("pre")?.textContent,
+        "정정 후 새로 계산한 정산문",
+      ),
+    );
+    assert.equal(replaces, previous.id);
+    assert.deepEqual(
+      shareControls().map((b) => b.disabled),
+      [false, false],
+    );
+  } finally {
+    await view.unmount();
+  }
+});
