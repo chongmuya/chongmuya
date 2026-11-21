@@ -6,13 +6,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { SessionRequest } from "@/features/auth/types";
 import { RosterEditor } from "@/features/roster/client";
 import type { RosterRow } from "@/features/roster/types";
-import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { ApiError } from "@/shared/http/api-error";
-import { safeErrorMessage } from "@/shared/http/error-contract";
 import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { FormField } from "@/shared/ui/form-field";
-import { FormError } from "@/shared/ui/form-error";
 import { Input } from "@/shared/ui/input";
 import { StepHeading, StepLayout } from "@/shared/ui/step-layout";
 import {
@@ -37,17 +34,14 @@ export function GroupRegistration({
   request: SessionRequest;
   onNavigate: (path: string) => void;
 }) {
-  const id = useId(),
-    active = useActiveScreen();
+  const id = useId();
   const [step, setStep] = useState<"group" | "roster">(
     target ? "roster" : "group",
   );
   const [started, setStarted] = useState(!!target);
   const [completed, setCompleted] = useState<AddedGroupMembers | null>(null),
-    [leaving, setLeaving] = useState(false),
-    [error, setError] = useState<string>();
+    [leaving, setLeaving] = useState(false);
   const requestKey = useRef<string | null>(null),
-    previousSkip = useRef(false),
     submitting = useRef(false);
   const form = useForm<GroupRegistrationValues>({
     resolver: zodResolver(groupRegistrationSchema),
@@ -57,22 +51,10 @@ export function GroupRegistration({
     },
   });
   const save = useRegisterGroup(accountId, request, setCompleted);
-  const persist = async (
-    rows: RosterRow[],
-    duplicatesConfirmed: boolean,
-    skip = false,
-  ) => {
+  const persist = async (rows: RosterRow[], duplicatesConfirmed: boolean) => {
     if (submitting.current) return;
-    if (skip && requestKey.current && !previousSkip.current) {
-      setError(
-        "진행한 등록 결과가 불확실해요. 같은 명단으로 다시 저장하거나 홈에서 확인해 주세요.",
-      );
-      return;
-    }
     submitting.current = true;
-    previousSkip.current = skip;
     requestKey.current ??= crypto.randomUUID();
-    setError(undefined);
     const metadata = form.getValues();
     const members = rows.map(({ name, phoneLast4, label, match }) => ({
       name,
@@ -132,9 +114,7 @@ export function GroupRegistration({
             {completed.group.name}
             {target
               ? ` · ${completed.addedCount}명 추가 완료 (총 ${completed.group.memberCount}명)`
-              : completed.group.memberCount > 0
-                ? ` · 명단 ${completed.group.memberCount}명 등록 완료`
-                : " · 명단 없이 등록 완료"}
+              : ` · 명단 ${completed.group.memberCount}명 등록 완료`}
           </p>
         </div>
         <div className="space-y-2">
@@ -226,23 +206,14 @@ export function GroupRegistration({
           <RosterEditor
             existing={target?.members}
             title={target ? "명단 추가" : "모임 등록"}
+            progress={target ? undefined : { value: 2, max: 2 }}
             busy={save.isPending}
             onBack={() => {
               if (target) setLeaving(true);
               else setStep("group");
             }}
-            onSave={(rows, confirmed) => persist(rows, confirmed)}
-            skip={
-              target
-                ? undefined
-                : () => {
-                    void persist([], false, true).catch((cause) => {
-                      if (active.current) setError(safeErrorMessage(cause));
-                    });
-                  }
-            }
+            onSave={persist}
           />
-          <FormError message={error} />
         </div>
       )}
       {leaving && (
