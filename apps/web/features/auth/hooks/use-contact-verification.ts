@@ -167,6 +167,12 @@ export function useContactVerification(
                 cause.code === "EMAIL_VERIFICATION_LIMIT"
               ? { attemptsRemaining: 0 }
               : {}),
+          ...(cause instanceof ApiError &&
+          ["PHONE_VERIFICATION_EXPIRED", "PHONE_VERIFICATION_INVALID"].includes(
+            cause.code,
+          )
+            ? { qrCode: undefined }
+            : {}),
         });
       } finally {
         if (ticket === generation.current) running.current = null;

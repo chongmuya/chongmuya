@@ -1,11 +1,19 @@
 "use client";
 
-import { Button, buttonStyles } from "@/shared/ui/button";
+import { useRef, useState, type ReactNode } from "react";
 import { FormError } from "@/shared/ui/form-error";
-import type { ReactNode } from "react";
 import type { VerificationState } from "../types/verification.types";
 import { PhoneVerificationQr } from "./phone-verification-qr";
 import { VerificationRequestButton } from "./verification-request-button";
+
+const messages = {
+  requesting: "인증 요청을 처리하고 있어요.",
+  verified: "휴대폰 인증이 완료되었어요.",
+  error: "인증을 확인하지 못했어요.",
+  expired: "인증 시간이 만료되었어요. 다시 요청해 주세요.",
+  idle: undefined,
+  pending: undefined,
+};
 
 export function ContactVerification({
   state,
@@ -26,120 +34,85 @@ export function ContactVerification({
   disabled?: boolean;
   renderField: (requestButton: ReactNode) => ReactNode;
 }) {
-  const waiting = (state.retryAt ?? 0) > now;
-  const checkWaiting = (state.nextCheckAt ?? 0) > now;
-  const status = state.status;
-  const requestLabel =
-    status === "requesting"
-      ? "처리 중…"
-      : status === "verified"
-        ? "인증 완료"
-        : state.id
-          ? "새 인증 요청"
-          : "인증하기";
-  const messages = {
-    requesting: "인증 요청을 처리하고 있어요.",
-    pending: "문자를 전송한 뒤 아래에서 인증 결과를 확인해 주세요.",
-    verified: "휴대폰 인증이 완료되었어요.",
-    error: "인증을 확인하지 못했어요.",
-    expired: "인증 시간이 만료되었어요. 다시 요청해 주세요.",
-  };
+  const requestRef = useRef<HTMLButtonElement>(null);
+  const [dismissedId, setDismissedId] = useState<string>();
+  const { id, status, qrCode, receiver, message } = state;
+  const busy = status === "requesting";
+  const verified = status === "verified";
+  const exhausted = state.checksRemaining === 0;
+  const challenge =
+    id &&
+    qrCode &&
+    receiver &&
+    message &&
+    onCheck &&
+    !verified &&
+    status !== "expired" &&
+    !exhausted
+      ? { id, qrCode, receiver, message, onCheck }
+      : undefined;
+  const retryIn = Math.max(0, Math.ceil(((state.retryAt ?? 0) - now) / 1000));
+  const requestLabel = busy
+    ? "처리 중…"
+    : verified
+      ? "인증 완료"
+      : challenge
+        ? "인증 다시 열기"
+        : "인증 요청";
+  const statusMessage =
+    exhausted && status === "pending"
+      ? "인증을 다시 요청해 주세요."
+      : messages[status];
+
   return (
     <div>
       {renderField(
         <VerificationRequestButton
+          ref={requestRef}
           aria-label={`휴대폰 ${requestLabel}`}
-          loading={status === "requesting"}
-          disabled={disabled || !available || waiting || status === "verified"}
-          onClick={onRequest}
+          aria-haspopup={verified ? undefined : "dialog"}
+          loading={busy}
+          disabled={
+            disabled || !available || verified || (!challenge && retryIn > 0)
+          }
+          onClick={() => {
+            if (challenge) setDismissedId(undefined);
+            else onRequest();
+          }}
         >
           {requestLabel}
         </VerificationRequestButton>,
       )}
-      {status !== "idle" && (
-        <div className="mt-3 space-y-3">
-          <p role="status" className="text-caption text-muted wrap-anywhere">
-            {messages[status]}
-          </p>
-          <FormError message={error} />
-          {state.expiresAt && status !== "expired" && status !== "verified" && (
-            <p className="text-caption text-muted">
-              남은 인증 시간{" "}
-              {Math.max(0, Math.ceil((state.expiresAt - now) / 1000))}초
-            </p>
+      {!challenge && statusMessage && (
+        <p role="status" className="mt-3 text-caption text-muted wrap-anywhere">
+          {statusMessage}
+        </p>
+      )}
+      {!challenge && <FormError message={error} />}
+      {!challenge && !verified && retryIn > 0 && (
+        <p className="mt-3 text-caption text-muted">재요청까지 {retryIn}초</p>
+      )}
+      {challenge && challenge.id !== dismissedId && (
+        <PhoneVerificationQr
+          key={challenge.id}
+          qrCode={challenge.qrCode}
+          receiver={challenge.receiver}
+          message={challenge.message}
+          remainingSeconds={Math.max(
+            0,
+            Math.ceil(((state.expiresAt ?? now) - now) / 1000),
           )}
-          {state.message &&
-            state.receiver &&
-            status !== "expired" &&
-            status !== "verified" && (
-              <div className="space-y-4 rounded-panel border border-border p-4">
-                {state.qrCode && (
-                  <PhoneVerificationQr key={state.id} qrCode={state.qrCode} />
-                )}
-                <div className="hidden space-y-3 [@media(hover:none)_and_(pointer:coarse)]:block">
-                  <p className="text-caption text-muted">
-                    아래 버튼으로 문자 앱을 열고, 채워진 문구를 전송해 주세요.
-                  </p>
-                  <a
-                    onClick={(event) => {
-                      if (/iPad|iPhone|iPod/.test(navigator.userAgent))
-                        event.currentTarget.href = `sms:${state.receiver}&body=${encodeURIComponent(state.message!)}`;
-                    }}
-                    href={`sms:${state.receiver}?body=${encodeURIComponent(state.message)}`}
-                    className={buttonStyles({ className: "w-full" })}
-                  >
-                    문자 앱 열기
-                  </a>
-                </div>
-                <details className="border-t border-border pt-3">
-                  <summary className="cursor-pointer text-caption text-muted">
-                    번호·문구 직접 확인
-                  </summary>
-                  <div className="mt-3 space-y-2 text-caption">
-                    <p>
-                      수신 번호{" "}
-                      <strong className="select-all">{state.receiver}</strong>
-                    </p>
-                    <p>전송 문구</p>
-                    <p className="select-all rounded-control bg-surface p-2 break-all">
-                      {state.message}
-                    </p>
-                  </div>
-                </details>
-                <p className="text-caption text-muted">
-                  사용 중인 요금제에 따라 문자 요금이 발생할 수 있어요.
-                </p>
-              </div>
-            )}
-          {state.id &&
-            !["verified", "expired", "requesting"].includes(status) &&
-            onCheck && (
-              <Button
-                variant="outline"
-                disabled={
-                  disabled || checkWaiting || state.checksRemaining === 0
-                }
-                onClick={onCheck}
-                className="text-caption"
-              >
-                인증 결과 확인
-              </Button>
-            )}
-          {waiting && status !== "verified" && (
-            <p className="text-caption text-muted">
-              재요청까지 {Math.max(0, Math.ceil((state.retryAt! - now) / 1000))}
-              초
-            </p>
+          checkDelaySeconds={Math.max(
+            0,
+            Math.ceil(((state.nextCheckAt ?? 0) - now) / 1000),
           )}
-          {state.id && status !== "verified" && status !== "expired" && (
-            <p className="text-caption text-muted">
-              확인 가능 횟수 {state.checksRemaining ?? 0}회
-              {checkWaiting
-                ? ` · ${Math.ceil((state.nextCheckAt! - now) / 1000)}초 후 다시 확인`
-                : ""}
-            </p>
-          )}
-        </div>
+          checking={busy}
+          disabled={disabled}
+          error={error}
+          onCheck={challenge.onCheck}
+          onClose={() => setDismissedId(challenge.id)}
+          returnFocusRef={requestRef}
+        />
       )}
     </div>
   );
