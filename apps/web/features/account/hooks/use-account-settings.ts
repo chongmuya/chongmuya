@@ -2,14 +2,13 @@
 import { useMemo, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/features/auth/client";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import {
   saveProfile,
   issuePhone,
   verifyPhone,
-  termsQuery,
   type PhoneChange,
 } from "../api/account.api";
 import { profileSchema, phoneSchema } from "../schemas/profile";
@@ -89,7 +88,6 @@ export function useAccountSettings() {
       if (active.current) setChecking(false);
     }
   };
-  const terms = useQuery(termsQuery(request, account?.id));
   return {
     account,
     profile,
@@ -105,6 +103,5 @@ export function useAccountSettings() {
     waiting,
     verifyError,
     done,
-    terms,
   };
 }

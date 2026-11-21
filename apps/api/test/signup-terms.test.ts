@@ -38,11 +38,6 @@ test("production uses the published legal documents even with an obsolete catalo
         url: "https://example.test/legal/2026-11-21#privacy-collection",
       },
       {
-        id: "privacyPolicy",
-        version: "2026-11-21",
-        url: "https://example.test/legal/2026-11-21#privacy-policy",
-      },
-      {
         id: "marketing",
         version: "2026-11-21",
         url: "https://example.test/legal/2026-11-21#marketing",
@@ -50,13 +45,11 @@ test("production uses the published legal documents even with an obsolete catalo
     ],
   );
   assert(terms.every((term) => !term.draft && term.body.length === 0));
-  assert.equal(
-    terms.find((term) => term.id === "privacyPolicy")?.required,
-    false,
-  );
-  const consents = terms
-    .filter((term) => term.id !== "privacyPolicy")
-    .map(({ id, version, required }) => ({ id, version, accepted: required }));
+  const consents = terms.map(({ id, version, required }) => ({
+    id,
+    version,
+    accepted: required,
+  }));
   assert.deepEqual(service.validate(consents), consents);
   assert.throws(
     () =>

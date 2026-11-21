@@ -2,7 +2,7 @@ import { ApiProperty } from "@nestjs/swagger";
 
 export class SignupTermDto {
   @ApiProperty({
-    enum: ["serviceTerms", "privacyCollection", "privacyPolicy", "marketing"],
+    enum: ["serviceTerms", "privacyCollection", "marketing"],
   })
   id!: string;
   @ApiProperty() title!: string;

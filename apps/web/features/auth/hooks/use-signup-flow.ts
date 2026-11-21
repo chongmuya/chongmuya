@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError } from "@/shared/http/api-error";
@@ -38,18 +38,9 @@ export function useSignupFlow({
   terms: SignupTerm[];
   kakao?: { email: string | null; trustedEmail: boolean };
 }) {
-  const privacyPolicy = terms.find((term) => term.id === "privacyPolicy");
   const schema = kakao ? kakaoSignupSchema : signupSchema;
   const methods = useForm<SignupValues>({
-    // The API may still require an explicit policy choice during a web-first release.
-    resolver: zodResolver(
-      privacyPolicy?.required
-        ? schema.refine((values) => values.privacyPolicy, {
-            path: ["privacyPolicy"],
-            message: "필수 약관에 동의해 주세요.",
-          })
-        : schema,
-    ),
+    resolver: zodResolver(schema),
     defaultValues: { ...signupDefaults, email: kakao?.email ?? "" },
     shouldUnregister: false,
     mode: "onTouched",
@@ -76,25 +67,19 @@ export function useSignupFlow({
   const providerEmailVerified =
     !!kakao?.trustedEmail &&
     (values.email ?? "").trim().toLowerCase() === kakao.email;
-  const consentTerms = useMemo(
-    () => terms.filter((term) => term.id !== "privacyPolicy" || term.required),
-    [terms],
-  );
   const previousTerms = useRef(
-    new Map(
-      consentTerms.map((term) => [term.id, `${term.version}:${term.required}`]),
-    ),
+    new Map(terms.map((term) => [term.id, `${term.version}:${term.required}`])),
   );
   const [termsNotice, setTermsNotice] = useState<string>();
   useEffect(() => {
     if (complete) return;
-    const changed = consentTerms.filter(
+    const changed = terms.filter(
       (term) =>
         previousTerms.current.get(term.id) !==
         `${term.version}:${term.required}`,
     );
     previousTerms.current = new Map(
-      consentTerms.map((term) => [term.id, `${term.version}:${term.required}`]),
+      terms.map((term) => [term.id, `${term.version}:${term.required}`]),
     );
     if (!changed.length) return;
     for (const term of changed)
@@ -104,7 +89,7 @@ export function useSignupFlow({
     );
     setDetail(null);
     setStep("terms");
-  }, [consentTerms, methods, complete]);
+  }, [terms, methods, complete]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -180,7 +165,7 @@ export function useSignupFlow({
                   ? { emailVerificationId: email.state.id! }
                   : {}),
                 phoneVerificationId: phone.state.id!,
-                consents: consentTerms.map((term) => ({
+                consents: terms.map((term) => ({
                   id: term.id,
                   version: term.version,
                   accepted: input[term.id],
@@ -266,7 +251,6 @@ export function useSignupFlow({
   };
   return {
     methods,
-    consentTerms,
     step,
     detail,
     openDetail: (term: SignupTermId) => {

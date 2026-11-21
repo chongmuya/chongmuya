@@ -1,5 +1,4 @@
-export type SignupTermId =
-  "serviceTerms" | "privacyCollection" | "privacyPolicy" | "marketing";
+export type SignupTermId = "serviceTerms" | "privacyCollection" | "marketing";
 export type SignupTerm = {
   id: SignupTermId;
   title: string;

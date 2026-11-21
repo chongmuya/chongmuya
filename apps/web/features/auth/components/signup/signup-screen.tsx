@@ -135,10 +135,15 @@ function SignupScreenContent({
         <AuthScreen />
       </main>
     );
-  if (terms.isError && !terms.data)
+  const transitionMessage =
+    terms.error instanceof ApiError &&
+    terms.error.code === "SIGNUP_TERMS_UNAVAILABLE"
+      ? terms.error.message
+      : null;
+  if (transitionMessage || (terms.isError && !terms.data))
     return (
       <main className="app-page">
-        <p role="alert">{safeErrorMessage(terms.error)}</p>
+        <p role="alert">{transitionMessage ?? safeErrorMessage(terms.error)}</p>
         <Button onClick={() => void terms.refetch()}>
           가입 약관 다시 불러오기
         </Button>

@@ -1,15 +1,13 @@
 import Image from "next/image";
 import { useFormContext, useWatch } from "react-hook-form";
-import { cn } from "@/shared/lib/cn";
 import {
   LegalDocumentContent,
-  legalDocumentProse,
   legalDocumentsVersion,
 } from "@/shared/legal/documents-2026-11-21";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { IconButton } from "@/shared/ui/icon-button";
 import { FormError } from "@/shared/ui/form-error";
-import { Button } from "@/shared/ui/button";
+import { LegalDocumentReader } from "@/shared/legal/legal-document-reader";
 import type { SignupValues } from "../../schemas/signup.schema";
 
 import type { SignupTerm, SignupTermId } from "../../types/signup.types";
@@ -124,51 +122,22 @@ export function SignupTermsDetail({
   const published = term.version === legalDocumentsVersion;
   const available = published || term.body.length > 0;
   return (
-    <article className="flex min-h-0 flex-1 flex-col">
-      <h1
-        tabIndex={-1}
-        className="focus:outline-none ml-[17px] text-2xl leading-[29px] font-bold text-brand-ink"
-      >
-        {term.title}
-      </h1>
-      <div
-        role="region"
-        aria-label={`${term.title} 본문`}
-        tabIndex={0}
-        className={cn(
-          legalDocumentProse,
-          "mt-6 mb-5 min-h-0 flex-1 overflow-y-auto overscroll-contain border border-placeholder p-2.5 text-base font-medium",
-        )}
-      >
-        {published ? (
-          <LegalDocumentContent id={term.id} />
-        ) : available ? (
-          term.body.map((paragraph, index) => (
-            <p key={`${index}:${paragraph}`}>{paragraph}</p>
-          ))
-        ) : (
-          <p role="status">
-            약관 본문을 확인할 수 없어요. 돌아가서 다시 열어 주세요.
-          </p>
-        )}
-      </div>
-      {available ? (
-        <Button
-          className="w-full shrink-0 border-2 text-brand"
-          variant="brand-outline"
-          onClick={onAgree}
-        >
-          동의하고 닫기
-        </Button>
+    <LegalDocumentReader
+      title={term.title}
+      actionLabel={available ? "동의하고 닫기" : "닫기"}
+      onAction={available ? onAgree : onClose}
+    >
+      {published ? (
+        <LegalDocumentContent id={term.id} />
+      ) : available ? (
+        term.body.map((paragraph, index) => (
+          <p key={`${index}:${paragraph}`}>{paragraph}</p>
+        ))
       ) : (
-        <Button
-          className="w-full shrink-0 border-2 text-brand"
-          variant="brand-outline"
-          onClick={onClose}
-        >
-          닫기
-        </Button>
+        <p role="status">
+          약관 본문을 확인할 수 없어요. 돌아가서 다시 열어 주세요.
+        </p>
       )}
-    </article>
+    </LegalDocumentReader>
   );
 }

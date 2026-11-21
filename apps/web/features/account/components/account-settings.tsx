@@ -1,7 +1,6 @@
 "use client";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { ErrorState } from "@/shared/ui/states";
 import { useAccountSettings } from "../hooks/use-account-settings";
 export function AccountSettings() {
   const {
@@ -19,7 +18,6 @@ export function AccountSettings() {
     waiting,
     verifyError,
     done,
-    terms,
   } = useAccountSettings();
   if (!account) return null;
   return (
@@ -143,36 +141,6 @@ export function AccountSettings() {
           </p>
         )}
         {done && <p role="status">인증된 연락처로 변경했어요.</p>}
-      </section>
-      <section id="terms" className="space-y-3">
-        <h2 className="text-xl font-bold">약관 및 개인정보 처리방침</h2>
-        {terms.isError && (
-          <ErrorState retry={() => void terms.refetch()} />
-        )}{" "}
-        {terms.data?.terms.map((t) => (
-          <details key={t.id}>
-            <summary>
-              {t.title} · {t.version}
-            </summary>
-            {t.draft && (
-              <p>
-                현재 서버의 초안 문서입니다. 운영 문서 설정 확인이 필요해요.
-              </p>
-            )}
-            {t.url ? (
-              <a
-                href={t.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                문서 열기
-              </a>
-            ) : (
-              t.body.map((line, i) => <p key={i}>{line}</p>)
-            )}
-          </details>
-        ))}
       </section>
     </div>
   );

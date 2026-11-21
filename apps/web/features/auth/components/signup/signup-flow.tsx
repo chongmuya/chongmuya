@@ -17,7 +17,7 @@ export function SignupFlow(
   },
 ) {
   const flow = useSignupFlow(props);
-  const detail = flow.consentTerms.find((term) => term.id === flow.detail);
+  const detail = props.terms.find((term) => term.id === flow.detail);
   const detailId = detail?.id ?? null;
   const showingTerms = !flow.complete && !detail && flow.step === "terms";
   const agree = () => {
@@ -89,7 +89,7 @@ export function SignupFlow(
                   {flow.step === "terms" && (
                     <SignupTerms
                       onDetail={flow.openDetail}
-                      terms={flow.consentTerms}
+                      terms={props.terms}
                     />
                   )}
                   {flow.step === "information" && (

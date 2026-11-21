@@ -29,23 +29,3 @@ export const verifyPhone = (request: SessionRequest, p: PhoneChange) =>
     "/api/v1/auth/profile/phone/verify",
     { method: "POST", body: JSON.stringify({ id: p.id, phone: p.phone }) },
   );
-export const getTerms = (request: SessionRequest, signal?: AbortSignal) =>
-  request<{
-    terms: {
-      id: string;
-      title: string;
-      version: string;
-      url: string | null;
-      body: string[];
-      draft: boolean;
-    }[];
-  }>("/api/v1/auth/signup/terms", { signal });
-
-export const termsQuery = (
-  request: SessionRequest,
-  accountId: string | undefined,
-) => ({
-  queryKey: ["user", accountId, "account", "terms"],
-  queryFn: ({ signal }: { signal: AbortSignal }) => getTerms(request, signal),
-  retry: false as const,
-});

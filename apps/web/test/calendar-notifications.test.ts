@@ -427,7 +427,6 @@ test("organizer with no nickname can save only a name without sending an invalid
   globalThis.fetch = async (path, options) => {
     if (String(path).endsWith("restore"))
       return Response.json({ authenticated: true, account });
-    if (String(path).endsWith("terms")) return Response.json({ terms: [] });
     if (String(path).endsWith("profile")) {
       input = JSON.parse(String(options?.body));
       return Response.json({ ...account, name: "새 이름" });

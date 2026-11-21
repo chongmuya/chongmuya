@@ -1,10 +1,15 @@
 import "./support/dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { previewTerms } from "./support/signup-terms";
+import {
+  previewConsentTerms as previewTerms,
+  previewTerms as legacyTerms,
+} from "./support/signup-terms";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
+import { AccountTermsScreen } from "../features/account/components/account-terms-screen";
+import { signupTermsOptions } from "../features/auth/api/signup.api";
 import { SignupFlow } from "../features/auth/components/signup/signup-flow";
 import {
   RecoveryEmail,
@@ -208,6 +213,10 @@ test("signup keeps values and consent across details/back, validates steps and s
       onComplete: noop,
       onSubmit: async (values) => {
         calls++;
+        assert.deepEqual(
+          values.consents.map((term) => term.id),
+          ["serviceTerms", "privacyCollection", "marketing"],
+        );
         assert.equal(
           values.consents.find((term) => term.id === "marketing")?.accepted,
           false,
@@ -376,71 +385,43 @@ test("closing signup terms returns focus to the control that opened them", async
   }
 });
 
-test("signup follows the API policy requirement without assuming consent", async () => {
-  const terms = previewTerms.map((term) =>
-    term.id === "privacyPolicy"
-      ? { ...term, required: true, version: "legacy" }
-      : term,
-  );
-  const props = {
-    onExit: noop,
-    onComplete: noop,
-    verification: {
-      email: {
-        request: async (value: string) => ({
-          value,
-          status: "verified" as const,
-          id: "00000000-0000-4000-8000-000000000002",
-          expiresAt: Date.now() + 600000,
-        }),
-      },
-      phone: {
-        request: async (value: string) => ({
-          value,
-          status: "verified" as const,
-          id: "00000000-0000-4000-8000-000000000001",
-          expiresAt: Date.now() + 300000,
-        }),
-      },
-    },
-  };
-  let submitted = false;
+test("signup exposes only consent entries and rejects a legacy required policy catalog", async () => {
+  const client = new QueryClient();
+  const fetchTerms = (terms: typeof legacyTerms) =>
+    client.fetchQuery(signupTermsOptions(async <T>() => ({ terms }) as T));
+  try {
+    assert.deepEqual(await fetchTerms(previewTerms), previewTerms);
+    assert.deepEqual(await fetchTerms(legacyTerms), previewTerms);
+    await assert.rejects(
+      fetchTerms(
+        legacyTerms.map((term) =>
+          term.id === "privacyPolicy" ? { ...term, required: true } : term,
+        ),
+      ),
+      { code: "SIGNUP_TERMS_UNAVAILABLE" },
+    );
+  } finally {
+    client.clear();
+  }
+});
+
+test("My Page reads the full privacy policy in place and restores focus on close", async () => {
   const view = await render(
-    createElement(SignupFlow, {
-      ...props,
-      terms,
-      onSubmit: async ({ consents }) => {
-        submitted = true;
-        assert.deepEqual(
-          consents.map((term) => term.id),
-          ["serviceTerms", "privacyCollection", "privacyPolicy", "marketing"],
-        );
-        assert.deepEqual(
-          consents.find((term) => term.id === "privacyPolicy"),
-          {
-            id: "privacyPolicy",
-            version: "legacy",
-            accepted: true,
-          },
-        );
-      },
-    }),
+    createElement(AccountTermsScreen, { onBack: noop }),
   );
   try {
-    await agree(view.container, "serviceTerms");
-    await agree(view.container, "privacyCollection");
-    await submit(view.container);
-    assert.match(
-      view.container.querySelector("#privacyPolicy-error")!.textContent!,
-      /필수 약관/,
-    );
-    assert.equal(submitted, false);
-    await agree(view.container, "privacyPolicy");
-    await agree(view.container, "serviceTerms");
-    await agree(view.container, "privacyCollection");
-    await information(view.container);
-    await submit(view.container);
-    assert.equal(submitted, true);
+    for (const close of ["닫기", "이전 단계로 돌아가기"]) {
+      await click(view.container, "개인정보 처리방침");
+      const heading = view.container.querySelector("h1");
+      assert.equal(heading?.textContent, "개인정보 처리방침");
+      assert.equal(document.activeElement, heading);
+      const body = view.container.querySelector('[role="region"]');
+      assert.match(body?.textContent ?? "", /국외 이전/);
+      assert.equal(body?.getAttribute("tabindex"), "0");
+      assert.equal(view.container.querySelector('a[target="_blank"]'), null);
+      await click(view.container, close);
+      assert.equal(document.activeElement?.textContent, "개인정보 처리방침");
+    }
   } finally {
     await view.unmount();
   }

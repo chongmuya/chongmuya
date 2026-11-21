@@ -106,11 +106,10 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
   // Version/choice for the read-only policy may be stale in an old browser tab.
   const legacyInput = {
     ...input,
-    consents: input.consents.map((term) =>
-      term.id === "privacyPolicy"
-        ? { ...term, version: "old-policy", accepted: false }
-        : term,
-    ),
+    consents: [
+      ...input.consents,
+      { id: "privacyPolicy", version: "old-policy", accepted: false },
+    ],
   };
   assert.equal(
     (await call("auth/signup", a, "POST", { ...input, verified: true })).status,

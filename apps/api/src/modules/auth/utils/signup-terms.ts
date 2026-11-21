@@ -14,12 +14,6 @@ export const signupTerms = [
     required: true,
   },
   {
-    id: "privacyPolicy",
-    anchor: "privacy-policy",
-    title: "개인정보 처리방침",
-    required: false,
-  },
-  {
     id: "marketing",
     anchor: "marketing",
     title: "마케팅 정보 수신",

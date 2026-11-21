@@ -64,7 +64,7 @@ Refresh·Access·비밀번호·인증 코드·OAuth URL은 Query 캐시나 브�
 
 카카오 callback은 API의 `/api/v1/auth/kakao/callback`이다. 로컬 예시는 `http://localhost:3001/api/v1/auth/kakao/callback`이며 운영은 HTTPS다. 요청 Host로 callback을 만들지 않는다. 카카오 콘솔의 Redirect URI·OIDC·Client Secret·`account_email` 동의 설정을 실제 요청과 맞춘다. 인가 단계에서 scope가 거부되면 앱 설정을 수정해야 하며, 정상 인가 후 이메일을 제공받지 못한 경우에는 기존 이메일 인증으로 이어진다.
 
-[가입 문서 목록](../apps/api/src/modules/auth/utils/signup-terms.ts)은 운영·개발·테스트에서 `WEB_ORIGIN` 아래 [2026-11-21 약관 원문](../apps/web/app/legal/2026-11-21/page.tsx)에 연결한다. 가입의 약관 상세와 공개 페이지는 [같은 원문](../apps/web/shared/legal/documents-2026-11-21.tsx)을 표시한다. 개인정보 처리방침은 로그인 화면과 공개 원문에서 열람한다. 가입 시 이용약관과 개인정보 수집·이용 동의를 확인하고 마케팅 수신 여부는 선택으로 받는다. 웹 선배포 중 이전 API가 처리방침을 필수 항목으로 보내면 기존 가입 계약을 따른다.
+[가입 문서 목록](../apps/api/src/modules/auth/utils/signup-terms.ts)은 운영·개발·테스트에서 `WEB_ORIGIN` 아래 [2026-11-21 약관 원문](../apps/web/app/legal/2026-11-21/page.tsx)에 연결한다. 가입 상세, 마이페이지의 약관 및 개인정보 처리방침 메뉴, 공개 페이지는 [같은 원문](../apps/web/shared/legal/documents-2026-11-21.tsx)을 표시한다. 가입 API는 이용약관, 개인정보 수집·이용 동의, 마케팅 수신 선택만 제공한다. 개인정보 처리방침은 마이페이지와 로그인 화면의 공개 링크에서 열람한다. 웹 선배포 중 이전 API가 처리방침을 필수로 요구하면 가입 화면은 재시도 안내를 표시한다. 전환 시 웹과 API를 연달아 반영한다.
 
 개정할 때는 새 버전 페이지를 추가하고 API의 현재 버전을 갱신한다. 이전 페이지와 동의 이력은 보관한다. 새 원문 URL과 네 조항이 웹에서 열린 뒤 API 버전을 전환한다. 인증 메일·SMS·카카오의 테스트 대역 성공을 실제 공급자 연동 성공으로 취급하지 않는다.
 

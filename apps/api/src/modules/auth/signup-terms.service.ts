@@ -25,9 +25,7 @@ export class SignupTermsService {
   validate(consents: SignupConsentDto[]) {
     // Old tabs may still send a consent for this read-only document.
     const submitted = consents.filter((entry) => entry.id !== "privacyPolicy");
-    const current = this.get().terms.filter(
-      (term) => term.id !== "privacyPolicy",
-    );
+    const current = this.get().terms;
     if (
       submitted.length !== current.length ||
       new Set(submitted.map((entry) => entry.id)).size !== current.length
