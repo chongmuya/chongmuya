@@ -218,7 +218,7 @@ function WithdrawalFlow({
         <StepHeading
           title="탈퇴하기 전에 확인해 주세요"
           description="삭제한 계정 정보는 되돌릴 수 없어요."
-          className="mb-0 text-brand-ink"
+          className="mb-0 text-brand-ink [&_h1]:break-keep"
           descriptionClassName="mt-1.5 text-control font-medium"
         />
         <section className="space-y-1.5 rounded-2xl bg-surface p-4 shadow-card">
@@ -429,7 +429,7 @@ function WithdrawalNotice({
                     .join(" · ")}
                   이 있어요
                 </p>
-                <p>문의·예약이 종료되면 다시 탈퇴할 수 있어요.</p>
+                <p>문의·예약이 종료되면 탈퇴를 다시 시도할 수 있어요.</p>
                 {state.destinations.map((href, index) => (
                   <Link
                     className="mr-3 inline-flex min-h-control items-center text-link underline"
