@@ -4,7 +4,7 @@ export function preview(
   includeDeposit: boolean,
   support: number,
   count: number,
-  remainder: boolean,
+  hasAssignedRemainder: boolean,
 ) {
   const values = [total, deposit, support];
   if (
@@ -23,10 +23,12 @@ export function preview(
       error: "예약금 제외액과 회비·지원금의 합이 전체 금액을 넘습니다.",
     };
   const rest = count ? target % count : 0;
+  const organizerRemainder = hasAssignedRemainder ? 0 : rest;
   return {
-    target,
+    target: target - organizerRemainder,
     each: count ? Math.floor(target / count) : 0,
     rest,
-    draft: target > 0 && (!count || (!!rest && !remainder)),
+    organizerRemainder,
+    needsPayers: target > 0 && !count,
   };
 }

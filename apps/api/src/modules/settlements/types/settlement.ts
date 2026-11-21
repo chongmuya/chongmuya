@@ -17,6 +17,7 @@ export type Expense = {
   memo: string;
   payers: Person[];
   remainder: Person | null;
+  remainderOrganizerId?: string;
   fileIds: string[];
   version: number;
   createdAt: string;
@@ -60,6 +61,7 @@ export type Notice = {
     }[];
     total: number;
     target: number;
+    organizerRemainder?: number;
   };
 };
 export type SettlementState = {
