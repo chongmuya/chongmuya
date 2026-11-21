@@ -31,9 +31,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           queryClient.getMutationCache().clear();
         },
         undefined,
-        async (action) =>
+        async (action, signal) =>
           typeof navigator !== "undefined" && navigator.locks
-            ? await navigator.locks.request("chongmuya-auth", action)
+            ? await navigator.locks.request(
+                "chongmuya-auth",
+                { signal },
+                action,
+              )
             : action(),
         (accountId, ids, denied) => {
           if (denied) setLost((previous) => [...previous, { accountId, ids }]);

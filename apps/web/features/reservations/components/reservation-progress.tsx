@@ -110,7 +110,7 @@ function InquiryReceipt({
           <p className="mt-4 text-center text-xs">
             이전 문의는 그대로 보존해요.
             <br />
-            다른 매장을 찾거나 날짜·인원을 바꿔 다시 문의할 수 있어요.
+            다른 매장을 찾거나 문의 조건을 바꿔 다시 문의할 수 있어요.
           </p>
           <ul className="my-7 divide-y divide-border px-4">
             {q.targets.map((t) => (
@@ -135,7 +135,7 @@ function InquiryReceipt({
             href={`${reinquire}&view=conditions`}
             className="mt-4 block text-center text-sm text-muted underline"
           >
-            날짜·인원 수정하기
+            문의 조건 수정하기
           </Link>
         </div>
       ) : (

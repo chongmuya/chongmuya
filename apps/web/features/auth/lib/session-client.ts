@@ -8,7 +8,7 @@ import type {
   KakaoSignupRequest,
 } from "../types/signup.types";
 type Transport = typeof requestJson;
-type Lock = <T>(action: () => Promise<T>) => Promise<T>;
+type Lock = <T>(action: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
 
 // Instance belongs to the mounted provider, never to a server-wide singleton.
 export class SessionClient {
@@ -133,28 +133,34 @@ export class SessionClient {
   restore = (): Promise<void> => {
     if (this.ending) return Promise.resolve();
     if (!this.restoring) {
-      const generation = this.generation;
-      this.restoring = this.lock(async () => {
-        if (generation !== this.generation) return;
-        try {
-          const profileRevision = this.profileRevision;
-          const session = await this.transport<Session>(
-            "/api/v1/auth/session/restore",
-            { method: "POST" },
-          );
-          if (generation === this.generation)
-            this.apply(session, profileRevision);
-        } catch (error) {
-          if (generation === this.generation)
-            this.set({ status: "unavailable", account: this.state.account });
-          throw error;
-        }
-      }).finally(() => {
+      this.restoring = this.restoreSession().finally(() => {
         this.restoring = undefined;
       });
     }
     return this.restoring;
   };
+  private async restoreSession() {
+    const generation = this.generation;
+    try {
+      // The request's timeout starts only after the tab acquires the lock.
+      const signal = AbortSignal.timeout(10_000);
+      await this.lock(async () => {
+        if (generation !== this.generation) return;
+        signal.throwIfAborted();
+        const profileRevision = this.profileRevision;
+        const session = await this.transport<Session>(
+          "/api/v1/auth/session/restore",
+          { method: "POST" },
+        );
+        if (generation === this.generation)
+          this.apply(session, profileRevision);
+      }, signal);
+    } catch (error) {
+      if (generation === this.generation)
+        this.set({ status: "unavailable", account: this.state.account });
+      throw error;
+    }
+  }
   private refresh() {
     if (!this.refreshing) {
       const generation = this.generation;

@@ -83,7 +83,7 @@ export function ScheduleKindDialog({
                     }
                     alt=""
                     width={30}
-                    height={30.9712}
+                    height={32}
                     className="shrink-0"
                   />
                 ) : checked ? (

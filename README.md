@@ -64,5 +64,3 @@ pnpm dev
 | [매장 데이터](docs/restaurant-data.md) | 개발 seed/reset, 비공개 JSON import/update, 메뉴 가격·EC2 실행 |
 | [운영](docs/operations.md)             | 배포·복구, 예약 문자, 회원 탈퇴, 증빙·리마인더                 |
 | [협업](docs/CONTRIBUTING.md)           | 브랜치·커밋·PR·검증·병합                                       |
-
-화면 원본은 [Figma](https://www.figma.com/design/VlhXK42QbSbn4eZxI00MNS), 제품 문서 링크는 [AGENTS.md](AGENTS.md#제품-문서-참고)에 모아 둡니다.

@@ -84,6 +84,51 @@ test("the initial splash waits for a slow restore and a failed restore keeps ses
   }
 });
 
+test("a session lock held by another tab times out and connection retry restores the entry", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const deadline = new AbortController();
+  t.mock.method(AbortSignal, "timeout", () => deadline.signal, { times: 1 });
+  let blocked = true;
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: {
+      request<T>(
+        _name: string,
+        { signal }: LockOptions,
+        action: () => Promise<T>,
+      ) {
+        if (!blocked) return action();
+        return new Promise<T>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      },
+    },
+  });
+  const fetch = t.mock.method(globalThis, "fetch", async () =>
+    anonymousSession(),
+  );
+  const view = await renderHome("/");
+  try {
+    await act(async () => t.mock.timers.tick(1000));
+    assert(view.container.querySelector(splash));
+    assert.equal(fetch.mock.callCount(), 0);
+
+    await act(async () => deadline.abort());
+    assert.equal(view.container.querySelector(splash), null);
+    assert.match(view.container.textContent!, /연결 재확인/);
+
+    blocked = false;
+    await click(view.container, "연결 재확인");
+    assert.equal(fetch.mock.callCount(), 1);
+    assert.deepEqual(view.navigations, ["/intro?next=%2F"]);
+  } finally {
+    await view.unmount();
+    Reflect.deleteProperty(navigator, "locks");
+  }
+});
+
 test("root keeps the splash before sending owners and unfinished accounts to their own entry", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const original = globalThis.fetch;
