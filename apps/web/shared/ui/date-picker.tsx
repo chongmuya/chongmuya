@@ -45,7 +45,7 @@ export function DatePicker({
         aria-expanded={open}
         aria-disabled={readOnly || props.disabled || undefined}
         className={cn(
-          "flex min-h-input w-full items-center justify-between gap-2 rounded-pill border border-transparent bg-surface px-3 py-2 text-left text-sm min-[360px]:text-control shadow-control disabled:opacity-60",
+          "flex min-h-input w-full items-center justify-between gap-2 rounded-pill border border-transparent bg-surface py-2 ps-3 pe-3.5 text-left text-sm min-[360px]:text-control shadow-control disabled:opacity-60",
           className,
         )}
         onClick={(event) => {
@@ -58,16 +58,13 @@ export function DatePicker({
         <span className={cn("min-w-0 truncate", !value && "text-placeholder")}>
           {value ? (formatValue?.(value) ?? value) : "날짜 선택"}
         </span>
-        <span className="flex size-4 shrink-0 items-center justify-center">
-          <Image
-            style={{ height: "auto" }}
-            src="/images/calendar/field-arrow.svg"
-            width={8.12132}
-            height={13.4142}
-            alt=""
-            className="-rotate-90"
-          />
-        </span>
+        <Image
+          src="/images/select-arrow.svg"
+          width={10}
+          height={7}
+          alt=""
+          className="shrink-0"
+        />
       </button>
       {open && (
         <BottomSheet

@@ -95,26 +95,13 @@ export function ConditionsForm({
       className="gap-3 text-xs"
     >
       {(attributes) => (
-        <div className="relative">
-          <Select
-            {...attributes}
-            {...register(name)}
-            className="appearance-none pr-9 text-base"
-          >
-            {options.map(([value, text]) => (
-              <option key={value} value={value}>
-                {text}
-              </option>
-            ))}
-          </Select>
-          <Image
-            src="/images/calendar/field-arrow.svg"
-            alt=""
-            width={8}
-            height={13}
-            className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 -rotate-90"
-          />
-        </div>
+        <Select {...attributes} {...register(name)} className="text-base">
+          {options.map(([value, text]) => (
+            <option key={value} value={value}>
+              {text}
+            </option>
+          ))}
+        </Select>
       )}
     </FormField>
   );

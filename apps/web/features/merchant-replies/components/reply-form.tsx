@@ -305,23 +305,16 @@ export function ReplyForm({
                         message={proposalErrors?.startsAt?.message}
                       />
                       <div className="space-y-4">
-                        <label className="relative block space-y-3 text-xs">
+                        <label className="block space-y-3 text-xs">
                           <span className="block">공간</span>
                           <Select
                             {...form.register("proposal.seating")}
-                            className="appearance-none border-placeholder pr-9"
+                            className="border-placeholder"
                           >
                             <option value="ANY">상관없음</option>
                             <option value="CLOSE">같은 공간에서 가까이</option>
                             <option value="SEPARATED">분리 착석</option>
                           </Select>
-                          <Image
-                            src="/images/calendar/field-arrow.svg"
-                            alt=""
-                            width={8}
-                            height={13}
-                            className="pointer-events-none absolute right-3 bottom-[19px] -rotate-90"
-                          />
                         </label>
                         <fieldset className="flex flex-wrap gap-5 text-xs">
                           <legend className="sr-only">대관 범위</legend>

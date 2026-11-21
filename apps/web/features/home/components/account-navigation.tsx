@@ -134,11 +134,11 @@ function MyGroups({
           >
             <span className="truncate">{selected.name}</span>
             <Image
-              src="/images/calendar/scope-arrow.svg"
-              width={6.59099}
-              height={11.0607}
+              src="/images/select-arrow.svg"
+              width={10}
+              height={7}
               alt=""
-              className="shrink-0 -rotate-90"
+              className="shrink-0"
             />
           </Button>
           <Link

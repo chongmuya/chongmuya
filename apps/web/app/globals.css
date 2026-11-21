@@ -109,6 +109,27 @@
   }
 }
 
+/* Reserve arrow space even when a form sets its own padding. */
+select:where(:not([multiple], [size]:not([size="1"]), .time-picker > select)) {
+  appearance: none;
+  background-image: url("/images/select-arrow.svg");
+  background-position: right 0.875rem center;
+  background-repeat: no-repeat;
+  background-size: 0.625rem auto;
+  padding-inline-end: 1.875rem;
+  text-overflow: ellipsis;
+
+  &:dir(rtl) {
+    background-position: left 0.875rem center;
+  }
+
+  @media (forced-colors: active) {
+    appearance: auto;
+    background-image: none;
+    padding-inline-end: revert-layer;
+  }
+}
+
 @layer components {
   .choice-card-radio {
     /* The browser scrolls the whole card into view when the radio gets focus. */

@@ -61,11 +61,11 @@ export function AccountHome({
           >
             <span className="truncate">{selected?.name ?? "개인 행사"}</span>
             <Image
-              src="/images/calendar/scope-arrow.svg"
-              width={6.59099}
-              height={11.0607}
+              src="/images/select-arrow.svg"
+              width={10}
+              height={7}
               alt=""
-              className="ml-2 shrink-0 -rotate-90"
+              className="ml-2 shrink-0"
             />
           </Button>
         ) : (

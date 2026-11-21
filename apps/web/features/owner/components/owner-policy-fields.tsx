@@ -162,45 +162,35 @@ function DeadlineValue({
         >
           {(attributes) => (
             <div className="flex items-center gap-2 text-control">
-              <div className="relative inline-flex items-center">
-                <select
-                  {...attributes}
-                  className={cn(
-                    "h-input w-[61px] appearance-none rounded-pill bg-surface px-3 pr-6 text-control shadow-control",
-                    field.value && field.value > 99 && "w-[96px]",
-                  )}
-                  name={field.name}
-                  ref={field.ref}
-                  value={field.value ?? ""}
-                  onBlur={field.onBlur}
-                  onChange={(event) => {
-                    if (event.target.value === "custom") setCustom(true);
-                    else
-                      field.onChange(
-                        event.target.value ? Number(event.target.value) : null,
-                      );
-                  }}
-                >
-                  <option value="">—</option>
-                  {field.value && !values.includes(field.value) && (
-                    <option value={field.value}>{field.value}</option>
-                  )}
-                  {values.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                  <option value="custom">직접 입력</option>
-                </select>
-                <Image
-                  className="pointer-events-none absolute right-2.5 rotate-180"
-                  src="/images/owner-registration/deadline-arrow.svg"
-                  width={10}
-                  height={7}
-                  style={{ width: 10.3188, height: "auto" }}
-                  alt=""
-                />
-              </div>
+              <select
+                {...attributes}
+                className={cn(
+                  "h-input w-[61px] rounded-pill bg-surface ps-2.5 text-control tabular-nums shadow-control",
+                  field.value && field.value > 99 && "w-[96px]",
+                )}
+                name={field.name}
+                ref={field.ref}
+                value={field.value ?? ""}
+                onBlur={field.onBlur}
+                onChange={(event) => {
+                  if (event.target.value === "custom") setCustom(true);
+                  else
+                    field.onChange(
+                      event.target.value ? Number(event.target.value) : null,
+                    );
+                }}
+              >
+                <option value="">—</option>
+                {field.value && !values.includes(field.value) && (
+                  <option value={field.value}>{field.value}</option>
+                )}
+                {values.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+                <option value="custom">직접 입력</option>
+              </select>
               <span aria-hidden="true">{unit} 전</span>
             </div>
           )}
