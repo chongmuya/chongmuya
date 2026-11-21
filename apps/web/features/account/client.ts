@@ -4,3 +4,4 @@ export {
   WithdrawalEntry,
 } from "./components/account-withdrawal";
 export { AccountSettings } from "./components/account-settings";
+export { AccountTermsScreen } from "./components/account-terms-screen";

@@ -1,7 +1,11 @@
 "use client";
 import { isDateOnly } from "@/shared/lib/korean-date";
 import { Memberships } from "@/features/handovers/client";
-import { AccountSettings, WithdrawalEntry } from "@/features/account/client";
+import {
+  AccountSettings,
+  AccountTermsScreen,
+  WithdrawalEntry,
+} from "@/features/account/client";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
@@ -67,6 +71,19 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         )}
       </StepLayout>
     );
+  if (mode === "mypage" && params.get("view") === "terms") {
+    const group = params.get("group");
+    return (
+      <AccountTermsScreen
+        key={account.id}
+        onBack={() =>
+          router.replace(
+            group ? `/mypage?group=${encodeURIComponent(group)}` : "/mypage",
+          )
+        }
+      />
+    );
+  }
   if (!isFirstSetupComplete(account))
     return (
       <StepLayout

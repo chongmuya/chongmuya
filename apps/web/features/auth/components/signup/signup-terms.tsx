@@ -1,9 +1,13 @@
 import Image from "next/image";
 import { useFormContext, useWatch } from "react-hook-form";
+import {
+  LegalDocumentContent,
+  legalDocumentsVersion,
+} from "@/shared/legal/documents-2026-11-21";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { IconButton } from "@/shared/ui/icon-button";
 import { FormError } from "@/shared/ui/form-error";
-import { Button } from "@/shared/ui/button";
+import { LegalDocumentReader } from "@/shared/legal/legal-document-reader";
 import type { SignupValues } from "../../schemas/signup.schema";
 
 import type { SignupTerm, SignupTermId } from "../../types/signup.types";
@@ -11,11 +15,9 @@ import type { SignupTerm, SignupTermId } from "../../types/signup.types";
 export function SignupTerms({
   onDetail,
   terms,
-  privacyPolicy,
 }: {
   onDetail: (term: SignupTermId) => void;
   terms: SignupTerm[];
-  privacyPolicy?: SignupTerm;
 }) {
   const {
     register,
@@ -59,7 +61,7 @@ export function SignupTerms({
                       errors[term.id] ? `${term.id}-error` : undefined
                     }
                   />
-                  <span className="text-[clamp(16px,4.8vw,20px)] leading-6">
+                  <span className="text-[clamp(16px,5vw,20px)] leading-6">
                     {term.title}
                     <span className={term.required ? "text-brand" : ""}>
                       ({term.required ? "필수" : "선택"})
@@ -70,7 +72,7 @@ export function SignupTerms({
                   aria-label={`${term.title} 상세 보기`}
                   data-signup-term={term.id}
                   onClick={() => onDetail(term.id)}
-                  className="w-8"
+                  className="w-11 justify-end"
                 >
                   <Image
                     src="/images/ui/back.svg"
@@ -104,26 +106,6 @@ export function SignupTerms({
           </label>
         </div>
       </fieldset>
-      {privacyPolicy?.url ? (
-        <a
-          href={privacyPolicy.url}
-          data-signup-term={privacyPolicy.id}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 w-fit text-caption text-link underline"
-        >
-          개인정보 처리방침 보기 (새 창)
-        </a>
-      ) : privacyPolicy ? (
-        <button
-          type="button"
-          data-signup-term={privacyPolicy.id}
-          className="mt-3 w-fit text-caption text-link underline"
-          onClick={() => onDetail(privacyPolicy.id)}
-        >
-          개인정보 처리방침 보기
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -134,43 +116,28 @@ export function SignupTermsDetail({
   onClose,
 }: {
   term: SignupTerm;
-  onAgree?: () => void;
+  onAgree: () => void;
   onClose: () => void;
 }) {
+  const published = term.version === legalDocumentsVersion;
+  const available = published || term.body.length > 0;
   return (
-    <article className="flex flex-1 flex-col px-[17px]">
-      <h1 tabIndex={-1} className="focus:outline-none text-2xl font-bold">
-        {term.title}
-      </h1>
-      <p className="mt-3 text-caption text-muted">
-        {term.draft ? "수정 예정 초안 · " : ""}버전 {term.version}
-      </p>
-      {term.url ? (
-        <a
-          href={term.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-8 block text-link underline"
-        >
-          약관 원문 확인하기 (새 창)
-        </a>
+    <LegalDocumentReader
+      title={term.title}
+      actionLabel={available ? "동의하고 닫기" : "닫기"}
+      onAction={available ? onAgree : onClose}
+    >
+      {published ? (
+        <LegalDocumentContent id={term.id} />
+      ) : available ? (
+        term.body.map((paragraph, index) => (
+          <p key={`${index}:${paragraph}`}>{paragraph}</p>
+        ))
       ) : (
-        <div className="mt-8 space-y-4">
-          {term.body.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
-        </div>
+        <p role="status">
+          약관 본문을 확인할 수 없어요. 돌아가서 다시 열어 주세요.
+        </p>
       )}
-      <div className="mt-auto space-y-2 pt-8">
-        {onAgree && (
-          <Button className="w-full" variant="brand-outline" onClick={onAgree}>
-            동의하고 닫기
-          </Button>
-        )}
-        <Button className="w-full" variant="outline" onClick={onClose}>
-          {onAgree ? "동의하지 않고 돌아가기" : "돌아가기"}
-        </Button>
-      </div>
-    </article>
+    </LegalDocumentReader>
   );
 }

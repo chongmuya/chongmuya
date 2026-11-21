@@ -19,9 +19,10 @@ export function SignupFlow(
   const flow = useSignupFlow(props);
   const detail = props.terms.find((term) => term.id === flow.detail);
   const detailId = detail?.id ?? null;
-  const choose = (accepted: boolean) => {
-    if (detail && detail !== flow.readOnlyPolicy)
-      flow.methods.setValue(detail.id, accepted, {
+  const showingTerms = !flow.complete && !detail && flow.step === "terms";
+  const agree = () => {
+    if (detail)
+      flow.methods.setValue(detail.id, true, {
         shouldDirty: true,
         shouldValidate: true,
       });
@@ -48,14 +49,16 @@ export function SignupFlow(
     <div ref={container}>
       <StepLayout
         title={
-          flow.complete
-            ? ""
-            : flow.detail
-              ? "약관 상세"
-              : flow.step === "terms"
-                ? ""
-                : "회원가입"
+          flow.complete || detail || flow.step === "terms" ? "" : "회원가입"
         }
+        className={
+          detail
+            ? "h-svh min-h-0"
+            : showingTerms
+              ? "pb-[max(44px,env(safe-area-inset-bottom))]"
+              : undefined
+        }
+        backVisible={!showingTerms}
         onBack={flow.complete ? props.onComplete : flow.back}
         busy={flow.pending}
       >
@@ -66,12 +69,8 @@ export function SignupFlow(
             {detail ? (
               <SignupTermsDetail
                 term={detail}
-                onAgree={
-                  detail === flow.readOnlyPolicy
-                    ? undefined
-                    : () => choose(true)
-                }
-                onClose={() => choose(false)}
+                onAgree={agree}
+                onClose={flow.back}
               />
             ) : (
               <form
@@ -90,8 +89,7 @@ export function SignupFlow(
                   {flow.step === "terms" && (
                     <SignupTerms
                       onDetail={flow.openDetail}
-                      terms={flow.consentTerms}
-                      privacyPolicy={flow.readOnlyPolicy}
+                      terms={props.terms}
                     />
                   )}
                   {flow.step === "information" && (
@@ -103,7 +101,11 @@ export function SignupFlow(
                       loginHref={props.loginHref}
                     />
                   )}
-                  <div className="mt-auto pt-12">
+                  <div
+                    className={
+                      showingTerms ? "mt-auto pt-[54px]" : "mt-auto pt-12"
+                    }
+                  >
                     <FormError
                       className="mb-3"
                       message={
@@ -111,10 +113,12 @@ export function SignupFlow(
                       }
                     />
                     <Button
-                      variant="solid"
+                      variant={showingTerms ? "brand-outline" : "solid"}
                       type="submit"
                       loading={flow.pending}
-                      className="w-full"
+                      className={
+                        showingTerms ? "w-full border-2 text-brand" : "w-full"
+                      }
                     >
                       {flow.pending
                         ? "가입 처리 중…"

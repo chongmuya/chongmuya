@@ -22,7 +22,6 @@ test("email codes bind owner/address, survive resend limits, expire and consume 
     [
       ["serviceTerms", true],
       ["privacyCollection", true],
-      ["privacyPolicy", false],
       ["marketing", false],
     ],
   );
@@ -31,7 +30,6 @@ test("email codes bind owner/address, survive resend limits, expire and consume 
     [
       "http://localhost:3000/legal/2026-11-21#service-terms",
       "http://localhost:3000/legal/2026-11-21#privacy-collection",
-      "http://localhost:3000/legal/2026-11-21#privacy-policy",
       "http://localhost:3000/legal/2026-11-21#marketing",
     ],
   );

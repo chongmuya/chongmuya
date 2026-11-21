@@ -52,13 +52,11 @@ export async function signupFixture(
       name: "테스트 이름",
       phone: "01012345678",
       phoneVerificationId: id,
-      consents: signupTerms
-        .filter((term) => term.id !== "privacyPolicy")
-        .map((term) => ({
-          id: term.id,
-          version: signupTermsVersion,
-          accepted: term.required,
-        })),
+      consents: signupTerms.map((term) => ({
+        id: term.id,
+        version: signupTermsVersion,
+        accepted: term.required,
+      })),
     },
   };
 }

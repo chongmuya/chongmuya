@@ -21,7 +21,6 @@ export const signupSchema = z
   .object({
     serviceTerms: requiredConsent,
     privacyCollection: requiredConsent,
-    privacyPolicy: z.boolean(),
     marketing: z.boolean(),
     email: signupEmailSchema,
     name: z
@@ -45,7 +44,6 @@ export type SignupValues = z.infer<typeof signupSchema>;
 export const signupDefaults: SignupValues = {
   serviceTerms: false,
   privacyCollection: false,
-  privacyPolicy: false,
   marketing: false,
   email: "",
   name: "",
@@ -54,7 +52,7 @@ export const signupDefaults: SignupValues = {
   phone: "",
 };
 export const signupStepFields = {
-  terms: ["serviceTerms", "privacyCollection", "privacyPolicy", "marketing"],
+  terms: ["serviceTerms", "privacyCollection", "marketing"],
   information: ["email", "name", "password", "passwordConfirm", "phone"],
 } as const satisfies Record<string, readonly (keyof SignupValues)[]>;
 export type SignupStep = keyof typeof signupStepFields;

@@ -9,6 +9,7 @@ export function StepLayout({
   busy,
   progress,
   action,
+  backVisible = true,
   children,
   variant = "default",
   className,
@@ -19,6 +20,7 @@ export function StepLayout({
   busy?: boolean;
   progress?: { value: number; max: number };
   action?: ReactNode;
+  backVisible?: boolean;
   children: ReactNode;
   className?: string;
 }) {
@@ -40,7 +42,11 @@ export function StepLayout({
           onClick={onBack}
           disabled={busy}
           aria-label="이전 단계로 돌아가기"
-          className="absolute -left-2"
+          className={cn(
+            "absolute -left-2",
+            !backVisible &&
+              "sr-only focus:not-sr-only focus:absolute focus:-left-2",
+          )}
         >
           <Image
             src="/images/ui/back.svg"

@@ -61,11 +61,31 @@ export const signupTermsOptions = (request: SessionRequest) =>
     queryKey: ["signup", "terms"],
     staleTime: 0,
     retry: false,
-    queryFn: async ({ signal }) =>
-      parse(
-        z.object({ terms: z.array(termSchema).length(4) }),
+    queryFn: async ({ signal }) => {
+      const { terms } = parse(
+        z.object({ terms: z.array(termSchema).min(3).max(4) }),
         await request("/api/v1/auth/signup/terms", { signal }),
-      ).terms,
+      );
+      if (terms.some((term) => term.id === "privacyPolicy" && term.required))
+        throw new ApiError(
+          "가입 약관을 전환하고 있어요. 잠시 후 다시 시도해 주세요.",
+          503,
+          "SIGNUP_TERMS_UNAVAILABLE",
+        );
+      const consents = terms.flatMap(({ id, ...term }) =>
+        id === "privacyPolicy" ? [] : [{ id, ...term }],
+      );
+      if (
+        consents.length !== 3 ||
+        new Set(consents.map((term) => term.id)).size !== 3
+      )
+        throw new ApiError(
+          "응답 형식을 확인할 수 없습니다.",
+          200,
+          "INVALID_RESPONSE",
+        );
+      return consents;
+    },
   });
 
 function verificationResult(raw: unknown, issued = false): VerificationResult {
