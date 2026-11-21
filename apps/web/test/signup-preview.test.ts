@@ -317,6 +317,58 @@ test("signup keeps values and consent across details/back, validates steps and s
   await fresh.unmount();
 });
 
+test("closing signup terms returns focus to the control that opened them", async () => {
+  const props = {
+    terms: previewTerms,
+    onSubmit: async () => assert.fail("reading terms must not submit"),
+    onExit: noop,
+    onComplete: noop,
+  };
+  const view = await render(createElement(SignupFlow, props));
+  const opener = '[aria-label="이용약관 동의 상세 보기"]';
+  const policy = () =>
+    [...view.container.querySelectorAll("button")].find(
+      (button) => button.textContent === "개인정보 처리방침 보기",
+    );
+
+  try {
+    for (const close of [
+      "이전 단계로 돌아가기",
+      "동의하고 닫기",
+      "동의하지 않고 돌아가기",
+    ]) {
+      await click(view.container, "이용약관 동의 상세 보기");
+      assert.equal(document.activeElement, view.container.querySelector("h1"));
+      await click(view.container, close);
+      assert.ok(
+        document.activeElement === view.container.querySelector(opener),
+        `${close}: focus landed on ${document.activeElement?.tagName}`,
+      );
+    }
+
+    await click(view.container, "개인정보 처리방침 보기");
+    await click(view.container, "돌아가기");
+    assert.ok(document.activeElement === policy());
+
+    await click(view.container, "이용약관 동의 상세 보기");
+    await view.update(
+      createElement(SignupFlow, {
+        ...props,
+        terms: previewTerms.map((term) =>
+          term.id === "serviceTerms" ? { ...term, version: "updated" } : term,
+        ),
+      }),
+    );
+    assert.match(
+      view.container.querySelector('[role="status"]')!.textContent!,
+      /약관이 변경되었어요/,
+    );
+    assert.ok(document.activeElement === view.container.querySelector(opener));
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("signup follows the API policy requirement without assuming consent", async () => {
   const terms = previewTerms.map((term) =>
     term.id === "privacyPolicy"

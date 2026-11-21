@@ -18,6 +18,7 @@ export function SignupFlow(
 ) {
   const flow = useSignupFlow(props);
   const detail = props.terms.find((term) => term.id === flow.detail);
+  const detailId = detail?.id ?? null;
   const choose = (accepted: boolean) => {
     if (detail && detail !== flow.readOnlyPolicy)
       flow.methods.setValue(detail.id, accepted, {
@@ -27,10 +28,22 @@ export function SignupFlow(
     flow.setDetail(null);
   };
   const container = useRef<HTMLDivElement>(null);
+  const previousDetail = useRef(detailId);
   useEffect(() => {
-    if (!flow.focus)
+    const closedDetail = previousDetail.current;
+    previousDetail.current = detailId;
+    if (closedDetail && !detailId && flow.step === "terms") {
+      const opener = container.current?.querySelector<HTMLElement>(
+        `[data-signup-term="${closedDetail}"]`,
+      );
+      if (opener) {
+        opener.focus();
+        return;
+      }
+    }
+    if (detailId || !flow.focus)
       container.current?.querySelector<HTMLElement>("h1")?.focus();
-  }, [flow.step, flow.detail, flow.complete, flow.focus]);
+  }, [flow.step, detailId, flow.complete, flow.focus]);
   return (
     <div ref={container}>
       <StepLayout
@@ -76,7 +89,7 @@ export function SignupFlow(
                   )}
                   {flow.step === "terms" && (
                     <SignupTerms
-                      onDetail={flow.setDetail}
+                      onDetail={flow.openDetail}
                       terms={flow.consentTerms}
                       privacyPolicy={flow.readOnlyPolicy}
                     />

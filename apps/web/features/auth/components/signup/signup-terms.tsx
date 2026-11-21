@@ -68,6 +68,7 @@ export function SignupTerms({
                 </label>
                 <IconButton
                   aria-label={`${term.title} 상세 보기`}
+                  data-signup-term={term.id}
                   onClick={() => onDetail(term.id)}
                   className="w-8"
                 >
@@ -106,6 +107,7 @@ export function SignupTerms({
       {privacyPolicy?.url ? (
         <a
           href={privacyPolicy.url}
+          data-signup-term={privacyPolicy.id}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-3 w-fit text-caption text-link underline"
@@ -115,6 +117,7 @@ export function SignupTerms({
       ) : privacyPolicy ? (
         <button
           type="button"
+          data-signup-term={privacyPolicy.id}
           className="mt-3 w-fit text-caption text-link underline"
           onClick={() => onDetail(privacyPolicy.id)}
         >
