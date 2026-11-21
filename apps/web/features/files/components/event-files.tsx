@@ -1,7 +1,9 @@
 "use client";
 import { FilePreview } from "./file-preview";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import { Button } from "@/shared/ui/button";
+import { IconButton } from "@/shared/ui/icon-button";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
 import { useEventFiles } from "../hooks/use-event-files";
@@ -19,11 +21,15 @@ export function EventFiles({
   selected,
   onSelect,
   expenses = [],
+  onUploaded,
+  onUploadBusyChange,
 }: {
   access: FileAccess;
   selected?: string[];
   onSelect?: (ids: string[]) => void;
   expenses?: { id: string; name: string }[];
+  onUploaded?: (id: string) => void;
+  onUploadBusyChange?: (busy: boolean) => void;
 }) {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const {
@@ -38,49 +44,30 @@ export function EventFiles({
     download,
     startUpload,
     abandonUpload,
-  } = useEventFiles(a);
+  } = useEventFiles(a, onUploaded);
+  useEffect(() => {
+    onUploadBusyChange?.(hasPending);
+  }, [hasPending, onUploadBusyChange]);
   if (q.error instanceof ApiError && [401, 403, 404].includes(q.error.status))
     return <p role="alert">자료에 접근할 수 없습니다.</p>;
-  return (
-    <section className="space-y-4" aria-label="행사 첨부 자료">
-      <div className="rounded-[20px] bg-choice p-6 text-center">
-        <h3 className="text-xl font-semibold">행사 기록을 모아주세요</h3>
-        <p className="my-3 text-xs text-secondary">
-          이미지·PDF·엑셀 원본 / 파일당 10MB (10,485,760바이트)
-          <br />
-          HEIC는 JPEG 또는 PNG로 변환해 주세요.
-        </p>
-        <label className="block">
-          파일 선택
-          <input
-            ref={input}
-            aria-label="행사 파일 선택"
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp,.pdf,.xls,.xlsx"
-            disabled={upload.isPending || hasPending}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (!file) return;
-              startUpload(file);
-            }}
-            className="block w-full text-xs"
-          />
-        </label>
-      </div>
-      <Button variant="outline" onClick={() => void q.refetch()}>
-        파일 상태 새로 조회
-      </Button>
-      {q.isPending && q.isFetching && (
-        <p role="status">파일을 불러오는 중입니다.</p>
-      )}
-      {q.data && (
-        <p className="text-xs text-secondary">
-          운영 한도: 행사당 {q.data.limits.count}개 · 총{" "}
-          {Math.floor(q.data.limits.totalBytes / 1048576)}MB. 완료 자료{" "}
-          {q.data.files.filter((f) => f.status === "READY").length}개
-        </p>
-      )}
+  const fileInput = (
+    <input
+      ref={input}
+      aria-label="행사 파일 선택"
+      type="file"
+      accept=".jpg,.jpeg,.png,.webp,.pdf,.xls,.xlsx"
+      disabled={upload.isPending || hasPending}
+      tabIndex={onUploaded ? -1 : undefined}
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (file) startUpload(file);
+      }}
+      className={onUploaded ? "sr-only" : "block w-full text-xs"}
+    />
+  );
+  const uploadStatus = (
+    <>
       {notice && <p role="status">{notice}</p>}
       {upload.isPending && <p role="status">업로드 중입니다.</p>}
       {[q.error, upload.error, deletion.error, download.error]
@@ -90,6 +77,11 @@ export function EventFiles({
             {safeErrorMessage(e)}
           </p>
         ))}
+      {q.error && (
+        <Button variant="outline" onClick={() => void q.refetch()}>
+          파일 다시 조회
+        </Button>
+      )}
       {hasPending && !upload.isPending && (
         <div className="space-y-2">
           <p role="status">
@@ -105,6 +97,121 @@ export function EventFiles({
           </Button>
         </div>
       )}
+    </>
+  );
+  if (onUploaded && onSelect && selected) {
+    const files = q.data?.files ?? [];
+    const available = files.filter(
+      (file) =>
+        file.status === "READY" &&
+        !file.expenseId &&
+        !selected.includes(file.id),
+    );
+    return (
+      <section className="space-y-3 text-xs" aria-label="영수증 첨부">
+        <div className="flex items-center justify-between gap-2">
+          {selected.length ? (
+            <button
+              type="button"
+              className="min-h-5 cursor-pointer text-left disabled:opacity-60"
+              aria-label="영수증 추가 첨부하기"
+              disabled={upload.isPending || hasPending}
+              onClick={() => input.current?.click()}
+            >
+              영수증 첨부하기
+            </button>
+          ) : (
+            <>
+              <h3>영수증 첨부하기</h3>
+              <Button
+                variant="outline"
+                className="rounded-control border-placeholder px-3 text-sm text-secondary"
+                disabled={upload.isPending || hasPending}
+                onClick={() => input.current?.click()}
+              >
+                파일 선택
+              </Button>
+            </>
+          )}
+          {fileInput}
+        </div>
+        {uploadStatus}
+        {selected.map((id) => {
+          const file = files.find(
+            (item) => item.id === id && item.status === "READY",
+          );
+          const label = file?.name ?? "첨부한 영수증";
+          return (
+            <div
+              key={id}
+              className="flex min-h-10 items-center justify-between gap-2 rounded-control border border-brand pl-2.5 text-sm"
+            >
+              <span className="min-w-0 wrap-anywhere">{label}</span>
+              <IconButton
+                aria-label={`${label} 연결 해제`}
+                className="size-9"
+                onClick={() => onSelect(selected.filter((item) => item !== id))}
+              >
+                <Image
+                  src="/images/ui/close.svg"
+                  alt=""
+                  width={15}
+                  height={15}
+                />
+              </IconButton>
+            </div>
+          );
+        })}
+        {available.length > 0 && (
+          <details>
+            <summary className="cursor-pointer text-secondary">
+              저장된 파일 선택
+            </summary>
+            <ul className="space-y-2 pt-2">
+              {available.map((file) => (
+                <li key={file.id}>
+                  <Button
+                    variant="outline"
+                    onClick={() => onSelect([...selected, file.id])}
+                  >
+                    {file.name}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+    );
+  }
+  return (
+    <section className="space-y-4" aria-label="행사 첨부 자료">
+      <div className="rounded-[20px] bg-choice p-6 text-center">
+        <h3 className="text-xl font-semibold">행사 기록을 모아주세요</h3>
+        <p className="my-3 text-xs text-secondary">
+          이미지·PDF·엑셀 원본 / 파일당 10MB (10,485,760바이트)
+          <br />
+          HEIC는 JPEG 또는 PNG로 변환해 주세요.
+        </p>
+        <label className="block">
+          파일 선택
+          {fileInput}
+        </label>
+      </div>
+      <Button variant="outline" onClick={() => void q.refetch()}>
+        파일 상태 새로 조회
+      </Button>
+      {q.isPending && q.isFetching && (
+        <p role="status">파일을 불러오는 중입니다.</p>
+      )}
+      {q.data && (
+        <p className="text-xs text-secondary">
+          운영 한도: 행사당 {q.data.limits.count}개 · 총{" "}
+          {Math.floor(q.data.limits.totalBytes / 1048576)}MB. 완료 자료{" "}
+          {q.data.files.filter((f) => f.status === "READY").length}개
+        </p>
+      )}
+      {uploadStatus}
       {q.data?.files.map((f) => (
         <article key={f.id} className="rounded-lg border border-brand p-3">
           <div className="break-all font-semibold">{f.name}</div>

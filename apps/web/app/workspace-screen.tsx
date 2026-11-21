@@ -29,6 +29,7 @@ import {
   EventDetail,
   EventNavigation,
   eventKeys,
+  useEvent,
 } from "@/features/events/client";
 
 import {
@@ -39,6 +40,7 @@ import { AccountNavigation } from "@/features/home/client";
 import { buttonStyles } from "@/shared/ui/button";
 import { StepLayout } from "@/shared/ui/step-layout";
 import { OrganizerNavigation } from "@/shared/ui/organizer-navigation";
+import { cn } from "@/shared/lib/cn";
 
 type Mode = "events" | "mypage";
 export function WorkspaceScreen({ mode }: { mode: Mode }) {
@@ -196,6 +198,13 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
               : "/",
         );
       }}
+      className={
+        mode === "events" &&
+        params.get("event") &&
+        params.get("view") === "settlement"
+          ? "pb-0"
+          : undefined
+      }
     >
       {mode === "mypage" && params.get("view") === "account" ? (
         <AccountSettings key={account.id} />
@@ -239,15 +248,18 @@ export function WorkspaceContent({
   startExpense?: boolean;
   initialDate?: string;
 }) {
+  const settlementOverview =
+    mode === "events" && !!eventId && view === "settlement";
   return (
     <section
-      className={
+      className={cn(
         mode === "mypage" && view === "roster"
           ? "flex flex-1 flex-col text-copy"
           : mode === "events" && eventId && !detailPage
             ? "-mt-2 text-copy"
-            : "text-copy"
-      }
+            : "text-copy",
+        settlementOverview && "group/settlement flex min-w-0 flex-1 flex-col",
+      )}
     >
       {mode === "mypage" && view === "roster" ? (
         <GroupBoundary
@@ -303,13 +315,28 @@ export function WorkspaceContent({
               />
             </>
           )}
-          {view === "settlement" || view === "record" ? (
+          {settlementOverview ? (
+            <>
+              <div className="min-w-0 flex-1 pb-8">
+                <SettlementWorkspace
+                  accountId={accountId}
+                  eventId={eventId}
+                  request={request}
+                  startExpense={startExpense}
+                />
+              </div>
+              <SettlementNavigation
+                accountId={accountId}
+                eventId={eventId}
+                request={request}
+              />
+            </>
+          ) : view === "record" ? (
             <SettlementWorkspace
               accountId={accountId}
               eventId={eventId}
               request={request}
-              record={view === "record"}
-              startExpense={startExpense}
+              record
             />
           ) : view === "attendance" ? (
             <AttendanceWorkspace
@@ -348,5 +375,25 @@ export function WorkspaceContent({
         />
       )}
     </section>
+  );
+}
+
+function SettlementNavigation({
+  accountId,
+  eventId,
+  request,
+}: {
+  accountId: string;
+  eventId: string;
+  request: SessionRequest;
+}) {
+  const event = useEvent(accountId, eventId, request);
+  return (
+    <OrganizerNavigation
+      current="home"
+      groupId={event.data?.groupId ?? undefined}
+      personal={event.data?.groupId === null}
+      className="-mx-5 group-has-[[data-settlement-subtab]]/settlement:hidden"
+    />
   );
 }

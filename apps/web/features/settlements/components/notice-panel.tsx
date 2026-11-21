@@ -1,11 +1,16 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { Button } from "@/shared/ui/button";
+import { FormField } from "@/shared/ui/form-field";
+import { IconButton } from "@/shared/ui/icon-button";
+import { cn } from "@/shared/lib/cn";
+import { SettlementCheckbox } from "./settlement-checkbox";
+import { SettlementScreen } from "./settlement-screen";
 import { FormInput } from "@/shared/ui/form-input";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
@@ -29,6 +34,7 @@ function NoticeForm({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
+  const titleId = useId();
   const [base, setBase] = useState(data.state.version),
     command = useSettlementCommand(a, (result) => {
       if (result.createdNoticeId) onCreated(result.createdNoticeId);
@@ -66,198 +72,298 @@ function NoticeForm({
           : "함께해서 즐거웠어요! 정산 내역을 확인해 주세요.",
       );
   }, [amount, previous, form]);
-  return (
-    <form
-      className="space-y-6"
-      onSubmit={form.handleSubmit(async (v) => {
-        if (
-          base !== data.state.version ||
-          command.uncertain ||
-          data.depositConflicts?.length
-        )
-          return;
-        if (amount > 0 && (!v.bank || !v.account || !v.holder)) {
-          form.setError("account", {
-            message: "은행·계좌번호·예금주를 모두 입력해 주세요.",
-          });
-          return;
-        }
-        try {
-          await command.mutateAsync({
-            action: "NOTICE",
-            expectedVersion: base,
-            replaces: previous?.id ?? null,
-            title: v.title,
-            message: v.message,
-            bank:
-              v.bank && v.account && v.holder
-                ? { bank: v.bank, account: v.account, holder: v.holder }
-                : null,
-            deadline: v.deadline || null,
-            saveBank: v.saveBank,
-            includePeople: v.includePeople,
-            scope: v.scope,
-          });
-        } catch {}
-      })}
+  const busy = command.isPending || command.uncertain;
+  const showPeople =
+    data.summary.people.some((p) => p.net > 0) ||
+    initialScope === "UNCONFIRMED" ||
+    previous?.scope === "UNCONFIRMED";
+  const fields = (
+    name: "title" | "bank" | "account" | "holder" | "deadline",
+    label: string,
+    placeholder?: string,
+  ) => (
+    <FormField
+      id={`${titleId}-${name}`}
+      label={label}
+      error={form.formState.errors[name]?.message}
+      labelClassName="text-xs"
     >
-      <h2 className="text-2xl font-bold">
-        정산문 {previous ? "수정본" : "만들기"}
-      </h2>
-      <fieldset
-        disabled={command.isPending || command.uncertain}
-        className="space-y-5"
-      >
-        <fieldset className="space-y-4">
-          <legend className="mb-3 text-lg font-semibold">정산 대상</legend>
-          <div className="grid grid-cols-2 rounded-pill bg-field p-1">
-            {(
-              [
-                ["ALL", "전체"],
-                ["UNCONFIRMED", "입금 미확인"],
-              ] as const
-            ).map(([scope, label]) => (
-              <label
-                key={scope}
-                className={`cursor-pointer rounded-pill p-3 text-center text-sm ${v.scope === scope ? "bg-brand text-white" : "text-secondary"}`}
-              >
-                <input
-                  className="sr-only"
-                  type="radio"
-                  value={scope}
-                  {...form.register("scope")}
-                />
-                {label}
-              </label>
-            ))}
+      {(attributes) => (
+        <FormInput
+          {...attributes}
+          variant="pill"
+          className="shadow-control"
+          type={name === "deadline" ? "date" : "text"}
+          inputMode={name === "account" ? "numeric" : undefined}
+          allowDateClear={name === "deadline"}
+          control={form.control}
+          name={name}
+          placeholder={placeholder}
+        />
+      )}
+    </FormField>
+  );
+  const scopePicker = (
+    <fieldset className="min-w-0 space-y-4">
+      <legend className="mb-4 text-label">정산 대상</legend>
+      <div className="grid grid-cols-2 gap-3.5">
+        {(
+          [
+            ["ALL", "전체"],
+            ["UNCONFIRMED", "미입금자"],
+          ] as const
+        ).map(([scope, label]) => (
+          <label
+            key={scope}
+            className={cn(
+              "cursor-pointer rounded-pill border border-placeholder p-2.5 text-center text-sm font-medium has-focus-visible:focus-outline",
+              v.scope === scope
+                ? "border-brand bg-brand text-white"
+                : "text-secondary",
+            )}
+          >
+            <input
+              className="sr-only"
+              type="radio"
+              value={scope}
+              {...form.register("scope")}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      {(showPeople || v.scope === "UNCONFIRMED") && (
+        <div className="space-y-4 rounded-card bg-surface p-4 shadow-card">
+          <p className="flex items-center justify-between gap-2 text-xs text-secondary">
+            <span>
+              {v.scope === "ALL" ? "전체 정산 금액" : "미입금자 미납 금액"}
+            </span>
+            <strong className="text-label text-brand-ink">
+              {amount.toLocaleString()}
+              <span className="ml-0.5 text-xs font-normal text-placeholder">
+                원
+              </span>
+            </strong>
+          </p>
+          <div className="flex justify-between px-1 text-sm font-semibold text-placeholder">
+            <span>이름</span>
+            <span>
+              총 정산금 <span className="ml-2">입금</span>
+            </span>
           </div>
-          <div className="rounded-card bg-surface p-5 shadow-card">
-            <p className="mb-4 flex justify-between font-semibold">
-              <span>요청 금액</span>
-              <span>{amount.toLocaleString()}원</span>
-            </p>
-            <ul
-              className="max-h-60 space-y-3 overflow-auto text-sm"
-              aria-label="정산 대상별 금액"
-            >
-              {data.summary.people
-                .filter((p) => v.scope === "ALL" || p.remaining > 0)
-                .map((p) => (
-                  <li key={p.person.id} className="flex justify-between gap-3">
-                    <span>
+          <ul
+            className="max-h-[335px] overflow-y-auto text-sm"
+            aria-label="정산 대상별 금액"
+          >
+            {data.summary.people
+              .filter((p) => v.scope === "ALL" || p.remaining > 0)
+              .map((p) => (
+                <li
+                  key={p.person.id}
+                  className="flex min-h-[67px] items-center justify-between gap-3 px-1"
+                >
+                  <div className="min-w-0 leading-tight wrap-anywhere">
+                    <p className="font-semibold">
                       {p.person.name}
                       {p.person.label ? ` (${p.person.label})` : ""}
-                    </span>
-                    <strong>
+                    </p>
+                    {p.person.phoneLast4 && (
+                      <small className="mt-1 block text-xs">
+                        {p.person.phoneLast4}
+                      </small>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <strong className="text-base font-medium">
                       {(v.scope === "ALL"
                         ? p.amount
                         : p.remaining
                       ).toLocaleString()}
                       원
                     </strong>
-                  </li>
-                ))}
-            </ul>
-            {amount === 0 && (
-              <p className="mt-3 text-sm text-secondary">
-                입금 요청 없이 정산 내역을 안내해요.
-              </p>
-            )}
-          </div>
-        </fieldset>
-        {(
-          [
-            ["title", "제목"],
-            ["bank", "은행"],
-            ["account", "계좌번호"],
-            ["holder", "예금주"],
-            ["deadline", "확인 기한"],
-          ] as const
-        ).map(([name, label]) => (
-          <label key={name} className="block space-y-2">
-            <span>{label}</span>
-            <FormInput
-              variant="form"
-              type={name === "deadline" ? "date" : "text"}
-              allowDateClear={name === "deadline"}
-              control={form.control}
-              name={name}
-              aria-invalid={!!form.formState.errors[name]}
-              aria-describedby={`notice-${name}-error`}
-            />
-            <span id={`notice-${name}-error`} className="text-danger">
-              {form.formState.errors[name]?.message}
-            </span>
-          </label>
-        ))}
-        <label className="flex items-center gap-2">
-          <input type="checkbox" {...form.register("saveBank")} />
-          계좌 정보 저장하기 (내 다음 작성 기본값)
-        </label>
-        <label className="block">
-          안내 메시지
-          <textarea
-            className="mt-2 min-h-28 w-full rounded-[20px] border border-field p-4"
-            {...form.register("message")}
-            aria-invalid={!!form.formState.errors.message}
-            aria-describedby="notice-message-error"
-          />
-          <span id="notice-message-error" className="text-danger">
-            {form.formState.errors.message?.message}
-          </span>
-          <span className="block text-right text-xs">
-            {v.message?.length ?? 0}/300
-          </span>
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" {...form.register("includePeople")} />
-          정산문에 개인별 정산 금액 포함하기
-        </label>
-        <p className="rounded-xl bg-choice p-4 text-sm">
-          전화번호 뒤4자리는 공유 문구에 넣지 않습니다. 금액은 지출에서 수정해
-          주세요. 수정본은 현재 계산으로 새로 생성되며 이전 문구도 보존합니다.
-        </p>
-      </fieldset>
-      {base !== data.state.version && !command.uncertain && (
-        <div role="alert">
-          <p>
-            최신 정산 대상 {data.summary.target.toLocaleString()}원. 입력을
-            유지하고 최신 계산으로 다시 확인해 주세요.
-          </p>
-          <Button onClick={() => setBase(data.state.version)}>
-            최신 계산 확인 · 재적용 준비
-          </Button>
+                    {p.remaining > 0 ? (
+                      <span
+                        role="img"
+                        aria-label="입금 미확인"
+                        className="size-7 rounded-full border border-placeholder"
+                      />
+                    ) : p.amount > 0 && !p.excess ? (
+                      <Image
+                        src="/images/settlements/check-on.svg"
+                        alt="입금 확인됨"
+                        width={28}
+                        height={28}
+                      />
+                    ) : (
+                      <span className="w-7 text-center text-secondary">–</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+          </ul>
+          {amount === 0 && (
+            <p className="text-sm text-secondary">
+              입금 요청 없이 정산 내역을 안내해요.
+            </p>
+          )}
         </div>
       )}
-      {previous && previous.actorId !== a.accountId && (
-        <p role="alert">
-          이전 총무가 만든 문서예요. 당시 계좌를 자동으로 복사하지 않았어요. 새
-          안내에 사용할 계좌를 확인해 주세요.
-        </p>
-      )}
-      <CommandStatus command={command} />
-      <div className="flex gap-2">
-        <Button
-          type="submit"
-          disabled={
-            command.isPending ||
-            command.uncertain ||
+    </fieldset>
+  );
+  return (
+    <SettlementScreen titleId={titleId} onClose={onClose} busy={busy}>
+      <form
+        className="flex min-h-dvh flex-col px-[18px] pt-[max(53px,env(safe-area-inset-top))] pb-[max(40px,env(safe-area-inset-bottom))]"
+        onSubmit={form.handleSubmit(async (v) => {
+          if (
             base !== data.state.version ||
-            !!data.depositConflicts?.length ||
-            data.summary.drafts > 0
+            command.uncertain ||
+            data.depositConflicts?.length
+          )
+            return;
+          if (amount > 0 && (!v.bank || !v.account || !v.holder)) {
+            form.setError("account", {
+              message: "은행·계좌번호·예금주를 모두 입력해 주세요.",
+            });
+            return;
           }
-        >
-          정산문 생성하기
-        </Button>
-        <Button
-          variant="outline"
-          onClick={onClose}
-          disabled={command.isPending || command.uncertain}
-        >
-          취소
-        </Button>
-      </div>
-    </form>
+          try {
+            await command.mutateAsync({
+              action: "NOTICE",
+              expectedVersion: base,
+              replaces: previous?.id ?? null,
+              title: v.title,
+              message: v.message,
+              bank:
+                v.bank && v.account && v.holder
+                  ? { bank: v.bank, account: v.account, holder: v.holder }
+                  : null,
+              deadline: v.deadline || null,
+              saveBank: v.saveBank,
+              includePeople: v.includePeople,
+              scope: v.scope,
+            });
+          } catch {}
+        })}
+      >
+        <header className="mb-16">
+          <IconButton
+            aria-label="취소"
+            onClick={onClose}
+            disabled={busy}
+            className="-ml-2.5"
+          >
+            <Image src="/images/ui/back.svg" alt="" width={10} height={18} />
+          </IconButton>
+          <h2 id={titleId} className="mt-5 text-2xl leading-tight font-bold">
+            정산문 {previous ? "수정본" : "만들기"}
+          </h2>
+        </header>
+        <fieldset disabled={busy} className="space-y-10">
+          {showPeople && scopePicker}
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-label text-copy/80">계좌 정보</legend>
+            {fields("bank", "은행", "예: 신한은행")}
+            <div className="grid grid-cols-2 gap-3.5">
+              {fields("holder", "예금주", "입금 계좌의 예금주")}
+              {fields("account", "계좌번호", "계좌번호 입력")}
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <SettlementCheckbox {...form.register("saveBank")} />
+              계좌 정보 저장하기
+            </label>
+          </fieldset>
+          <div>
+            <FormField
+              id={`${titleId}-message`}
+              label="안내 메시지"
+              labelClassName="mb-0.5 text-label text-copy/80"
+              error={form.formState.errors.message?.message}
+            >
+              {(attributes) => (
+                <textarea
+                  {...attributes}
+                  className="min-h-[100px] w-full rounded-card bg-surface p-4 text-sm leading-tight shadow-control"
+                  {...form.register("message")}
+                />
+              )}
+            </FormField>
+            <p className="mt-1 text-right text-xs text-secondary">
+              {v.message?.length ?? 0}/300
+            </p>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <SettlementCheckbox {...form.register("includePeople")} />
+              정산문에 개인별 정산 금액 포함하기
+            </label>
+          </div>
+          <p className="flex items-start gap-2.5 rounded-control bg-choice px-4 py-3 text-xs leading-relaxed shadow-card">
+            <Image
+              src="/images/settlements/information.svg"
+              alt=""
+              width={20}
+              height={20}
+            />
+            <span>
+              입력한 계좌 정보와 안내 메시지를 바탕으로 정산문을 생성해요. 생성
+              후에도 수정할 수 있어요.
+            </span>
+          </p>
+          <details
+            open={
+              form.formState.errors.title || form.formState.errors.deadline
+                ? true
+                : undefined
+            }
+            className="-mt-6 space-y-3 text-sm"
+          >
+            <summary className="cursor-pointer text-secondary">
+              제목·입금 기한{showPeople ? "" : "·대상 설정"}
+            </summary>
+            {fields("title", "제목")}
+            {fields("deadline", "확인 기한")}
+            {!showPeople && scopePicker}
+          </details>
+        </fieldset>
+        {base !== data.state.version && !command.uncertain && (
+          <div role="alert">
+            <p>
+              최신 정산 대상 {data.summary.target.toLocaleString()}원. 입력을
+              유지하고 최신 계산으로 다시 확인해 주세요.
+            </p>
+            <Button onClick={() => setBase(data.state.version)}>
+              최신 계산 확인 · 재적용 준비
+            </Button>
+          </div>
+        )}
+        {previous && previous.actorId !== a.accountId && (
+          <p role="alert">
+            이전 총무가 만든 문서예요. 당시 계좌를 자동으로 복사하지 않았어요.
+            새 안내에 사용할 계좌를 확인해 주세요.
+          </p>
+        )}
+        <CommandStatus command={command} />
+        <div className="mt-auto pt-8">
+          <Button
+            className="w-full"
+            type="submit"
+            disabled={
+              busy ||
+              base !== data.state.version ||
+              !!data.depositConflicts?.length ||
+              data.summary.drafts > 0
+            }
+          >
+            <Image
+              src="/images/settlements/notice-sparkle.svg"
+              alt=""
+              width={21}
+              height={20}
+            />
+            정산문 생성하기
+          </Button>
+        </div>
+      </form>
+    </SettlementScreen>
   );
 }
 function NoticeDetail({
@@ -265,11 +371,15 @@ function NoticeDetail({
   id,
   needsReview,
   onEdit,
+  previewTitle,
+  onOpen,
 }: {
   a: Access;
   id: string;
   needsReview: boolean;
-  onEdit: (n: Notice) => void;
+  onEdit?: (n: Notice) => void;
+  previewTitle?: string;
+  onOpen?: () => void;
 }) {
   const [message, setMessage] = useState("");
   const [sharing, setSharing] = useState(false);
@@ -279,6 +389,7 @@ function NoticeDetail({
   if (q.error instanceof ApiError && [401, 403, 404].includes(q.error.status))
     return <p role="alert">정산문에 접근할 수 없습니다.</p>;
   const n = q.data;
+  const isPreview = !!onOpen;
   const reviewRequired = needsReview || n?.needsReview;
   const sharingBlocked =
     reviewRequired ||
@@ -304,7 +415,25 @@ function NoticeDetail({
   };
   return (
     <section className="space-y-4">
-      {q.isPending && <p role="status">정산문을 불러오는 중입니다.</p>}
+      {isPreview && (
+        <button
+          type="button"
+          aria-label={previewTitle}
+          className="block w-full cursor-pointer rounded-card bg-choice px-5 py-[19px] text-left text-sm leading-tight shadow-control"
+          onClick={onOpen}
+        >
+          {n ? (
+            <span className="line-clamp-3 whitespace-pre-line wrap-anywhere">
+              {n.text}
+            </span>
+          ) : (
+            previewTitle
+          )}
+        </button>
+      )}
+      {q.isPending && !isPreview && (
+        <p role="status">정산문을 불러오는 중입니다.</p>
+      )}
       {q.error && (
         <div className="space-y-3">
           <p role="alert">{safeErrorMessage(q.error)}</p>
@@ -319,37 +448,61 @@ function NoticeDetail({
       )}
       {n && (
         <>
-          <p className="text-xs leading-relaxed text-secondary">
-            {new Date(n.createdAt).toLocaleString("ko-KR", {
-              timeZone: "Asia/Seoul",
-            })}{" "}
-            생성
-            {reviewRequired
-              ? " · 정산 재확인 필요. 연결 지출을 수정한 뒤 새 정산문을 만들어 주세요."
-              : n.refundRequiresRegeneration
-                ? " · 예약금 반환으로 이 정산문을 다시 만들어야 해요. 현재 내역으로 만든 정산문을 복사하거나 공유해 주세요."
-                : n.outdated &&
-                  " · 현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요. 당시 계좌는 보존되므로 현재 총무의 계좌를 확인해 주세요."}
-          </p>
-          <pre className="whitespace-pre-wrap break-words rounded-[20px] bg-choice p-5 font-sans text-base leading-relaxed">
-            {n.text}
-          </pre>
-          <div className="grid grid-cols-2 gap-3">
+          {!isPreview &&
+            (reviewRequired || n.refundRequiresRegeneration || n.outdated) && (
+              <p
+                role="alert"
+                className="rounded-control bg-choice p-3 text-xs leading-relaxed text-secondary"
+              >
+                {reviewRequired
+                  ? "정산 재확인 필요. 연결 지출을 수정한 뒤 새 정산문을 만들어 주세요."
+                  : n.refundRequiresRegeneration
+                    ? "예약금 반환으로 이 정산문을 다시 만들어야 해요. 현재 내역으로 만든 정산문을 복사하거나 공유해 주세요."
+                    : "현재 분담액·미확인 대상·잔액 또는 총무가 달라 재생성 필요. 당시 계좌는 보존되므로 현재 총무의 계좌를 확인해 주세요."}
+              </p>
+            )}
+          {!isPreview && (
+            <div className="relative rounded-card bg-choice shadow-control">
+              <pre className="whitespace-pre-wrap wrap-anywhere p-5 font-sans text-base leading-6">
+                {n.text}
+              </pre>
+              <button
+                type="button"
+                className="absolute inset-0 cursor-pointer rounded-card"
+                onClick={() => onEdit?.(n)}
+              >
+                <span className="sr-only">입력 내용 수정본 만들기</span>
+              </button>
+            </div>
+          )}
+          <div
+            className={cn(
+              "flex gap-2",
+              isPreview ? "justify-end" : "grid grid-cols-2",
+            )}
+          >
             <Button
               variant="brand-outline"
               disabled={sharingBlocked}
+              className={cn(
+                "border-2 text-brand",
+                isPreview && "min-h-8 px-4 py-0 text-xs font-normal",
+              )}
               onClick={() => void copy()}
             >
               <Image
                 src="/images/settlements/copy.svg"
-                width={18}
-                height={18}
+                width={isPreview ? 18 : 26}
+                height={isPreview ? 18 : 26}
                 alt=""
               />
-              복사하기
+              {isPreview ? "복사" : "복사하기"}
             </Button>
             <Button
               disabled={sharingBlocked}
+              className={
+                isPreview ? "min-h-8 px-4 py-0 text-xs font-normal" : undefined
+              }
               onClick={async () => {
                 if (sharingBlocked || sharingRef.current) return;
                 if (!navigator.share) {
@@ -382,18 +535,11 @@ function NoticeDetail({
             >
               <Image
                 src="/images/settlements/share.svg"
-                width={18}
-                height={18}
+                width={isPreview ? 18 : 26}
+                height={isPreview ? 18 : 26}
                 alt=""
               />
-              공유하기
-            </Button>
-            <Button
-              className="col-span-2"
-              variant="outline"
-              onClick={() => onEdit(n)}
-            >
-              입력 내용 수정본 만들기
+              {isPreview ? "공유" : "공유하기"}
             </Button>
           </div>
         </>
@@ -409,13 +555,16 @@ export function NoticePanel({
   onFlowChange,
   createScope,
   onCreateScopeHandled,
+  active = true,
 }: {
   access: Access;
   data: Detail;
   onFlowChange?: (active: boolean) => void;
   createScope?: Notice["scope"] | null;
   onCreateScopeHandled?: () => void;
+  active?: boolean;
 }) {
+  const titleId = useId();
   const [editing, setEditing] = useState<Notice | "new" | null>(null),
     [id, setId] = useState<string | null>(null),
     [created, setCreated] = useState(false);
@@ -441,95 +590,163 @@ export function NoticePanel({
         }}
       />
     );
+  const closeDetail = () => {
+    setId(null);
+    setCreated(false);
+    onFlowChange?.(false);
+  };
   if (id) {
-    const needsReview = !!data.depositConflicts?.length;
-    const historical =
-      needsReview || data.state.notices.find((n) => n.id === id)?.outdated;
+    const selected = data.state.notices.find((notice) => notice.id === id);
+    const showCreated = created && !selected?.outdated;
     return (
-      <div className="space-y-8">
-        <header className="space-y-2">
-          <h2 className="text-2xl font-bold">
-            {created && !historical ? "정산문이 생성되었어요" : "정산문"}
-          </h2>
-          {!historical && (
-            <p className="text-secondary">
-              안내 내용을 확인하고 복사하거나 공유해 주세요.
-            </p>
+      <SettlementScreen titleId={titleId} onClose={closeDetail}>
+        <div className="flex min-h-dvh flex-col px-[18px] pt-[max(53px,env(safe-area-inset-top))] pb-[max(40px,env(safe-area-inset-bottom))]">
+          <header className="mb-16">
+            <IconButton
+              aria-label="정산문 기록으로 돌아가기"
+              onClick={closeDetail}
+              className="-ml-2.5"
+            >
+              <Image src="/images/ui/back.svg" alt="" width={10} height={18} />
+            </IconButton>
+            <h2 id={titleId} className="mt-5 text-2xl leading-tight font-bold">
+              {showCreated
+                ? "정산문이 생성되었어요"
+                : (selected?.title ?? "정산문")}
+            </h2>
+            {showCreated && (
+              <p className="mt-1 text-secondary">
+                생성된 정산문을 클릭해 수정할 수 있어요.
+              </p>
+            )}
+          </header>
+          <NoticeDetail
+            key={`${id}:${data.state.version}`}
+            a={a}
+            id={id}
+            needsReview={!!data.depositConflicts?.length}
+            onEdit={setEditing}
+          />
+          {showCreated && (
+            <Button
+              variant="brand-outline"
+              className="mt-auto w-full border-2 text-brand"
+              onClick={closeDetail}
+            >
+              정산문 기록으로 가기
+            </Button>
           )}
-        </header>
-        <NoticeDetail
-          key={id + ":" + data.state.version}
-          a={a}
-          id={id}
-          needsReview={needsReview}
-          onEdit={setEditing}
-        />
-        <Button
-          variant="brand-outline"
-          className="w-full"
-          onClick={() => {
-            setId(null);
-            setCreated(false);
-            onFlowChange?.(false);
-          }}
-        >
-          정산문 기록으로 가기
-        </Button>
-      </div>
+        </div>
+      </SettlementScreen>
     );
   }
+  const latest = data.state.notices.at(-1);
+  const createNotice = (
+    <Button
+      className="min-h-[46px] gap-5 rounded-control px-3.5 text-xs font-medium"
+      onClick={() => {
+        setEditing("new");
+        onFlowChange?.(true);
+      }}
+      disabled={
+        !!data.depositConflicts?.length ||
+        data.summary.drafts > 0 ||
+        data.summary.status === "EMPTY"
+      }
+    >
+      {latest ? "새 정산문 만들기" : "정산문 만들기"}
+      <Image
+        className="rotate-180"
+        src="/images/settlements/notice-next.svg"
+        alt=""
+        width={14}
+        height={11}
+      />
+    </Button>
+  );
+  const open = (noticeId: string) => {
+    setCreated(false);
+    setId(noticeId);
+    onFlowChange?.(true);
+  };
   return (
-    <div className="space-y-5">
-      <Button
-        onClick={() => {
-          setEditing("new");
-          onFlowChange?.(true);
-        }}
-        disabled={
-          !!data.depositConflicts?.length ||
-          data.summary.drafts > 0 ||
-          data.summary.status === "EMPTY"
-        }
-      >
-        새 정산문 만들기
-      </Button>
+    <div className="space-y-4 px-[22px]">
+      {latest ? (
+        <>
+          <div className="flex justify-end">{createNotice}</div>
+          <div>
+            <h2 className="mb-2 text-label text-copy/80">작성한 정산문</h2>
+            {active && (
+              <NoticeDetail
+                key={`${latest.id}:${data.state.version}`}
+                a={a}
+                id={latest.id}
+                previewTitle={latest.title}
+                onOpen={() => open(latest.id)}
+                needsReview={!!data.depositConflicts?.length}
+              />
+            )}
+          </div>
+          {data.state.notices.length > 1 && (
+            <details className="space-y-2">
+              <summary className="cursor-pointer text-sm text-secondary">
+                이전 정산문
+              </summary>
+              <ul className="space-y-2">
+                {data.state.notices
+                  .slice(0, -1)
+                  .reverse()
+                  .map((n) => (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        className="w-full cursor-pointer rounded-control bg-choice px-4 py-2 text-left"
+                        onClick={() => open(n.id)}
+                      >
+                        {n.title}
+                        <small className="block text-secondary">
+                          {new Date(n.createdAt).toLocaleDateString("ko-KR", {
+                            timeZone: "Asia/Seoul",
+                          })}
+                          {n.outdated && " · 재생성 필요"}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </details>
+          )}
+        </>
+      ) : (
+        <div className="py-8 text-center">
+          <div className="mx-auto grid size-[85px] place-items-center rounded-full bg-[radial-gradient(ellipse_at_96%_78%,#ffdd99,#f46224_85%)]">
+            <Image
+              src="/images/settlements/notice-empty.svg"
+              alt=""
+              width={41}
+              height={41}
+            />
+          </div>
+          <h2 className="mt-6 text-2xl leading-tight font-bold">
+            아직 생성된 정산문이 없어요
+          </h2>
+          <p className="mx-auto mt-4 max-w-56 text-xs leading-tight">
+            입금 안내 메시지를 자동으로 만들어 참여자에게 바로 공유해 보세요.
+          </p>
+          <div className="mt-4">{createNotice}</div>
+        </div>
+      )}
       {!!data.depositConflicts?.length && (
-        <p role="alert">
+        <p role="alert" className="text-sm text-danger">
           예약금 실제 잔액과 연결 지출을 재확인해 주세요. 지출 보완 전 새
           정산문을 발행할 수 없습니다.
         </p>
       )}
       {data.summary.drafts > 0 && (
-        <p role="alert">
+        <p role="alert" className="text-sm text-danger">
           미완성 지출 {data.summary.drafts}개를 먼저 완료해 주세요.
         </p>
       )}
-      {!data.state.notices.length && (
-        <div className="py-10 text-center">
-          <h2 className="text-2xl font-bold">정산문을 만들어 보세요</h2>
-          <p className="mt-3 text-xs text-secondary">
-            지출과 입금 확인 내용을 바탕으로 안내문을 만들어요.
-          </p>
-        </div>
-      )}
-      {data.state.notices.map((n) => (
-        <button
-          key={n.id}
-          className="block w-full rounded-[20px] bg-choice p-5 text-left"
-          onClick={() => {
-            setCreated(false);
-            setId(n.id);
-            onFlowChange?.(true);
-          }}
-        >
-          <strong>{n.title}</strong>
-          <small className="block">
-            {new Date(n.createdAt).toLocaleString("ko-KR")} · 계산{" "}
-            {n.calculationVersion}
-            {n.outdated && " · 재생성 필요"}
-          </small>
-        </button>
-      ))}
     </div>
   );
 }
