@@ -65,7 +65,6 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "event_settlements",
       "events",
       "external_identities",
-      "favorites",
       "group_handovers",
       "group_members",
       "group_memberships",
@@ -111,6 +110,10 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     [],
     "entity metadata must match the applied migration",
   );
+  assert.deepEqual(await db.query("SELECT to_regclass('favorites') AS name"), [
+    { name: null },
+  ]);
+  assert.equal((await fetch(`${url}/api/v1/favorites`)).status, 404);
   const post = (path: string, jar = "", body?: unknown, extra = {}) =>
     fetch(`${url}/api/v1/auth/${path}`, {
       method: "POST",

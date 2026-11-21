@@ -4,7 +4,6 @@ export type Scope = {
   events: number;
   settlements: number;
   files: number;
-  favorites: number;
   ongoingReservations: number;
   ongoingInquiries: number;
   incompleteSettlements: number;
