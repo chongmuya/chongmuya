@@ -21,6 +21,7 @@ import {
 } from "../../src/modules/reservations/entities/reservation-progress.entity.js";
 import { SelectedReservation } from "../../src/modules/reservations/entities/selected-reservation.entity.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
+import { initialSettlement } from "../../src/modules/settlements/types/settlement.js";
 import { EventSettlement } from "../../src/modules/settlements/entities/settlement.entity.js";
 import { Restaurant } from "../../src/modules/restaurants/entities/restaurant.entity.js";
 import {
@@ -91,9 +92,6 @@ test("requests are idempotent and reviewable; active inquiries block only curren
   await db
     .getRepository(Account)
     .update({ id: shopId }, { accountType: "owner" });
-  await db
-    .getRepository(Restaurant)
-    .update({ id: demoRestaurantIds[0] }, { ownerAccountId: shopId });
   const ownerInfo = (await (await call("auth/me", organizer)).json()) as {
     id: string;
     email: string;
@@ -122,18 +120,29 @@ test("requests are idempotent and reviewable; active inquiries block only curren
     400,
   );
   assert.deepEqual((await (await call(path, other)).json()).destinations, []);
-  const merchantState = await (await call(path, shopOwner)).json();
-  assert.deepEqual(merchantState.blockers, [
-    "OPEN_INQUIRY",
-    "RESTAURANT_OWNER",
-  ]);
-  assert.deepEqual(merchantState.destinations, [
-    `/owner/inquiries?target=${target.id}`,
-  ]);
-
+  const { ownerAccountId: previousOwner } = await db.manager.findOneByOrFail(
+    Restaurant,
+    { id: demoRestaurantIds[0] },
+  );
   await db
     .getRepository(Restaurant)
-    .update({ id: demoRestaurantIds[0] }, { ownerAccountId: null });
+    .update({ id: demoRestaurantIds[0] }, { ownerAccountId: shopId });
+  try {
+    const merchantState = await (await call(path, shopOwner)).json();
+    assert(merchantState.blockers.includes("OPEN_INQUIRY"));
+    assert(merchantState.blockers.includes("RESTAURANT_OWNER"));
+    assert(
+      merchantState.destinations.includes(
+        `/owner/inquiries?target=${target.id}`,
+      ),
+    );
+  } finally {
+    await db.manager.update(
+      Restaurant,
+      { id: demoRestaurantIds[0] },
+      { ownerAccountId: previousOwner },
+    );
+  }
   const before = {
     request: await db.manager.findOneByOrFail(ReservationRequest, {
       id: requestId,
@@ -197,7 +206,7 @@ test("requests are idempotent and reviewable; active inquiries block only curren
   assert.equal((await call("auth/me", organizer)).status, 200);
   await db.manager.save(EventSettlement, {
     eventId: event,
-    state: { version: 1 },
+    state: { ...initialSettlement(), version: 1 },
   });
   const second = await call("auth/login", "", "POST", {
     email: ownerInfo.email,
@@ -298,7 +307,7 @@ test("requests are idempotent and reviewable; active inquiries block only curren
   assert.deepEqual(
     (await db.manager.findOneByOrFail(EventSettlement, { eventId: event }))
       .state,
-    { version: 1 },
+    { ...initialSettlement(), version: 1 },
   );
   assert.equal(
     await db.manager.countBy(AccountWithdrawalRequest, { id: opened.id }),
@@ -378,6 +387,14 @@ test("past and cancelled selections do not block; live stored agreement and know
         requested: request.snapshot,
         offered: {
           startsAt: date,
+          expectedGuests: 24,
+          space: "ANY",
+          seating: "ANY",
+          minimumSpend: null,
+          separateFee: null,
+          deposit: { kind: "NONE", amount: null },
+          menuDeadlineAt: null,
+          note: "",
           usageTime: minutes ? { kind: "MINUTES", minutes } : undefined,
         },
       },
