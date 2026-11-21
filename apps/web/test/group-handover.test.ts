@@ -144,3 +144,69 @@ test("roster edit explains exclusion, preserves inputs on conflict and retries a
     await v.unmount();
   }
 });
+
+test("pilot retains cancellation of an existing handover without enabling a new request", async () => {
+  let pending = true;
+  const writes: string[] = [];
+  const request: SessionRequest = async <T>(
+    path: string,
+    options?: RequestInit,
+  ) => {
+    if (options?.method === "POST") {
+      writes.push(path);
+      pending = false;
+      return { id: "existing", status: "CANCELLED" } as T;
+    }
+    return (
+      path.endsWith("/accounts")
+        ? { version: 1, ownerId: "owner", accounts: [], invitations: [] }
+        : {
+            group: { id: "group", name: "QA 모임", version: 1 },
+            scope: {
+              roster: 1,
+              events: 1,
+              settlements: 1,
+              files: 1,
+              favorites: 0,
+              ongoingInquiries: 0,
+              ongoingReservations: 0,
+              incompleteSettlements: 0,
+            },
+            requests: [
+              {
+                id: "existing",
+                status: pending ? "PENDING" : "CANCELLED",
+                targetId: "target",
+                expiresAt: "2099-01-01T00:00:00Z",
+                completedAt: null,
+              },
+            ],
+          }
+    ) as T;
+  };
+  const view = await render(
+    createElement(GroupManagement, {
+      accountId: "owner",
+      groupId: "group",
+      request,
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /인수인계 요청 취소/),
+    );
+    assert.equal(view.container.querySelector("#new-manager"), null);
+    assert.doesNotMatch(view.container.textContent!, /인수인계 요청하기/);
+    await click(view.container, "인수인계 요청 취소");
+    await until(() =>
+      assert.doesNotMatch(view.container.textContent!, /인수인계 요청 취소/),
+    );
+    assert.deepEqual(writes, [
+      "/api/v1/handovers/groups/group/existing/cancel",
+    ]);
+    assert.match(view.container.textContent!, /준비 중/);
+    assert.equal(view.container.querySelector("#new-manager"), null);
+  } finally {
+    await view.unmount();
+  }
+});

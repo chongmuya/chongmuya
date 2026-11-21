@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -28,7 +28,7 @@ const validReturnTime = (value: string) =>
   Number.isFinite(Date.parse(value)) &&
   Date.parse(value) <= Date.now();
 const reasonSchema = z.object({
-  amount: z.string().regex(/^\d+$/, "정수 금액을 입력해 주세요."),
+  amount: z.string(),
   returnedAt: z.string(),
   reason: z
     .string()
@@ -57,7 +57,7 @@ function MoneyAction({
     form = useForm<z.infer<typeof reasonSchema>>({
       resolver: zodResolver(reasonSchema),
       defaultValues: {
-        amount: String(row?.excess ?? 0),
+        amount: row?.excess ? String(row.excess) : "",
         reason: "",
         returnedAt: "",
       },
@@ -66,11 +66,30 @@ function MoneyAction({
     <form
       className="space-y-3 rounded-lg border border-field p-4"
       onSubmit={form.handleSubmit(async (v) => {
-        if (target.kind === "RETURN" && !validReturnTime(v.returnedAt)) {
-          form.setError("returnedAt", {
-            message: "실제 반환한 시각을 현재 이전으로 입력해 주세요.",
-          });
-          return;
+        const amount = Number(v.amount);
+        if (target.kind === "RETURN") {
+          const maximum = Math.min(row?.net ?? 0, 2_000_000_000);
+          if (!/^\d+$/.test(v.amount) || amount < 1 || amount > maximum) {
+            form.setError(
+              "amount",
+              {
+                message:
+                  maximum > 0
+                    ? `1원부터 ${maximum.toLocaleString()}원까지 입력해 주세요.`
+                    : "현재 순확인액이 없어 반환을 기록할 수 없습니다.",
+              },
+              { shouldFocus: true },
+            );
+            return;
+          }
+          if (!validReturnTime(v.returnedAt)) {
+            form.setError(
+              "returnedAt",
+              { message: "실제 반환한 시각을 현재 이전으로 입력해 주세요." },
+              { shouldFocus: true },
+            );
+            return;
+          }
         }
         try {
           await c.mutateAsync({
@@ -79,7 +98,7 @@ function MoneyAction({
             ...(target.kind === "RETURN"
               ? {
                   participantId: target.participantId,
-                  amount: Number(v.amount),
+                  amount,
                   returnedAt: new Date(v.returnedAt).toISOString(),
                 }
               : { paymentId: target.paymentId }),
@@ -464,6 +483,12 @@ export function SettlementWorkspace({
     </>
   );
 }
+const settlementTabs = [
+  ["expenses", "지출 확인"],
+  ["people", "개인별 정산"],
+  ["notices", "정산문 쓰기"],
+] as const;
+
 function Loaded({
   access: a,
   data,
@@ -475,6 +500,7 @@ function Loaded({
   record: boolean;
   startExpense: boolean;
 }) {
+  const tabsId = useId();
   const deadline = confirmationDeadline(data);
   // Decide once on entry. Closing the reminder or background refreshes must not
   // interrupt an existing form; the current unconfirmed count can reopen it.
@@ -483,7 +509,8 @@ function Loaded({
   const [createNoticeScope, setCreateNoticeScope] = useState<
     Notice["scope"] | null
   >(null);
-  const [tab, setTab] = useState("expenses"),
+  const [tab, setTab] =
+      useState<(typeof settlementTabs)[number][0]>("expenses"),
     [editing, setEditing] = useState<Expense | "new" | null>(() =>
       startExpense && !record && data.summary.status === "EMPTY" ? "new" : null,
     ),
@@ -587,23 +614,47 @@ function Loaded({
           role="tablist"
           aria-label="정산 내용"
         >
-          {[
-            ["expenses", "지출 확인"],
-            ["people", "개인별 정산"],
-            ["notices", "정산문 쓰기"],
-          ].map(([id, label]) => (
+          {settlementTabs.map(([id, label], index) => (
             <button
               key={id}
+              id={`${tabsId}-tab-${id}`}
+              type="button"
               role="tab"
               aria-selected={tab === id}
+              aria-controls={`${tabsId}-panel-${id}`}
+              tabIndex={tab === id ? 0 : -1}
               className={`min-h-control flex-1 rounded-pill px-2 text-xs ${tab === id ? "bg-brand text-copy" : "text-secondary"}`}
               onClick={() => setTab(id)}
+              onKeyDown={(event) => {
+                const count = settlementTabs.length;
+                const next =
+                  event.key === "ArrowRight"
+                    ? (index + 1) % count
+                    : event.key === "ArrowLeft"
+                      ? (index + count - 1) % count
+                      : event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? count - 1
+                          : null;
+                if (next === null) return;
+                event.preventDefault();
+                const nextId = settlementTabs[next]![0];
+                setTab(nextId);
+                document.getElementById(`${tabsId}-tab-${nextId}`)?.focus();
+              }}
             >
               {label}
             </button>
           ))}
         </div>
-        <div hidden={tab !== "expenses"} className="space-y-5">
+        <div
+          role="tabpanel"
+          id={`${tabsId}-panel-expenses`}
+          aria-labelledby={`${tabsId}-tab-expenses`}
+          hidden={tab !== "expenses"}
+          className="space-y-5"
+        >
           <div className="text-right">
             <Button variant="outline" onClick={() => setEditing("new")}>
               + 지출 등록
@@ -690,10 +741,20 @@ function Loaded({
           )}
           <CommandStatus command={c} />
         </div>
-        <div hidden={tab !== "people"}>
+        <div
+          role="tabpanel"
+          id={`${tabsId}-panel-people`}
+          aria-labelledby={`${tabsId}-tab-people`}
+          hidden={tab !== "people"}
+        >
           <People a={a} data={data} />
         </div>
-        <div hidden={tab !== "notices"}>
+        <div
+          role={noticeFlow ? undefined : "tabpanel"}
+          id={`${tabsId}-panel-notices`}
+          aria-labelledby={noticeFlow ? undefined : `${tabsId}-tab-notices`}
+          hidden={tab !== "notices"}
+        >
           <NoticePanel
             access={a}
             data={data}

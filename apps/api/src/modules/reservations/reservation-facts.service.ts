@@ -8,7 +8,10 @@ import { Injectable } from "@nestjs/common";
 import { In, type EntityManager } from "typeorm";
 import { EventsService } from "../events/events.service.js";
 import { SelectedReservation } from "./entities/selected-reservation.entity.js";
-import { ReservationProgress } from "./entities/reservation-progress.entity.js";
+import {
+  ReservationCompletionHistory,
+  ReservationProgress,
+} from "./entities/reservation-progress.entity.js";
 import {
   initialPreparation,
   completionStatus,
@@ -307,12 +310,53 @@ export class ReservationFactsService {
 
   async depositBalances(reservationIds: string[], m: EntityManager) {
     if (!reservationIds.length) return [];
-    const rows = await m.findBy(ReservationProgress, {
-      reservationId: In(reservationIds),
-    });
-    return rows.map(({ reservationId, state }) => ({
+    const rows = await m
+      .createQueryBuilder(ReservationProgress, "progress")
+      .innerJoin(
+        SelectedReservation,
+        "reservation",
+        "reservation.id=progress.reservation_id",
+      )
+      .select("progress.reservationId", "reservationId")
+      .addSelect("progress.state", "state")
+      .addSelect("reservation.version", "version")
+      .where("progress.reservationId IN (:...reservationIds)", {
+        reservationIds,
+      })
+      .getRawMany<{
+        reservationId: string;
+        state: ReservationPreparation;
+        version: number;
+      }>();
+    return rows.map(({ reservationId, state, version }) => ({
       reservationId,
       remainingAmount: (state.receipt?.amount ?? 0) - state.refunded,
+      version,
     }));
+  }
+
+  async depositRefunds(reservationIds: string[], m: EntityManager) {
+    if (!reservationIds.length) return [];
+    return m
+      .createQueryBuilder(ReservationCompletionHistory, "history")
+      .select("history.reservationId", "reservationId")
+      .addSelect("history.version", "version")
+      .addSelect("history.audit->>'recordedAt'", "recordedAt")
+      .addSelect(
+        "COALESCE((history.snapshot->'receipt'->>'amount')::integer, 0) - (history.snapshot->>'refunded')::integer",
+        "balanceAfter",
+      )
+      .addSelect("(history.evidence->'refund'->>'amount')::integer", "amount")
+      .where("history.reservationId IN (:...reservationIds)", {
+        reservationIds,
+      })
+      .andWhere("history.action = :action", { action: "REFUND_RECORDED" })
+      .getRawMany<{
+        reservationId: string;
+        version: number;
+        recordedAt: string;
+        balanceAfter: number;
+        amount: number | null;
+      }>();
   }
 }

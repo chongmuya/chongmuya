@@ -116,12 +116,18 @@ export function GroupManagement({
               : "대기 중인 인수인계"}
           </summary>
           <p className="text-sm text-muted">
-            모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요.
+            {groupHandoverEnabled
+              ? "모임 기록·명단·정산 자료와 관리 권한을 새 총무에게 넘겨요."
+              : "기존 요청의 인수인계 범위를 확인할 수 있어요."}
           </p>
           <TransferScope scope={preview.data.scope} />
           {pending ? (
             <div>
-              <p>수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요.</p>
+              <p>
+                {groupHandoverEnabled
+                  ? "수신자가 인수인계를 수락하기 전까지 내 관리권한은 유지돼요."
+                  : "신규 인수인계는 준비 중이에요. 기존 요청은 취소할 수 있으며 현재 관리권한은 유지돼요."}
+              </p>
               <Button
                 variant="outline"
                 disabled={busy || unresolved}
