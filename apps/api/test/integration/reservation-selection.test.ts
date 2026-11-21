@@ -730,10 +730,20 @@ test("selection, reinquiry and durable notifications serialize competing command
         conditions: {
           ...f.input.conditions,
           startsAt: new Date(Date.now() + 5 * 86400000).toISOString(),
-          expectedGuests: 25,
+          expectedGuests: undefined,
         },
       };
       const url = `events/${f.event.id}/reservation-requests`;
+      const modified = await call(url, owner, "POST", {
+        ...input,
+        conditions: { ...input.conditions, expectedGuests: 25 },
+      });
+      assert.equal(modified.status, 409);
+      assert.equal(
+        (await modified.json()).code,
+        "EVENT_EXPECTED_GUESTS_LOCKED",
+      );
+      assert.equal((await get(f.event.id)).id, q.id);
       const rounds = await Promise.all([
         call(url, owner, "POST", input),
         call(url, owner, "POST", input),
@@ -742,6 +752,7 @@ test("selection, reinquiry and durable notifications serialize competing command
         b = await json<ReservationRequestDto>(rounds[1], 201);
       assert.equal(a.id, b.id);
       assert.equal(a.round, 2);
+      assert.equal(a.snapshot.expectedGuests, q.snapshot.expectedGuests);
       assert.equal(
         await db.manager.countBy(ReservationRequest, { eventId: f.event.id }),
         2,

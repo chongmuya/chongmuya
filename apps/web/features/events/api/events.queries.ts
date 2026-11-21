@@ -10,8 +10,6 @@ export const eventKeys = {
       : (["user", accountId, "events", "list"] as const),
   detail: (accountId: string, eventId: string) =>
     ["user", accountId, "events", "detail", eventId] as const,
-  guestEstimate: (accountId: string, eventId: string) =>
-    ["user", accountId, "events", "guest-estimate", eventId] as const,
 };
 export const eventsQueryOptions = (
   accountId: string,

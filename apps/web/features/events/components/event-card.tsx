@@ -23,10 +23,11 @@ export function EventCard({
   const settled =
     summary?.settlement.status === "COMPLETE" &&
     !summary.settlement.needsReview;
+  const expectedGuests = summary?.expectedGuests ?? event.expectedGuests;
   return (
     <article className="rounded-[4px] bg-surface shadow-card">
       <Link
-        href={homeEventPath(event, eventCardView(summary))}
+        href={homeEventPath(event, eventCardView(event, summary))}
         className="block rounded-[inherit] px-5 py-4"
       >
         <div className="flex items-start justify-between gap-3">
@@ -64,9 +65,9 @@ export function EventCard({
               height={14.8528}
               alt=""
             />
-            {summary?.expectedGuests != null
-              ? `예상 ${summary.expectedGuests}명`
-              : summary?.roundCount
+            {expectedGuests != null
+              ? `예상 ${expectedGuests}명`
+              : summary?.hasAttendanceRecords
                 ? `참석 ${summary.attendingCount}명`
                 : summary?.participantCount
                   ? `명단 ${summary.participantCount}명`

@@ -21,6 +21,7 @@ const eventDto = (event: Event): EventDto => ({
   ownerId: event.ownerId,
   groupId: event.groupId,
   version: event.version,
+  expectedGuests: event.expectedGuests,
   reservationScheduleLocked: event.reservationScheduleLocked,
   name: event.name,
   scheduledAt: event.scheduledAt?.toISOString() ?? null,
@@ -381,12 +382,21 @@ export class EventsService {
     startsAt: string,
     locked: boolean,
     manager: EntityManager,
+    initialExpectedGuests?: number,
   ) {
     const event = await manager.findOneByOrFail(Event, { id });
+    const initialized =
+      initialExpectedGuests !== undefined &&
+      (await this.initializeExpectedGuests(
+        event,
+        initialExpectedGuests,
+        manager,
+      ));
     const date = new Date(startsAt);
     if (
       event.scheduledAt?.getTime() !== date.getTime() ||
-      event.reservationScheduleLocked !== locked
+      event.reservationScheduleLocked !== locked ||
+      initialized
     ) {
       if (event.scheduledAt?.getTime() !== date.getTime()) {
         event.scheduleUpdatedAt = new Date();
@@ -397,6 +407,34 @@ export class EventsService {
       event.version++;
       await manager.save(event);
     }
+  }
+
+  private async initializeExpectedGuests(
+    event: Event,
+    expectedGuests: number,
+    manager: EntityManager,
+  ) {
+    if (event.expectedGuests === expectedGuests) return false;
+    if (event.expectedGuests !== null)
+      throw new DomainHttpException("EVENT_EXPECTED_GUESTS_LOCKED");
+    event.expectedGuests = expectedGuests;
+    await this.ensureFirstRound(event.id, manager);
+    return true;
+  }
+
+  private async ensureFirstRound(eventId: string, manager: EntityManager) {
+    // New events are private to this transaction. Existing events are locked by the caller.
+    if (await manager.existsBy(AttendanceRound, { eventId, position: 1 }))
+      return;
+    await manager.insert(AttendanceRound, {
+      id: randomUUID(),
+      eventId,
+      title: "1차",
+      position: 1,
+      shareId: randomUUID(),
+      requestKey: randomUUID(),
+      createdAt: new Date(),
+    });
   }
 
   async list(ownerId: string, groupId?: string): Promise<EventDto[]> {
@@ -420,6 +458,7 @@ export class EventsService {
             : null,
           groupId: input.groupId ?? null,
           importGroupRoster: input.importGroupRoster ?? false,
+          expectedGuests: input.expectedGuests,
         }),
       )
       .digest("hex");
@@ -460,6 +499,7 @@ export class EventsService {
         creationDigest: input.creationKey ? digest : null,
         reservationScheduleLocked: false,
         name: input.name,
+        expectedGuests: input.expectedGuests ?? null,
         scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
         createdAt: new Date(),
         scheduleUpdatedAt: new Date(),
@@ -486,6 +526,8 @@ export class EventsService {
         return eventDto(previous);
       }
       if (members?.length) await copyGroupRoster(manager, event.id, members);
+      if (event.expectedGuests !== null)
+        await this.ensureFirstRound(event.id, manager);
       return eventDto(event);
     });
   }
@@ -519,6 +561,12 @@ export class EventsService {
       )
         throw new DomainHttpException("EVENT_SCHEDULE_LOCKED");
       if (input.name !== undefined) event.name = input.name;
+      if (input.expectedGuests !== undefined)
+        await this.initializeExpectedGuests(
+          event,
+          input.expectedGuests,
+          manager,
+        );
       if (input.scheduledAt !== undefined) {
         const next =
           input.scheduledAt === null ? null : new Date(input.scheduledAt);

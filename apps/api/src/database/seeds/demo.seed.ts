@@ -273,11 +273,13 @@ export async function seedDemo(
           ownerId = demoAccounts[index === 3 ? 1 : 0]!.id;
         if (await m.existsBy(Event, { id }))
           throw new DemoSeedConflict("SET_KEY_CONFLICT");
+        const needsReservation = index === 1 || index === 2;
         const event = Object.assign(new Event(), {
           id,
           ownerId,
           groupId: index === 2 ? null : groupIds[index === 3 ? 2 : index]!,
           version: 1,
+          expectedGuests: needsReservation ? 20 : null,
           name: [
             "동아리 정기 모임",
             "운영팀 회식",
@@ -289,7 +291,7 @@ export async function seedDemo(
         });
         await m.insert(Event, event);
         if (index === 0) await attendance(m, event, options.set, now);
-        if (index === 1 || index === 2)
+        if (needsReservation)
           await inquiry(m, event, index === 2, options.encryptionKey, now);
         counts.created++;
       }
@@ -418,6 +420,15 @@ async function inquiry(
   key: Buffer,
   now: Date,
 ) {
+  await m.insert(AttendanceRound, {
+    id: demoId(`first-round:${event.id}`),
+    eventId: event.id,
+    title: "1차",
+    position: 1,
+    shareId: demoId(`first-round-share:${event.id}`),
+    requestKey: demoId(`first-round-key:${event.id}`),
+    createdAt: now,
+  });
   const indices = compare ? [0, 1, 3] : [0];
   const restaurants: Restaurant[] = [];
   for (const i of indices)
@@ -429,7 +440,7 @@ async function inquiry(
     : null;
   const conditions = {
     startsAt: event.scheduledAt!.toISOString(),
-    expectedGuests: 20,
+    expectedGuests: event.expectedGuests!,
     region: "건대입구",
     seating: "CLOSE" as const,
     space: "HALL" as const,

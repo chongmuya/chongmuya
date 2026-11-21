@@ -25,6 +25,7 @@ test("event conflict preserves input and requires explicit review before using t
       name: "최초",
       version: 1,
       scheduledAt: null,
+      expectedGuests: null,
     });
     return createElement(
       "div",

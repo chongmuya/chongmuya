@@ -3,7 +3,6 @@
 import { isDateOnly } from "@/shared/lib/korean-date";
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { SessionRequest } from "@/features/auth/types";
@@ -24,7 +23,6 @@ import {
 } from "../schemas/event.schema";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { useCreateEvent } from "../hooks/use-create-event";
-import { eventKeys } from "../api/events.queries";
 
 export function EventForm({
   accountId,
@@ -42,7 +40,6 @@ export function EventForm({
   const active = useActiveScreen();
   const id = useId();
   const router = useRouter();
-  const cache = useQueryClient();
   const [importRoster, setImportRoster] = useState(true);
   const {
     register,
@@ -96,15 +93,11 @@ export function EventForm({
                 applyFormError(error, setError, {
                   name: "name",
                   scheduledAt: "date",
+                  expectedGuests: "expectedGuests",
                 });
             },
             onSuccess: (event) => {
               if (!active.current) return;
-              if (values.findVenue && values.expectedGuests)
-                cache.setQueryData(
-                  eventKeys.guestEstimate(accountId, event.id),
-                  values.expectedGuests,
-                );
               reset();
               if (onCreated) onCreated(event);
               else
@@ -198,6 +191,7 @@ export function EventForm({
             <FormField
               id={`${id}-expected-guests`}
               label="예상 인원"
+              required
               hint="정확한 참석 명단은 나중에 정해도 괜찮아요."
               hintClassName="mt-1"
               error={errors.expectedGuests?.message}

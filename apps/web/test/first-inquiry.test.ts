@@ -72,7 +72,11 @@ function sheet(container: HTMLElement) {
   return result;
 }
 
-async function fixtureForTest(t: TestContext, initialView = "conditions") {
+async function fixtureForTest(
+  t: TestContext,
+  initialView = "conditions",
+  expectedGuests: number | null = 24,
+) {
   for (const method of ["pushState", "replaceState"] as const) {
     const original = window.history[method].bind(window.history);
     t.mock.method(
@@ -108,9 +112,11 @@ async function fixtureForTest(t: TestContext, initialView = "conditions") {
   );
   window.history.replaceState(null, "", `${path}&view=${initialView}`);
   const posts: CreateInquiry[] = [];
+  const estimateUpdates: unknown[] = [];
   const fixture = {
     posts,
-    event: { ...event },
+    estimateUpdates,
+    event: { ...event, expectedGuests },
     receipt: null as ReservationRequest | null,
     readA: async () => Response.json(restaurant(a)),
     send: async (): Promise<Response> => {
@@ -132,8 +138,20 @@ async function fixtureForTest(t: TestContext, initialView = "conditions") {
         }
         return Response.json({ request: fixture.receipt });
       }
-      if (pathname.endsWith(`/events/${event.id}`))
+      if (pathname.endsWith(`/events/${event.id}`)) {
+        if (options?.method === "PATCH") {
+          const body = JSON.parse(String(options.body)) as {
+            expectedGuests: number;
+          };
+          estimateUpdates.push(body);
+          fixture.event = {
+            ...fixture.event,
+            expectedGuests: body.expectedGuests,
+            version: fixture.event.version + 1,
+          };
+        }
         return Response.json(fixture.event);
+      }
       if (pathname.endsWith(`/restaurants/${a.id}`)) return fixture.readA();
       if (pathname.endsWith(`/restaurants/${b.id}`))
         return Response.json(restaurant(b));
@@ -157,11 +175,26 @@ async function fixtureForTest(t: TestContext, initialView = "conditions") {
       Object.defineProperty(globalThis, "cancelAnimationFrame", cancel);
     else Reflect.deleteProperty(globalThis, "cancelAnimationFrame");
   });
-  await until(() => assert(view.container.querySelector("form")));
-  assert.ok(!view.container.querySelector('[name="date"]'));
-  await fill(view.container, "expectedGuests", "24");
-  assert.ok(view.container.querySelector("form"));
-  await submit(view.container);
+  if (initialView === "conditions") {
+    await until(() => assert(view.container.querySelector("form")));
+    if (expectedGuests === null) {
+      assert.match(
+        view.container.textContent!,
+        /행사 예상 인원을 등록해 주세요/,
+      );
+      await fill(view.container, "expectedGuests", "24");
+      await submit(view.container);
+      await until(() =>
+        assert.match(
+          view.container.textContent!,
+          /매장에 어떤 조건을 전달할까요/,
+        ),
+      );
+    }
+    assert.ok(!view.container.querySelector('[name="date"]'));
+    assert.ok(!view.container.querySelector('[name="expectedGuests"]'));
+    await submit(view.container);
+  }
   await until(() => button(view.container, `${a.name} 상세 보기`));
   return { ...view, fixture };
 }
@@ -232,7 +265,10 @@ test("the first inquiry uses one sheet from list and detail and validates all se
   assert.equal(fixture.posts.length, 1);
   assert.deepEqual(fixture.posts[0].restaurantIds, [b.id]);
   assert.equal(fixture.posts[0].conditions.startsAt, event.scheduledAt);
-  assert.equal(fixture.posts[0].conditions.expectedGuests, 24);
+  assert.equal(
+    Object.hasOwn(fixture.posts[0].conditions, "expectedGuests"),
+    false,
+  );
   assert.doesNotMatch(search(), /view=review/);
   await act(async () => response.resolve(Response.json({}, { status: 503 })));
   await until(() => assert.equal(sendB.disabled, false));
@@ -241,26 +277,41 @@ test("the first inquiry uses one sheet from list and detail and validates all se
   assert.equal(fixture.posts[0].requestKey, fixture.posts[1].requestKey);
 });
 
-test("reopening after a headcount edit keeps the selection and explains capacity and an empty sheet", async (t) => {
-  const { container, fixture } = await fixtureForTest(t);
+test("reopening conditions preserves the stored estimate and shows a store capacity change", async (t) => {
+  const { container, fixture, cache } = await fixtureForTest(t);
   await click(container, "문의 담기");
   await click(container, "문의 진행하기");
   await click(sheet(container), "닫기");
   await until(() => assert.ok(!container.querySelector("dialog")));
   await act(async () => window.history.back());
-  await until(() => button(container, "예상 인원 변경"));
-  await click(container, "예상 인원 변경");
-  await fill(container, "expectedGuests", "25");
+  await until(() =>
+    assert.match(container.textContent!, /매장에 어떤 조건을 전달할까요/),
+  );
+  assert.doesNotMatch(container.textContent!, /예상 인원 변경/);
+  assert.match(container.textContent!, /24명/);
   await submit(container);
   await until(() => button(container, "문의 진행하기"));
+  fixture.readA = async () =>
+    Response.json({ ...restaurant(a), maxCapacity: 23 });
+  await act(async () => {
+    await cache.refetchQueries({ queryKey: restaurantQuery(a.id).queryKey });
+  });
   await click(container, "문의 진행하기");
   const dialog = sheet(container);
-  await until(() => assert.match(dialog.textContent!, /최대 24명까지 가능/));
-  assert.match(dialog.textContent!, /19:00 · 25명/);
+  await until(() => assert.match(dialog.textContent!, /최대 23명까지 가능/));
+  assert.match(dialog.textContent!, /19:00 · 24명/);
   assert.equal(button(dialog, "1곳에 문의 보내기").disabled, true);
   await click(dialog, `${a.name} 선택 해제`);
   assert.match(dialog.textContent!, /선택한 매장이 없어요/);
   assert.equal(button(dialog, "0곳에 문의 보내기").disabled, true);
+  assert.equal(fixture.posts.length, 0);
+});
+
+test("an older event registers its estimate once before inquiry conditions", async (t) => {
+  const { fixture } = await fixtureForTest(t, "conditions", null);
+  assert.deepEqual(fixture.estimateUpdates, [
+    { expectedVersion: 1, expectedGuests: 24 },
+  ]);
   assert.equal(fixture.posts.length, 0);
 });
 
@@ -280,6 +331,7 @@ test("an old first-review link returns to the list and a changed event requires 
   fixture.send = async () => {
     fixture.event = {
       ...event,
+      expectedGuests: 24,
       version: 2,
       name: "변경된 테스트 행사",
       scheduledAt: "2099-11-25T11:30:00.000Z",
@@ -314,6 +366,7 @@ test("an old first-review link returns to the list and a changed event requires 
       responseCount: 0,
       snapshot: {
         ...latest.conditions,
+        expectedGuests: 24,
         eventName: fixture.event.name,
         groupName: null,
         groupType: null,

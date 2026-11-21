@@ -92,6 +92,58 @@ test("PR1 forward migration retains legacy inquiry/reply/link/delivery bytes and
     assert.equal(upgraded.request.current_contact_account_id, account);
     assert.equal(upgraded.target.candidate_state, "OPEN");
     assert.equal(upgraded.target.delivery_status, "DELIVERED");
+    await q.query("SAVEPOINT event_estimates");
+    const existingRoundEvent = randomUUID(),
+      existingRound = randomUUID();
+    await q.query(
+      "INSERT INTO events(id,owner_id,name,created_at) VALUES($1,$2,'수동 차수가 있는 행사',now())",
+      [existingRoundEvent, account],
+    );
+    await q.query(
+      "INSERT INTO attendance_rounds(id,event_id,title,position,share_id,request_key,created_at) VALUES($1,$2,'회식',1,$3,$4,now())",
+      [existingRound, existingRoundEvent, randomUUID(), randomUUID()],
+    );
+    await q.query(
+      `INSERT INTO reservation_requests(id,event_id,round,request_key,digest,snapshot,contact_name,contact_phone,created_at,state)
+       VALUES($1,$2,2,$3,$4,'{"expectedGuests":30}','총무','01000001234',now(),'CLOSED'),
+             ($5,$6,1,$7,$4,'{"expectedGuests":18}','총무','01000001234',now(),'CLOSED')`,
+      [
+        randomUUID(),
+        event,
+        randomUUID(),
+        "d".repeat(64),
+        randomUUID(),
+        existingRoundEvent,
+        randomUUID(),
+      ],
+    );
+    const estimates = migrations.find((m) =>
+      m.constructor.name.startsWith("EventExpectedGuests"),
+    )!;
+    await estimates.up(q);
+    assert.deepEqual(
+      await q.query(
+        `SELECT e.expected_guests, r.title FROM events e JOIN attendance_rounds r ON r.event_id=e.id ORDER BY e.expected_guests`,
+      ),
+      [
+        { expected_guests: 18, title: "회식" },
+        { expected_guests: 24, title: "1차" },
+      ],
+    );
+    assert.deepEqual(
+      await q.query("SELECT id FROM attendance_rounds WHERE event_id=$1", [
+        existingRoundEvent,
+      ]),
+      [{ id: existingRound }],
+    );
+    assert.deepEqual(
+      await q.query(
+        "SELECT (snapshot->>'expectedGuests')::int AS guests FROM reservation_requests WHERE event_id=$1 ORDER BY round",
+        [event],
+      ),
+      [{ guests: 24 }, { guests: 30 }],
+    );
+    await q.query("ROLLBACK TO SAVEPOINT event_estimates");
     assert.equal(
       (
         await q.query(

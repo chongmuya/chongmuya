@@ -33,6 +33,7 @@ export function EventDetail({
   const summary = isAccessError(summaries.error)
     ? undefined
     : summaries.data?.[0];
+  const expectedGuests = summary?.expectedGuests ?? event.expectedGuests;
   const group = isAccessError(groups.error)
     ? undefined
     : groups.data?.find((item) => item.id === event.groupId);
@@ -59,9 +60,9 @@ export function EventDetail({
         </div>
         <div className="flex max-w-[48%] shrink-0 flex-col items-end gap-1 py-3 text-right text-xs leading-[1.2]">
           <span className="flex min-h-[18px] items-center justify-end gap-2">
-            {summary?.expectedGuests != null
-              ? `예상 ${summary.expectedGuests}명`
-              : summary?.roundCount
+            {expectedGuests != null
+              ? `예상 ${expectedGuests}명`
+              : summary?.hasAttendanceRecords
                 ? `참석 ${summary.attendingCount}명`
                 : summary?.participantCount
                   ? `명단 ${summary.participantCount}명`

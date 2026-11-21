@@ -18,6 +18,12 @@ export const eventSchema = z
     expectedGuests: z.union([guestCountSchema, z.literal("")]).optional(),
   })
   .superRefine((v, ctx) => {
+    if (v.findVenue && !v.expectedGuests)
+      ctx.addIssue({
+        code: "custom",
+        path: ["expectedGuests"],
+        message: "예상 인원을 입력해 주세요.",
+      });
     if ((v.date || v.findVenue) && !v.time)
       ctx.addIssue({
         code: "custom",
@@ -44,6 +50,9 @@ export function eventInput(values: EventFormValues, groupId?: string) {
   return {
     name: values.name,
     groupId,
+    ...(values.findVenue && values.expectedGuests
+      ? { expectedGuests: Number(values.expectedGuests) }
+      : {}),
     scheduledAt:
       fromKoreanDateInput(`${values.date}T${values.time}`) ?? undefined,
   };

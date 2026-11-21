@@ -98,6 +98,6 @@ export type CreateInquiry = {
   mode: "DIRECT";
   expectedEventVersion: number;
   restaurantIds: string[];
-  conditions: InquiryConditions;
+  conditions: Omit<InquiryConditions, "expectedGuests">;
   contact: { name: string; phone: string };
 };

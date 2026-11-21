@@ -1,5 +1,13 @@
-import { Column, Entity, ForeignKey, Index, PrimaryColumn } from "typeorm";
+import {
+  Check,
+  Column,
+  Entity,
+  ForeignKey,
+  Index,
+  PrimaryColumn,
+} from "typeorm";
 @Entity("events")
+@Check("events_expected_guests_check", "expected_guests BETWEEN 1 AND 100000")
 @Index("events_owner_creation_key", ["creatorId", "creationKey"], {
   unique: true,
 })
@@ -37,6 +45,8 @@ export class Event {
   @Column({ type: "integer", name: "schedule_revision", default: 1 })
   scheduleRevision!: number;
   @Column({ type: "varchar", length: 100 }) name!: string;
+  @Column({ type: "integer", name: "expected_guests", nullable: true })
+  expectedGuests!: number | null;
   @Column({ type: "timestamptz", name: "scheduled_at", nullable: true })
   scheduledAt!: Date | null;
   @Column({

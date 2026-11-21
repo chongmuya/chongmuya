@@ -187,6 +187,7 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
   assert.deepEqual(
     Object.keys(spec.components.schemas.EventDto.properties).sort(),
     [
+      "expectedGuests",
       "groupId",
       "id",
       "name",

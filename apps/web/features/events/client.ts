@@ -1,6 +1,7 @@
 "use client";
 
 export { EventForm } from "./components/event-form";
+export { EventGuestEstimateForm } from "./components/event-guest-estimate-form";
 export { EventDetail } from "./components/event-detail";
 export { EventSummary } from "./components/event-summary";
 

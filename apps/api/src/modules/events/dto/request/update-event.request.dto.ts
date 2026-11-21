@@ -22,6 +22,13 @@ export class UpdateEventInput {
   @Length(1, 100)
   name?: string;
 
+  @ApiPropertyOptional({ minimum: 1, maximum: 100000 })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  expectedGuests?: number;
+
   @ApiPropertyOptional({ nullable: true, example: "2026-11-03T18:00:00+09:00" })
   @IsOptional()
   @IsISO8601({ strict: true })
