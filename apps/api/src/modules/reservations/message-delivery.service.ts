@@ -70,7 +70,6 @@ export class MessageDeliveryService {
           .getRepository(MessageDelivery)
           .findBy({ targetId: In(targets.map((t) => t.id)) })
       : [];
-    // DIRECT is capped at three targets. Every result is awaited independently.
     await Promise.allSettled(deliveries.map((d) => this.dispatch(d.id)));
   }
   async dispatch(id: string, retry?: { actor: string; reason: string }) {

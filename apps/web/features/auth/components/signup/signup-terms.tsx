@@ -3,7 +3,8 @@ import { useFormContext, useWatch } from "react-hook-form";
 import {
   LegalDocumentContent,
   legalDocumentsVersion,
-} from "@/shared/legal/documents-2026-11-21";
+  originalLegalDocumentsVersion,
+} from "@/shared/legal/documents";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { IconButton } from "@/shared/ui/icon-button";
 import { FormError } from "@/shared/ui/form-error";
@@ -119,7 +120,10 @@ export function SignupTermsDetail({
   onAgree: () => void;
   onClose: () => void;
 }) {
-  const published = term.version === legalDocumentsVersion;
+  const { version } = term;
+  const published =
+    version === legalDocumentsVersion ||
+    version === originalLegalDocumentsVersion;
   const available = published || term.body.length > 0;
   return (
     <LegalDocumentReader
@@ -128,7 +132,7 @@ export function SignupTermsDetail({
       onAction={available ? onAgree : onClose}
     >
       {published ? (
-        <LegalDocumentContent id={term.id} />
+        <LegalDocumentContent id={term.id} version={version} />
       ) : available ? (
         term.body.map((paragraph, index) => (
           <p key={`${index}:${paragraph}`}>{paragraph}</p>

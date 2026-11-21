@@ -55,9 +55,7 @@ for (let lead = 0xa1; lead <= 0xfe; lead++) {
       const character = decoder.decode(Uint8Array.of(lead, trail));
       if (character.length === 1 && character !== "\uFFFD")
         doubleByteCharacters.add(character);
-    } catch {
-      // Unassigned code point.
-    }
+    } catch {}
   }
 }
 

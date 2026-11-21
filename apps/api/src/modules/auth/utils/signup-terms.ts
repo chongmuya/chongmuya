@@ -1,5 +1,5 @@
 // Add a new page and version when published legal text changes.
-export const signupTermsVersion = "2026-11-21";
+export const signupTermsVersion = "2026-11-21-v2";
 export const signupTerms = [
   {
     id: "serviceTerms",

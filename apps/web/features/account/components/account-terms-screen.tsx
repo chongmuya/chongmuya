@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  LegalDocumentContent,
-  legalDocuments,
-} from "@/shared/legal/documents-2026-11-21";
+import { LegalDocumentContent, legalDocuments } from "@/shared/legal/documents";
 import { LegalDocumentReader } from "@/shared/legal/legal-document-reader";
 import { MenuArrow } from "@/shared/ui/menu-link";
 import { StepHeading, StepLayout } from "@/shared/ui/step-layout";

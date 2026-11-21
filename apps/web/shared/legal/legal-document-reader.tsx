@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 import { Button } from "../ui/button";
-import { legalDocumentProse } from "./documents-2026-11-21";
+import { legalDocumentProse } from "./documents";
 
 export function LegalDocumentReader({
   title,

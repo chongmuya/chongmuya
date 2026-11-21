@@ -1,6 +1,6 @@
 # 운영
 
-매장 JSON 입력·개발 seed는 [매장 데이터](restaurant-data.md), 외부 인증은 [인증](authentication.md), 탈퇴 접수·카카오 연결 해제 복구는 [회원 탈퇴](account-withdrawal.md)에 둔다.
+매장 JSON 입력·개발 seed는 [매장 데이터](restaurant-data.md), 외부 인증은 [인증](authentication.md)에 둔다.
 
 ## 배포와 복구
 
@@ -71,10 +71,7 @@ pnpm --filter @chongmuya/api merchant:operations --action publish --restaurant <
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations merchant --action deliveries
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations reservations --action notifications
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations completion --action inspect --reservation <예약_UUID>
-sudo bash /opt/chongmuya/deployment/current/deploy.sh operations withdrawals list
 ```
-
-탈퇴 접수 및 카카오 대기 건은 같은 `operations withdrawals` 뒤에 [회원 탈퇴 문서](account-withdrawal.md#웹-접수와-운영-검토)의 `review`, `kakao-list`, `kakao-retry` 인자를 사용한다.
 
 입력 파일이 필요한 예약 대리 명령은 EC2에 0600 파일을 먼저 준비하고, 호스트에는 `OPERATOR_INPUT_FILE`, CLI에는 마운트된 `/run/input.json`을 지정한다. 아래는 미리보기이며 모든 대괄호 자리 값을 실제 확인한 값으로 바꾼다.
 
@@ -89,6 +86,23 @@ sudo env OPERATOR_INPUT_FILE=/안전한경로/receipt.private.json \
 receipt 입력은 `requestKey`, `expectedVersion`, `guidanceRevision`, `amount`(전체 수령액), `receivedAt`, `corrects`(최초 null/정정 대상 ID), `reason`이다. 응답 유실 시 원본 파일의 키·버전·내용을 바꾸지 않는다. 양측 합의 적용은 `changeId`, `confirmed:true`, `organizerConfirmer`, `merchantConfirmer`, `agreementEvidence`도 필요하다. 이 도구는 은행 송금·환불을 실행하지 않는다.
 
 운영 입력은 일반 파일·0600·최대 32KiB다. 매장 데이터의 1MiB 제한과 구분한다. 호스트 도우미가 node 소유의 임시 복사본을 읽기 전용 마운트하고 종료 시 제거한다. JSON을 SSM 인자·로그·Actions 입력/아티팩트에 넣지 않는다. 이 업무 CLI들은 AppModule의 런타임 설정을 사용하지만 자동 리마인더는 끈다. `data:restaurants`는 DB 설정만 사용한다.
+
+## 회원 탈퇴
+
+사용자는 마이페이지에서 탈퇴 상태를 확인한다. 현재 책임자에게 진행 중 문의나 종료 전 예약이 있으면 탈퇴를 보류한다. 취소가 확정되거나 예약 종료 시각이 지나면 해당 예약의 차단이 해제된다. 양의 이용 시간이 확인되지 않으면 시작일 다음 날 00:00 KST를 종료 시각으로 사용한다. 현재 모임 관리자나 등록 매장 소유자는 운영 검토를 접수할 수 있다. 담당자는 권한 상태를 확인하고, 조건이 해소되면 사용자가 다시 탈퇴를 확인한다. 세부 판정은 [탈퇴 서비스](../apps/api/src/modules/account-withdrawal/account-withdrawal.service.ts)를 기준으로 확인한다.
+
+EC2에서는 현재 성공 릴리스로 접수 건과 카카오 처리 대기 건을 확인한다. `review`는 운영 검토 이력을 남긴다. 로컬에서는 API 빌드 후 같은 인자를 `pnpm --filter @chongmuya/api account:withdrawals` 뒤에 붙인다.
+
+```sh
+sudo bash /opt/chongmuya/deployment/current/deploy.sh operations withdrawals list
+sudo bash /opt/chongmuya/deployment/current/deploy.sh operations withdrawals review <접수-UUID> --actor <처리자>
+sudo bash /opt/chongmuya/deployment/current/deploy.sh operations withdrawals kakao-list
+sudo bash /opt/chongmuya/deployment/current/deploy.sh operations withdrawals kakao-retry <내부-계정-UUID>
+```
+
+카카오 연결 계정은 총무야 세션을 폐기한 뒤 서버에서 연결 해제를 확인하고 탈퇴를 완료한다. 타임아웃 등으로 결과가 불명확한 대기 건은 현재 연결 상태를 다시 조회한다. 공개 전과 로그인 앱 또는 어드민 키 교체 뒤에는 `KAKAO_ADMIN_KEY` 설정을 확인하고 지정 테스트 계정으로 실제 연결 해제와 탈퇴 완료를 검증한다.
+
+탈퇴 완료 시 계정의 직접 식별 정보와 사장님 기본 예약금 계좌를 지운다. 예약·공동 명단·정산 등 업무 기록에는 당시 정보가 남을 수 있다. 공개 전 접수 담당자와 응답 기한, 기록별 보유기간·접근 권한·파기 방법, 백업 만료와 복원 후 탈퇴 상태 재적용 방법을 확정한다. 적용할 공개 문안은 [개인정보 처리방침](../apps/web/app/legal/2026-11-21-v2/page.tsx)에서 관리한다.
 
 ## 비공개 증빙 파일
 

@@ -57,13 +57,12 @@ pnpm dev
 
 ## 문서
 
-| 문서                                    | 다루는 내용                                                    |
-| --------------------------------------- | -------------------------------------------------------------- |
-| [아키텍처](docs/architecture.md)        | 책임·의존 경계, 권한·트랜잭션, 업무 불변 조건                  |
-| [인증](docs/authentication.md)          | 쿠키·CSRF·세션, 가입·복구·외부 인증 설정                       |
-| [회원 탈퇴](docs/account-withdrawal.md) | 탈퇴 차단 기준, 접수 검토, 카카오 연결 해제                    |
-| [매장 데이터](docs/restaurant-data.md)  | 개발 seed/reset, 비공개 JSON import/update, 메뉴 가격·EC2 실행 |
-| [운영](docs/operations.md)              | 배포 순서, 문자·예약 복구, 파일 저장소, 리마인더               |
-| [협업](docs/CONTRIBUTING.md)            | 브랜치·커밋·PR·검증·병합                                       |
+| 문서                                   | 다루는 내용                                                    |
+| -------------------------------------- | -------------------------------------------------------------- |
+| [아키텍처](docs/architecture.md)       | 책임·의존 경계, 권한·트랜잭션, 업무 불변 조건                  |
+| [인증](docs/authentication.md)         | 쿠키·CSRF·세션, 가입·복구·외부 인증 설정                       |
+| [매장 데이터](docs/restaurant-data.md) | 개발 seed/reset, 비공개 JSON import/update, 메뉴 가격·EC2 실행 |
+| [운영](docs/operations.md)             | 배포·복구, 예약 문자, 회원 탈퇴, 증빙·리마인더                 |
+| [협업](docs/CONTRIBUTING.md)           | 브랜치·커밋·PR·검증·병합                                       |
 
 화면 원본은 [Figma](https://www.figma.com/design/VlhXK42QbSbn4eZxI00MNS), 제품 문서 링크는 [AGENTS.md](AGENTS.md#제품-문서-참고)에 모아 둡니다.

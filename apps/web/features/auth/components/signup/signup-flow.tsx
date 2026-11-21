@@ -176,7 +176,6 @@ function SignupComplete({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-// Exact 100×100 radial gradient from Figma's completion badge.
 const celebrationBackground: ComponentProps<"div">["style"] = {
   backgroundImage: `url("data:image/svg+xml;utf8,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'><rect x='0' y='0' height='100%25' width='100%25' fill='url(%23grad)'/><defs><radialGradient id='grad' gradientUnits='userSpaceOnUse' cx='0' cy='0' r='10' gradientTransform='matrix(-9.4527 -9.3816 22.359 -20.229 100 107.14)'><stop stop-color='rgba(255,221,153,1)' offset='0'/><stop stop-color='rgba(252,190,123,1)' offset='0.20911'/><stop stop-color='rgba(249,159,94,1)' offset='0.41822'/><stop stop-color='rgba(247,129,65,1)' offset='0.62733'/><stop stop-color='rgba(244,98,36,1)' offset='0.83644'/></radialGradient></defs></svg>")`,
 };
