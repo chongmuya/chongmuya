@@ -36,20 +36,14 @@ const json = async <T = Record<string, unknown>>(r: Response, status = 200) => {
 
 test("owner draft/address registration races and ownership; direct delivery, first answers, audited operator corrections, webhook and immutable inquiry", async (t) => {
   const secret = "test-webhook-secret-only-123456789";
-  const { app, db, call, signup, url, logs } = await startResourceApplication(
-    t,
-    {
+  const { app, db, call, signup, existingOwner, url, logs } =
+    await startResourceApplication(t, {
       SOLAPI_WEBHOOK_SECRET: secret,
       OWNER_SUPPORT_EMAIL: "owner@example.test",
-    },
-  );
-  const owner = await signup(),
-    other = await signup(),
+    });
+  const owner = await existingOwner(),
+    other = await existingOwner(),
     organizer = await signup();
-  for (const jar of [owner, other])
-    await json(
-      await call("auth/first-setup", jar, "PATCH", { accountType: "owner" }),
-    );
   const name = `등록 경쟁 ${randomUUID()}`,
     address = "서울 광진구 테스트로 100";
   async function draftFor(jar: string) {

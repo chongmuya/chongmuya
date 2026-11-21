@@ -1,8 +1,4 @@
-import {
-  InvitationInput,
-  InvitationTokenInput,
-  EditGroupMemberInput,
-} from "./dto/request/membership.request.dto.js";
+import { EditGroupMemberInput } from "./dto/request/edit-group-member.request.dto.js";
 import {
   Body,
   Controller,
@@ -45,38 +41,6 @@ export class GroupsController {
     @Param("groupId", ParseUUIDPipe) id: string,
   ) {
     return this.groups.membershipState(user.id, id);
-  }
-  @Post(":groupId/invitations")
-  invite(
-    @CurrentUser() user: AuthUser,
-    @Param("groupId", ParseUUIDPipe) id: string,
-    @Body() input: InvitationInput,
-  ) {
-    return this.groups.invite(user.id, id, input);
-  }
-  @Post("invitations/:id/preview")
-  invitation(
-    @CurrentUser() user: AuthUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() input: InvitationTokenInput,
-  ) {
-    return this.groups.invitation(user.id, id, input.token);
-  }
-  @Post("invitations/:id/accept")
-  acceptInvitation(
-    @CurrentUser() user: AuthUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() input: InvitationTokenInput,
-  ) {
-    return this.groups.invitation(user.id, id, input.token, true);
-  }
-  @Post(":groupId/invitations/:id/cancel")
-  cancelInvitation(
-    @CurrentUser() user: AuthUser,
-    @Param("groupId", ParseUUIDPipe) groupId: string,
-    @Param("id", ParseUUIDPipe) id: string,
-  ) {
-    return this.groups.cancelInvitation(user.id, groupId, id);
   }
   @Patch(":groupId/members/:memberId")
   editMember(
