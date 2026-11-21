@@ -894,13 +894,13 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     await submit(view.container);
     assert.match(view.container.textContent!, /휴대폰 인증을 완료/);
     assert.equal(joined, 0);
-    await click(view.container, "휴대폰 인증하기");
+    await click(view.container, "휴대폰 인증 요청");
     await until(() =>
       assert.match(view.container.textContent!, /인증을 확인하지 못/),
     );
     assert.doesNotMatch(view.container.textContent!, /private/);
-    await click(view.container, "휴대폰 인증하기");
-    await until(() => assert.match(view.container.textContent!, /16663538/));
+    await click(view.container, "휴대폰 인증 요청");
+    await until(() => assert(view.container.querySelector("dialog[open]")));
     assert.match(
       view.container.querySelector('a[href^="sms:"]')!.getAttribute("href")!,
       /body=/,
@@ -909,11 +909,14 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
       view.container.querySelector('img[alt="휴대폰 문자 앱을 여는 QR 코드"]'),
     );
     noSecrets();
-    await click(view.container, "인증 결과 확인");
+    await click(view.container, "닫기");
+    await click(view.container, "인증 다시 열기");
+    assert.equal(issued, 2);
+    await click(view.container, "문자 보냈어요");
     await until(() => assert.equal(checks, 1));
     await submit(view.container);
     assert.equal(joined, 0);
-    await click(view.container, "인증 결과 확인");
+    await click(view.container, "문자 보냈어요");
     await until(() =>
       assert.match(view.container.textContent!, /휴대폰 인증이 완료/),
     );
@@ -1507,8 +1510,9 @@ test("Kakao signup keeps verified provider email separate, never asks for a pass
     await fill(view.container, "email", account.email);
     await fill(view.container, "name", account.name);
     await fill(view.container, "phone", proof.phone);
-    await click(view.container, "휴대폰 인증하기");
-    await click(view.container, "인증 결과 확인");
+    await click(view.container, "휴대폰 인증 요청");
+    await until(() => assert(view.container.querySelector("dialog[open]")));
+    await click(view.container, "문자 보냈어요");
     await submit(view.container);
     await until(() => assert.match(view.container.textContent!, /가입을 축하/));
     assert.equal(joined, 1);
