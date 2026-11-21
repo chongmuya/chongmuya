@@ -80,15 +80,13 @@ export function OwnerScreen({
   };
   const props = { account, request, onNavigate: navigate };
   return view === "hours" && restaurantId ? (
-    <main className="app-page">
-      <OwnerHours
-        key={`${account.id}:${restaurantId}`}
-        accountId={account.id}
-        restaurantId={restaurantId}
-        request={request}
-      />
-      <Link href="/owner">매장관리로 돌아가기</Link>
-    </main>
+    <OwnerHours
+      key={`${account.id}:${restaurantId}`}
+      accountId={account.id}
+      restaurantId={restaurantId}
+      request={request}
+      onBack={() => navigate("/owner")}
+    />
   ) : view === "reservations" ? (
     <OwnerReservations
       key={`${account.id}:${reservationId}`}
@@ -176,6 +174,17 @@ function OwnerHome({
         <div className="flex flex-1 flex-col gap-5">
           {restaurant && (
             <>
+              <nav aria-label="예약 업무" className="grid grid-cols-2 gap-3">
+                <Link className={buttonStyles()} href="/owner/inquiries">
+                  받은 문의
+                </Link>
+                <Link
+                  className={buttonStyles({ variant: "outline" })}
+                  href="/owner/reservations"
+                >
+                  예약 관리
+                </Link>
+              </nav>
               <MerchantSummary
                 key={restaurant.id}
                 accountId={account.id}
@@ -190,7 +199,6 @@ function OwnerHome({
                   매장 정보 관리
                 </summary>
                 <p className="mt-3 text-sm text-secondary">
-                  {restaurant.name} ·{" "}
                   {restaurant.published ? "공개 중" : "공개 대기"}
                 </p>
                 <div className="mt-4 grid grid-cols-2 gap-3">
@@ -248,14 +256,7 @@ function OwnerHome({
                   : "매장 등록하기"}
               </Link>
             </section>
-          ) : (
-            <Link
-              className={buttonStyles({ className: "w-full" })}
-              href="/owner/inquiries"
-            >
-              받은 문의
-            </Link>
-          )}
+          ) : null}
         </div>
       )}
       <div className="h-8" />

@@ -221,11 +221,20 @@ export function OrderSummary({ data: q }: { data: Completion }) {
     </section>
   );
 }
-export function DepositSummary({ data: q }: { data: Completion }) {
+export function DepositSummary({
+  data: q,
+  merchant = false,
+}: {
+  data: Completion;
+  merchant?: boolean;
+}) {
   const rows: [string, string][] = [
     ["금액", q.guidance.kind === "NONE" ? "없음" : won(q.guidance.amount)],
-    ["입금자", q.transfer?.payer || "미확인"],
-    [
+  ];
+  if (!merchant || q.transfer?.payer)
+    rows.push(["입금자", q.transfer?.payer || "미확인"]);
+  if (!merchant || q.guidance.kind !== "NONE" || q.cancellation)
+    rows.push([
       "상태",
       q.cancellation
         ? progressLabels.CANCELLED
@@ -236,9 +245,8 @@ export function DepositSummary({ data: q }: { data: Completion }) {
             : q.guidance.kind === "NONE"
               ? "예약금 없음"
               : "실제 입금 확인 전",
-    ],
-  ];
-  if (q.guidance.deadline)
+    ]);
+  if (q.guidance.deadline && (!merchant || !q.receipt))
     rows.push(["입금 기한", koreanDateLabel(q.guidance.deadline)]);
   if (q.cancellation && (q.receipt || q.transfer || q.refundedAmount > 0))
     rows.push([
@@ -262,7 +270,13 @@ export function DepositSummary({ data: q }: { data: Completion }) {
     </section>
   );
 }
-export function GuidanceSummary({ data: q }: { data: Completion }) {
+export function GuidanceSummary({
+  data: q,
+  merchant = false,
+}: {
+  data: Completion;
+  merchant?: boolean;
+}) {
   const g = q.guidance;
   const [copy, setCopy] = useState("");
   return (
@@ -311,8 +325,12 @@ export function GuidanceSummary({ data: q }: { data: Completion }) {
         g.kind !== "NONE" && (
           <p className="text-sm text-muted">
             {g.channel === "SMS"
-              ? "계좌는 문자에서 확인해 주세요."
-              : "매장이 계좌를 확인하고 있어요."}
+              ? merchant
+                ? "계좌 안내 방식 · 문자"
+                : "계좌는 문자에서 확인해 주세요."
+              : merchant
+                ? "계좌 확인 중"
+                : "매장이 계좌를 확인하고 있어요."}
           </p>
         )
       )}

@@ -314,7 +314,8 @@ function ProposalForm({
       },
       {
         name: "usageMinutes",
-        label: "이용시간 (분, 지정할 때만 입력)",
+        label: "이용시간 (분)",
+        when: (v) => v.usageKind === "MINUTES",
         type: "number",
         value:
           q.agreement.usageTime?.minutes == null
@@ -377,7 +378,7 @@ function ProposalForm({
       },
       {
         name: "replaceMenu",
-        label: "메뉴를 아래 수량으로 변경해 제안해요",
+        label: "주문 메뉴도 변경하기",
         type: "checkbox",
         optional: true,
       },
@@ -385,16 +386,21 @@ function ProposalForm({
         name: `menu_${m.id}`,
         label: `${m.name} · ${won(m.price)}${!m.available ? " · 품절" : ""} 수량`,
         type: "number" as const,
+        when: (v: Partial<Record<string, string>>) => v.replaceMenu === "yes",
         value: String(q.order?.lines.find((l) => l.id === m.id)?.quantity ?? 0),
         optional: true,
       })),
       {
         name: "replaceGuidance",
-        label: "예약금 안내도 아래 내용으로 변경해 제안해요",
+        label: "예약금 안내도 변경하기",
         type: "checkbox",
         optional: true,
       },
-      ...guidanceFields(q).map((f) => ({ ...f, optional: true })),
+      ...guidanceFields(q).map((f) => ({
+        ...f,
+        when: (v: Partial<Record<string, string>>) =>
+          v.replaceGuidance === "yes" && f.when?.(v) !== false,
+      })),
     );
   return (
     <CommandForm

@@ -6,6 +6,7 @@ import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
 import { RequestTarget } from "./entities/request-target.entity.js";
 import { ReservationRequest } from "./entities/reservation-request.entity.js";
+import { SelectedReservation } from "./entities/selected-reservation.entity.js";
 import { MerchantReplyRevision } from "./entities/merchant-reply.entity.js";
 import type { InquirySnapshot } from "./types/inquiry.js";
 import { replyView } from "./lib/reply-view.js";
@@ -46,12 +47,18 @@ export class MerchantInquiriesQuery {
           "p",
           "p.target_id = t.id AND p.revision = t.reply_version",
         )
+        .leftJoin(
+          SelectedReservation,
+          "s",
+          "s.request_id = t.request_id AND s.target_id = t.id",
+        )
         .where("t.restaurant_id IN (:...ids)", { ids })
         .select([
           "t.id AS id",
           "t.restaurant_id AS restaurant_id",
           "t.restaurant_name AS restaurant_name",
           "t.candidate_state AS candidate_state",
+          "s.id AS reservation_id",
           "r.snapshot AS snapshot",
           "r.closed_at AS closed_at",
           `to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS received_at`,
@@ -74,7 +81,8 @@ export class MerchantInquiriesQuery {
         id: string;
         restaurant_id: string;
         restaurant_name: string;
-        candidate_state: string;
+        candidate_state: RequestTarget["candidateState"];
+        reservation_id: string | null;
         snapshot: InquirySnapshot;
         closed_at: Date | null;
         received_at: string;
@@ -101,6 +109,7 @@ export class MerchantInquiriesQuery {
             r.candidate_state !== "OPEN" ||
             Date.parse(r.snapshot.startsAt) <= Date.now(),
           candidateState: r.candidate_state,
+          reservationId: r.reservation_id,
           response: replyView(
             r.kind
               ? {

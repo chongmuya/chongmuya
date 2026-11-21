@@ -183,14 +183,22 @@ export function OwnerMenus({
           수량 단위
           <Input {...form.register("unit")} placeholder="예: 1인분, 1세트" />
         </label>
-        <label className="block space-y-2">
-          표시 순서
-          <Input
-            type="number"
-            min={0}
-            {...form.register("position", { valueAsNumber: true })}
-          />
-        </label>
+        <details
+          className="rounded-control bg-soft p-3"
+          open={form.formState.errors.position ? true : undefined}
+        >
+          <summary className="cursor-pointer text-sm font-medium">
+            표시 순서 설정
+          </summary>
+          <label className="mt-3 block space-y-2">
+            표시 순서
+            <Input
+              type="number"
+              min={0}
+              {...form.register("position", { valueAsNumber: true })}
+            />
+          </label>
+        </details>
         <OwnerCheck {...form.register("available")}>판매 중</OwnerCheck>
         {Object.keys(form.formState.errors).length > 0 && (
           <FormError message="메뉴명·단위·가격·순서를 확인해 주세요." />
@@ -204,15 +212,17 @@ export function OwnerMenus({
           loading={save.isPending}
           disabled={changed}
         >
-          메뉴 저장
+          {editing?.snapshot.id ? "메뉴 수정 저장" : "메뉴 추가"}
         </Button>
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => load(empty)}
-        >
-          새 메뉴 입력
-        </Button>
+        {editing?.snapshot.id && (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => load(empty)}
+          >
+            수정 닫기
+          </Button>
+        )}
       </form>
     </>
   );
@@ -226,11 +236,10 @@ export function OwnerMenus({
         <LoadingState>메뉴 불러오는 중…</LoadingState>
       ) : (
         <>
-          <h1 className="mb-5 text-2xl font-bold">메뉴 등록·수정</h1>
-          <p className="mb-5 text-sm text-muted">
-            가격이 미확인이면 비워 두세요. 판매 중단해도 기존 메뉴 기록은
-            유지됩니다.
-          </p>
+          <h1 className="mb-4 text-xl font-semibold">등록한 메뉴</h1>
+          {!result.data.menus.length && (
+            <p className="text-sm text-muted">아직 등록한 메뉴가 없어요.</p>
+          )}
           <ul className="mb-6 space-y-2">
             {result.data.menus.map((m) => (
               <li
@@ -259,7 +268,12 @@ export function OwnerMenus({
               </li>
             ))}
           </ul>
-          {!editing?.snapshot.id && editor}
+          {!editing?.snapshot.id && (
+            <section className="space-y-4 rounded-card bg-surface p-4 shadow-card">
+              <h2 className="font-semibold">새 메뉴</h2>
+              {editor}
+            </section>
+          )}
         </>
       )}
     </StepLayout>

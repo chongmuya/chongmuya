@@ -97,8 +97,8 @@ export function SubmittedReply({
   const request = response.snapshot.requested;
   const offer = response.snapshot.offered;
   return (
-    <main className="grid min-h-svh place-items-center bg-field px-3.5 pt-[11px] pb-[17px]">
-      <section className="flex min-h-[min(804px,calc(100svh-28px))] w-full max-w-[360px] flex-col justify-center gap-3.5 rounded-[16px] bg-surface px-6 pt-7 pb-6 shadow-[0_3px_14px_rgb(0_0_0/0.12)]">
+    <main className="mx-auto flex min-h-svh max-w-[402px] items-start px-5 py-8">
+      <section className="flex w-full flex-col gap-4 rounded-card bg-surface p-6 shadow-card">
         <Image
           src={
             declined
@@ -110,14 +110,14 @@ export function SubmittedReply({
           height={declined ? 41.5002 : 42}
           className="mx-auto"
         />
-        <h1 className="text-center text-lg font-bold text-[#1c1c1f]">
+        <h1 className="text-center text-lg font-bold text-brand-ink">
           {response.kind === "AVAILABLE"
-            ? "이미 수락 답변을 보냈어요"
+            ? "예약 가능으로 답했어요"
             : response.kind === "CHANGE"
-              ? "이미 변경 제안을 보냈어요"
-              : "이미 ‘예약 불가’로 답했어요"}
+              ? "조건 변경을 제안했어요"
+              : "예약 불가로 답했어요"}
         </h1>
-        <p className="text-center text-[13px] leading-[1.55] text-[#808087]">
+        <p className="text-center text-sm text-muted">
           {closedState ? (
             inquiryClosureMessage(closedState)
           ) : declined ? (
@@ -138,7 +138,7 @@ export function SubmittedReply({
         ) : (
           <>
             {offer && (
-              <div className="-mx-[5px] flex items-center gap-4 rounded-[16px] border border-placeholder bg-surface px-5 py-5 leading-[normal] min-[360px]:gap-9 min-[360px]:px-7">
+              <div className="flex items-center gap-4 rounded-control border border-field p-4">
                 <div className="shrink-0 space-y-2.5 text-center font-medium text-brand">
                   <Image
                     src="/images/merchant-replies/sent-date.svg"
@@ -190,9 +190,9 @@ export function SubmittedReply({
                 </div>
               </div>
             )}
-            <details className="-mx-[5px] text-sm open:space-y-4">
-              <summary className="block cursor-pointer text-right leading-tight font-semibold text-brand">
-                전체 예약문의 보기
+            <details className="rounded-control bg-soft p-4 text-sm open:space-y-4">
+              <summary className="cursor-pointer font-semibold">
+                보낸 답변과 원래 문의 보기
               </summary>
               <ReplySummary response={response} showHold={!closedState} />
               <RequestSummary snapshot={request} />
@@ -233,8 +233,7 @@ export function ReplySummary({
           { AVAILABLE: "가능 제안", CHANGE: "조건 변경 제안", DECLINE: "불가" }[
             r.kind
           ]
-        }{" "}
-        · {r.revision}차 답변
+        }
       </h3>
       <p className="text-xs text-muted">{koreanDateLabel(r.createdAt)}</p>
       {r.kind === "DECLINE" ? (

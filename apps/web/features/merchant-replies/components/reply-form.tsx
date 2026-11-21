@@ -120,6 +120,39 @@ export function ReplyForm({
     }
     setEditing(true);
   }
+  const depositField = (
+    <FormField
+      id="reply-deposit"
+      label="예약금"
+      required
+      labelClassName="text-label leading-tight"
+      error={proposalErrors?.deposit?.amount?.message}
+    >
+      {(attrs) => (
+        <Input
+          {...attrs}
+          variant="pill"
+          className="shadow-control"
+          name="proposal.deposit.amount"
+          type="number"
+          min={0}
+          max={2_000_000_000}
+          placeholder="예) 100,000원"
+          aria-label="예약금 (원)"
+          value={offered?.deposit.amount ?? ""}
+          onChange={(event) => {
+            const amount =
+              event.target.value === "" ? null : Number(event.target.value);
+            form.setValue("proposal.deposit", {
+              kind:
+                amount === null ? "UNKNOWN" : amount === 0 ? "NONE" : "FIXED",
+              amount,
+            });
+          }}
+        />
+      )}
+    </FormField>
+  );
   return (
     <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col bg-background">
       {!editing && (
@@ -378,43 +411,25 @@ export function ReplyForm({
                   </div>
                 )}
                 <div className="mx-auto mt-9 w-[calc(100%-48px)] max-w-[334px] space-y-9">
-                  <FormField
-                    id="reply-deposit"
-                    label="예약금"
-                    required
-                    labelClassName="text-label leading-tight"
-                    error={proposalErrors?.deposit?.amount?.message}
-                  >
-                    {(attrs) => (
-                      <Input
-                        {...attrs}
-                        variant="pill"
-                        className="shadow-control"
-                        name="proposal.deposit.amount"
-                        type="number"
-                        min={0}
-                        max={2_000_000_000}
-                        placeholder="예) 100,000원"
-                        aria-label="예약금 (원)"
-                        value={offered?.deposit.amount ?? ""}
-                        onChange={(event) => {
-                          const amount =
-                            event.target.value === ""
-                              ? null
-                              : Number(event.target.value);
-                          form.setValue("proposal.deposit", {
-                            kind:
-                              amount === null
-                                ? "UNKNOWN"
-                                : amount === 0
-                                  ? "NONE"
-                                  : "FIXED",
-                            amount,
-                          });
-                        }}
-                      />
-                    )}
-                  </FormField>
+                  {q.defaults.proposal.deposit.kind === "NONE" ? (
+                    <details
+                      className="space-y-3 rounded-control bg-soft p-3"
+                      open={
+                        offered?.deposit.kind !== "NONE" ||
+                        !!proposalErrors?.deposit?.amount ||
+                        undefined
+                      }
+                    >
+                      <summary className="cursor-pointer text-sm font-medium">
+                        {offered?.deposit.kind === "NONE"
+                          ? "예약금 없음 · 이 예약만 변경"
+                          : "이 예약의 예약금"}
+                      </summary>
+                      {depositField}
+                    </details>
+                  ) : (
+                    depositField
+                  )}
                   {kind === "AVAILABLE" && (
                     <div className="space-y-3">
                       <FormField
