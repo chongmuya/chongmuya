@@ -863,11 +863,14 @@ test("new manager editing an inherited notice preserves its text but must enter 
   };
   const v = await render(createElement(NoticePanel, { access: a, data }));
   try {
-    const button = [...v.container.querySelectorAll("button")].find((b) =>
-      b.textContent?.startsWith("이전 안내"),
+    await until(() =>
+      assert.equal(
+        v.container.querySelector('button[aria-label="이전 안내"]')
+          ?.textContent,
+        "당시 계좌 111-222 원문",
+      ),
     );
-    assert(button);
-    await act(async () => button.click());
+    await click(v.container, "이전 안내");
     await until(() => assert(v.container.querySelector("pre")));
     assert.match(
       v.container.querySelector("pre")!.textContent!,
@@ -926,11 +929,7 @@ test("notice load failure recovers in place and a pending share runs only once",
   };
   const view = await render(createElement(NoticePanel, { access: a, data }));
   try {
-    await act(async () =>
-      [...view.container.querySelectorAll("button")]
-        .find((b) => b.textContent?.startsWith("확인 안내"))!
-        .click(),
-    );
+    await click(view.container, "확인 안내");
     await until(() => assert(view.container.querySelector('[role="alert"]')));
     fail = false;
     await click(view.container, "정산문 다시 조회");
@@ -1008,10 +1007,7 @@ test("a refund-affected notice stays readable with sharing blocked after the lin
       ["복사하기", "공유하기"].includes(b.textContent ?? ""),
     );
   try {
-    const original = [...view.container.querySelectorAll("button")].find((b) =>
-      b.textContent?.startsWith(previous.title),
-    )!;
-    await act(async () => original.click());
+    await click(view.container, previous.title);
     await until(() =>
       assert.equal(
         view.container.querySelector("pre")?.textContent,
