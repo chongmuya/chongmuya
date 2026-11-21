@@ -1,13 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { GroupManagement } from "@/features/handovers/client";
 import { useState } from "react";
 import { GroupSwitcher } from "./group-switcher";
 import type { SessionRequest } from "@/features/auth/types";
 import type { Group } from "../types/group.types";
 import { GroupForm } from "./group-form";
-import { Button, buttonStyles } from "@/shared/ui/button";
+import { Button } from "@/shared/ui/button";
 
 export function GroupSettings({
   accountId,
@@ -49,9 +48,6 @@ export function GroupSettings({
         groupId={selected.id}
         request={request}
       />
-      <Link href="/groups/new" className={buttonStyles({ className: "mt-6" })}>
-        모임 추가
-      </Link>
     </>
   );
 }
