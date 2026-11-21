@@ -1049,12 +1049,13 @@ test("post-signup entry requires a restored session and skipping rejects externa
   }
 });
 
-test("fresh and legacy organizers go straight to nickname setup and preserve next without creating a group", async () => {
+test("first setup confirms a new role before routing to owner registration or organizer nickname", async () => {
   const original = globalThis.fetch;
   try {
     for (const scenario of [
-      "new-organizer",
-      "legacy-untyped",
+      "untyped-organizer",
+      "untyped-owner",
+      "organizer",
       "owner",
       "configured",
     ] as const) {
@@ -1065,7 +1066,7 @@ test("fresh and legacy organizers go straight to nickname setup and preserve nex
         accountType:
           scenario === "owner"
             ? "owner"
-            : scenario === "legacy-untyped"
+            : scenario.startsWith("untyped-")
               ? (null as string | null)
               : "organizer",
         nickname:
@@ -1088,6 +1089,52 @@ test("fresh and legacy organizers go straight to nickname setup and preserve nex
         "/mypage",
       );
       try {
+        const role = scenario.startsWith("untyped-")
+          ? scenario === "untyped-owner"
+            ? "owner"
+            : "organizer"
+          : null;
+        if (role) {
+          const choice = `input[name="accountType"][value="${role}"]`;
+          await until(() => assert(view.container.querySelector(choice)));
+          assert.equal(
+            view.container.querySelector('input[name="nickname"]'),
+            null,
+          );
+          await act(async () =>
+            view.container.querySelector<HTMLInputElement>(choice)!.click(),
+          );
+          await click(view.container, "계속하기");
+          const roleLabel = role === "owner" ? "사장님으로" : "총무로";
+          await until(() =>
+            assert.equal(
+              view.container.querySelector("dialog h2")?.textContent,
+              `${roleLabel} 가입하시겠어요?`,
+            ),
+          );
+          assert.deepEqual(writes, []);
+          await click(view.container, "닫기");
+          assert.equal(view.container.querySelector("dialog"), null);
+          assert.equal(document.activeElement?.textContent, "계속하기");
+          assert(
+            view.container.querySelector<HTMLInputElement>(choice)?.checked,
+          );
+          await click(view.container, "계속하기");
+          await click(view.container, `${roleLabel} 계속하기`);
+          await until(() => assert.deepEqual(writes, [{ accountType: role }]));
+          if (role === "owner") {
+            await until(() =>
+              assert.match(view.container.textContent!, /매장 등록하기/),
+            );
+            assert.equal(
+              view.container.querySelector('input[name="nickname"]'),
+              null,
+            );
+            await click(view.container, "매장 등록하기");
+            assert.deepEqual(view.navigations, ["/owner/register"]);
+            continue;
+          }
+        }
         if (scenario === "configured" || scenario === "owner") {
           await until(() => assert.deepEqual(view.navigations, ["/mypage"]));
           assert.equal(writes.length, 0);
@@ -1106,9 +1153,12 @@ test("fresh and legacy organizers go straight to nickname setup and preserve nex
         await until(() =>
           assert(view.container.querySelector('input[name="usage"]')),
         );
-        assert.deepEqual(writes, [
-          { accountType: "organizer", nickname: "우리 총무" },
-        ]);
+        assert.deepEqual(
+          writes,
+          role
+            ? [{ accountType: "organizer" }, { nickname: "우리 총무" }]
+            : [{ nickname: "우리 총무" }],
+        );
         assert.equal(account.nickname, "우리 총무");
         await click(view.container, "나중에 선택하기");
         assert.deepEqual(view.navigations, ["/mypage"]);

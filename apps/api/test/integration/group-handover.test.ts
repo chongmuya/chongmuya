@@ -149,8 +149,8 @@ test("retired invitation endpoints leave valid legacy invitations and membership
 
 test("accepted handover preserves private history and personal ownership; memberships and retries never grant early access", async (t) => {
   const { app, db, call, signup } = await startResourceApplication(t);
-  const a = await signup(),
-    b = await signup();
+  const a = await signup("organizer"),
+    b = await signup("organizer");
   type Me = { id: string; email: string };
   const aa = await json<Me>(await call("auth/me", a)),
     bb = await json<Me>(await call("auth/me", b));
@@ -634,9 +634,9 @@ test("group lock serializes handover against stale writers, upload completion an
     "assertTransferEnabled",
     () => {},
   );
-  const a = await signup(),
-    b = await signup(),
-    c = await signup();
+  const a = await signup("organizer"),
+    b = await signup("organizer"),
+    c = await signup("organizer");
   const aa = await json<{ id: string; email: string }>(
       await call("auth/me", a),
     ),
@@ -864,8 +864,8 @@ test("reservation selection race, current merchant contact, pending SMS replanni
     () => {},
   );
   await seedDemoRestaurants(db);
-  const a = await signup(),
-    b = await signup();
+  const a = await signup("organizer"),
+    b = await signup("organizer");
   const aa = await json<{ id: string; email: string }>(
       await call("auth/me", a),
     ),
@@ -1245,8 +1245,8 @@ test("handover cancellation, expiry, membership loss and stale group version blo
     "assertTransferEnabled",
     () => {},
   );
-  const a = await signup(),
-    b = await signup();
+  const a = await signup("organizer"),
+    b = await signup("organizer");
   const aa = await json<{ id: string; email: string }>(
       await call("auth/me", a),
     ),

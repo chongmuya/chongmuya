@@ -217,7 +217,7 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
   assert.deepEqual(race.map((r) => r.status).sort(), [201, 400]);
   const success = race.find((r) => r.status === 201)!;
   const account = (await success.json()).account;
-  assert.equal(account.accountType, "organizer");
+  assert.equal(account.accountType, null);
   assert.equal(account.name, input.name);
   assert.equal(account.nickname, null);
   assert.equal(account.phone, input.phone);

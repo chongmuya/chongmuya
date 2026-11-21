@@ -38,17 +38,24 @@ export async function startResourceApplication(
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  const signup = async () => {
+  const signup = async (accountType?: "organizer" | "owner") => {
     const fixture = await signupFixture(db);
     const response = await call("auth/signup", fixture.jar, "POST", {
       ...fixture.body,
       password: "group-events-123",
     });
     assert.equal(response.status, 201);
-    return response.headers
+    const jar = response.headers
       .getSetCookie()
       .map((value) => value.split(";")[0])
       .join("; ");
+    if (accountType) {
+      const setup = await call("auth/first-setup", jar, "PATCH", {
+        accountType,
+      });
+      assert.equal(setup.status, 200);
+    }
+    return jar;
   };
   const existingOwner = async () => {
     const jar = await signup();
