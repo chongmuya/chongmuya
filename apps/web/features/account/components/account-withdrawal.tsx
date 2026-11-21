@@ -214,26 +214,29 @@ function WithdrawalFlow({
       busy={action.isPending}
       className="px-5 pt-[max(57px,env(safe-area-inset-top))]"
     >
-      <div className="mx-[14px] space-y-8">
+      <div className="mx-[14px] flex flex-col gap-8">
         <StepHeading
           title="탈퇴하기 전에 확인해 주세요"
           description="삭제한 계정 정보는 되돌릴 수 없어요."
           className="mb-0 text-brand-ink"
           descriptionClassName="mt-1.5 text-control font-medium"
         />
-        <section className="space-y-2 rounded-2xl bg-surface p-4 shadow-card">
+        <section className="space-y-1.5 rounded-2xl bg-surface p-4 shadow-card">
           <h2 className="text-sm font-semibold">
             탈퇴 후에도 공동 기록은 보존돼요
           </h2>
-          <ul className="space-y-2">
+          <ul className="space-y-1.5">
             {dataRows.map((text) => (
               <li
                 key={text}
                 className="flex min-h-10 items-center gap-3 text-sm"
               >
-                <span
-                  aria-hidden
-                  className="size-2 shrink-0 rounded-pill bg-brand"
+                <Image
+                  src="/images/account-withdrawal/record-bullet.svg"
+                  width={8}
+                  height={8}
+                  alt=""
+                  className="shrink-0"
                 />
                 <span className="flex-1">{text}</span>
                 <span aria-hidden className="text-lg">
@@ -270,14 +273,20 @@ function WithdrawalFlow({
               onChange={() => setReason(option)}
               className="min-h-12 flex-row items-center gap-3 rounded-[10px] border p-[13px] text-control shadow-control"
             >
-              <span
-                aria-hidden
-                className={
-                  reason === option
-                    ? "size-5 shrink-0 rounded-pill border-2 border-brand bg-brand shadow-[inset_0_0_0_2px_white]"
-                    : "size-5 shrink-0 rounded-pill bg-soft"
-                }
-              />
+              {reason === option ? (
+                <Image
+                  src="/images/account-withdrawal/reason-selected.svg"
+                  width={20}
+                  height={20}
+                  alt=""
+                  className="shrink-0"
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  className="size-5 shrink-0 rounded-pill bg-soft"
+                />
+              )}
               {option}
             </ChoiceCard>
           ))}
@@ -321,8 +330,15 @@ function WithdrawalFlow({
         >
           <div
             onKeyDown={keepDialogFocus}
-            className="flex flex-col gap-7 pt-8 text-center"
+            className="flex flex-col gap-7 pt-[38px] text-center"
           >
+            <Image
+              src="/images/account-withdrawal/warning.svg"
+              width={71}
+              height={64}
+              alt=""
+              className="self-center"
+            />
             <div className="space-y-2">
               <h2
                 id={`${id}-title`}
