@@ -164,11 +164,7 @@ export class ReservationChangesService {
         )
           throw new DomainHttpException("VALIDATION_FAILED");
         if (change.kind === "CHANGE") {
-          const { ownerId } = await this.events.lockReservationEvent(
-            c.selection.eventId,
-            c.m,
-          );
-          await this.locks.responsibleAccounts(ownerId, c.request, c.m);
+          await this.locks.responsibleAccounts(c.request, c.m);
         }
         change.proposal = {
           agreement,
@@ -260,11 +256,7 @@ export class ReservationChangesService {
           if (proposal.refundExpected !== null)
             throw new DomainHttpException("VALIDATION_FAILED");
           this.validateAgreement(proposal.agreement);
-          const { ownerId } = await this.events.lockReservationEvent(
-            c.selection.eventId,
-            c.m,
-          );
-          await this.locks.responsibleAccounts(ownerId, c.request, c.m);
+          await this.locks.responsibleAccounts(c.request, c.m);
           s.agreement = proposal.agreement;
           s.agreementRevision++;
           s.guidance = proposal.guidance;

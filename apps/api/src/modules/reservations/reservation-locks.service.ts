@@ -11,11 +11,15 @@ export class ReservationLocksService {
     private readonly auth: AuthService,
   ) {}
 
+  // The caller already holds the event and reservation locks.
   async responsibleAccounts(
-    ownerId: string,
     request: ReservationRequest,
     m: EntityManager,
+    eventOwnerId?: string,
   ) {
+    const ownerId =
+      eventOwnerId ??
+      (await this.events.lockReservationEvent(request.eventId, m)).ownerId;
     const accounts = new Set(
       [ownerId, request.currentContactAccountId ?? ownerId].sort(),
     );

@@ -12,6 +12,8 @@ import { PasswordReset } from "../../src/modules/auth/entities/password-reset.en
 import { tokenHash } from "../../src/modules/auth/utils/token-hash.js";
 import { AuthService } from "../../src/modules/auth/auth.service.js";
 import { RestaurantsService } from "../../src/modules/restaurants/restaurants.service.js";
+import { MerchantRepliesService } from "../../src/modules/reservations/merchant-replies.service.js";
+import { MerchantReplyRevision } from "../../src/modules/reservations/entities/merchant-reply.entity.js";
 import { MessageDeliveryService } from "../../src/modules/reservations/message-delivery.service.js";
 import { ReservationRequest } from "../../src/modules/reservations/entities/reservation-request.entity.js";
 import { RequestTarget } from "../../src/modules/reservations/entities/request-target.entity.js";
@@ -548,4 +550,94 @@ test("a new inquiry and withdrawal serialize in both orders", async (t) => {
   assert.deepEqual((await (await second).json()).blockers, ["OPEN_INQUIRY"]);
   assert.equal((await call("auth/me", another)).status, 200);
   assert.equal(dispatched.mock.callCount(), 1);
+});
+
+test("reopening a previously declined inquiry requires the same live account lock", async (t) => {
+  const { app, db, call, signup } = await startResourceApplication(t);
+  t.mock.method(
+    app.get(MessageDeliveryService),
+    "dispatchRequest",
+    async () => undefined,
+  );
+  await seedDemoRestaurants(db);
+  const replies = app.get(MerchantRepliesService);
+  const organizer = await signup();
+  const event = await createEvent(call, organizer);
+  const input = inquiry();
+  const response = await call(
+    `events/${event}/reservation-requests`,
+    organizer,
+    "POST",
+    input,
+  );
+  assert.equal(response.status, 201);
+  const requestId = (await response.json()).id as string;
+  const target = await db.manager.findOneByOrFail(RequestTarget, { requestId });
+  const operator = {
+    kind: "operator",
+    actor: "fixture-operator",
+    method: "PHONE",
+    confirmedAt: new Date().toISOString(),
+    reason: "합성 응답",
+  } as const;
+  const decline = (version: number) =>
+    ({
+      ...key(),
+      expectedVersion: version,
+      kind: "DECLINE",
+      proposal: null,
+      expiresAt: null,
+      holdConfirmed: false,
+      reason: "가상 불가",
+    }) as const;
+  const available = (version: number) =>
+    ({
+      ...key(),
+      expectedVersion: version,
+      kind: "AVAILABLE",
+      proposal: {
+        startsAt: input.conditions.startsAt,
+        expectedGuests: 24,
+        space: "ANY",
+        seating: "ANY",
+        minimumSpend: null,
+        separateFee: null,
+        deposit: { kind: "UNKNOWN", amount: null },
+        menuDeadlineAt: null,
+        note: "",
+      },
+      expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      holdConfirmed: true,
+      reason: "",
+    }) as const;
+  await replies.save(target.id, operator, decline(0), "withdrawal-reopen");
+  assert.deepEqual((await (await call(path, organizer)).json()).blockers, []);
+  await replies.save(target.id, operator, available(1), "withdrawal-reopen");
+  assert.deepEqual(
+    (await (await call(`${path}/complete`, organizer, "POST", key())).json())
+      .blockers,
+    ["OPEN_INQUIRY"],
+  );
+  await replies.save(target.id, operator, decline(2), "withdrawal-reopen");
+  assert.deepEqual(
+    await (await call(`${path}/complete`, organizer, "POST", key())).json(),
+    { completed: true },
+  );
+  await assert.rejects(
+    replies.save(target.id, operator, available(3), "withdrawal-reopen"),
+    { code: "SESSION_INVALID" },
+  );
+  const current = await db.manager.findOneByOrFail(RequestTarget, {
+    id: target.id,
+  });
+  assert.equal(current.replyVersion, 3);
+  assert.equal(
+    (
+      await db.manager.findOneByOrFail(MerchantReplyRevision, {
+        targetId: target.id,
+        revision: 3,
+      })
+    ).kind,
+    "DECLINE",
+  );
 });
