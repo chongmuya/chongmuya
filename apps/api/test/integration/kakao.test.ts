@@ -238,7 +238,18 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
   const stored = await db.manager.findOneByOrFail(Account, { id: account.id });
   assert.equal(stored.passwordHash, null);
   assert.equal(stored.name, signup.name);
-  assert.equal(stored.accountType, null);
+  assert.equal(account.accountType, "organizer");
+  assert.equal(stored.accountType, "organizer");
+  assert.equal(
+    (
+      await fetch(`${url}/api/v1/auth/first-setup`, {
+        method: "PATCH",
+        headers: { ...headers, Cookie: cookies(created) },
+        body: JSON.stringify({ accountType: "owner" }),
+      })
+    ).status,
+    409,
+  );
   assert.equal(stored.nickname, null);
   assert.equal(stored.emailVerificationSource, "kakao");
   assert(stored.emailVerifiedAt);

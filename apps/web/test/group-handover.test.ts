@@ -1,5 +1,5 @@
 import "./support/dom";
-import { act, createElement } from "react";
+import { createElement } from "react";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { render, until, click, fill } from "./support/form-dom";
@@ -7,40 +7,21 @@ import { GroupManagement } from "../features/handovers/components/group-manageme
 import { EditMember } from "../features/groups/components/edit-member";
 import { ApiError } from "../shared/http/api-error";
 import type { SessionRequest } from "../features/auth/types";
-import { handoverKey } from "../features/handovers/api/handovers.api";
-test("pilot group management disables handover and invitation retry preserves the original token and request key", async () => {
-  const accountId = crypto.randomUUID(),
-    groupId = crypto.randomUUID(),
-    targetId = crypto.randomUUID(),
-    id = crypto.randomUUID();
-  const writes: Record<string, unknown>[] = [];
-  const preview = {
-    group: { id: groupId, name: "합성 모임", version: 1 },
-    scope: {
-      roster: 2,
-      events: 3,
-      settlements: 1,
-      files: 4,
-      favorites: 1,
-      ongoingInquiries: 0,
-      ongoingReservations: 1,
-      incompleteSettlements: 1,
-    },
-    requests: [],
-  };
+test("pilot group management keeps the roster and existing handover cancellation without exposing invitations or new transfers", async () => {
+  const accountId = crypto.randomUUID();
+  const groupId = crypto.randomUUID();
+  const pendingId = crypto.randomUUID();
+  const writes: { path: string; body: unknown }[] = [];
+  let status = "PENDING";
   const request: SessionRequest = async <T>(
     path: string,
     options?: RequestInit,
   ) => {
     if (options?.method === "POST") {
-      writes.push(JSON.parse(String(options.body)));
+      writes.push({ path, body: JSON.parse(String(options.body)) });
       if (writes.length === 1) throw new ApiError("", 0, "NETWORK_ERROR");
-      return {
-        id,
-        status: "PENDING",
-        completedAt: null,
-        expiresAt: "2099-01-01T00:00:00Z",
-      } as T;
+      status = "CANCELLED";
+      return { id: pendingId, status } as T;
     }
     return (
       path.endsWith("/accounts")
@@ -54,52 +35,58 @@ test("pilot group management disables handover and invitation retry preserves th
                 email: "a@example.test",
                 role: "ADMIN",
               },
-              {
-                id: targetId,
-                name: "새 총무",
-                email: "b@example.test",
-                role: "MEMBER",
-              },
             ],
-            invitations: [],
           }
-        : preview
+        : {
+            group: { id: groupId, name: "합성 모임", version: 1 },
+            scope: {
+              roster: 2,
+              events: 3,
+              settlements: 1,
+              files: 4,
+              favorites: 1,
+              ongoingInquiries: 0,
+              ongoingReservations: 1,
+              incompleteSettlements: 1,
+            },
+            requests: [
+              { id: pendingId, status, expiresAt: "2099-01-01T00:00:00Z" },
+            ],
+          }
     ) as T;
   };
-  const v = await render(
+  const view = await render(
     createElement(GroupManagement, { accountId, groupId, request }),
   );
   try {
     await until(() =>
-      assert.match(v.container.textContent!, /총무 인수인계준비 중/),
+      assert.match(view.container.textContent!, /대기 중인 인수인계/),
     );
-    assert.equal(v.container.querySelector("#new-manager"), null);
-    assert.doesNotMatch(v.container.textContent!, /인수인계 요청하기/);
-    await fill(v.container, "email", "invitee@example.test");
-    await click(v.container, "참여 초대 링크 만들기");
+    assert.match(view.container.textContent!, /총무 인수인계준비 중/);
+    assert.match(view.container.textContent!, /기본 명단2명/);
+    assert.match(view.container.textContent!, /기존 총무/);
+    assert.doesNotMatch(view.container.textContent!, /초대|인수인계 요청하기/);
+    assert.equal(view.container.querySelector("#new-manager"), null);
+    await click(view.container, "인수인계 요청 취소");
     await until(() =>
-      assert.match(v.container.textContent!, /원래 요청 그대로/),
+      assert.match(view.container.textContent!, /원래 요청 그대로/),
     );
-    await act(async () =>
-      v.cache.setQueryData(handoverKey(accountId, groupId), {
-        ...preview,
-        group: { ...preview.group, version: 2 },
-      }),
-    );
-    await click(v.container, "다시 시도");
-    await until(() => assert.equal(writes.length, 2));
-    assert.deepEqual(writes[0], writes[1]);
-    assert.equal(writes[1].email, "invitee@example.test");
+    await click(view.container, "다시 시도");
     await until(() =>
-      assert(
-        v.container
-          .querySelector<HTMLInputElement>('[aria-label="공유할 링크"]')
-          ?.value.endsWith(`#${writes[0].token}`),
-      ),
+      assert.doesNotMatch(view.container.textContent!, /대기 중인 인수인계/),
     );
-    assert.match(v.container.textContent!, /자동 발송하지 않았어요/);
+    assert.deepEqual(writes, [
+      {
+        path: `/api/v1/handovers/groups/${groupId}/${pendingId}/cancel`,
+        body: {},
+      },
+      {
+        path: `/api/v1/handovers/groups/${groupId}/${pendingId}/cancel`,
+        body: {},
+      },
+    ]);
   } finally {
-    await v.unmount();
+    await view.unmount();
   }
 });
 test("roster edit explains exclusion, preserves inputs on conflict and retries an uncertain request exactly", async () => {
@@ -155,77 +142,5 @@ test("roster edit explains exclusion, preserves inputs on conflict and retries a
     assert.deepEqual(writes[0], writes[1]);
   } finally {
     await v.unmount();
-  }
-});
-
-test("pending invitations identify masked recipients and cancel only the selected invitation", async () => {
-  const accountId = crypto.randomUUID(),
-    groupId = crypto.randomUUID();
-  const first = crypto.randomUUID(),
-    second = crypto.randomUUID();
-  const writes: string[] = [];
-  const request: SessionRequest = async <T>(
-    path: string,
-    options?: RequestInit,
-  ) => {
-    if (options?.method === "POST") {
-      writes.push(path);
-      return { id: second, status: "CANCELLED" } as T;
-    }
-    return (
-      path.endsWith("/accounts")
-        ? {
-            version: 1,
-            ownerId: accountId,
-            accounts: [],
-            invitations: [
-              {
-                id: first,
-                status: "PENDING",
-                targetLabel: "aa***@example.test",
-                expiresAt: "2099-01-01T00:00:00Z",
-              },
-              {
-                id: second,
-                status: "PENDING",
-                targetLabel: "bb***@example.test",
-                expiresAt: "2099-01-02T00:00:00Z",
-              },
-            ],
-          }
-        : {
-            group: { id: groupId, name: "모임", version: 1 },
-            requests: [],
-            scope: {
-              events: 0,
-              roster: 0,
-              settlements: 0,
-              files: 0,
-              favorites: 0,
-              ongoingInquiries: 0,
-              ongoingReservations: 0,
-              incompleteSettlements: 0,
-            },
-          }
-    ) as T;
-  };
-  const ui = await render(
-    createElement(GroupManagement, { accountId, groupId, request }),
-  );
-  try {
-    await until(() =>
-      assert(
-        ui.container.textContent!.includes("bb***@example.test 초대 취소"),
-      ),
-    );
-    assert(ui.container.textContent!.includes("2099"));
-    await click(ui.container, "bb***@example.test 초대 취소");
-    await until(() => assert.equal(writes.length, 1));
-    assert.equal(
-      writes[0],
-      `/api/v1/groups/${groupId}/invitations/${second}/cancel`,
-    );
-  } finally {
-    await ui.unmount();
   }
 });

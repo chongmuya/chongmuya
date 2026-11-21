@@ -67,7 +67,6 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "external_identities",
       "favorites",
       "group_handovers",
-      "group_invitations",
       "group_members",
       "group_memberships",
       "group_roster_additions",
@@ -174,6 +173,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     "phoneVerifiedAt",
   ]);
   assert.equal(identity.account.email, email);
+  assert.equal(identity.account.accountType, "organizer");
   assert(
     signup.headers
       .getSetCookie()

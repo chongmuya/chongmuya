@@ -9,7 +9,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { AuthScreen, firstSetupPath, useAuth } from "@/features/auth/client";
+import { AuthScreen, useAuth } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
 import { buttonStyles } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
@@ -46,12 +46,14 @@ export function OwnerScreen({
         <h1 className="text-2xl font-bold">
           매장을 등록하고 예약 문의를 받아보세요
         </h1>
-        <p className="my-5 text-muted">가입 후 사장님 유형을 선택해 주세요.</p>
+        <p className="my-5 text-muted">
+          파일럿 기간에는 기존 사장님 계정으로 매장을 관리할 수 있어요.
+        </p>
         <Link
           className={buttonStyles()}
           href={`/auth?next=${encodeURIComponent(destination)}`}
         >
-          로그인·가입하고 시작하기
+          사장님 계정으로 로그인
         </Link>
       </StepLayout>
     );
@@ -61,20 +63,11 @@ export function OwnerScreen({
         <AuthScreen />
       </main>
     );
-  if (!account.accountType)
-    return (
-      <main className="app-page">
-        <h1>이용 유형을 먼저 선택해 주세요</h1>
-        <Link className={buttonStyles()} href={firstSetupPath(destination)}>
-          첫 설정 이어서 하기
-        </Link>
-      </main>
-    );
   if (account.accountType !== "owner")
     return (
       <main className="app-page">
         <h1>사장님 계정으로 이용해 주세요</h1>
-        <p>현재 총무 계정의 유형은 변경되지 않습니다.</p>
+        <p>파일럿 기간에는 기존 사장님 계정으로 매장을 관리할 수 있어요.</p>
         <Link href="/">내 홈으로 가기</Link>
       </main>
     );

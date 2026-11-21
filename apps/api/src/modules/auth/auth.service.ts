@@ -137,12 +137,8 @@ export class AuthService {
     });
   }
 
-  // Exact, verified identity only; deliberately no account search endpoint.
-  async groupAccount(
-    m: EntityManager,
-    identity: { id: string } | { email: string },
-  ) {
-    const a = await m.findOneBy(Account, identity);
+  async groupAccount(m: EntityManager, id: string) {
+    const a = await m.findOneBy(Account, { id });
     if (
       !a ||
       a.withdrawalStartedAt ||
@@ -220,7 +216,7 @@ export class AuthService {
       const account = Object.assign(new Account(), {
         id: randomUUID(),
         email: input.email,
-        accountType: null,
+        accountType: "organizer" as const,
         passwordHash,
         createdAt: new Date(),
         name: input.name,
@@ -262,6 +258,8 @@ export class AuthService {
       });
       if (!account || account.withdrawnAt || account.withdrawalStartedAt)
         throw new AuthError("SESSION_INVALID");
+      if (account.accountType === null && input.accountType === "owner")
+        throw new DomainHttpException("PILOT_ORGANIZER_SIGNUP_ONLY");
       if (
         input.accountType &&
         account.accountType &&

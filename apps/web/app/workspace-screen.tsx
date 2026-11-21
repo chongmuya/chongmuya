@@ -75,10 +75,7 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         onBack={() => router.push("/")}
       >
         <h1>첫 설정을 이어서 진행해 주세요</h1>
-        <p>
-          이용 유형과 서비스에서 사용할 이름을 설정하면 내 모임과 행사를 관리할
-          수 있어요.
-        </p>
+        <p>닉네임을 설정하면 내 모임과 행사를 관리할 수 있어요.</p>
         <Link
           href={firstSetupPath(`${pathname}${params.size ? `?${params}` : ""}`)}
         >

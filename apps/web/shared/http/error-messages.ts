@@ -7,11 +7,11 @@ export const messages: Record<
 > = {
   GROUP_TARGET_UNAVAILABLE: {
     status: 400,
-    message: "초대할 총무 계정의 인증된 이메일을 확인해 주세요.",
+    message: "인수인계 대상 총무 계정의 인증 상태를 확인해 주세요.",
   },
   GROUP_LINK_UNAVAILABLE: {
     status: 404,
-    message: "초대 또는 인수인계 요청을 사용할 수 없어요.",
+    message: "인수인계 요청을 사용할 수 없어요.",
   },
   GROUP_AUTHORITY_CHANGED: {
     status: 404,
@@ -297,6 +297,10 @@ export const messages: Record<
   EMAIL_VERIFICATION_UNAVAILABLE: {
     status: 503,
     message: "이메일 발송에 실패했어요. 잠시 후 다시 요청해 주세요.",
+  },
+  PILOT_ORGANIZER_SIGNUP_ONLY: {
+    status: 409,
+    message: "파일럿 기간에는 총무로만 가입할 수 있어요.",
   },
   FIRST_SETUP_CONFLICT: {
     status: 409,

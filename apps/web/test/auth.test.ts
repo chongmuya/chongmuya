@@ -644,9 +644,7 @@ test("only scoped authority loss invalidates matching resources and rejects late
   await client.request("/api/v1/events/known");
   const late = client.request("/api/v1/events/old");
   await assert.rejects(client.request("/api/v1/calendar/deleted"));
-  await assert.rejects(
-    client.request("/api/v1/groups/invitations/wrong/preview"),
-  );
+  await assert.rejects(client.request("/api/v1/handovers/wrong/preview"));
   assert.equal(scopes.length, 0);
   await assert.rejects(client.request("/api/v1/groups/group"));
   resolve({ privateRoster: ["must not return"] });

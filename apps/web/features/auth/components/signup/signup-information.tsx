@@ -29,7 +29,7 @@ export function SignupInformation({
     <div className="px-[17px] max-[374px]:px-2">
       <StepHeading
         title="총무야에 오신 걸 환영해요!"
-        description="계정을 만들고 모임 준비를 시작해 보세요."
+        description="총무 계정을 만들고 모임 준비를 시작해 보세요."
         className="text-foreground [&_p]:leading-[1.2]"
       />
       <div className="space-y-9">
