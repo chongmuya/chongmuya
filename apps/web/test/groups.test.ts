@@ -121,7 +121,7 @@ test("switching groups and accounts never renders another scope's cached events"
     /접근할 수 없는 모임/,
   );
   const page = render(cache, "g1", "a", null, "mypage");
-  assert.match(page, /모임 추가/);
+  assert.doesNotMatch(page, /모임 추가/);
   assert.match(page, /모임 정보 저장/);
   assert.match(page, /모임 전환/);
   assert.doesNotMatch(page, /mypage\?view=groups&amp;group=g2/);

@@ -6,6 +6,7 @@ export {
   useAuth,
 } from "./components/auth-provider";
 export { AuthScreen } from "./components/auth-screen";
+export { LogoutMenuItem } from "./components/logout-menu-item";
 export { ServiceIntroduction } from "./components/service-introduction";
 export { AuthEntryScreen } from "./components/auth-entry-screen";
 export { SplashScreen } from "./components/splash-screen";
@@ -21,5 +22,4 @@ export {
 
 export { RecoveryScreen } from "./components/recovery/recovery-screen";
 
-export { KakaoConnection } from "./components/kakao-connection";
 export { KakaoCompleteScreen } from "./components/kakao-complete-screen";

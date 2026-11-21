@@ -237,28 +237,25 @@ function WithdrawalFlow({
   };
   return (
     <StepLayout
-      title=""
+      variant="flow"
+      title="회원 탈퇴"
       onBack={() => router.push(back)}
       busy={action.isPending}
-      className="px-5 pt-[max(57px,env(safe-area-inset-top))]"
     >
-      <div className="mx-[14px] flex flex-col gap-8">
+      <div className="flex flex-col gap-7">
         <StepHeading
           title="탈퇴하기 전에 확인해 주세요"
           description="삭제한 계정 정보는 되돌릴 수 없어요."
           className="mb-0 text-brand-ink [&_h1]:break-keep"
-          descriptionClassName="mt-1.5 text-control font-medium"
+          descriptionClassName="mt-2 text-sm text-secondary"
         />
-        <section className="space-y-1.5 rounded-2xl bg-surface p-4 shadow-card">
-          <h2 className="text-sm font-semibold">
+        <section className="space-y-3 rounded-card bg-surface p-5 shadow-card">
+          <h2 className="text-base font-semibold">
             탈퇴 후에도 공동 기록은 보존돼요
           </h2>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2 text-sm text-secondary">
             {dataRows.map((text) => (
-              <li
-                key={text}
-                className="flex min-h-10 items-center gap-3 text-sm"
-              >
+              <li key={text} className="flex items-center gap-3">
                 <Image
                   src="/images/account-withdrawal/record-bullet.svg"
                   width={8}
@@ -266,10 +263,7 @@ function WithdrawalFlow({
                   alt=""
                   className="shrink-0"
                 />
-                <span className="flex-1">{text}</span>
-                <span aria-hidden className="text-lg">
-                  ›
-                </span>
+                <span>{text}</span>
               </li>
             ))}
           </ul>
@@ -283,11 +277,17 @@ function WithdrawalFlow({
           <LoadingState>탈퇴 가능 상태를 확인하고 있어요.</LoadingState>
         )}
         {blocked && current && (
-          <WithdrawalNotice
-            state={current}
-            onRefresh={retry}
-            refreshing={status.isFetching}
-          />
+          <div className="space-y-3">
+            <WithdrawalNotice state={current} />
+            <Button
+              variant="outline"
+              className="w-full text-sm"
+              loading={status.isFetching}
+              onClick={retry}
+            >
+              현재 상태 다시 확인
+            </Button>
+          </div>
         )}
         <fieldset className="space-y-2">
           <legend className="mb-5 text-label">
@@ -323,7 +323,7 @@ function WithdrawalFlow({
           </p>
         </fieldset>
       </div>
-      <div className="mt-3 grid gap-2">
+      <div className="mt-7 grid gap-2">
         <Link
           href={back}
           className={buttonStyles({
@@ -424,23 +424,15 @@ function WithdrawalFlow({
   );
 }
 
-function WithdrawalNotice({
-  state,
-  onRefresh,
-  refreshing,
-}: {
-  state: WithdrawalStatus;
-  onRefresh?: () => void;
-  refreshing?: boolean;
-}) {
+function WithdrawalNotice({ state }: { state: WithdrawalStatus }) {
   return (
-    <div className="flex gap-2.5 rounded-control bg-choice px-4 py-3 text-left text-sm leading-normal text-copy shadow-card">
+    <div className="flex items-start gap-3 rounded-card bg-choice p-4 text-left text-sm leading-normal text-copy">
       <Image
         src="/images/groups/info.svg"
         width={20}
         height={20}
         alt=""
-        className="size-auto self-start"
+        className="shrink-0"
       />
       <div className="min-w-0 space-y-1">
         {state.blockers.length ? (
@@ -461,33 +453,13 @@ function WithdrawalNotice({
                   이 있어요
                 </p>
                 <p>문의·예약이 종료되면 탈퇴를 다시 시도할 수 있어요.</p>
-                {state.destinations.map((href, index) => (
-                  <Link
-                    className="mr-3 inline-flex min-h-control items-center text-link underline"
-                    key={href}
-                    href={href}
-                  >
-                    예약 확인하기
-                    {state.destinations.length > 1 ? ` ${index + 1}` : ""}
-                  </Link>
-                ))}
               </>
             )}
             {state.blockers.includes("GROUP_OWNER") && (
-              <p>
-                현재 유일한 관리자인 모임이 있어요.{" "}
-                <Link href="/mypage" className="text-link underline">
-                  내 모임 확인
-                </Link>
-              </p>
+              <p>현재 유일한 관리자인 모임이 있어요.</p>
             )}
             {state.blockers.includes("RESTAURANT_OWNER") && (
-              <p>
-                관리 중인 매장이 있어요.{" "}
-                <Link href="/owner" className="text-link underline">
-                  내 매장 확인
-                </Link>
-              </p>
+              <p>관리 중인 매장이 있어요.</p>
             )}
             {state.request && !state.request.reviewed && (
               <p role="status">
@@ -499,16 +471,6 @@ function WithdrawalNotice({
               <p role="status">
                 운영팀이 요청을 확인했어요. 필요하면 새 요청을 남길 수 있어요.
               </p>
-            )}
-            {onRefresh && (
-              <Button
-                variant="outline"
-                className="mt-2 text-sm"
-                loading={refreshing}
-                onClick={onRefresh}
-              >
-                현재 상태 다시 확인
-              </Button>
             )}
           </>
         ) : (
