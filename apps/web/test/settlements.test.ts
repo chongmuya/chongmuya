@@ -348,11 +348,18 @@ test("web preview follows integer examples including support and outside remaind
   assert.equal(preview(500000, 100000, true, 0, 3, true).target, 500000);
   assert.equal(preview(500000, 100000, false, 50000, 3, true).target, 350000);
   assert.equal(preview(500000, 100000, true, 150000, 3, true).target, 350000);
-  assert.equal(preview(50000, 0, true, 50000, 0, false).draft, false);
+  assert.equal(preview(50000, 0, true, 50000, 0, false).needsPayers, false);
   assert(preview(50000, 30000, false, 30000, 3, true).error);
   assert.equal(preview(10000, 0, true, 0, 30, true).rest, 10);
   assert.equal(preview(10000, 0, true, 0, 3, true).each, 3333);
-  assert.equal(preview(10000, 0, true, 0, 0, false).draft, true);
+  assert.equal(preview(10000, 0, true, 0, 0, false).needsPayers, true);
+  assert.deepEqual(preview(10000, 0, true, 0, 3, false), {
+    target: 9999,
+    each: 3333,
+    rest: 1,
+    organizerRemainder: 1,
+    needsPayers: false,
+  });
   for (const value of [NaN, Infinity, -1, 1.5, 2000000001])
     assert(preview(value, 0, true, 0, 3, true).error);
 });
@@ -474,9 +481,6 @@ test("expense preserves input while roster identity review removes stale selecti
   try {
     await fill(view.container, "name", "한글 지출");
     await fill(view.container, "total", "10000");
-    await click(view.container, "비용을 나눌 사람");
-    await click(view.container, "이 차수 참석자를 선택에 반영");
-    await click(view.container, "추가하기");
     assert.match(
       view.container.querySelector('[aria-label="선택한 부담자"]')
         ?.textContent ?? "",
@@ -496,11 +500,16 @@ test("expense preserves input while roster identity review removes stale selecti
       /비용을 나눌 사람이 없어요/,
     );
     assert.equal(writes.length, 0);
-    await click(view.container.querySelector("dialog")!, "초안 저장");
+    const warning = view.container.querySelector("dialog")!;
+    assert.doesNotMatch(warning.textContent!, /초안 저장/);
+    await click(warning, "확인");
+    await click(view.container, "이 차수 참석자를 선택에 반영");
+    await click(view.container, "추가하기");
+    await submit(view.container);
     await until(() => assert.equal(writes.length, 1));
     assert.deepEqual(
       (writes[0] as { command: { payers: unknown[] } }).command.payers,
-      [],
+      [{ id: participant, version: 2 }],
     );
   } finally {
     await view.unmount();

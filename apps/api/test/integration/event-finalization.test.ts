@@ -86,6 +86,18 @@ test("only the current manager can finalize a record, with explicit confirmation
     201,
   );
   assert.equal((await readSummary()).attendanceComplete, false);
+  await json(
+    await call(`events/${id}/participants`, owner, "POST", {
+      requestKey: randomUUID(),
+      members: [{ name: "정산 참여자", newPersonConfirmed: true }],
+      duplicatesConfirmed: true,
+    }),
+    201,
+  );
+  const [payer] = await json<{ id: string; version: number }[]>(
+    await call(`events/${id}/participants`, owner),
+  );
+  assert(payer);
   const changed = await json<SettlementDetailDto>(
     await call(path, owner, "POST", {
       command: {
@@ -101,7 +113,7 @@ test("only the current manager can finalize a record, with explicit confirmation
         support: 0,
         reservationId: null,
         memo: "",
-        payers: [],
+        payers: [{ id: payer.id, version: payer.version }],
         remainder: null,
         fileIds: [],
       },

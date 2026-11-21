@@ -7,7 +7,11 @@ import { FileStorage } from "../../src/modules/files/file-storage.js";
 import { MemoryFileStorage } from "../support/memory-file-storage.js";
 import { EventParticipant } from "../../src/modules/events/entities/event-participant.entity.js";
 import { AttendanceResponse } from "../../src/modules/events/entities/attendance-response.entity.js";
-import type { Person } from "../../src/modules/settlements/types/settlement.js";
+import { EventSettlement } from "../../src/modules/settlements/entities/settlement.entity.js";
+import type {
+  Notice,
+  Person,
+} from "../../src/modules/settlements/types/settlement.js";
 type View = Awaited<ReturnType<SettlementsService["get"]>>;
 const json = async <T>(r: Response, status = 200) => {
   const b = await r.json();
@@ -277,7 +281,20 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
     text: oldText.text,
   });
   const draft = expense({ payers: [] });
-  state = await post(draft);
+  await post(draft, 400);
+  const legacy = await db.manager.findOneByOrFail(EventSettlement, {
+    eventId: f.e.id,
+  });
+  assert.equal(legacy.state.version, state.state.version);
+  legacy.state.expenses.push({
+    ...legacy.state.expenses[0]!,
+    id: draft.id,
+    name: "기존 비용 부담자 미지정 초안",
+    version: 1,
+    payers: [],
+  });
+  await db.manager.save(legacy);
+  state = await view();
   assert.equal(state.summary.drafts, 1);
   await post(notice, 409);
   state = await post({ ...draft, total: 50000, deposit: 0, support: 50000 });
@@ -409,6 +426,7 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
           ...expense({
             roundId: foreign.rounds[0]!.id,
             payers: [],
+            support: 10000,
             fileIds: [fid],
           }),
           expectedVersion: 0,
@@ -780,6 +798,65 @@ test("settlement authority, immutable facts, lost responses, concurrency, privat
       );
       assert.equal(history.events[0]!.id, f.e.id);
       assert.equal(history.events[0]!.status, "IN_PROGRESS");
+    },
+  );
+  await t.test(
+    "rounding remainder is tracked separately from participant collections unless explicitly assigned",
+    async () => {
+      const { base, people, rounds } = await fixture();
+      const settlementPath = `${base}/settlement`;
+      const { id: organizerId } = await json<{ id: string }>(
+        await call("auth/me", owner),
+      );
+      const input = expense({
+        roundId: rounds[0]!.id,
+        payers: people.map(({ id, version }) => ({ id, version })),
+      });
+      const save = (
+        command: Record<string, unknown>,
+        expectedVersion: number,
+      ) =>
+        call(settlementPath, owner, "POST", {
+          command: { requestKey: randomUUID(), ...command, expectedVersion },
+        }).then((response) => json<View>(response));
+      const result = await save(input, 0);
+      const reloaded = await json<View>(await call(settlementPath, owner));
+      assert.equal(
+        reloaded.state.expenses[0]!.remainderOrganizerId,
+        organizerId,
+      );
+      assert.equal(reloaded.summary.drafts, 0);
+      assert.equal(reloaded.summary.organizerRemainder, 1);
+      assert.equal(reloaded.summary.target, 9999);
+      assert.deepEqual(
+        reloaded.summary.people.map(({ amount }) => amount),
+        [3333, 3333, 3333],
+      );
+      const generated = await save(
+        { ...notice, scope: "ALL" },
+        result.state.version,
+      );
+      const noticePath = `${settlementPath}/notices/${generated.state.notices[0]!.id}`;
+      const original = await json<Notice>(await call(noticePath, owner));
+      assert.equal(original.snapshot.organizerRemainder, 1);
+      assert.match(original.text, /총무 부담: 1원/);
+      assert.match(original.text, /전체 분담액: 9,999원/);
+      const assigned = await save(
+        {
+          ...input,
+          remainder: { id: people[0]!.id, version: people[0]!.version },
+        },
+        generated.state.version,
+      );
+      assert.equal(assigned.state.expenses[0]!.remainderOrganizerId, undefined);
+      assert.equal(assigned.summary.organizerRemainder, 0);
+      assert.equal(assigned.summary.target, 10000);
+      assert.equal(assigned.summary.people[0]!.amount, 3334);
+      assert.equal(
+        (await json<Notice>(await call(noticePath, owner))).text,
+        original.text,
+      );
+      assert.equal(assigned.state.notices[0]!.outdated, true);
     },
   );
 });

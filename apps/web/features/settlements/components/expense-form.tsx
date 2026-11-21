@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   useController,
@@ -86,23 +85,26 @@ export function ExpenseForm({
   const [id] = useState(() => expense?.id ?? crypto.randomUUID());
   const [picking, setPicking] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
-  const [draftWarning, setDraftWarning] = useState<ExpenseValues | null>(null);
+  const [payerWarningOpen, setPayerWarningOpen] = useState(false);
   const [reviewed, setReviewed] = useState("");
   const [identityReviewed, setIdentityReviewed] = useState(false);
   const command = useSettlementCommand(a, () => onClose());
   const busy = command.isPending || command.uncertain;
+  const firstRound = data.facts.rounds[0];
   const form = useForm<ExpenseValues>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
       name: expense?.name ?? "",
       total: expense ? String(expense.total) : "",
-      roundId: expense?.roundId ?? data.facts.rounds[0]?.id ?? "",
+      roundId: expense?.roundId ?? firstRound?.id ?? "",
       deposit: expense ? String(expense.deposit) : "",
       includeDeposit: expense?.includeDeposit ?? true,
       support: expense ? String(expense.support) : "",
       reservationId: expense?.reservationId ?? "",
       memo: expense?.memo ?? "",
-      payers: expense?.payers.map((p) => p.id) ?? [],
+      payers: expense
+        ? expense.payers.map((p) => p.id)
+        : (firstRound?.attendingIds ?? []),
       remainder: expense?.remainder?.id ?? "",
       fileIds: expense?.fileIds ?? [],
     },
@@ -220,6 +222,11 @@ export function ExpenseForm({
     restorePayerFocus.current = true;
     setPicking(false);
   };
+  const openPicker = () => {
+    const dialog = payerButton.current?.closest("dialog");
+    if (dialog) dialog.scrollTop = 0;
+    setPicking(true);
+  };
   const body = (
     <>
       <form
@@ -243,8 +250,8 @@ export function ExpenseForm({
             );
             return;
           }
-          if (result.draft && !next.payers.length) {
-            setDraftWarning(next);
+          if (result.needsPayers) {
+            setPayerWarningOpen(true);
             return;
           }
           await save(next);
@@ -296,7 +303,17 @@ export function ExpenseForm({
                 <div className="relative w-full">
                   <Select
                     {...attributes}
-                    {...form.register("roundId")}
+                    {...form.register("roundId", {
+                      onChange: (event: { target: HTMLSelectElement }) => {
+                        if (expense) return;
+                        const round = data.facts.rounds.find(
+                          (item) => item.id === event.target.value,
+                        );
+                        form.setValue("payers", round?.attendingIds ?? [], {
+                          shouldDirty: true,
+                        });
+                      },
+                    })}
                     className={`bg-none! py-2.5 font-medium ${!expense && !form.formState.dirtyFields.roundId ? "text-placeholder" : ""}`}
                   >
                     <option value="">차수 선택</option>
@@ -317,14 +334,6 @@ export function ExpenseForm({
               )}
             </FormField>
           </div>
-          {!data.facts.rounds.length && (
-            <Link
-              className="text-sm text-brand underline"
-              href={`/events?event=${a.eventId}&view=attendance`}
-            >
-              참석 화면에서 차수 만들기
-            </Link>
-          )}
           {amountField("deposit", "예약금")}
           {(data.reservations.length > 0 || values.reservationId) && (
             <details className="space-y-2 rounded-control bg-choice p-3 text-xs">
@@ -403,11 +412,7 @@ export function ExpenseForm({
             ref={payerButton}
             aria-label="비용을 나눌 사람"
             className="flex min-h-10 cursor-pointer items-center gap-3 text-control font-medium"
-            onClick={(event) => {
-              const dialog = event.currentTarget.closest("dialog");
-              if (dialog) dialog.scrollTop = 0;
-              setPicking(true);
-            }}
+            onClick={openPicker}
           >
             비용을 나눌 사람
             {values.payers.length > 0 && (
@@ -427,7 +432,7 @@ export function ExpenseForm({
             (!expense || form.getFieldState("payers").isDirty) && (
               <ul
                 aria-label="선택한 부담자"
-                className="rounded-card border border-placeholder px-[clamp(16px,10vw,42px)] py-1"
+                className="max-h-[364px] overflow-y-auto overscroll-contain rounded-card border border-placeholder px-[clamp(16px,10vw,42px)] py-1"
               >
                 {values.payers.map((personId) => {
                   const person =
@@ -506,22 +511,18 @@ export function ExpenseForm({
             type="submit"
             disabled={stale || busy || uploadBusy}
           >
-            {expense
-              ? "지출 수정"
-              : calc.draft && values.payers.length > 0
-                ? "초안 저장"
-                : "지출 등록"}
+            {expense ? "지출 수정" : "지출 등록"}
           </Button>
           <details className="min-w-0 flex-1 space-y-3 pt-3.5">
             <summary className={summaryStyle}>
-              {(calc.rest ?? 0) > 0 && !values.remainder
-                ? `잔액 ${calc.rest}원 담당자 선택`
+              {calc.organizerRemainder
+                ? `총무 부담 ${calc.organizerRemainder.toLocaleString("ko-KR")}원`
                 : "지출 상세 설정"}
             </summary>
             <label className="block space-y-2">
               <span className={fieldLabel}>잔액 담당자</span>
               <Select {...form.register("remainder")}>
-                <option value="">선택 안 함</option>
+                <option value="">총무 부담 (기본)</option>
                 {base.facts.participants.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} {p.label} {p.phoneLast4}
@@ -562,12 +563,12 @@ export function ExpenseForm({
           }}
         />
       )}
-      {draftWarning && (
+      {payerWarningOpen && (
         <Dialog
           labelledBy={`${titleId}-warning`}
           describedBy={`${titleId}-warning-description`}
           className="max-w-[322px] space-y-2 pt-[60px] text-center"
-          onClose={() => setDraftWarning(null)}
+          onClose={() => setPayerWarningOpen(false)}
         >
           <Image
             src="/images/settlements/warning.svg"
@@ -591,22 +592,11 @@ export function ExpenseForm({
           <Button
             className="w-full"
             onClick={() => {
-              setDraftWarning(null);
-              setPicking(true);
+              setPayerWarningOpen(false);
+              openPicker();
             }}
           >
             확인
-          </Button>
-          <Button
-            className="w-full border-2 text-brand"
-            variant="brand-outline"
-            disabled={stale}
-            onClick={() => {
-              setDraftWarning(null);
-              void save(draftWarning);
-            }}
-          >
-            초안 저장
           </Button>
         </Dialog>
       )}

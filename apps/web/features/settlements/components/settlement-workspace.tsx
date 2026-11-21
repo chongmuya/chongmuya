@@ -375,37 +375,38 @@ function People({ a, data }: { a: Access; data: Detail }) {
           </h3>
           <p>
             {confirm.amount.toLocaleString()}원을 실제로 받은 사실을 기록합니다.
-            계산 버전 {confirm.calculationVersion}
           </p>
-          <Button
-            disabled={
-              c.isPending ||
-              c.uncertain ||
-              confirm.version !== data.state.version
-            }
-            onClick={() =>
-              c.mutate({
-                action: "RECEIPT",
-                expectedVersion: confirm.version,
-                calculationVersion: confirm.calculationVersion,
-                participantId: confirm.id,
-                amount: confirm.amount,
-              })
-            }
-          >
-            확인 기록
-          </Button>
-          <Button
-            variant="outline"
-            disabled={c.uncertain || c.isPending}
-            onClick={() => setConfirm(null)}
-          >
-            취소
-          </Button>
           {confirm.version !== data.state.version && !c.uncertain && (
             <p>정산이 변경됐습니다. 취소 후 최신 금액을 다시 확인해 주세요.</p>
           )}
           <CommandStatus command={c} />
+          <div className="flex flex-wrap justify-end gap-3 pt-2">
+            <Button
+              variant="outline"
+              disabled={c.uncertain || c.isPending}
+              onClick={() => setConfirm(null)}
+            >
+              취소
+            </Button>
+            <Button
+              disabled={
+                c.isPending ||
+                c.uncertain ||
+                confirm.version !== data.state.version
+              }
+              onClick={() =>
+                c.mutate({
+                  action: "RECEIPT",
+                  expectedVersion: confirm.version,
+                  calculationVersion: confirm.calculationVersion,
+                  participantId: confirm.id,
+                  amount: confirm.amount,
+                })
+              }
+            >
+              확인 기록
+            </Button>
+          </div>
         </Dialog>
       )}
       {(data.state.payments.length > 0 ||
@@ -771,6 +772,9 @@ function Loaded({
                   [
                     ["전체 지출", s.total],
                     ["입금 확인", s.received],
+                    ...(s.organizerRemainder
+                      ? [["총무 부담", s.organizerRemainder] as const]
+                      : []),
                   ] as const
                 ).map(([label, amount]) => (
                   <div

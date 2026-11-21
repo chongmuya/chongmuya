@@ -80,6 +80,28 @@ test("all integer allocation examples, drafts, outside remainder, order invarian
   });
   assert.equal(allocation({ ...e, payers: [] }).draft, true);
   assert.equal(allocation({ ...e, remainder: null }).draft, true);
+  const organizerExpense = {
+    ...e,
+    remainder: null,
+    remainderOrganizerId: "organizer",
+  };
+  const organizerSplit = allocation(organizerExpense);
+  assert.equal(organizerSplit.draft, false);
+  assert.equal(organizerSplit.organizerRemainder, 1);
+  assert.deepEqual(organizerSplit.values, { "0": 3333, "1": 3333, "2": 3333 });
+  const summary = calculate({
+    ...initialSettlement(),
+    expenses: [organizerExpense],
+  });
+  assert.equal(summary.total, 10000);
+  assert.equal(summary.target, 9999);
+  assert.equal(summary.organizerRemainder, 1);
+  assert.equal(summary.unconfirmed, 3);
+  assert.equal(
+    allocation({ ...organizerExpense, remainder: people[3]! })
+      .organizerRemainder,
+    0,
+  );
   for (const total of [NaN, Infinity, -1, 0, 1.5, MAX_MONEY + 1])
     assert.throws(() => allocation({ ...e, total }));
   assert.throws(() =>

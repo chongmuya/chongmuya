@@ -8,7 +8,13 @@ export function money(value: number) {
 export function allocation(
   e: Pick<
     Expense,
-    "total" | "deposit" | "includeDeposit" | "support" | "payers" | "remainder"
+    | "total"
+    | "deposit"
+    | "includeDeposit"
+    | "support"
+    | "payers"
+    | "remainder"
+    | "remainderOrganizerId"
   >,
 ) {
   money(e.total);
@@ -24,15 +30,22 @@ export function allocation(
     e.total - (e.includeDeposit ? 0 : e.deposit) - e.support,
   );
   const values: Record<string, number> = {};
-  if (!amount) return { amount, draft: false, values };
-  if (!e.payers.length) return { amount, draft: true, values };
+  if (!amount) return { amount, draft: false, values, organizerRemainder: 0 };
+  if (!e.payers.length)
+    return { amount, draft: true, values, organizerRemainder: 0 };
   const q = Math.floor(amount / e.payers.length),
     r = amount % e.payers.length;
-  if (r && !e.remainder) return { amount, draft: true, values };
+  if (r && !e.remainder && !e.remainderOrganizerId)
+    return { amount, draft: true, values, organizerRemainder: 0 };
   for (const p of e.payers) values[p.id] = q;
   if (r && e.remainder)
     values[e.remainder.id] = (values[e.remainder.id] ?? 0) + r;
-  return { amount, draft: false, values };
+  return {
+    amount,
+    draft: false,
+    values,
+    organizerRemainder: e.remainder ? 0 : r,
+  };
 }
 export function calculate(s: SettlementState) {
   const people = new Map<
@@ -63,6 +76,7 @@ export function calculate(s: SettlementState) {
   };
   let total = 0,
     target = 0,
+    organizerRemainder = 0,
     drafts = 0;
   const expenses = s.expenses.filter((e) => !e.deletedAt);
   for (const e of expenses) {
@@ -72,7 +86,8 @@ export function calculate(s: SettlementState) {
       drafts++;
       continue;
     }
-    target = money(target + a.amount);
+    target = money(target + a.amount - a.organizerRemainder);
+    organizerRemainder = money(organizerRemainder + a.organizerRemainder);
     for (const [id, value] of Object.entries(a.values)) {
       const p = e.payers.find((p) => p.id === id) ?? e.remainder!;
       const row = person(p);
@@ -104,6 +119,7 @@ export function calculate(s: SettlementState) {
   return {
     total,
     target,
+    organizerRemainder,
     drafts,
     received,
     confirmed,

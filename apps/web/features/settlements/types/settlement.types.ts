@@ -59,6 +59,7 @@ export type Notice = {
     }[];
     total: number;
     target: number;
+    organizerRemainder?: number;
   };
 };
 export type SettlementState = {
@@ -72,6 +73,7 @@ export type SettlementState = {
 export type Summary = {
   total: number;
   target: number;
+  organizerRemainder?: number;
   drafts: number;
   received: number;
   confirmed: number;

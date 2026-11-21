@@ -482,6 +482,9 @@ export class SettlementsService {
         memo: c.memo,
         payers: c.payers.map(pick),
         remainder: c.remainder ? pick(c.remainder) : null,
+        remainderOrganizerId: c.remainder
+          ? undefined
+          : (prev?.remainderOrganizerId ?? owner),
         fileIds: c.fileIds,
         version: (prev?.version ?? 0) + 1,
         createdAt: prev?.createdAt ?? now,
@@ -489,7 +492,9 @@ export class SettlementsService {
         deletedAt: null,
       };
       try {
-        allocation(e);
+        const split = allocation(e);
+        if (split.draft) throw invalid();
+        if (!split.organizerRemainder) delete e.remainderOrganizerId;
       } catch {
         throw invalid();
       }
@@ -608,6 +613,11 @@ export class SettlementsService {
           (e) =>
             `${e.name}: ${e.total.toLocaleString("ko-KR")}원 / 예약금 제외 ${e.includeDeposit ? 0 : e.deposit}원 / 회비·지원금 ${e.support}원`,
         ),
+        ...(summary.organizerRemainder
+          ? [
+              `총무 부담: ${summary.organizerRemainder.toLocaleString("ko-KR")}원`,
+            ]
+          : []),
         `정산 대상: ${summary.target.toLocaleString("ko-KR")}원`,
         `${c.scope === "ALL" ? "전체 분담액" : "입금 미확인 잔액"}: ${requested.toLocaleString("ko-KR")}원`,
       ];
@@ -650,6 +660,9 @@ export class SettlementsService {
           people,
           total: summary.total,
           target: summary.target,
+          ...(summary.organizerRemainder
+            ? { organizerRemainder: summary.organizerRemainder }
+            : {}),
         },
       };
       s.notices.push(n);
