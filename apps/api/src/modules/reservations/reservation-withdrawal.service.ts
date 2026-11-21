@@ -67,7 +67,11 @@ export class ReservationWithdrawalService {
       }>();
     const agreement = "COALESCE(p.state->'agreement', s.snapshot->'offered')";
     const startsAt = `COALESCE(${agreement}->>'startsAt', r.snapshot->>'startsAt')::timestamptz`;
-    const minutes = `COALESCE((${agreement}->'usageTime'->>'minutes')::integer, 0)`;
+    const minutes = `(${agreement}->'usageTime'->>'minutes')::integer`;
+    const endsAt = `CASE WHEN ${minutes} > 0
+      THEN ${startsAt} + ${minutes} * interval '1 minute'
+      ELSE (date_trunc('day', ${startsAt} AT TIME ZONE 'Asia/Seoul') + interval '1 day') AT TIME ZONE 'Asia/Seoul'
+      END`;
     const selected = await m
       .createQueryBuilder(SelectedReservation, "s")
       .innerJoin(ReservationRequest, "r", "r.id = s.request_id")
@@ -83,7 +87,7 @@ export class ReservationWithdrawalService {
         "s.cancelled_at IS NULL AND s.status IN ('PREPARING', 'CHECK_REQUIRED', 'CONFIRMED')",
       )
       .andWhere(
-        `(${startsAt} + ${minutes} * interval '1 minute' > :now
+        `(${endsAt} > :now
           OR (c.proposal->'agreement'->>'startsAt')::timestamptz > :now)`,
       )
       .select([

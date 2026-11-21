@@ -23,6 +23,7 @@ import {
   ReservationProgress,
 } from "../../src/modules/reservations/entities/reservation-progress.entity.js";
 import { SelectedReservation } from "../../src/modules/reservations/entities/selected-reservation.entity.js";
+import type { Proposal } from "../../src/modules/reservations/types/merchant-reply.js";
 import { MessageDelivery } from "../../src/modules/reservations/entities/message-delivery.entity.js";
 import { initialSettlement } from "../../src/modules/settlements/types/settlement.js";
 import { EventSettlement } from "../../src/modules/settlements/entities/settlement.entity.js";
@@ -347,8 +348,17 @@ test("requests are idempotent and reviewable; active inquiries block only curren
   );
 });
 
-test("past and cancelled selections do not block; live stored agreement and known usage time do", async (t) => {
-  const { app, db, call, signup } = await startResourceApplication(t);
+test("selected reservations block through agreed usage or the next Seoul midnight, including server rechecks", async (t) => {
+  const seoulMidnight = Date.parse("2030-04-02T00:00:00+09:00");
+  t.mock.timers.enable({ apis: ["Date"], now: seoulMidnight - 1 });
+  assert(process.env.TEST_DATABASE_URL);
+  const databaseUrl = new URL(process.env.TEST_DATABASE_URL);
+  const options = databaseUrl.searchParams.get("options") ?? "";
+  databaseUrl.searchParams.set("options", `${options} -c timezone=UTC`.trim());
+  const { app, db, call, signup } = await startResourceApplication(t, {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.deepEqual(await db.query("SHOW TimeZone"), [{ TimeZone: "UTC" }]);
   t.mock.method(
     app.get(MessageDeliveryService),
     "dispatchRequest",
@@ -358,6 +368,13 @@ test("past and cancelled selections do not block; live stored agreement and know
   const jar = await signup();
   const account = await (await call("auth/me", jar)).json();
   const event = await createEvent(call, jar);
+  const settlement = { ...initialSettlement(), version: 1 };
+  await db.manager.save(EventSettlement, { eventId: event, state: settlement });
+  const blockers = async () => {
+    const response = await call(path, jar);
+    assert.equal(response.status, 200);
+    return (await response.json()).blockers;
+  };
   const created = await call(
     `events/${event}/reservation-requests`,
     jar,
@@ -384,7 +401,7 @@ test("past and cancelled selections do not block; live stored agreement and know
   const setSelection = async (
     status: SelectedReservation["status"],
     date: string,
-    minutes?: number,
+    usageTime?: Proposal["usageTime"],
   ) =>
     db.manager.save(SelectedReservation, {
       id,
@@ -396,7 +413,7 @@ test("past and cancelled selections do not block; live stored agreement and know
       status,
       selectedAt: new Date(),
       selectedBy: account.id,
-      cancelledAt: status === "CANCELLED" ? new Date() : null,
+      cancelledAt: null,
       snapshot: {
         requested: request.snapshot,
         offered: {
@@ -409,34 +426,62 @@ test("past and cancelled selections do not block; live stored agreement and know
           deposit: { kind: "NONE", amount: null },
           menuDeadlineAt: null,
           note: "",
-          usageTime: minutes ? { kind: "MINUTES", minutes } : undefined,
+          usageTime,
         },
       },
     });
   for (const status of ["PREPARING", "CHECK_REQUIRED", "CONFIRMED"] as const) {
     await setSelection(status, future());
-    assert.deepEqual((await (await call(path, jar)).json()).blockers, [
-      "ACTIVE_RESERVATION",
-    ]);
+    assert.deepEqual(await blockers(), ["ACTIVE_RESERVATION"]);
     await setSelection(status, past());
-    assert.deepEqual((await (await call(path, jar)).json()).blockers, []);
+    assert.deepEqual(await blockers(), []);
   }
-  await setSelection(
-    "CONFIRMED",
-    new Date(Date.now() - 20 * 60000).toISOString(),
-    90,
-  );
-  assert.deepEqual((await (await call(path, jar)).json()).blockers, [
+  const earlierThatDay = "2030-04-01T13:30:00.000Z";
+  for (const usageTime of [
+    undefined,
+    { kind: "UNKNOWN", minutes: null },
+    { kind: "UNLIMITED", minutes: null },
+    { kind: "MINUTES", minutes: 0 },
+  ] as const) {
+    const label = usageTime?.kind ?? "missing usage time";
+    t.mock.timers.setTime(seoulMidnight - 1);
+    await setSelection("CONFIRMED", earlierThatDay, usageTime);
+    assert.deepEqual(await blockers(), ["ACTIVE_RESERVATION"], label);
+    t.mock.timers.setTime(seoulMidnight);
+    assert.deepEqual(await blockers(), [], label);
+  }
+  t.mock.timers.setTime(seoulMidnight - 1);
+  await setSelection("CONFIRMED", earlierThatDay, {
+    kind: "MINUTES",
+    minutes: 60,
+  });
+  assert.deepEqual(await blockers(), []);
+  await setSelection("CONFIRMED", past(), { kind: "MINUTES", minutes: 60 });
+  await db.manager.save(ReservationProgress, {
+    reservationId: id,
+    state: {
+      agreement: {
+        startsAt: "2030-04-01T23:32:00+09:00",
+        usageTime: { kind: "MINUTES", minutes: 30 },
+      },
+    },
+  });
+  const agreedEnd = seoulMidnight + 120_000;
+  t.mock.timers.setTime(agreedEnd - 1);
+  assert.deepEqual(await blockers(), ["ACTIVE_RESERVATION"]);
+  const complete = () => call(`${path}/complete`, jar, "POST", key());
+  assert.deepEqual((await (await complete()).json()).blockers, [
     "ACTIVE_RESERVATION",
   ]);
+  t.mock.timers.setTime(agreedEnd);
+  assert.deepEqual(await blockers(), []);
+
   await setSelection("CONFIRMED", past());
   await db.manager.save(ReservationProgress, {
     reservationId: id,
     state: { agreement: { startsAt: future() } },
   });
-  assert.deepEqual((await (await call(path, jar)).json()).blockers, [
-    "ACTIVE_RESERVATION",
-  ]);
+  assert.deepEqual(await blockers(), ["ACTIVE_RESERVATION"]);
   await db.manager.delete(ReservationProgress, { reservationId: id });
   const changeId = randomUUID();
   await db.manager.save(ReservationChange, {
@@ -449,16 +494,22 @@ test("past and cancelled selections do not block; live stored agreement and know
     createdAt: new Date(),
     proposal: { agreement: { startsAt: future() } },
   });
-  assert.deepEqual((await (await call(path, jar)).json()).blockers, [
-    "ACTIVE_RESERVATION",
-  ]);
+  assert.deepEqual(await blockers(), ["ACTIVE_RESERVATION"]);
+  await db.manager.update(SelectedReservation, { id }, { status: "CANCELLED" });
+  assert.deepEqual(await blockers(), []);
+  await setSelection("CONFIRMED", future());
+  await db.manager.update(
+    SelectedReservation,
+    { id },
+    { cancelledAt: new Date() },
+  );
+  assert.deepEqual(await blockers(), []);
   await db.manager.update(
     ReservationChange,
     { id: changeId },
     { status: "REJECTED" },
   );
-  assert.deepEqual((await (await call(path, jar)).json()).blockers, []);
-  await setSelection("CANCELLED", future());
+  await setSelection("CONFIRMED", past());
   await db.manager.save(ReservationChange, {
     id: randomUUID(),
     reservationId: id,
@@ -468,14 +519,16 @@ test("past and cancelled selections do not block; live stored agreement and know
     reason: "합성 반환",
     createdAt: new Date(),
   });
-  assert.deepEqual((await (await call(path, jar)).json()).blockers, []);
-  assert.deepEqual(
-    await (await call(`${path}/complete`, jar, "POST", key())).json(),
-    { completed: true },
-  );
+  assert.deepEqual(await blockers(), []);
+  assert.deepEqual(await (await complete()).json(), { completed: true });
   assert.equal(
     (await db.manager.findOneByOrFail(SelectedReservation, { id })).status,
-    "CANCELLED",
+    "CONFIRMED",
+  );
+  assert.deepEqual(
+    (await db.manager.findOneByOrFail(EventSettlement, { eventId: event }))
+      .state,
+    settlement,
   );
 });
 
