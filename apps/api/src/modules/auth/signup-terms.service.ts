@@ -3,6 +3,7 @@ import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import type { SignupConsentDto } from "./dto/request/signup.request.dto.js";
 import {
+  legacySignupTermsVersion,
   signupTerms as catalog,
   signupTermsVersion,
 } from "./utils/signup-terms.js";
@@ -11,18 +12,28 @@ import {
 export class SignupTermsService {
   constructor(private readonly config: ConfigService) {}
   get() {
-    const { signupTerms: configured, webOrigin } = this.config.environment;
+    const {
+      signupTerms: configured,
+      nodeEnv,
+      webOrigin,
+    } = this.config.environment;
+    const preview = nodeEnv !== "production";
     return {
-      terms: catalog.map(({ anchor, ...item }) => {
+      terms: catalog.map(({ anchor, body, ...item }) => {
         const term = configured?.find((entry) => entry.id === item.id);
         return {
           ...item,
-          version: term?.version ?? signupTermsVersion,
+          version:
+            term?.version ??
+            (preview ? signupTermsVersion : legacySignupTermsVersion),
           url:
             term?.url ??
-            new URL(`/legal/${signupTermsVersion}#${anchor}`, webOrigin).href,
-          body: [],
-          draft: false,
+            (preview
+              ? new URL(`/legal/${signupTermsVersion}#${anchor}`, webOrigin)
+                  .href
+              : null),
+          body: term || preview ? [] : [...body],
+          draft: !term && !preview,
         };
       }),
     };

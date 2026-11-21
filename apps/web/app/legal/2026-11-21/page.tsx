@@ -1,3 +1,6 @@
+import { notFound } from "next/navigation";
+import { legalDocumentsPublished } from "@/shared/legal/links";
+
 export const metadata = {
   title: "이용약관 및 개인정보 안내 | 총무야",
   description: "총무야 이용약관, 가입 동의와 개인정보 처리방침",
@@ -17,6 +20,7 @@ const contact = (
 );
 
 export default function LegalDocumentsPage() {
+  if (!legalDocumentsPublished) notFound();
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-10 text-foreground sm:px-8">
       <header className="mb-10">
@@ -51,10 +55,10 @@ export default function LegalDocumentsPage() {
 
           <h3>제2조 회원가입과 계정</h3>
           <p>
-            약관에 동의하고 이메일 또는 카카오 가입 절차를 마치면 회원이 됩니다.
-            계정에 부여된 권한에 따라 모임과 매장 기능을 이용할 수 있습니다.
-            행사 참여자는 주최 측이 보낸 링크나 QR로 참석 여부를 응답할 수
-            있습니다.
+            약관에 동의하고 이메일 또는 카카오 가입 절차를 마치면 총무 계정이
+            만들어집니다. 기존 매장 계정은 부여된 권한으로 매장 기능을 이용할 수
+            있습니다. 행사 참여자는 주최 측이 보낸 링크나 QR로 참석 여부를
+            응답할 수 있습니다.
           </p>
           <p>
             회원은 본인의 계정을 사용하고 인증 정보를 안전하게 관리해야 합니다.

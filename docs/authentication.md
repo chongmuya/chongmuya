@@ -65,9 +65,9 @@ Refresh·Access·비밀번호·인증 코드·OAuth URL은 Query 캐시나 브�
 
 카카오 callback은 API의 `/api/v1/auth/kakao/callback`이다. 로컬 예시는 `http://localhost:3001/api/v1/auth/kakao/callback`이며 운영은 HTTPS다. 요청 Host로 callback을 만들지 않는다. 카카오 콘솔의 Redirect URI·OIDC·Client Secret·`account_email` 동의 설정을 실제 요청과 맞춘다. 인가 단계에서 scope가 거부되면 앱 설정을 수정해야 하며, 정상 인가 후 이메일을 제공받지 못한 경우에는 기존 이메일 인증으로 이어진다.
 
-`SIGNUP_TERMS_JSON`을 따로 설정하지 않으면 [가입 문서 목록](../apps/api/src/modules/auth/utils/signup-terms.ts)은 `WEB_ORIGIN` 아래에 있는 [버전별 약관 원문](../apps/web/app/legal/2026-11-21/page.tsx)의 각 조항에 연결한다. 약관을 변경할 때는 새 버전의 페이지를 추가하고 이전 페이지를 보관한다. 개인정보 처리방침은 열람 문서이며 가입 동의의 검증과 저장 대상에서 제외한다.
+개발·테스트의 [가입 문서 목록](../apps/api/src/modules/auth/utils/signup-terms.ts)은 `WEB_ORIGIN` 아래 [버전별 약관 원문](../apps/web/app/legal/2026-11-21/page.tsx)에 연결한다. 운영 API는 `SIGNUP_TERMS_JSON`을 설정하기 전까지 기존 초안을 제공한다. 새 웹은 API가 필수로 표시하는 개인정보 처리방침은 확인 항목으로 받아 제출하고, 열람용 처리방침은 링크나 상세 보기로 표시한다. 새 API는 열람용 처리방침을 가입 검증과 저장에서 제외한다.
 
-최초 적용 시 API가 새 버전을 알리기 전에 원문 URL이 웹에서 열리는지 확인한다. 새 가입 폼이 API보다 먼저 공개되면 이전 API에서 세 항목으로 제출하는 가입을 거절하므로 원문 게시와 가입 전환 순서를 맞춘다. 인증 메일·SMS·카카오의 테스트 대역 성공을 실제 공급자 연동 성공으로 취급하지 않는다.
+운영용 원문을 공개할 때는 고지 내용을 확인한 뒤 웹 빌드에 `NEXT_PUBLIC_LEGAL_DOCS_PUBLISHED=true`를 적용한다. 네 원문 URL이 열리는지 확인하고 API의 `SIGNUP_TERMS_JSON`에 각 URL과 버전을 설정한다. 개정 시 새 버전 페이지를 추가하고 이전 페이지를 보관한다. 인증 메일·SMS·카카오의 테스트 대역 성공을 실제 공급자 연동 성공으로 취급하지 않는다.
 
 ### 개인정보 처리방침의 근거 확인
 

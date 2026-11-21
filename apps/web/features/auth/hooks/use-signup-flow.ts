@@ -5,8 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError } from "@/shared/http/api-error";
 import type {
-  SignupConsentTerm,
-  SignupConsentTermId,
+  SignupTermId,
   SignupFormRequest,
   SignupTerm,
 } from "../types/signup.types";
@@ -39,14 +38,24 @@ export function useSignupFlow({
   terms: SignupTerm[];
   kakao?: { email: string | null; trustedEmail: boolean };
 }) {
+  const privacyPolicy = terms.find((term) => term.id === "privacyPolicy");
+  const schema = kakao ? kakaoSignupSchema : signupSchema;
   const methods = useForm<SignupValues>({
-    resolver: zodResolver(kakao ? kakaoSignupSchema : signupSchema),
+    // The API may still require an explicit policy choice during a web-first release.
+    resolver: zodResolver(
+      privacyPolicy?.required
+        ? schema.refine((values) => values.privacyPolicy, {
+            path: ["privacyPolicy"],
+            message: "필수 약관에 동의해 주세요.",
+          })
+        : schema,
+    ),
     defaultValues: { ...signupDefaults, email: kakao?.email ?? "" },
     shouldUnregister: false,
     mode: "onTouched",
   });
   const [step, setStep] = useState<SignupStep>("terms");
-  const [detail, setDetail] = useState<SignupConsentTermId | null>(null);
+  const [detail, setDetail] = useState<SignupTermId | null>(null);
   const [pending, setPending] = useState(false);
   const [complete, setComplete] = useState(false);
   const [focus, setFocus] = useState<keyof SignupValues | null>(null);
@@ -68,10 +77,7 @@ export function useSignupFlow({
     !!kakao?.trustedEmail &&
     (values.email ?? "").trim().toLowerCase() === kakao.email;
   const consentTerms = useMemo(
-    () =>
-      terms.filter(
-        (term): term is SignupConsentTerm => term.id !== "privacyPolicy",
-      ),
+    () => terms.filter((term) => term.id !== "privacyPolicy" || term.required),
     [terms],
   );
   const previousTerms = useRef(
@@ -261,6 +267,7 @@ export function useSignupFlow({
   return {
     methods,
     consentTerms,
+    readOnlyPolicy: privacyPolicy?.required ? undefined : privacyPolicy,
     step,
     detail,
     setDetail,

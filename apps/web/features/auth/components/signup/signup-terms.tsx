@@ -4,22 +4,18 @@ import { Checkbox } from "@/shared/ui/checkbox";
 import { IconButton } from "@/shared/ui/icon-button";
 import { FormError } from "@/shared/ui/form-error";
 import { Button } from "@/shared/ui/button";
-import { privacyPolicyHref } from "@/shared/legal/links";
 import type { SignupValues } from "../../schemas/signup.schema";
 
-import type {
-  SignupConsentTerm,
-  SignupConsentTermId,
-} from "../../types/signup.types";
+import type { SignupTerm, SignupTermId } from "../../types/signup.types";
 
 export function SignupTerms({
   onDetail,
   terms,
-  privacyPolicyUrl = privacyPolicyHref,
+  privacyPolicy,
 }: {
-  onDetail: (term: SignupConsentTermId) => void;
-  terms: SignupConsentTerm[];
-  privacyPolicyUrl?: string;
+  onDetail: (term: SignupTermId) => void;
+  terms: SignupTerm[];
+  privacyPolicy?: SignupTerm;
 }) {
   const {
     register,
@@ -107,14 +103,24 @@ export function SignupTerms({
           </label>
         </div>
       </fieldset>
-      <a
-        href={privacyPolicyUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-3 w-fit text-caption text-link underline"
-      >
-        개인정보 처리방침 보기 (새 창)
-      </a>
+      {privacyPolicy?.url ? (
+        <a
+          href={privacyPolicy.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 w-fit text-caption text-link underline"
+        >
+          개인정보 처리방침 보기 (새 창)
+        </a>
+      ) : privacyPolicy ? (
+        <button
+          type="button"
+          className="mt-3 w-fit text-caption text-link underline"
+          onClick={() => onDetail(privacyPolicy.id)}
+        >
+          개인정보 처리방침 보기
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -124,8 +130,8 @@ export function SignupTermsDetail({
   onAgree,
   onClose,
 }: {
-  term: SignupConsentTerm;
-  onAgree: () => void;
+  term: SignupTerm;
+  onAgree?: () => void;
   onClose: () => void;
 }) {
   return (
@@ -153,11 +159,13 @@ export function SignupTermsDetail({
         </div>
       )}
       <div className="mt-auto space-y-2 pt-8">
-        <Button className="w-full" variant="brand-outline" onClick={onAgree}>
-          동의하고 닫기
-        </Button>
+        {onAgree && (
+          <Button className="w-full" variant="brand-outline" onClick={onAgree}>
+            동의하고 닫기
+          </Button>
+        )}
         <Button className="w-full" variant="outline" onClick={onClose}>
-          동의하지 않고 돌아가기
+          {onAgree ? "동의하지 않고 돌아가기" : "돌아가기"}
         </Button>
       </div>
     </article>

@@ -261,7 +261,11 @@ test("signup keeps values and consent across details/back, validates steps and s
   }
   const fresh = await render(
     createElement(SignupFlow, {
-      terms: previewTerms,
+      terms: previewTerms.map((term) =>
+        term.id === "privacyPolicy"
+          ? { ...term, url: "https://example.test/legal/privacy-policy" }
+          : term,
+      ),
       verification: {
         email: {
           request: async (value) => ({
@@ -290,7 +294,7 @@ test("signup keeps values and consent across details/back, validates steps and s
   assert.match(fresh.container.textContent!, /필수 항목 모두 동의/);
   assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
   const policyLink = fresh.container.querySelector<HTMLAnchorElement>(
-    'a[href="/legal/2026-11-21#privacy-policy"]',
+    'a[href="https://example.test/legal/privacy-policy"]',
   );
   assert.equal(policyLink?.textContent, "개인정보 처리방침 보기 (새 창)");
   assert.equal(policyLink?.target, "_blank");
@@ -311,6 +315,96 @@ test("signup keeps values and consent across details/back, validates steps and s
     ["serviceTerms", "privacyCollection"],
   );
   await fresh.unmount();
+});
+
+test("signup follows the API policy requirement without assuming consent", async () => {
+  const terms = previewTerms.map((term) =>
+    term.id === "privacyPolicy"
+      ? { ...term, required: true, version: "legacy" }
+      : term,
+  );
+  const props = {
+    onExit: noop,
+    onComplete: noop,
+    verification: {
+      email: {
+        request: async (value: string) => ({
+          value,
+          status: "verified" as const,
+          id: "00000000-0000-4000-8000-000000000002",
+          expiresAt: Date.now() + 600000,
+        }),
+      },
+      phone: {
+        request: async (value: string) => ({
+          value,
+          status: "verified" as const,
+          id: "00000000-0000-4000-8000-000000000001",
+          expiresAt: Date.now() + 300000,
+        }),
+      },
+    },
+  };
+  let submitted = false;
+  const view = await render(
+    createElement(SignupFlow, {
+      ...props,
+      terms,
+      onSubmit: async ({ consents }) => {
+        submitted = true;
+        assert.deepEqual(
+          consents.map((term) => term.id),
+          ["serviceTerms", "privacyCollection", "privacyPolicy", "marketing"],
+        );
+        assert.deepEqual(
+          consents.find((term) => term.id === "privacyPolicy"),
+          {
+            id: "privacyPolicy",
+            version: "legacy",
+            accepted: true,
+          },
+        );
+      },
+    }),
+  );
+  try {
+    await agree(view.container, "serviceTerms");
+    await agree(view.container, "privacyCollection");
+    await submit(view.container);
+    assert.match(
+      view.container.querySelector("#privacyPolicy-error")!.textContent!,
+      /필수 약관/,
+    );
+    assert.equal(submitted, false);
+    await agree(view.container, "privacyPolicy");
+    await agree(view.container, "serviceTerms");
+    await agree(view.container, "privacyCollection");
+    await information(view.container);
+    await submit(view.container);
+    assert.equal(submitted, true);
+  } finally {
+    await view.unmount();
+  }
+
+  const preview = await render(
+    createElement(SignupFlow, {
+      ...props,
+      terms: previewTerms,
+      onSubmit: async () => assert.fail("no form was submitted"),
+    }),
+  );
+  try {
+    await click(preview.container, "개인정보 처리방침 보기");
+    assert.match(preview.container.textContent!, /테스트 약관 본문/);
+    assert.doesNotMatch(preview.container.textContent!, /동의하고 닫기/);
+    await click(preview.container, "돌아가기");
+    assert.equal(
+      preview.container.querySelector('input[name="privacyPolicy"]'),
+      null,
+    );
+  } finally {
+    await preview.unmount();
+  }
 });
 
 test("final field failure returns to the input, focuses it and permits retry without exposing server text", async () => {
