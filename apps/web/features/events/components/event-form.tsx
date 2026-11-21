@@ -180,6 +180,7 @@ export function EventForm({
                     className="min-w-0"
                     variant="form"
                     type={field}
+                    allowDateClear={!findVenue}
                     control={control}
                     name={field}
                     disabled={create.isPending}

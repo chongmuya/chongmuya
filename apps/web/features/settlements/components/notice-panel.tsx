@@ -179,6 +179,7 @@ function NoticeForm({
             <FormInput
               variant="form"
               type={name === "deadline" ? "date" : "text"}
+              allowDateClear={name === "deadline"}
               control={form.control}
               name={name}
               aria-invalid={!!form.formState.errors[name]}

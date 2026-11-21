@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ComponentProps } from "react";
+import { useRef, useState, type ComponentProps } from "react";
 import Image from "next/image";
 import { cn } from "../lib/cn";
 import { Calendar } from "./calendar";
@@ -9,6 +9,7 @@ type Props = Omit<ComponentProps<"button">, "value" | "onChange" | "type"> & {
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
+  allowClear?: boolean;
   min?: string;
   max?: string;
   label?: string;
@@ -18,6 +19,7 @@ export function DatePicker({
   value,
   onChange,
   readOnly,
+  allowClear = false,
   min,
   max,
   label = "날짜 선택",
@@ -29,6 +31,7 @@ export function DatePicker({
     initial: string;
     draft: string;
   } | null>(null);
+  const confirm = useRef<HTMLButtonElement>(null);
   if (editing && (editing.initial !== value || props.disabled || readOnly))
     setEditing(null);
   const open =
@@ -71,6 +74,33 @@ export function DatePicker({
           dateSelection
           title={label}
           onClose={() => setEditing(null)}
+          footer={
+            <div className="flex items-center justify-between gap-2">
+              {allowClear && value && editing.draft && (
+                <button
+                  type="button"
+                  className="min-h-control cursor-pointer rounded-control px-2 text-sm text-secondary underline underline-offset-4"
+                  onClick={() => {
+                    setEditing({ initial: value, draft: "" });
+                    confirm.current?.focus();
+                  }}
+                >
+                  날짜 지우기
+                </button>
+              )}
+              <Button
+                ref={confirm}
+                className="ml-auto min-w-20"
+                disabled={!editing.draft && !(allowClear && value)}
+                onClick={() => {
+                  onChange(editing.draft);
+                  setEditing(null);
+                }}
+              >
+                확인
+              </Button>
+            </div>
+          }
         >
           <Calendar
             value={editing.draft}
@@ -78,25 +108,6 @@ export function DatePicker({
             min={min}
             max={max}
           />
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setEditing({ initial: value, draft: "" })}
-            >
-              날짜 지우기
-            </Button>
-            <Button variant="outline" onClick={() => setEditing(null)}>
-              취소
-            </Button>
-            <Button
-              onClick={() => {
-                onChange(editing.draft);
-                setEditing(null);
-              }}
-            >
-              확인
-            </Button>
-          </div>
         </BottomSheet>
       )}
     </>

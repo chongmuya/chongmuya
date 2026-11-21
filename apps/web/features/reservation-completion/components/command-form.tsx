@@ -171,6 +171,7 @@ export function CommandForm({
                 <FormInput
                   {...attrs}
                   type={f.type ?? "text"}
+                  allowDateClear={f.optional}
                   control={form.control}
                   name={f.name}
                 />

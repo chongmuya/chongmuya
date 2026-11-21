@@ -15,6 +15,7 @@ export function FormInput<T extends FieldValues>({
   name,
   type,
   allowEndOfDay,
+  allowDateClear,
   ...props
 }: Omit<
   ComponentProps<typeof Input>,
@@ -23,6 +24,7 @@ export function FormInput<T extends FieldValues>({
   control: Control<T>;
   name: Path<T>;
   allowEndOfDay?: boolean;
+  allowDateClear?: boolean;
 }) {
   const {
     field: { ref: inputRef, ...field },
@@ -45,6 +47,7 @@ export function FormInput<T extends FieldValues>({
       <DatePicker
         {...common}
         ref={inputRef}
+        allowClear={allowDateClear}
         min={typeof props.min === "string" ? props.min : undefined}
         max={typeof props.max === "string" ? props.max : undefined}
       />
@@ -54,7 +57,9 @@ export function FormInput<T extends FieldValues>({
       <TimePicker {...common} ref={inputRef} allowEndOfDay={allowEndOfDay} />
     );
   if (type === "datetime-local")
-    return <DateTimePicker {...common} ref={inputRef} />;
+    return (
+      <DateTimePicker {...common} ref={inputRef} allowClear={allowDateClear} />
+    );
   return (
     <Input
       {...props}

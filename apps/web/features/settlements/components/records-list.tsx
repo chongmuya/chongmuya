@@ -66,11 +66,21 @@ export function RecordsList({
         <div className="flex flex-wrap gap-2">
           <label>
             시작 날짜
-            <FormInput type="date" control={f.control} name="after" />
+            <FormInput
+              type="date"
+              control={f.control}
+              name="after"
+              allowDateClear
+            />
           </label>
           <label>
             종료 날짜
-            <FormInput type="date" control={f.control} name="before" />
+            <FormInput
+              type="date"
+              control={f.control}
+              name="before"
+              allowDateClear
+            />
           </label>
         </div>
         <Button type="submit">검색</Button>

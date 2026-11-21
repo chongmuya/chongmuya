@@ -16,6 +16,14 @@ import { TimePicker } from "../shared/ui/time-picker";
 import { render, click } from "./support/form-dom";
 import { chooseDate, chooseTime } from "./support/date-controls";
 
+async function closeDate(container: HTMLElement) {
+  const close = container.querySelector<HTMLButtonElement>(
+    'dialog[open] button[aria-label="닫기"]',
+  );
+  assert(close);
+  await act(async () => close.click());
+}
+
 for (const original of ["", "auto", "hidden"]) {
   test(`nested date dialogs restore original body overflow after simultaneous removal (${original || "unset"})`, async () => {
     document.body.style.overflow = original;
@@ -44,7 +52,7 @@ for (const original of ["", "auto", "hidden"]) {
         );
       await open();
       assert.equal(view.container.querySelectorAll("dialog[open]").length, 2);
-      await click(view.container, "취소");
+      await closeDate(view.container);
       assert.equal(view.container.querySelectorAll("dialog[open]").length, 1);
       assert.equal(document.body.style.overflow, "hidden");
       await open();
@@ -129,7 +137,12 @@ test("date confirmation and cancellation retain committed value, restore focus, 
           submitted++;
         },
       },
-      createElement(DatePicker, { name: "date", value, onChange: setValue }),
+      createElement(DatePicker, {
+        name: "date",
+        value,
+        onChange: setValue,
+        allowClear: true,
+      }),
     );
   }
   const view = await render(createElement(Form));
@@ -142,11 +155,28 @@ test("date confirmation and cancellation retain committed value, restore focus, 
       trigger.click();
     });
     await click(view.container, "날짜 지우기");
-    await click(view.container, "취소");
+    assert.equal(document.activeElement?.textContent, "확인");
+    await closeDate(view.container);
     assert.match(trigger.textContent!, /2026-12-05/);
     assert.equal(document.activeElement, trigger);
     await chooseDate(view.container, "date", "2027-01-01");
     assert.match(trigger.textContent!, /2027-01-01/);
+    await act(async () => trigger.click());
+    await click(view.container, "날짜 지우기");
+    await click(view.container, "확인");
+    assert.equal(trigger.textContent, "날짜 선택");
+    await act(async () => trigger.click());
+    const buttons = [
+      ...view.container.querySelectorAll<HTMLButtonElement>("dialog button"),
+    ];
+    assert.equal(
+      buttons.some((button) => button.textContent === "날짜 지우기"),
+      false,
+    );
+    assert.equal(
+      buttons.find((button) => button.textContent === "확인")?.disabled,
+      true,
+    );
     assert.equal(submitted, 0);
   } finally {
     await view.unmount();
@@ -189,6 +219,7 @@ test("time placeholders stay empty until midnight is explicitly selected", async
     return createElement(DateTimePicker, {
       name: "startsAt",
       "aria-label": "행사 일시",
+      allowClear: true,
       value,
       onChange: (next) => {
         formValue = next;
@@ -231,6 +262,16 @@ test("time placeholders stay empty until midnight is explicitly selected", async
     assert.equal(formValue, "2026-12-05T");
     assert.equal(clearButton(), null);
     assert.equal(document.activeElement, hour);
+    await chooseTime(view.container, "startsAt", "01:54");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>('button[name="startsAt"]')!
+        .click(),
+    );
+    await click(view.container, "날짜 지우기");
+    await click(view.container, "확인");
+    assert.equal(formValue, "");
+    assert.equal(hour.value, "");
   } finally {
     await view.unmount();
   }
@@ -269,7 +310,17 @@ test("external reset discards an open date draft and readOnly prevents reopening
     await act(async () => {
       trigger.click();
     });
-    await click(view.container, "날짜 지우기");
+    assert.doesNotMatch(
+      view.container.querySelector("dialog")!.textContent!,
+      /날짜 지우기|취소/,
+    );
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>(
+          'dialog button[aria-label^="2026년 12월 6일"]',
+        )!
+        .click(),
+    );
     await click(view.container, "외부 초기화");
     assert.equal(view.container.querySelector("dialog"), null);
     assert.match(trigger.textContent!, /2027-01-01/);
