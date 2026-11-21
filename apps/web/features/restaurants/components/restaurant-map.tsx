@@ -1,6 +1,7 @@
 "use client";
 import Script from "next/script";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { cn } from "@/shared/lib/cn";
 import type { RestaurantMap as MapRestaurant } from "../types/restaurant.types";
 
 type NaverMap = {
@@ -126,12 +127,27 @@ export function RestaurantMap({
           lastFocus.current = focusId;
         }
         for (const restaurant of points) {
-          const label = document.createElement("button");
-          label.type = "button";
-          label.className =
-            "-translate-x-1/2 -translate-y-full whitespace-nowrap rounded-control bg-brand px-3 py-3 text-sm font-semibold text-white shadow-control";
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className =
+            "flex w-max -translate-x-1/2 -translate-y-full cursor-pointer flex-col items-center font-sans text-sm/[17px] font-semibold whitespace-nowrap text-white";
+
+          const label = document.createElement("span");
+          label.className = cn(
+            "rounded-sm bg-brand p-3",
+            focusId && "translate-x-[1.5px]",
+          );
           label.textContent = restaurant.name;
-          label.addEventListener("click", () => open.current(restaurant.id));
+          const tail = document.createElement("img");
+          tail.src = "/images/restaurants/marker-tail.svg";
+          tail.alt = "";
+          tail.className = cn(
+            "rotate-180",
+            focusId ? "-mt-[4.75px]" : "-mt-[7.75px]",
+          );
+          // The button's bottom center is the tail tip at the map coordinate.
+          button.append(label, tail);
+          button.addEventListener("click", () => open.current(restaurant.id));
           markers.push(
             new maps.Marker({
               map: instance.current,
@@ -140,7 +156,7 @@ export function RestaurantMap({
                 restaurant.longitude!,
               ),
               title: restaurant.name,
-              icon: { content: label, anchor: { x: 0, y: 0 } },
+              icon: { content: button, anchor: { x: 0, y: 0 } },
             }),
           );
         }
