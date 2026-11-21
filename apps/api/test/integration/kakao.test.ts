@@ -283,18 +283,15 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
   );
   assert.equal(stored.passwordHash, null);
   assert.equal(stored.name, signup.name);
-  assert.equal(account.accountType, "organizer");
-  assert.equal(stored.accountType, "organizer");
-  assert.equal(
-    (
-      await fetch(`${url}/api/v1/auth/first-setup`, {
-        method: "PATCH",
-        headers: { ...headers, Cookie: cookies(created) },
-        body: JSON.stringify({ accountType: "owner" }),
-      })
-    ).status,
-    409,
-  );
+  assert.equal(account.accountType, null);
+  assert.equal(stored.accountType, null);
+  const role = await fetch(`${url}/api/v1/auth/first-setup`, {
+    method: "PATCH",
+    headers: { ...headers, Cookie: cookies(created) },
+    body: JSON.stringify({ accountType: "owner" }),
+  });
+  assert.equal(role.status, 200);
+  assert.equal((await role.json()).accountType, "owner");
   assert.equal(stored.nickname, null);
   assert.equal(stored.emailVerificationSource, "kakao");
   assert(stored.emailVerifiedAt);
@@ -313,7 +310,9 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
   await callback(again);
   const login = await post("kakao/login", {}, again.jar);
   assert.equal(login.status, 200);
-  assert.equal((await login.json()).account.id, account.id);
+  const returningAccount = (await login.json()).account;
+  assert.equal(returningAccount.id, account.id);
+  assert.equal(returningAccount.accountType, "owner");
   assert.equal(
     (await db.manager.findOneByOrFail(Account, { id: account.id })).email,
     signup.email,

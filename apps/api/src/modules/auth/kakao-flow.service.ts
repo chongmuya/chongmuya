@@ -419,7 +419,7 @@ export class KakaoFlowService {
         id: randomUUID(),
         email: input.email,
         passwordHash: null,
-        accountType: "organizer",
+        accountType: null,
         name: input.name,
         nickname: null,
         phone: input.phone,

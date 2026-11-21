@@ -241,7 +241,7 @@ test("exact Kakao success precedes cleanup; verified same-app absence and explic
   assert.equal(completedSignup.status, 201);
   const newAccount = (await completedSignup.json()).account;
   assert.notEqual(newAccount.id, account.id);
-  assert.equal(newAccount.accountType, "organizer");
+  assert.equal(newAccount.accountType, null);
 
   const already = await linkFixture(app);
   operation = "absent";

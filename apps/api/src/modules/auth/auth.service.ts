@@ -216,7 +216,7 @@ export class AuthService {
       const account = Object.assign(new Account(), {
         id: randomUUID(),
         email: input.email,
-        accountType: "organizer" as const,
+        accountType: null,
         passwordHash,
         createdAt: new Date(),
         name: input.name,
@@ -258,8 +258,6 @@ export class AuthService {
       });
       if (!account || account.withdrawnAt || account.withdrawalStartedAt)
         throw new AuthError("SESSION_INVALID");
-      if (account.accountType === null && input.accountType === "owner")
-        throw new DomainHttpException("PILOT_ORGANIZER_SIGNUP_ONLY");
       if (
         input.accountType &&
         account.accountType &&
