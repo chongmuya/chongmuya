@@ -76,3 +76,7 @@ Refresh·Access·비밀번호·인증 코드·OAuth URL은 Query 캐시나 브�
 만료 전 Refresh 재사용 감지 이력을 삭제하지 않는다. 만료 세션·오래된 시도 제한·인증 증명의 보존 기간과 정리 작업은 별도 운영 대상이다. 이 저장소에 범용 이력 정리 스케줄러는 없다.
 
 API 경로·DTO는 [auth Controller](../apps/api/src/modules/auth/)와 개발 Swagger를 기준으로 확인한다. HTTP 오류·자원 권한·검증 명령은 [아키텍처](architecture.md)와 [협업 규칙](CONTRIBUTING.md)을 따른다.
+
+## 회원 탈퇴
+
+[차단 상태, 접수 운영 및 공개 전 개인정보 처리 결정](account-withdrawal.md)을 참고한다.

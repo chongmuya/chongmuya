@@ -1,3 +1,4 @@
+import { ReservationLocksService } from "./reservation-locks.service.js";
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { In } from "typeorm";
@@ -46,6 +47,7 @@ const rejectCommand = commandSchema
 @Injectable()
 export class ReservationChangesService {
   constructor(
+    private readonly locks: ReservationLocksService,
     private readonly completion: ReservationCompletionService,
     private readonly payments: ReservationPaymentsService,
     private readonly restaurants: RestaurantsService,
@@ -161,6 +163,13 @@ export class ReservationChangesService {
           (input.agreement || input.menu || input.guidance)
         )
           throw new DomainHttpException("VALIDATION_FAILED");
+        if (change.kind === "CHANGE") {
+          const { ownerId } = await this.events.lockReservationEvent(
+            c.selection.eventId,
+            c.m,
+          );
+          await this.locks.responsibleAccounts(ownerId, c.request, c.m);
+        }
         change.proposal = {
           agreement,
           order,
@@ -251,6 +260,11 @@ export class ReservationChangesService {
           if (proposal.refundExpected !== null)
             throw new DomainHttpException("VALIDATION_FAILED");
           this.validateAgreement(proposal.agreement);
+          const { ownerId } = await this.events.lockReservationEvent(
+            c.selection.eventId,
+            c.m,
+          );
+          await this.locks.responsibleAccounts(ownerId, c.request, c.m);
           s.agreement = proposal.agreement;
           s.agreementRevision++;
           s.guidance = proposal.guidance;

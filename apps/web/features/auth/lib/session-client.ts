@@ -349,6 +349,12 @@ export class SessionClient {
       if (this.authenticating === pending) this.authenticating = undefined;
     }
   }
+  endWithdrawnSession(accountId: string) {
+    if (this.state.account?.id !== accountId) return;
+    this.resourceGroups.clear();
+    this.authorityRevisions.clear();
+    this.invalid();
+  }
   async logout() {
     this.ending = true;
     ++this.generation;

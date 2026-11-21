@@ -327,7 +327,7 @@ export class KakaoFlowService {
         lock: { mode: "pessimistic_write" },
       });
       const row = await this.current(manager, hint);
-      if (row.purpose !== "login")
+      if (account.withdrawnAt || row.purpose !== "login")
         throw new DomainHttpException("KAKAO_INVALID");
       await this.assertAnonymous(manager, refresh);
       if (

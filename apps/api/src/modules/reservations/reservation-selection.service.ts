@@ -88,6 +88,7 @@ export class ReservationSelectionService {
       let selection: SelectedReservation | undefined;
       const notifications: NotificationInput[] = [];
       if (action === "SELECT") {
+        await this.locks.responsibleAccounts(ownerId, request, m);
         if (
           await m.existsBy(SelectedReservation, {
             eventId,

@@ -100,6 +100,10 @@ const apiPublicImports = {
   "calendar/calendar.service": ["CalendarService"],
   "settlements/settlements.service": ["SettlementsService"],
   "files/files.service": ["FilesService"],
+  "reservations/reservation-withdrawal.service": [
+    "ReservationWithdrawalService",
+  ],
+  "auth/utils/session-cookies": ["clearSessionCookies"],
   "reservations/reservation-facts.service": ["ReservationFactsService"],
   "notifications/notifications.service": ["NotificationsService"],
   "notifications/types/notification": [
