@@ -19,6 +19,7 @@ export function safeReturnPath(
       "/",
       "/events",
       "/mypage",
+      "/mypage/withdrawal",
       "/onboarding",
       "/getting-started",
       "/groups/new",

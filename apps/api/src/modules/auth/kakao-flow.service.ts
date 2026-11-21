@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { randomBytes, randomUUID } from "node:crypto";
-import type { EntityManager } from "typeorm";
+import { IsNull, Not, type EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { ConfigService } from "../../config/config.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
@@ -214,11 +214,26 @@ export class KakaoFlowService {
         row.nonce,
         openVerifier(row.verifier, this.config.environment.authSecret),
       );
-      await db.manager.update(
-        KakaoAttempt,
-        { browserHash: hash, id: row.id, status: "exchanging" },
-        { ...identity, status: "verified" },
-      );
+      await db.transaction(async (manager) => {
+        await this.identityLock(manager, identity.sub);
+        const linked = await manager.findOneBy(ExternalIdentity, {
+          issuer: identity.issuer,
+          sub: identity.sub,
+        });
+        if (linked) {
+          const owner = await manager.findOne(Account, {
+            where: { id: linked.accountId },
+            lock: { mode: "pessimistic_write" },
+          });
+          if (!owner || owner.withdrawnAt || owner.withdrawalStartedAt)
+            throw new DomainHttpException("KAKAO_CONTEXT_CHANGED");
+        }
+        await manager.update(
+          KakaoAttempt,
+          { browserHash: hash, id: row.id, status: "exchanging" },
+          { ...identity, status: "verified" },
+        );
+      });
     } catch (error) {
       if (!(error instanceof DomainHttpException)) throw error;
       await db.manager.update(
@@ -249,7 +264,9 @@ export class KakaoFlowService {
             ? "KAKAO_UNAVAILABLE"
             : row.errorCode === "KAKAO_CONFIGURATION"
               ? "KAKAO_CONFIGURATION"
-              : "KAKAO_INVALID",
+              : row.errorCode === "KAKAO_CONTEXT_CHANGED"
+                ? "KAKAO_CONTEXT_CHANGED"
+                : "KAKAO_INVALID",
       );
     if (row.status !== "verified" || row.issuer !== KAKAO_ISSUER || !row.sub)
       throw new DomainHttpException("KAKAO_INVALID");
@@ -264,6 +281,14 @@ export class KakaoFlowService {
       issuer: row.issuer!,
       sub: row.sub!,
     });
+    if (
+      identity &&
+      (await db.manager.existsBy(Account, {
+        id: identity.accountId,
+        withdrawalStartedAt: Not(IsNull()),
+      }))
+    )
+      throw new DomainHttpException("KAKAO_CONTEXT_CHANGED");
     const duplicate =
       !identity &&
       row.email &&
@@ -327,7 +352,11 @@ export class KakaoFlowService {
         lock: { mode: "pessimistic_write" },
       });
       const row = await this.current(manager, hint);
-      if (row.purpose !== "login")
+      if (
+        account.withdrawnAt ||
+        account.withdrawalStartedAt ||
+        row.purpose !== "login"
+      )
         throw new DomainHttpException("KAKAO_INVALID");
       await this.assertAnonymous(manager, refresh);
       if (

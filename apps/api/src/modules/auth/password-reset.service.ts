@@ -65,7 +65,7 @@ export class PasswordResetService {
           where: { email },
           lock: { mode: "pessimistic_write" },
         });
-        if (!account?.passwordHash) return null;
+        if (!account?.passwordHash || account.withdrawalStartedAt) return null;
         const latest = await manager.findOne(PasswordReset, {
           where: { accountId: account.id },
           order: { createdAt: "DESC" },
@@ -195,6 +195,7 @@ export class PasswordResetService {
       });
       if (
         !account?.passwordHash ||
+        account.withdrawalStartedAt ||
         !record ||
         record.usedAt ||
         record.invalidatedAt ||

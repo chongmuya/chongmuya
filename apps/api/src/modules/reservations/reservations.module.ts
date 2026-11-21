@@ -1,3 +1,4 @@
+import { ReservationWithdrawalService } from "./reservation-withdrawal.service.js";
 import { ReservationHandoverService } from "./reservation-handover.service.js";
 import { ReservationFactsService } from "./reservation-facts.service.js";
 import { ReservationAccessService } from "./reservation-access.service.js";
@@ -58,8 +59,13 @@ import { ReservationsService } from "./reservations.service.js";
     OwnerInquiriesController,
     SolapiWebhookController,
   ],
-  exports: [ReservationFactsService, ReservationHandoverService],
+  exports: [
+    ReservationFactsService,
+    ReservationHandoverService,
+    ReservationWithdrawalService,
+  ],
   providers: [
+    ReservationWithdrawalService,
     ReservationHandoverService,
     ReservationFactsService,
     ReservationCommands,

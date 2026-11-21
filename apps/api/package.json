@@ -7,6 +7,7 @@
     "node": "26.x"
   },
   "scripts": {
+    "account:withdrawals": "node scripts/account-withdrawals.mjs",
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",

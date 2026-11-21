@@ -43,8 +43,12 @@ export class GroupsService {
     ownerId: string,
     id: string,
     manager: EntityManager,
+    lock = true,
   ): Promise<void> {
-    const group = await this.lock(id, manager);
+    const group = lock
+      ? await this.lock(id, manager)
+      : await manager.findOneBy(Group, { id });
+    if (!group) throw new NotFoundException();
     if (group.ownerId !== ownerId) {
       if (
         await manager.existsBy(GroupMembership, {
@@ -100,6 +104,10 @@ export class GroupsService {
     return groups.map((group) => groupDto(group, countById.get(group.id) ?? 0));
   }
 
+  async ownsGroup(accountId: string, m: EntityManager) {
+    return m.existsBy(Group, { ownerId: accountId });
+  }
+
   async create(ownerId: string, input: CreateGroupInput): Promise<GroupDto> {
     const members = (input.members ?? []).map((member) => ({
       name: normalizePersonName(member.name),
@@ -112,6 +120,7 @@ export class GroupsService {
       .digest("hex");
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
+      await this.auth.lockActiveAccount(ownerId, manager);
       const group = manager.getRepository(Group).create({
         id: randomUUID(),
         ownerId,
@@ -140,7 +149,7 @@ export class GroupsService {
           : null;
         if (!existing || existing.creationDigest !== digest)
           throw new DomainHttpException("GROUP_REGISTRATION_CONFLICT");
-        await this.assertOwned(ownerId, existing.id, manager);
+        await this.assertOwned(ownerId, existing.id, manager, false);
         return groupDto(
           existing,
           await manager
@@ -415,6 +424,7 @@ export class GroupsService {
     const group = await this.lock(groupId, m);
     if (group.ownerId !== from || group.version !== version || from === to)
       throw new DomainHttpException("GROUP_HANDOVER_CONFLICT");
+    await this.auth.lockActiveAccount(to, m);
     await this.assertActiveMember(groupId, to, m);
     await m.update(
       GroupMembership,

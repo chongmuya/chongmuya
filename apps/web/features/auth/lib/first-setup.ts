@@ -13,10 +13,11 @@ export function firstSetupPath(returnTo: string) {
     : `/getting-started?next=${encodeURIComponent(next)}`;
 }
 export function postLoginPath(account: Account, returnTo: string) {
+  const next = safeReturnPath(returnTo);
+  if (next === "/mypage/withdrawal") return next;
   return isFirstSetupComplete(account)
-    ? account.accountType === "owner" &&
-      ["/", "/events"].includes(safeReturnPath(returnTo))
+    ? account.accountType === "owner" && ["/", "/events"].includes(next)
       ? "/owner"
-      : safeReturnPath(returnTo)
-    : firstSetupPath(returnTo);
+      : next
+    : firstSetupPath(next);
 }

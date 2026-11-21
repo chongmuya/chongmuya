@@ -49,6 +49,7 @@
         "RESEND_API_KEY",
         "RESEND_FROM",
         "RESEND_REPLY_TO",
+        "KAKAO_ADMIN_KEY",
         "KAKAO_CLIENT_ID",
         "KAKAO_CLIENT_SECRET",
         "KAKAO_REDIRECT_URI",

@@ -28,6 +28,15 @@ const eventDto = (event: Event): EventDto => ({
 
 @Injectable()
 export class EventsService {
+  async ownedIds(accountId: string, m: EntityManager) {
+    return (
+      await m.find(Event, {
+        where: { ownerId: accountId },
+        select: { id: true },
+      })
+    ).map((event) => event.id);
+  }
+
   async groupEvents(groupId: string, m: EntityManager) {
     return (
       await m.find(Event, { where: { groupId }, order: { id: "ASC" } })

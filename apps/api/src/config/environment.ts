@@ -29,6 +29,7 @@ const environmentInputSchema = z.object({
     .transform(Number)
     .pipe(z.int().min(1).max(65535)),
   ...databaseEnvironmentSchema.shape,
+  KAKAO_ADMIN_KEY: z.string().min(1).regex(/^\S+$/).optional(),
   KAKAO_CLIENT_ID: z.string().min(1).regex(/^\S+$/).optional(),
   KAKAO_CLIENT_SECRET: z.string().min(1).regex(/^\S+$/).optional(),
   KAKAO_REDIRECT_URI: z
@@ -238,6 +239,7 @@ const environmentSchema = environmentInputSchema
     providerTimeoutMs: env.PROVIDER_TIMEOUT_MS,
     merchantReplyTtlHours: env.MERCHANT_REPLY_TTL_HOURS,
     reservationManagementTtlHours: env.RESERVATION_MANAGEMENT_TTL_HOURS,
+    kakaoAdminKey: env.KAKAO_ADMIN_KEY,
     kakaoClientId: env.KAKAO_CLIENT_ID,
     kakaoClientSecret: env.KAKAO_CLIENT_SECRET,
     kakaoRedirectUri: env.KAKAO_REDIRECT_URI,

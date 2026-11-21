@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApiError } from "../shared/http/api-error";
+import { postLoginPath } from "../features/auth/lib/first-setup";
 import { SessionClient } from "../features/auth/lib/session-client";
 import type { Session } from "../features/auth/types/auth.types";
 import type { requestJson } from "../shared/http/request";
@@ -23,6 +24,17 @@ const network = () => new ApiError("", 0, "NETWORK_ERROR");
 function transport(handler: (path: string) => Promise<unknown>) {
   return handler as typeof requestJson;
 }
+
+test("account withdrawal stays reachable before first setup", () => {
+  assert.equal(
+    postLoginPath(session.account!, "/mypage/withdrawal"),
+    "/mypage/withdrawal",
+  );
+  assert.equal(
+    postLoginPath(session.account!, "/events"),
+    "/getting-started?next=%2Fevents",
+  );
+});
 
 test("delayed hydration retains its initial anonymous-safe snapshot after session restoration", async () => {
   const client = new SessionClient(

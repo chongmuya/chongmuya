@@ -1,7 +1,7 @@
 "use client";
 import { isDateOnly } from "@/shared/lib/korean-date";
 import { Memberships } from "@/features/handovers/client";
-import { AccountSettings } from "@/features/account/client";
+import { AccountSettings, WithdrawalEntry } from "@/features/account/client";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
@@ -82,7 +82,13 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
           첫 설정 이어서 하기
         </Link>
         {mode === "mypage" && (
-          <KakaoConnection key={`kakao:${account.id}`} accountId={account.id} />
+          <>
+            <KakaoConnection
+              key={`kakao:${account.id}`}
+              accountId={account.id}
+            />
+            <WithdrawalEntry />
+          </>
         )}
         <AuthScreen />
       </StepLayout>
@@ -171,13 +177,18 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
           <KakaoConnection key={`kakao:${account.id}`} accountId={account.id} />
         </div>
       ) : mode === "mypage" && params.get("view") !== "groups" ? (
-        <AccountNavigation
-          groupId={params.get("group")}
-          accountId={account.id}
-          request={client.request.bind(client)}
-          owner={account.accountType === "owner"}
-          name={account.nickname ?? account.name ?? "회원"}
-        />
+        <div>
+          <AccountNavigation
+            groupId={params.get("group")}
+            accountId={account.id}
+            request={client.request.bind(client)}
+            owner={account.accountType === "owner"}
+            name={account.nickname ?? account.name ?? "회원"}
+          />
+          <div className="mx-[9px]">
+            <WithdrawalEntry />
+          </div>
+        </div>
       ) : (
         content
       )}
