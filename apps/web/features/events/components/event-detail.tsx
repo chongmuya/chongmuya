@@ -8,7 +8,7 @@ import { isAccessError } from "@/shared/http/access-error";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
-import { compactEventDate } from "../lib/home-event";
+import { compactEventDate } from "@/shared/lib/korean-date";
 import { eventQueryOptions } from "../api/events.queries";
 
 export function EventDetail({

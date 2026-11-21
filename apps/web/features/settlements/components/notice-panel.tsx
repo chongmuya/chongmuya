@@ -628,13 +628,15 @@ export function NoticePanel({
             onEdit={setEditing}
           />
           {showCreated && (
-            <Button
-              variant="brand-outline"
-              className="mt-auto w-full border-2 text-brand"
-              onClick={closeDetail}
-            >
-              정산문 기록으로 가기
-            </Button>
+            <footer className="mt-auto pt-[67px]">
+              <Button
+                variant="brand-outline"
+                className="w-full border-2 text-brand"
+                onClick={closeDetail}
+              >
+                정산문 기록으로 가기
+              </Button>
+            </footer>
           )}
         </div>
       </SettlementScreen>

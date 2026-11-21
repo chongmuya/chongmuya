@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import type { SessionRequest } from "@/features/auth/types";
 import type { RecordsFilter } from "../schemas/records.schema";
+
 export const recordsQuery = (
   accountId: string,
   request: SessionRequest,
@@ -24,11 +25,8 @@ export const recordsQuery = (
           name: string;
           scheduledAt: string | null;
           attendingCount: number;
-          total: number;
-          confirmed: number;
           status: "EMPTY" | "COMPLETE" | "IN_PROGRESS";
           needsReview?: boolean;
-          files: { id: string; name: string }[];
         }[];
       }>(`/api/v1/records?${p}`, { signal });
     },
