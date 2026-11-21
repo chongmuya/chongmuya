@@ -118,7 +118,7 @@ async function run() {
         result.events.map((event) => ({
           행사: event.name,
           경로: event.path,
-          만료: event.expired,
+          "지난 행사": event.expired,
         })),
       );
       console.log(`매장 ID: ${result.restaurantIds.join(", ")}`);
@@ -150,7 +150,9 @@ async function run() {
 run().catch((error: unknown) => {
   console.error(
     error instanceof DemoSeedConflict
-      ? error.code
+      ? error.code === "SET_HAS_RESERVATION_OR_SETTLEMENT_RECORDS"
+        ? `${error.code}: 기존 예약·정산 기록을 보존했습니다. --set 새이름으로 실행하세요.`
+        : error.code
       : "DEMO_FAILED: 로컬 DB·migration·새 출력 경로·암호화 설정을 확인하세요. 원문 오류는 출력하지 않습니다.",
   );
   process.exitCode = 1;

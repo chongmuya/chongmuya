@@ -6,6 +6,7 @@ import {
   seedDemo,
   demoId,
   demoAccounts,
+  DemoSeedConflict,
 } from "../../src/database/seeds/demo.seed.js";
 import { demoLinks } from "../../src/database/seeds/demo-links.seed.js";
 import { merchantEncryptionKey } from "../../src/modules/reservations/lib/merchant-link-codec.js";
@@ -100,6 +101,7 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
   const a = await login(0),
     b = await login(1),
     empty = await login(2),
+    owner = await login(3),
     emptyOwner = await login(4);
   const eventId = demoId(`set:${options.set}:attendance`);
   assert.equal((await call(`events/${eventId}`, a)).status, 200);
@@ -111,6 +113,11 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
   );
   const links = await demoLinks(db, "http://localhost:3000", key);
   const waitingId = demoId(`set:${options.set}:waiting`);
+  assert.equal(
+    (await read(await call(`events/${waitingId}`, a)))
+      .reservationScheduleLocked,
+    true,
+  );
   const request = await db.manager.findOneByOrFail(ReservationRequest, {
     eventId: waitingId,
   });
@@ -165,6 +172,11 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
       .request.responseCount,
     1,
   );
+  const [inbox] = await db.query(
+    "SELECT count(*)::int AS count FROM notifications n JOIN notification_facts f USING (event_key) WHERE f.request_id=$1 AND f.kind='REPLY_RECEIVED' AND n.account_id=$2",
+    [request.id, oldAccount.id],
+  );
+  assert.equal(inbox.count, 1);
   const payload = Buffer.from(
     JSON.stringify({
       targetId: target.id,
@@ -256,6 +268,58 @@ test("offline demo seed preserves edits/deletions, logs in normally, isolates re
   await seedDemo(db, { ...options, recreate: true });
   assert(await db.manager.existsBy(EventParticipant, { id: participantId }));
   assert(await db.manager.existsBy(Event, { id: nextEvent }));
+  const paymentEvent = demoId(`set:${options.set}:payment`);
+  const paymentId = demoId(`selection:${paymentEvent}`);
+  const payment = await read(await call(`reservations/${paymentId}`, a));
+  assert.equal(payment.progress, "PAYMENT_CHECKING");
+  assert.equal(payment.receipt, null);
+  assert.equal(
+    payment.changes[0].resolutionReason,
+    "다음 시간대에 다른 예약이 있어요.",
+  );
+  const ownerReservations = await read(await call("owner/reservations", owner));
+  assert(
+    ownerReservations.some(
+      (reservation: { id: string }) => reservation.id === paymentId,
+    ),
+  );
+  const confirmed = await read(
+    await call(`owner/reservations/${paymentId}/receipt`, owner, "POST", {
+      command: {
+        requestKey: randomUUID(),
+        expectedVersion: payment.version,
+        guidanceRevision: payment.guidance.revision,
+        amount: payment.guidance.amount,
+        receivedAt: new Date().toISOString(),
+        corrects: null,
+        reason: "격리 DB 예약금 확인",
+      },
+    }),
+  );
+  assert.equal(confirmed.status, "CONFIRMED");
+  await assert.rejects(
+    seedDemo(db, { ...options, recreate: true }),
+    (error) =>
+      error instanceof DemoSeedConflict &&
+      error.code === "SET_HAS_RESERVATION_OR_SETTLEMENT_RECORDS",
+  );
+  const preservedPayment = await read(
+    await call(`reservations/${paymentId}`, a),
+  );
+  assert.equal(preservedPayment.status, "CONFIRMED");
+
+  const settlementId = demoId(`set:${options.set}:settlement`);
+  const settlementPath = `events/${settlementId}/settlement`;
+  const record = await read(await call(settlementPath, a));
+  assert.equal(record.summary.status, "COMPLETE");
+  assert.equal(record.summary.organizerRemainder, 1);
+  assert.equal(record.summary.people.length, 3);
+  assert(Date.parse(record.state.finalizedAt) < Date.now());
+  assert.equal(record.state.notices[0].outdated, false);
+  const notice = await read(
+    await call(`${settlementPath}/notices/${record.state.notices[0].id}`, a),
+  );
+  assert.match(notice.text, /총무 부담 1원/);
   assert.equal(
     (await db.manager.findOneByOrFail(Account, { id: oldAccount.id })).nickname,
     "내가 수정",
