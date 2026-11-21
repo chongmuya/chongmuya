@@ -10,6 +10,7 @@ export function FormField({
   children,
   className,
   labelClassName,
+  hintClassName,
   errorClassName,
   required,
 }: {
@@ -19,6 +20,7 @@ export function FormField({
   error?: string;
   className?: string;
   labelClassName?: string;
+  hintClassName?: string;
   errorClassName?: string;
   required?: boolean;
   children: (attributes: {
@@ -48,7 +50,10 @@ export function FormField({
         "aria-describedby": describedBy || undefined,
       })}
       {hint && (
-        <p id={`${id}-hint`} className="text-caption text-muted">
+        <p
+          id={`${id}-hint`}
+          className={cn("text-caption text-muted", hintClassName)}
+        >
           {hint}
         </p>
       )}
