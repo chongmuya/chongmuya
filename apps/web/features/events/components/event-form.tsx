@@ -118,112 +118,118 @@ export function EventForm({
         );
       })}
     >
-      <h2 className="mb-7 text-2xl leading-tight font-bold">
+      <h2 className="mb-7 text-2xl leading-[29px] font-bold">
         어떤 행사를 준비하나요?
       </h2>
-      <div className="space-y-4 rounded-control bg-surface px-[22px] py-7 text-xs shadow-card">
-        {groupId ? (
-          <div className="space-y-3">
-            <p>모임</p>
-            {group && (
-              <p className="flex min-h-input items-center rounded-pill border border-field bg-soft px-3 text-sm text-secondary">
-                {group.name}
-              </p>
-            )}
-            {groups.isError ? (
-              <ErrorState retry={() => void groups.refetch()} />
-            ) : !groups.data ? (
-              <p role="status">모임 확인 중…</p>
-            ) : !group ? (
-              <p role="alert">
-                접근할 수 없는 모임이에요. 홈에서 모임을 확인해 주세요.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="space-y-3">
-          <label htmlFor={`${id}-name`}>행사 이름</label>
-          <Input
-            variant="form"
-            id={`${id}-name`}
-            {...register("name")}
-            required
-            placeholder="1차 정기 모임"
-            maxLength={100}
-            disabled={create.isPending}
-            aria-invalid={!!errors.name}
-            aria-describedby={errors.name ? `${id}-name-error` : undefined}
-          />
-          <FormError id={`${id}-name-error`} message={errors.name?.message} />
-        </div>
-        <fieldset>
-          <legend className="sr-only">일정 (한국 시간)</legend>
-          <div className="grid grid-cols-2 gap-3">
-            {(["date", "time"] as const).map((field) => (
-              <FormField
-                key={field}
-                id={`${id}-${field}`}
-                label={
-                  field === "date" && !findVenue
-                    ? "날짜 (선택)"
-                    : field === "date"
-                      ? "날짜"
-                      : "시간 (한국 시간)"
-                }
-                required={findVenue}
-                error={errors[field]?.message}
-                className="min-w-0 gap-3"
-              >
-                {(attrs) => (
-                  <FormInput
-                    {...attrs}
-                    className="min-w-0"
-                    variant="form"
-                    type={field}
-                    allowDateClear={!findVenue}
-                    control={control}
-                    name={field}
-                    disabled={create.isPending}
-                  />
-                )}
-              </FormField>
-            ))}
-          </div>
-        </fieldset>
-        {findVenue && (
+      <div className="flex flex-col gap-7 rounded-control bg-surface px-[22px] py-7 text-xs leading-[14px] shadow-card">
+        <div className="flex flex-col gap-4">
+          {groupId ? (
+            <div className="flex flex-col gap-3">
+              <p>모임</p>
+              {group && (
+                <p className="flex min-h-input items-center rounded-pill border border-field bg-soft px-3 text-sm text-secondary">
+                  {group.name}
+                </p>
+              )}
+              {groups.isError ? (
+                <ErrorState retry={() => void groups.refetch()} />
+              ) : !groups.data ? (
+                <p role="status">모임 확인 중…</p>
+              ) : !group ? (
+                <p role="alert">
+                  접근할 수 없는 모임이에요. 홈에서 모임을 확인해 주세요.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <FormField
-            id={`${id}-expected-guests`}
-            label="예상 인원"
-            hint="정확한 참석 명단은 나중에 정해도 괜찮아요."
-            error={errors.expectedGuests?.message}
+            id={`${id}-name`}
+            label="행사 이름"
+            error={errors.name?.message}
             className="gap-3"
           >
             {(attrs) => (
               <Input
                 {...attrs}
-                {...register("expectedGuests")}
+                {...register("name")}
                 variant="form"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="예) 17"
+                required
+                placeholder="1차 정기 모임"
+                maxLength={100}
                 disabled={create.isPending}
               />
             )}
           </FormField>
-        )}
-        {group && group.memberCount > 0 && (
-          <label className="flex min-h-11 items-center gap-3 text-sm">
-            <Checkbox
-              checked={importRoster}
-              disabled={create.isPending}
-              onChange={(e) => setImportRoster(e.target.checked)}
-            />
-            모임 기본 명단 불러오기 ({group.memberCount}명)
-          </label>
-        )}
+          <fieldset className="min-w-0">
+            <legend className="sr-only">일정 (한국 시간)</legend>
+            <div className="grid grid-cols-2 gap-3.5">
+              {(["date", "time"] as const).map((field) => (
+                <FormField
+                  key={field}
+                  id={`${id}-${field}`}
+                  label={
+                    field === "date" && !findVenue
+                      ? "날짜 (선택)"
+                      : field === "date"
+                        ? "날짜"
+                        : "시간 (한국 시간)"
+                  }
+                  required={findVenue}
+                  error={errors[field]?.message}
+                  className="min-w-0 gap-[9px]"
+                >
+                  {(attrs) => (
+                    <FormInput
+                      {...attrs}
+                      className="min-h-[49px] min-w-0"
+                      variant="form"
+                      type={field}
+                      allowDateClear={!findVenue}
+                      control={control}
+                      name={field}
+                      disabled={create.isPending}
+                    />
+                  )}
+                </FormField>
+              ))}
+            </div>
+          </fieldset>
+          {findVenue && (
+            <FormField
+              id={`${id}-expected-guests`}
+              label="예상 인원"
+              hint="정확한 참석 명단은 나중에 정해도 괜찮아요."
+              hintClassName="mt-1"
+              error={errors.expectedGuests?.message}
+              className="gap-3"
+            >
+              {(attrs) => (
+                <Input
+                  {...attrs}
+                  {...register("expectedGuests")}
+                  variant="form"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="예) 17"
+                  disabled={create.isPending}
+                />
+              )}
+            </FormField>
+          )}
+          {group && group.memberCount > 0 && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={importRoster}
+                disabled={create.isPending}
+                onChange={(e) => setImportRoster(e.target.checked)}
+              />
+              모임 기본 명단 불러오기 ({group.memberCount}명)
+            </label>
+          )}
+        </div>
         {!onCreated && (
-          <fieldset className="pt-3">
-            <legend className="mb-5 text-sm font-semibold">
+          <fieldset className="min-w-0">
+            <legend className="mb-5 text-sm leading-[17px] font-semibold">
               장소도 함께 알아볼까요?
             </legend>
             <div className="grid grid-cols-2 gap-4">
@@ -266,7 +272,7 @@ export function EventForm({
             </div>
           </fieldset>
         )}
-        <div className="flex justify-end pt-3">
+        <div className="grid justify-items-end">
           <Button
             className="min-h-[50px] px-5 text-sm"
             type="submit"
@@ -276,8 +282,11 @@ export function EventForm({
             {create.isPending ? "저장 중…" : "행사 만들기"}
             {!create.isPending && <span aria-hidden="true">→</span>}
           </Button>
+          <FormError
+            className="mt-4 justify-self-start"
+            message={errors.root?.server?.message}
+          />
         </div>
-        <FormError message={errors.root?.server?.message} />
       </div>
     </form>
   );
