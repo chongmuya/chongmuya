@@ -11,7 +11,7 @@ import {
   CompletionSummary,
   GuidanceSummary,
 } from "../features/reservation-completion/components/completion-summary";
-import { ChangeResult } from "../features/reservation-completion/components/change-result";
+import { CompletionWorkspace } from "../features/reservation-completion/components/completion-workspace";
 import { ReservationContactButton } from "../features/reservation-completion/components/reservation-contact";
 import { act, createElement, useState } from "react";
 import assert from "node:assert/strict";
@@ -178,39 +178,117 @@ test("merchant can edit space, seating, usage and notes while a lost response re
   }
 });
 
-test("latest rejection is visible outside history and does not claim that the reservation changed", async () => {
-  const data = {
-    ...fixture(),
-    changes: [
-      {
-        id: "new",
-        kind: "CHANGE",
-        subject: "SCHEDULE",
-        status: "REJECTED",
-        reason: "30분 늦춰 주세요",
-        resolutionReason: "다른 예약이 있어요",
-      },
-    ],
-  } as Completion;
-  let openedCurrent = false;
+const rejectedChangeFixture = (): Completion => ({
+  ...fixture(),
+  restaurantName: "온기홀",
+  eventName: "DK",
+  progress: "PAYMENT_CHECKING",
+  issues: [],
+  agreement: {
+    ...fixture().agreement,
+    startsAt: "2099-01-01T09:00:00Z",
+    expectedGuests: 22,
+  },
+  guidance: {
+    ...fixture().guidance,
+    kind: "REQUIRED",
+    amount: 10000,
+    channel: "SMS",
+    deadline: "2098-12-31T09:00:00Z",
+  },
+  order: {
+    total: 1000,
+    lines: [],
+    revision: 1,
+    catalogVersion: 1,
+    currency: "KRW",
+    submittedAt: "2098-12-30T00:00:00Z",
+  },
+  acknowledgedRevision: 1,
+  history: [],
+  notifications: [],
+  changes: [
+    {
+      id: "new",
+      kind: "CHANGE",
+      subject: "SCHEDULE",
+      status: "REJECTED",
+      reason: "30분 늦춰 주세요",
+      resolutionReason: "다른 예약이 있어요",
+      createdAt: "2098-12-30T01:00:00Z",
+      resolvedAt: "2098-12-30T02:00:00Z",
+      proposal: null,
+    },
+  ],
+});
+
+test("organizer can resume the existing reservation and request another change after rejection", async () => {
+  const data = rejectedChangeFixture();
   const view = await render(
-    createElement(ChangeResult, {
-      data,
-      latest: data.changes[0],
-      organizer: true,
-      onReview() {},
-      onDetails() {
-        openedCurrent = true;
+    createElement(CompletionWorkspace, {
+      id: data.id,
+      access: {
+        kind: "organizer",
+        accountId: "organizer",
+        request: async <T>(_path: string, options?: RequestInit) => {
+          assert.notEqual(options?.method, "POST");
+          return data as T;
+        },
       },
     }),
   );
   try {
-    assert.match(view.container.textContent!, /예약 변경이 어려워요/);
+    await until(() =>
+      assert.match(view.container.textContent!, /예약 변경이 어려워요/),
+    );
     assert.match(view.container.textContent!, /다른 예약이 있어요/);
     assert.match(view.container.textContent!, /기존 예약으로 진행할지 확인/);
-    assert.equal(view.container.querySelector("details"), null);
     await click(view.container, "기존 예약으로 진행하기");
-    assert.equal(openedCurrent, true);
+    assert.equal(view.container.querySelector("dialog"), null);
+    assert.match(view.container.textContent!, /매장 확인을 기다리고 있어요/);
+    assert.doesNotMatch(view.container.textContent!, /예약 변경이 어려워요/);
+    await click(view.container, "예약금 안내 확인하기");
+    assert.match(
+      view.container.querySelector("dialog")!.textContent!,
+      /송금 사실 신고/,
+    );
+    await click(view.container, "뒤로가기");
+    await click(view.container, "변경·취소 문의하기");
+    assert.match(
+      view.container.querySelector("dialog")!.textContent!,
+      /변경·취소 문의 보내기/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("merchant sees the existing reservation's receipt action after rejecting a change", async () => {
+  const data = rejectedChangeFixture();
+  const view = await render(
+    createElement(CompletionWorkspace, {
+      id: data.id,
+      access: {
+        kind: "owner",
+        accountId: "owner",
+        request: async <T>() => data as T,
+      },
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(
+        view.container.textContent!,
+        /문의 처리 불가 안내 · 다른 예약이 있어요/,
+      ),
+    );
+    assert.match(view.container.textContent!, /실제 입금을 확인한 뒤/);
+    assert.doesNotMatch(view.container.textContent!, /예약 변경 확인하기/);
+    await click(view.container, "입금을 확인했어요");
+    assert.match(
+      view.container.querySelector("dialog")!.textContent!,
+      /은행 실입금 확인/,
+    );
   } finally {
     await view.unmount();
   }
