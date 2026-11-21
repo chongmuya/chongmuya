@@ -102,16 +102,38 @@ function MyGroups({
   const [choosing, setChoosing] = useState(false);
   const groups = isAccessError(query.error) ? undefined : query.data;
   const selected = groups?.find((g) => g.id === groupId) ?? groups?.[0];
+  const empty = groups?.length === 0;
   return (
     <section className="space-y-4">
-      <div className="relative flex h-6 items-center justify-between">
-        <h2 className="text-label">내 모임</h2>
+      <div
+        className={
+          empty
+            ? "flex flex-wrap items-start justify-between gap-3"
+            : "relative flex h-6 items-center justify-between"
+        }
+      >
+        <div
+          className={empty ? "min-w-0 flex-[1_0_min(100%,8rem)]" : undefined}
+        >
+          <h2 className="text-label">내 모임</h2>
+          {empty && (
+            <p className="mt-4 text-sm text-muted">아직 속한 모임이 없어요.</p>
+          )}
+        </div>
         <Link
           href="/groups/new"
           aria-label="모임 만들기"
-          className="absolute -right-2 -top-2.5 flex size-control items-center justify-center text-2xl font-normal text-secondary"
+          className={
+            empty
+              ? buttonStyles({
+                  variant: "outline",
+                  className:
+                    "ml-auto min-h-[52px] max-w-full rounded-control border-placeholder px-3 text-sm font-normal text-copy",
+                })
+              : "absolute -right-2 -top-2.5 flex size-control items-center justify-center text-2xl font-normal text-secondary"
+          }
         >
-          ＋
+          {empty ? "＋ 모임 만들기" : "＋"}
         </Link>
       </div>
       {query.isError && (
@@ -156,9 +178,8 @@ function MyGroups({
             />
           )}
         </div>
-      ) : groups ? (
-        <p className="text-sm text-muted">아직 속한 모임이 없어요.</p>
       ) : (
+        !groups &&
         !query.isError && <LoadingState>모임 불러오는 중…</LoadingState>
       )}
     </section>

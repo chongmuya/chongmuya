@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { reservationLabel } from "../lib/reservation-label";
 import Link from "next/link";
@@ -12,13 +12,13 @@ import { useAuth, AuthScreen } from "@/features/auth/client";
 import type { SessionRequest } from "@/features/auth/types";
 import { useGroups } from "@/features/groups/client";
 import { NotificationBadge } from "@/features/notifications/client";
-import { Button, buttonStyles } from "@/shared/ui/button";
+import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import { OwnerNavigation } from "@/shared/ui/owner-navigation";
 import { OrganizerNavigation } from "@/shared/ui/organizer-navigation";
 import { ReservationFacts } from "./reservation-facts";
-import { Dialog } from "@/shared/ui/dialog";
+import { ScheduleKindDialog } from "./schedule-kind-dialog";
 import {
   calendarQuery,
   calendarStores,
@@ -34,7 +34,7 @@ export function CalendarScreen() {
   const request = useMemo(() => client.request.bind(client), [client]);
   return account && status === "authenticated" ? (
     <CalendarContent
-      key={`${account.id}:${params.get("group")}:${params.get("restaurant")}:${params.get("schedule")}`}
+      key={`${account.id}:${params.get("group")}:${params.get("restaurant")}`}
       accountId={account.id}
       owner={account.accountType === "owner"}
       request={request}
@@ -68,6 +68,7 @@ function CalendarContent({
     [selected, setSelected] = useState(today),
     [adding, setAdding] = useState(false),
     [creating, setCreating] = useState(false);
+  const addTrigger = useRef<HTMLButtonElement>(null);
   const stores = useQuery({
     ...calendarStores(accountId, request),
     enabled: owner,
@@ -139,6 +140,7 @@ function CalendarContent({
     detail.data && !isAccessError(detail.error) ? detail.data.groupId : groupId;
   const root = `/calendar${returnGroup ? `?group=${returnGroup}` : owner && restaurant ? `?restaurant=${restaurant}` : ""}`;
   const selectedItems = items.filter((item) => item.date === selected);
+  const emptyDay = !!data && selectedItems.length === 0;
   if (!owner && (scheduleId || creating)) {
     return (
       <StepLayout
@@ -154,6 +156,7 @@ function CalendarContent({
             )}
             {detail.data && !isAccessError(detail.error) ? (
               <ScheduleForm
+                key={scheduleId}
                 accountId={accountId}
                 request={request}
                 date={selected}
@@ -273,12 +276,15 @@ function CalendarContent({
                 day: "numeric",
                 weekday: "short",
               }).format(new Date(`${selected}T00:00:00+09:00`))}
-              <span className="ml-2 text-sm text-brand">
-                {selectedItems.length}
-              </span>
+              {(owner || !emptyDay) && (
+                <span className="ml-2 text-sm text-brand">
+                  {selectedItems.length}
+                </span>
+              )}
             </h2>
-            {!owner && (
+            {!owner && !emptyDay && (
               <Button
+                ref={addTrigger}
                 variant="outline"
                 className="gap-2 rounded-control border-placeholder px-3 text-sm text-secondary"
                 onClick={() => setAdding(true)}
@@ -294,16 +300,40 @@ function CalendarContent({
               </Button>
             )}
           </div>
-          {data && selectedItems.length === 0 && (
-            <div className="py-16 text-center">
-              <h3 className="text-xl font-bold">아직 등록된 일정이 없어요</h3>
-              <p className="mt-3 text-sm text-muted">
-                {owner
-                  ? "총무야 문의·예약이 여기에 표시돼요."
-                  : "새로운 일정을 추가해 볼까요?"}
-              </p>
-            </div>
-          )}
+          {emptyDay &&
+            (owner ? (
+              <div className="py-16 text-center">
+                <h3 className="text-xl font-bold">아직 등록된 일정이 없어요</h3>
+                <p className="mt-3 text-sm text-muted">
+                  총무야 문의·예약이 여기에 표시돼요.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-5 px-3 pt-9 pb-5 text-center">
+                <Image
+                  src="/images/calendar/empty-calendar.svg"
+                  width={55}
+                  height={61}
+                  alt=""
+                />
+                <div className="space-y-2">
+                  <h3 className="text-label leading-tight">
+                    아직 등록된 일정이 없어요
+                  </h3>
+                  <p className="text-xs leading-tight text-muted">
+                    새로운 일정을 추가해 볼까요?
+                  </p>
+                </div>
+                <Button
+                  ref={addTrigger}
+                  variant="brand-outline"
+                  className="w-full max-w-[306px] border-2"
+                  onClick={() => setAdding(true)}
+                >
+                  일정 추가하기
+                </Button>
+              </div>
+            ))}
           <div className="mb-8 space-y-3.5">
             {selectedItems.map((i) => (
               <Link
@@ -369,33 +399,20 @@ function CalendarContent({
         </>
       )}
       {adding && (
-        <Dialog
-          labelledBy="calendar-add-title"
-          showCloseButton
+        <ScheduleKindDialog
+          returnFocusRef={addTrigger}
           onClose={() => setAdding(false)}
-        >
-          <div className="space-y-4">
-            <h2 id="calendar-add-title" className="text-xl font-bold">
-              어떤 일정을 추가할까요?
-            </h2>
-            <Link
-              className={buttonStyles({ className: "w-full" })}
-              href={`/events?date=${selected}${groupId ? `&group=${groupId}` : ""}`}
-            >
-              행사 일정 추가
-            </Link>
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={() => {
-                setAdding(false);
-                setCreating(true);
-              }}
-            >
-              기타 일정 추가
-            </Button>
-          </div>
-        </Dialog>
+          onSelect={(kind) => {
+            setAdding(false);
+            if (kind === "event") {
+              router.push(
+                `/events?date=${selected}${groupId ? `&group=${groupId}` : ""}`,
+              );
+            } else {
+              setCreating(true);
+            }
+          }}
+        />
       )}
       {owner ? (
         <OwnerNavigation current="calendar" restaurantId={restaurant} />

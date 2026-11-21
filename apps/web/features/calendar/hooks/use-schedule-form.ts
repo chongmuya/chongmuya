@@ -114,6 +114,8 @@ export function useScheduleForm(
     setConflict(false);
     setUncertain(false);
     setDeleteUncertain(false);
+    mutation.reset();
+    remove.reset();
   };
   return {
     base,
