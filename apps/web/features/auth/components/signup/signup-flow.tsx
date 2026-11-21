@@ -17,11 +17,11 @@ export function SignupFlow(
   },
 ) {
   const flow = useSignupFlow(props);
-  const detail = props.terms.find((term) => term.id === flow.detail);
+  const detail = flow.consentTerms.find((term) => term.id === flow.detail);
   const detailId = detail?.id ?? null;
   const showingTerms = !flow.complete && !detail && flow.step === "terms";
   const agree = () => {
-    if (detail && detail !== flow.readOnlyPolicy)
+    if (detail)
       flow.methods.setValue(detail.id, true, {
         shouldDirty: true,
         shouldValidate: true,
@@ -69,7 +69,7 @@ export function SignupFlow(
             {detail ? (
               <SignupTermsDetail
                 term={detail}
-                onAgree={detail === flow.readOnlyPolicy ? undefined : agree}
+                onAgree={agree}
                 onClose={flow.back}
               />
             ) : (
@@ -90,7 +90,6 @@ export function SignupFlow(
                     <SignupTerms
                       onDetail={flow.openDetail}
                       terms={flow.consentTerms}
-                      privacyPolicy={flow.readOnlyPolicy}
                     />
                   )}
                   {flow.step === "information" && (
@@ -104,11 +103,7 @@ export function SignupFlow(
                   )}
                   <div
                     className={
-                      showingTerms
-                        ? flow.readOnlyPolicy
-                          ? "mt-auto pt-2.5"
-                          : "mt-auto pt-[54px]"
-                        : "mt-auto pt-12"
+                      showingTerms ? "mt-auto pt-[54px]" : "mt-auto pt-12"
                     }
                   >
                     <FormError

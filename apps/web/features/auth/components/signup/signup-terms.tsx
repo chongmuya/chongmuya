@@ -17,11 +17,9 @@ import type { SignupTerm, SignupTermId } from "../../types/signup.types";
 export function SignupTerms({
   onDetail,
   terms,
-  privacyPolicy,
 }: {
   onDetail: (term: SignupTermId) => void;
   terms: SignupTerm[];
-  privacyPolicy?: SignupTerm;
 }) {
   const {
     register,
@@ -110,25 +108,6 @@ export function SignupTerms({
           </label>
         </div>
       </fieldset>
-      {privacyPolicy && (
-        <button
-          type="button"
-          data-signup-term={privacyPolicy.id}
-          aria-label="개인정보 처리방침 상세 보기"
-          className="flex min-h-11 w-fit cursor-pointer items-center gap-2 text-caption text-brand-ink"
-          onClick={() => onDetail(privacyPolicy.id)}
-        >
-          개인정보 처리방침
-          <Image
-            src="/images/ui/back.svg"
-            alt=""
-            width={10}
-            height={18}
-            style={{ width: "10.4142px", height: "auto" }}
-            className="rotate-180 opacity-60"
-          />
-        </button>
-      )}
     </div>
   );
 }
@@ -139,7 +118,7 @@ export function SignupTermsDetail({
   onClose,
 }: {
   term: SignupTerm;
-  onAgree?: () => void;
+  onAgree: () => void;
   onClose: () => void;
 }) {
   const published = term.version === legalDocumentsVersion;
@@ -173,7 +152,7 @@ export function SignupTermsDetail({
           </p>
         )}
       </div>
-      {onAgree && available ? (
+      {available ? (
         <Button
           className="w-full shrink-0 border-2 text-brand"
           variant="brand-outline"

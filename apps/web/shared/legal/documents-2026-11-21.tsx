@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 export const legalDocumentsVersion = "2026-11-21";
+export const privacyPolicyHref = `/legal/${legalDocumentsVersion}#privacy-policy`;
 
 export const legalDocuments = [
   { key: "serviceTerms", anchor: "service-terms", title: "서비스 이용약관" },

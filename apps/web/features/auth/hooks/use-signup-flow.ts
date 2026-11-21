@@ -267,7 +267,6 @@ export function useSignupFlow({
   return {
     methods,
     consentTerms,
-    readOnlyPolicy: privacyPolicy?.required ? undefined : privacyPolicy,
     step,
     detail,
     openDetail: (term: SignupTermId) => {

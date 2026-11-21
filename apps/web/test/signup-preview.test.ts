@@ -299,7 +299,6 @@ test("signup keeps values and consent across details/back, validates steps and s
   for (const [title, contains] of [
     ["이용약관 동의", /제1조 서비스/],
     ["개인정보 수집 및 이용동의", /인증 요청과 결과/],
-    ["개인정보 처리방침", /국외 이전/],
     ["마케팅 정보 수신", /광고를 보내게 되면/],
   ] as const) {
     await click(fresh.container, `${title} 상세 보기`);
@@ -309,12 +308,7 @@ test("signup keeps values and consent across details/back, validates steps and s
     );
     assert.equal(fresh.container.querySelector('a[target="_blank"]'), null);
     assert.equal(document.activeElement, fresh.container.querySelector("h1"));
-    if (title === "개인정보 처리방침") {
-      assert.doesNotMatch(fresh.container.textContent!, /동의하고 닫기/);
-      await click(fresh.container, "닫기");
-    } else {
-      await click(fresh.container, "이전 단계로 돌아가기");
-    }
+    await click(fresh.container, "이전 단계로 돌아가기");
     assert.equal(
       document.activeElement?.getAttribute("aria-label"),
       `${title} 상세 보기`,
@@ -322,7 +316,9 @@ test("signup keeps values and consent across details/back, validates steps and s
   }
   assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
   assert.equal(
-    fresh.container.querySelector('input[name="privacyPolicy"]'),
+    fresh.container.querySelector(
+      '[data-signup-term="privacyPolicy"], input[name="privacyPolicy"]',
+    ),
     null,
   );
   const all = fresh.container.querySelector<HTMLInputElement>(
@@ -349,7 +345,6 @@ test("closing signup terms returns focus to the control that opened them", async
   };
   const view = await render(createElement(SignupFlow, props));
   const opener = '[aria-label="이용약관 동의 상세 보기"]';
-  const policy = '[aria-label="개인정보 처리방침 상세 보기"]';
 
   try {
     for (const close of ["이전 단계로 돌아가기", "동의하고 닫기"]) {
@@ -361,10 +356,6 @@ test("closing signup terms returns focus to the control that opened them", async
         `${close}: focus landed on ${document.activeElement?.tagName}`,
       );
     }
-
-    await click(view.container, "개인정보 처리방침 상세 보기");
-    await click(view.container, "닫기");
-    assert.equal(document.activeElement, view.container.querySelector(policy));
 
     await click(view.container, "이용약관 동의 상세 보기");
     await view.update(
@@ -452,26 +443,6 @@ test("signup follows the API policy requirement without assuming consent", async
     assert.equal(submitted, true);
   } finally {
     await view.unmount();
-  }
-
-  const preview = await render(
-    createElement(SignupFlow, {
-      ...props,
-      terms: previewTerms,
-      onSubmit: async () => assert.fail("no form was submitted"),
-    }),
-  );
-  try {
-    await click(preview.container, "개인정보 처리방침 상세 보기");
-    assert.match(preview.container.textContent!, /테스트 약관 본문/);
-    assert.doesNotMatch(preview.container.textContent!, /동의하고 닫기/);
-    await click(preview.container, "닫기");
-    assert.equal(
-      preview.container.querySelector('input[name="privacyPolicy"]'),
-      null,
-    );
-  } finally {
-    await preview.unmount();
   }
 });
 
