@@ -90,7 +90,9 @@ Refresh·Access·비밀번호·인증 코드·OAuth URL은 Query 캐시나 브�
 
 설정은 [Nginx 템플릿](../infra/nginx/api.conf)과 [운영 Compose](../infra/compose.prod.yml)를 사용한다. 호스트 템플릿은 앱 배포가 자동 설치하지 않는다. 외부 직접 API 포트 접근 차단·전달 헤더 위조 방지·서로 다른 IP의 제한 집계를 배포 환경에서 확인한다. 프록시 경로가 바뀌면 신뢰 설정도 다시 검토한다. ingress/CDN/APM에도 callback query·인증 body·쿠키를 기록하지 않는다.
 
-만료 전 Refresh 재사용 감지 이력을 삭제하지 않는다. 만료 세션·오래된 시도 제한·인증 증명의 보존 기간과 정리 작업은 별도 운영 대상이다. 이 저장소에 범용 이력 정리 스케줄러는 없다.
+공개 참석 API는 링크 조회·본인 확인·응답 저장을 합쳐 접속 IP당 15분에 1,800회로 제한한다. 이 한도를 먼저 검사하고 유효한 링크에만 기존 링크별·신원별 한도를 적용한다. 운영 API는 `RequestLimitExpiry` migration 적용 후 1분마다 만료된 요청 제한 기록을 최대 5,000건씩 정리한다.
+
+만료 전 Refresh 재사용 감지 이력을 삭제하지 않는다. 만료 세션과 인증 증명의 보존 기간과 정리 작업은 별도 운영 대상이다.
 
 API 경로·DTO는 [auth Controller](../apps/api/src/modules/auth/)와 개발 Swagger를 기준으로 확인한다. HTTP 오류·자원 권한·검증 명령은 [아키텍처](architecture.md)와 [협업 규칙](CONTRIBUTING.md)을 따른다.
 

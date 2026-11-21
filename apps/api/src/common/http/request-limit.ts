@@ -15,8 +15,9 @@ export async function consumeRequestLimit(
     ON CONFLICT (key) DO UPDATE SET
       count = CASE WHEN auth_attempts."resetsAt" <= now() THEN 1 ELSE auth_attempts.count + 1 END,
       "resetsAt" = CASE WHEN auth_attempts."resetsAt" <= now() THEN now() + interval '15 minutes' ELSE auth_attempts."resetsAt" END
+    WHERE auth_attempts."resetsAt" <= now() OR auth_attempts.count < $2
     RETURNING count`,
-    [createHash("sha256").update(key).digest("hex")],
+    [createHash("sha256").update(key).digest("hex"), maximum],
   );
-  if (rows[0].count > maximum) throw new HttpException("", 429);
+  if (!rows.length) throw new HttpException("", 429);
 }

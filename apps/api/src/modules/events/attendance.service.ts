@@ -44,9 +44,9 @@ import type {
 } from "./dto/response/attendance.response.dto.js";
 import type { AttendanceAnswer } from "./types/attendance.js";
 
-// Per-round 15-minute DB windows permit 100 shared-NAT participants.
-// Name-scoped guessing limits are separate from successful write limits.
+// Keep enough shared-IP capacity to use all three per-round budgets in one window.
 export const ATTENDANCE_LIMITS = {
+  allIp: 1800,
   infoIp: 600,
   openIp: 600,
   openIdentity: 20,
@@ -231,13 +231,26 @@ export class AttendanceService {
       return this.detail(row, manager);
     });
   }
-  private async publicScope(
+  private async publicRoundForRequest(
     shareId: string,
+    ip: string,
+    manager: EntityManager,
+  ) {
+    await consumeRequestLimit(
+      manager,
+      `attendance:ip:${ip}`,
+      ATTENDANCE_LIMITS.allIp,
+    );
+    const round = await manager.findOneBy(AttendanceRound, { shareId });
+    if (!round || round.revokedAt) throw new NotFoundException();
+    return round;
+  }
+
+  private async publicScope(
+    found: AttendanceRound,
     manager: EntityManager,
     lock = false,
   ) {
-    const found = await manager.findOneBy(AttendanceRound, { shareId });
-    if (!found || found.revokedAt) throw new NotFoundException();
     if (lock) await this.events.lockReservationEvent(found.eventId, manager);
     const event = await manager.findOne(Event, {
       where: { id: found.eventId },
@@ -245,17 +258,19 @@ export class AttendanceService {
     });
     if (!event) throw new NotFoundException();
     const round = await requireAttendanceRound(event.id, found.id, manager);
-    if (round.revokedAt) throw new NotFoundException();
+    if (round.revokedAt || round.shareId !== found.shareId)
+      throw new NotFoundException();
     return { round, event };
   }
   async publicInfo(shareId: string, ip: string): Promise<PublicAttendanceInfo> {
     const db = await this.database.connect();
+    const found = await this.publicRoundForRequest(shareId, ip, db.manager);
     await consumeRequestLimit(
       db.manager,
-      `attendance:info:ip:${shareId}:${ip}`,
+      `attendance:info:ip:${found.shareId}:${ip}`,
       ATTENDANCE_LIMITS.infoIp,
     );
-    const { round, event } = await this.publicScope(shareId, db.manager);
+    const { round, event } = await this.publicScope(found, db.manager);
     return {
       eventName: event.name,
       roundTitle: round.title,
@@ -304,24 +319,25 @@ export class AttendanceService {
     ip: string,
   ): Promise<PublicAttendanceAccess> {
     const db = await this.database.connect();
+    const found = await this.publicRoundForRequest(shareId, ip, db.manager);
     const name = normalizePersonName(input.name);
     await consumeRequestLimit(
       db.manager,
-      `attendance:open:ip:${shareId}:${ip}`,
+      `attendance:open:ip:${found.shareId}:${ip}`,
       ATTENDANCE_LIMITS.openIp,
     );
     await consumeRequestLimit(
       db.manager,
-      `attendance:guess:${shareId}:${ip}:${name}`,
+      `attendance:guess:${found.shareId}:${ip}:${name}`,
       30,
     );
     await consumeRequestLimit(
       db.manager,
-      `attendance:open:identity:${shareId}:${name}:${input.phoneLast4}`,
+      `attendance:open:identity:${found.shareId}:${name}:${input.phoneLast4}`,
       ATTENDANCE_LIMITS.openIdentity,
     );
     return db.transaction(async (manager) => {
-      const { event, round } = await this.publicScope(shareId, manager, true);
+      const { event, round } = await this.publicScope(found, manager, true);
       if (round.closedAt) throw new DomainHttpException("ATTENDANCE_CLOSED");
       const decision = await this.decision(
         event,
@@ -378,25 +394,26 @@ export class AttendanceService {
   }
   async save(shareId: string, input: SaveAttendanceInput, ip: string) {
     const db = await this.database.connect();
+    const found = await this.publicRoundForRequest(shareId, ip, db.manager);
     await consumeRequestLimit(
       db.manager,
-      `attendance:save:ip:${shareId}:${ip}`,
+      `attendance:save:ip:${found.shareId}:${ip}`,
       ATTENDANCE_LIMITS.saveIp,
     );
     const access: AttendanceAccess = readAttendanceAccess(
       input.accessToken,
       this.config.environment.authSecret,
     );
+    if (access.roundId !== found.id)
+      throw new DomainHttpException("ATTENDANCE_ACCESS_INVALID");
     await consumeRequestLimit(
       db.manager,
-      `attendance:save:identity:${shareId}:${access.name}:${access.phoneLast4}`,
+      `attendance:save:identity:${found.shareId}:${access.name}:${access.phoneLast4}`,
       ATTENDANCE_LIMITS.saveIdentity,
     );
     return db.transaction(async (manager) => {
       // Every attendance/roster write locks this event before reading identity or response.
-      const { event, round } = await this.publicScope(shareId, manager, true);
-      if (access.roundId !== round.id)
-        throw new DomainHttpException("ATTENDANCE_ACCESS_INVALID");
+      const { event, round } = await this.publicScope(found, manager, true);
       if (round.closedAt) throw new DomainHttpException("ATTENDANCE_CLOSED");
       if (
         access.participantId &&

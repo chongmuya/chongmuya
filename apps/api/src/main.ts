@@ -4,6 +4,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { ConfigService } from "./config/config.service.js";
 import { configureHttp } from "./bootstrap/configure-http.js";
+import { RequestLimitCleanupService } from "./database/request-limit-cleanup.service.js";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -13,6 +14,7 @@ async function bootstrap() {
   configureHttp(app, environment);
   app.enableShutdownHooks();
   await app.listen(environment.port);
+  app.get(RequestLimitCleanupService).start();
 }
 
 bootstrap().catch(() => {

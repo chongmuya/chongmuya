@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryColumn } from "typeorm";
+import { Column, Entity, Index, PrimaryColumn } from "typeorm";
 
 @Entity("auth_attempts")
 export class AuthAttempt {
@@ -8,5 +8,7 @@ export class AuthAttempt {
   })
   key!: string;
   @Column("integer") count!: number;
-  @Column("timestamptz") resetsAt!: Date;
+  @Index("auth_attempts_expiry")
+  @Column("timestamptz")
+  resetsAt!: Date;
 }
