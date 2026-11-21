@@ -24,7 +24,7 @@ export function LoginScreen({ returnTo }: { returnTo: string }) {
       <footer className="mt-6 text-center">
         <Link
           href={privacyPolicyHref}
-          className="inline-flex min-h-control items-center px-2 text-caption font-semibold text-copy underline underline-offset-4"
+          className="inline-flex min-h-control items-center px-2 text-caption font-semibold text-black underline underline-offset-4"
         >
           개인정보 처리방침
         </Link>

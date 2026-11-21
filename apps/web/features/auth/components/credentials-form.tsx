@@ -121,7 +121,7 @@ export function CredentialsForm({
       <div className="mt-[26px] text-center">
         <Link
           href={authEntryPath("/auth/recovery", returnTo)}
-          className="text-caption text-white underline underline-offset-2"
+          className="text-caption text-black underline underline-offset-2"
         >
           비밀번호를 잊으셨나요?
         </Link>
