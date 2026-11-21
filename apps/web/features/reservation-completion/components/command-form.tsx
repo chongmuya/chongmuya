@@ -4,6 +4,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Field } from "../types/command-field";
 import { commandSchema } from "../schemas/command.schema";
+import { Checkbox } from "@/shared/ui/checkbox";
 import { Button } from "@/shared/ui/button";
 import { FormInput } from "@/shared/ui/form-input";
 import { FormField } from "@/shared/ui/form-field";
@@ -101,7 +102,11 @@ export function CommandForm({
         } catch (error) {
           if (error instanceof ApiError && error.code === "VALIDATION_FAILED")
             for (const issue of error.fieldErrors ?? [])
-              if (fields.some((f) => f.name === issue.field))
+              if (
+                fields.some(
+                  (f) => f.name === issue.field && f.when?.(v) !== false,
+                )
+              )
                 form.setError(
                   issue.field,
                   { message: "입력 값과 안내 조건을 확인해 주세요." },
@@ -124,61 +129,72 @@ export function CommandForm({
         disabled={!available || mutation.uncertain || mutation.isPending}
         className="space-y-4"
       >
-        {fields.map((f) => (
-          <FormField
-            key={f.name}
-            id={`${id}-${f.name}`}
-            label={f.label}
-            required={!f.optional}
-            error={form.formState.errors[f.name]?.message}
-          >
-            {(attrs) =>
-              f.options ? (
-                <select
-                  {...attrs}
-                  {...form.register(f.name)}
-                  className="min-h-11 w-full rounded-control border border-field bg-surface px-3"
-                >
-                  <option value="">선택해 주세요</option>
-                  {f.options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              ) : f.type === "textarea" ? (
-                <textarea
-                  {...attrs}
-                  {...form.register(f.name)}
-                  rows={3}
-                  maxLength={f.max}
-                  className="w-full rounded-control border border-field p-3"
-                />
-              ) : f.type === "checkbox" ? (
-                <input
-                  {...attrs}
-                  type="checkbox"
-                  checked={values[f.name] === "yes"}
-                  className="size-5"
-                  onChange={(e) =>
-                    form.setValue(f.name, e.target.checked ? "yes" : "", {
-                      shouldValidate: true,
-                      shouldDirty: true,
-                    })
-                  }
-                />
-              ) : (
-                <FormInput
-                  {...attrs}
-                  type={f.type ?? "text"}
-                  allowDateClear={f.optional}
-                  control={form.control}
-                  name={f.name}
-                />
-              )
-            }
-          </FormField>
-        ))}
+        {fields
+          .filter((f) => f.when?.(values) !== false)
+          .map((f) => (
+            <FormField
+              key={f.name}
+              id={`${id}-${f.name}`}
+              label={f.label}
+              required={!f.optional}
+              className={
+                f.type === "checkbox"
+                  ? "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 [&>p]:col-span-2"
+                  : undefined
+              }
+              labelClassName={
+                f.type === "checkbox"
+                  ? "col-start-2 row-start-1 py-2 text-sm"
+                  : undefined
+              }
+              error={form.formState.errors[f.name]?.message}
+            >
+              {(attrs) =>
+                f.options ? (
+                  <select
+                    {...attrs}
+                    {...form.register(f.name)}
+                    className="min-h-11 w-full rounded-control border border-field bg-surface px-3"
+                  >
+                    <option value="">선택해 주세요</option>
+                    {f.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : f.type === "textarea" ? (
+                  <textarea
+                    {...attrs}
+                    {...form.register(f.name)}
+                    rows={3}
+                    maxLength={f.max}
+                    className="w-full rounded-control border border-field p-3"
+                  />
+                ) : f.type === "checkbox" ? (
+                  <Checkbox
+                    {...attrs}
+                    checked={values[f.name] === "yes"}
+                    className="col-start-1 row-start-1"
+                    onChange={(e) =>
+                      form.setValue(f.name, e.target.checked ? "yes" : "", {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      })
+                    }
+                  />
+                ) : (
+                  <FormInput
+                    {...attrs}
+                    type={f.type ?? "text"}
+                    allowDateClear={f.optional}
+                    control={form.control}
+                    name={f.name}
+                  />
+                )
+              }
+            </FormField>
+          ))}
         {available && !mutation.uncertain && (
           <ReviewCurrent
             data={data}

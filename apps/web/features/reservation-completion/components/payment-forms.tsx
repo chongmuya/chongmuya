@@ -4,8 +4,17 @@ import Link from "next/link";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { CommandForm } from "./command-form";
 import { isoDate, localDate } from "../lib/command-values";
+import { won } from "../lib/agreement-labels";
 import { guidanceFields, buildGuidance } from "../lib/guidance-fields";
 import { depositGuidanceReady } from "../lib/deposit-guidance";
+const exceptionLabels = new Map([
+  ["EVENT_STARTED", "예약 시간이 지났어요."],
+  ["MENU_LATE", "메뉴 전달 기한을 확인해 주세요."],
+  ["PAYMENT_LATE", "입금 기한이 지났어요."],
+  ["TRANSFER_REVIEW", "총무의 송금 신고를 입금 안내와 대조해 주세요."],
+  ["AMOUNT_REVIEW", "실제 수령액과 안내한 예약금이 달라요."],
+]);
+
 // Keep a previously opened command mounted while its eligibility changes.
 function RetainedCommand({
   available,
@@ -18,8 +27,11 @@ function RetainedCommand({
   openInitially?: boolean;
 }) {
   const [seen, setSeen] = useState(available);
-  const [initialOpen] = useState(openInitially);
-  if (available && !seen) setSeen(true);
+  const [initialOpen, setInitialOpen] = useState(openInitially);
+  if (available && !seen) {
+    setSeen(true);
+    setInitialOpen(openInitially);
+  }
   if (!seen && !available) return null;
   const form = <CommandForm {...props} available={available} />;
   return disclosure ? (
@@ -41,24 +53,102 @@ export function PaymentForms({
   const props = { data: q, access };
   const ready = depositGuidanceReady(q);
   if (access.kind === "organizer") return <OrganizerPayment {...props} />;
+  const exceptions = q.issues.filter((issue) => exceptionLabels.has(issue));
   return (
     <div className="space-y-5">
-      {access.kind === "owner" && !q.cancellation && !q.confirmation && (
-        <Link
-          href="/mypage?view=account#reservation-deposit-account"
-          className="text-sm font-medium text-link underline"
-        >
-          계정에 연결된 예약금 계좌 관리
-        </Link>
-      )}
+      {!q.cancellation &&
+        (exceptions.length > 0 || q.issues.includes("RECEIPT_REVIEW")) && (
+          <ul className="space-y-1 rounded-control bg-soft p-3 text-sm">
+            {exceptions.map((issue) => (
+              <li key={issue}>{exceptionLabels.get(issue)}</li>
+            ))}
+            {q.issues.includes("RECEIPT_REVIEW") && (
+              <li>
+                예약금 안내가 바뀌었어요. 최신 안내에 맞춰 수령 내역을 확인해
+                주세요.
+              </li>
+            )}
+          </ul>
+        )}
       <RetainedCommand
-        disclosure="예약금·계좌·변경 조건 안내"
-        available={!q.cancellation && !q.confirmation}
+        disclosure={q.receipt ? "입금 기록 정정" : "수령 내역 입력"}
+        openInitially={
+          ready &&
+          (!q.receipt ||
+            q.issues.includes("RECEIPT_REVIEW") ||
+            q.issues.includes("DEPOSIT_UNCONFIRMED"))
+        }
+        available={!q.cancellation && q.guidance.kind === "REQUIRED"}
+        {...props}
+        action="receipt"
+        title={q.receipt ? "입금 기록 정정 저장" : "실입금 기록하기"}
+        hideTitle
+        description={
+          q.transfer
+            ? `총무 송금 신고 · ${q.transfer.payer} · ${won(q.transfer.amount)}. 은행 내역과 대조해 주세요.`
+            : `예약금 ${won(q.guidance.amount)} · 은행에서 확인한 전체 수령액을 입력해 주세요.`
+        }
+        fields={(current) => [
+          {
+            name: "amount",
+            label: "실제 수령 총액 (원)",
+            type: "number",
+            value: current.receipt ? String(current.receivedAmount) : "",
+          },
+          {
+            name: "receivedAt",
+            label: "실제 입금 시각",
+            type: "datetime-local",
+            value: localDate(current.receipt?.receivedAt ?? null),
+          },
+          {
+            name: "reason",
+            label: "정정 사유",
+            when: () => !!current.receipt,
+            type: "textarea",
+            max: 500,
+          },
+          {
+            name: "checked",
+            label: "은행 내역을 확인했고 실제 수령 총액이 맞아요",
+            type: "checkbox",
+          },
+        ]}
+        build={(v, b) => ({
+          amount: Number(v.amount),
+          receivedAt: isoDate(v.receivedAt),
+          guidanceRevision: b.guidance.revision,
+          corrects: b.receipt?.id ?? null,
+          reason: b.receipt ? v.reason : "은행 입금 확인",
+        })}
+      />
+      <RetainedCommand
+        available={!q.cancellation && exceptions.length > 0}
+        {...props}
+        action="resolve"
+        title="확인 내용을 기록하고 진행하기"
+        description="기한이나 금액이 달라진 이유를 총무와 확인해 주세요."
+        fields={[
+          {
+            name: "reason",
+            label: "확인 내용과 진행 재개 사유",
+            type: "textarea",
+            max: 500,
+          },
+        ]}
+        build={(v) => ({ reason: v.reason })}
+      />
+      <RetainedCommand
+        disclosure={ready ? "예약금 안내 편집" : "입금 조건 입력"}
+        available={
+          !q.cancellation && !q.confirmation && q.guidance.kind !== "NONE"
+        }
         openInitially={!ready}
         {...props}
         action="guidance"
-        title="안내 전달"
-        description="웹 공개는 동의한 경우만 선택해 주세요. 문자를 선택하면 총무 화면에는 계좌가 표시되지 않아요. 안내 변경은 총무의 재확인이 필요해요."
+        title="예약금 안내 보내기"
+        hideTitle
+        description="총무에게 입금 조건과 변경·취소·환불 안내를 보내요."
         fields={(base) =>
           guidanceFields(
             base,
@@ -75,80 +165,26 @@ export function PaymentForms({
         }
         preview={(values, base) =>
           values.kind === "REQUIRED" &&
-          !base.guidance.account &&
-          base.ownerDepositAccount ? (
-            <p className="rounded-control bg-soft p-3 text-sm">
-              연결된 계좌 · {base.ownerDepositAccount.bank} · 끝자리{" "}
-              {base.ownerDepositAccount.lastDigits}
-            </p>
+          access.kind === "owner" &&
+          !base.guidance.account ? (
+            <div className="space-y-2">
+              {base.ownerDepositAccount && (
+                <p className="rounded-control bg-soft p-3 text-sm">
+                  연결된 계좌 · {base.ownerDepositAccount.bank} · 끝자리{" "}
+                  {base.ownerDepositAccount.lastDigits}
+                </p>
+              )}
+              <Link
+                href="/mypage?view=account#reservation-deposit-account"
+                className="text-sm font-medium text-link underline"
+              >
+                {base.ownerDepositAccount
+                  ? "연결된 계좌 관리"
+                  : "계정에 예약금 계좌 등록하기"}
+              </Link>
+            </div>
           ) : null
         }
-      />
-      <RetainedCommand
-        available={!q.cancellation && q.guidance.kind === "REQUIRED"}
-        {...props}
-        action="receipt"
-        title={q.receipt ? "실입금 기록 정정" : "은행 실입금 확인"}
-        description="은행 내역과 입금자를 직접 대조해 주세요. 아래 금액은 이번 추가 입금액이 아니라 이 예약에서 확인한 전체 수령액입니다. 정정 전 기록도 보존돼요."
-        fields={(current) => [
-          {
-            name: "amount",
-            label: "실제 수령 총액 (원)",
-            type: "number",
-            value: String(current.receivedAmount),
-          },
-          {
-            name: "receivedAt",
-            label: "실제 입금 시각",
-            type: "datetime-local",
-            value: localDate(current.receipt?.receivedAt ?? null),
-          },
-          {
-            name: "reason",
-            label: "확인·정정 사유",
-            type: "textarea",
-            max: 500,
-          },
-          {
-            name: "checked",
-            label: "은행 내역을 확인했고 실제 수령 총액이 맞아요",
-            type: "checkbox",
-          },
-        ]}
-        build={(v, b) => ({
-          amount: Number(v.amount),
-          receivedAt: isoDate(v.receivedAt),
-          guidanceRevision: b.guidance.revision,
-          corrects: b.receipt?.id ?? null,
-          reason: v.reason,
-        })}
-      />
-      <RetainedCommand
-        available={
-          !q.cancellation &&
-          q.issues.some((i) =>
-            [
-              "EVENT_STARTED",
-              "MENU_LATE",
-              "PAYMENT_LATE",
-              "TRANSFER_REVIEW",
-              "AMOUNT_REVIEW",
-            ].includes(i),
-          )
-        }
-        {...props}
-        action="resolve"
-        title="예외 확인 · 진행 재개"
-        description="지연·신고 금액 불일치·초과 입금 내역을 총무와 확인한 뒤 기록해 주세요. 필수 메뉴와 부족한 실제 입금을 대신하지 않아요."
-        fields={[
-          {
-            name: "reason",
-            label: "확인 내용과 진행 재개 사유",
-            type: "textarea",
-            max: 500,
-          },
-        ]}
-        build={(v) => ({ reason: v.reason })}
       />
     </div>
   );

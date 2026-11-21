@@ -6,6 +6,7 @@ import { ReplyWorkspace } from "@/features/merchant-replies/client";
 import { StepLayout } from "@/shared/ui/step-layout";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { Button, buttonStyles } from "@/shared/ui/button";
+import { koreanDateLabel } from "@/shared/lib/korean-date";
 import { inquiriesQuery } from "../api/owner.api";
 export function OwnerInquiries({
   account,
@@ -32,7 +33,8 @@ export function OwnerInquiries({
       />
     );
   return (
-    <StepLayout title="" onBack={() => onNavigate("/owner")}>
+    <StepLayout title="받은 문의" onBack={() => onNavigate("/owner")}>
+      <h1 className="sr-only">받은 문의</h1>
       {q.isError && !q.data ? (
         <ErrorState retry={() => void q.refetch()} />
       ) : !q.data ? (
@@ -44,7 +46,6 @@ export function OwnerInquiries({
               최근 문의를 불러오지 못했어요. 다시 불러와 주세요.
             </p>
           )}
-          <h1 className="mb-6 text-2xl font-bold">받은 예약 문의</h1>
           {!q.data.pages.flatMap((page) => page.inquiries).length && (
             <p>아직 받은 문의가 없어요.</p>
           )}
@@ -59,24 +60,35 @@ export function OwnerInquiries({
                   <h2 className="font-bold">{i.eventName}</h2>
                   <p className="text-sm">
                     {i.restaurantName} · {i.expectedGuests}명<br />
-                    {new Date(i.startsAt).toLocaleString("ko-KR", {
-                      timeZone: "Asia/Seoul",
-                    })}
+                    {koreanDateLabel(i.startsAt)}
                   </p>
                   <p className="text-sm text-brand">
-                    {i.closed
-                      ? "문의 종료"
-                      : i.response?.state === "EXPIRED"
-                        ? "선택 기한 만료"
-                        : i.response
-                          ? {
-                              AVAILABLE: "가능 제안",
-                              CHANGE: "조건 변경 제안",
-                              DECLINE: "불가",
-                            }[i.response.kind]
-                          : "답변 대기"}
+                    {i.candidateState === "SELECTED"
+                      ? "매장 선택됨"
+                      : i.candidateState === "OTHER_SELECTED"
+                        ? "다른 매장 선택됨"
+                        : i.candidateState === "ORGANIZER_DECLINED"
+                          ? "총무가 제안을 거절했어요"
+                          : i.response?.kind === "DECLINE"
+                            ? "불가 답변 완료"
+                            : i.candidateState === "EXPIRED" ||
+                                (!i.closed && i.response?.state === "EXPIRED")
+                              ? "선택 기한 만료"
+                              : i.closed
+                                ? "문의 종료"
+                                : i.response
+                                  ? "총무 선택 대기"
+                                  : "답변 대기"}
                   </p>
-                  {!i.closed && (
+                  {i.reservationId && (
+                    <Link
+                      className={buttonStyles({ className: "w-full" })}
+                      href={`/owner/reservations?reservation=${i.reservationId}`}
+                    >
+                      예약 관리
+                    </Link>
+                  )}
+                  {(!i.closed || i.response) && (
                     <Link
                       className={buttonStyles({
                         variant: "outline",

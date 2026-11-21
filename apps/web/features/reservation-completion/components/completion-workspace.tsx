@@ -10,6 +10,7 @@ import { isAccessError } from "@/shared/http/access-error";
 import { completionQuery, completionKey } from "../api/completion.api";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { auditLabel } from "../lib/audit-label";
+import { merchantNextStep } from "../lib/merchant-next-step";
 import { depositGuidanceReady } from "../lib/deposit-guidance";
 import {
   CompletionSummary,
@@ -149,15 +150,26 @@ function CompletionContent({
       : mostRecent;
   const rejectionReason =
     latest?.status === "REJECTED" ? latest.resolutionReason : undefined;
-  const needsReceipt =
-    !q.cancellation &&
-    q.guidance.kind === "REQUIRED" &&
+  const merchantStep = organizer ? undefined : merchantNextStep(q);
+  const hasPaymentActions = !q.cancellation && q.guidance.kind !== "NONE";
+  const isFirstReceipt =
+    !organizer &&
     guidanceReady &&
-    !q.receipt;
+    q.guidance.kind === "REQUIRED" &&
+    !q.receipt &&
+    !q.cancellation;
   const panelTitles = {
     details: "예약 상세",
     changes: "예약 변경·취소",
-    payments: !organizer && !guidanceReady ? "예약금 안내" : "예약금 확인",
+    payments: organizer
+      ? "예약금 확인"
+      : q.guidance.kind === "NONE"
+        ? "예약 진행 확인"
+        : !guidanceReady
+          ? "예약금 안내"
+          : isFirstReceipt
+            ? "실입금 확인"
+            : "예약금 관리",
     sentInquiry: "보낸 예약 문의",
   };
   const review = () => {
@@ -195,6 +207,8 @@ function CompletionContent({
       {!q.cancellation &&
         guidanceReady &&
         q.progress !== "CONFIRMED" &&
+        (q.guidance.kind === "REQUIRED" ||
+          q.issues.includes("GUIDANCE_REVIEW")) &&
         q.order &&
         !pending && (
           <Button className="w-full" onClick={() => setPanel("payments")}>
@@ -265,21 +279,11 @@ function CompletionContent({
               </section>
             )}
         </>
-      ) : (
+      ) : merchantStep ? (
         <>
           <header className="space-y-4">
-            <p className="w-fit rounded-pill bg-[#fff2e0] px-3 py-1.5 text-xs font-semibold text-[#b46a00]">
-              {pending
-                ? "변경 확인 필요"
-                : q.cancellation
-                  ? "예약 취소 완료"
-                  : q.progress === "CONFIRMED"
-                    ? "예약 확정"
-                    : !guidanceReady
-                      ? "예약금 안내 필요"
-                      : q.guidance.kind === "REQUIRED"
-                        ? "입금 확인 필요"
-                        : "예약 준비 중"}
+            <p className="w-fit rounded-pill bg-soft px-3 py-1.5 text-xs font-semibold text-brand-ink">
+              {merchantStep.status}
             </p>
             <div className="space-y-1">
               <h1 className="text-xl font-semibold">
@@ -290,58 +294,31 @@ function CompletionContent({
               )}
             </div>
           </header>
-          <AgreementTerms data={q} compact onOpen={() => setPanel("details")} />
+          <AgreementTerms
+            data={q}
+            compact
+            merchant
+            onOpen={() => setPanel("details")}
+          />
           <OrderSummary data={q} />
-          <DepositSummary data={q} />
-          {(pending || rejectionReason || needsReceipt) && (
-            <div className="space-y-2 rounded-[12px] bg-[#fff2e0] px-3.5 py-3 text-xs text-[#b46a00]">
-              {pending ? (
-                <p>
-                  총무의 문의 내용을 확인하고 바꿀 조건을 제안해 주세요. 총무가
-                  수락하면 적용돼요.
-                </p>
-              ) : (
-                <>
-                  {rejectionReason && (
-                    <p>문의 처리 불가 안내 · {rejectionReason}</p>
-                  )}
-                  {needsReceipt && (
-                    <p>
-                      실제 입금을 확인한 뒤 ‘입금을 확인했어요’를 눌러 주세요.
-                      필요한 확인이 완료되면 예약이 확정돼요.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
+          <DepositSummary data={q} merchant />
+          {merchantStep.note && (
+            <p className="text-sm text-muted">{merchantStep.note}</p>
+          )}
+          {!pending && q.progress !== "CONFIRMED" && rejectionReason && (
+            <p className="text-sm text-muted">
+              변경 불가 답변 · {rejectionReason}
+            </p>
           )}
           <Button
             className="w-full"
-            onClick={() =>
-              setPanel(
-                pending || q.cancellation
-                  ? "changes"
-                  : q.confirmation
-                    ? "details"
-                    : "payments",
-              )
-            }
+            onClick={() => setPanel(merchantStep.panel)}
           >
-            {pending
-              ? "예약 변경 확인하기"
-              : q.cancellation
-                ? "취소·환불 안내"
-                : q.confirmation
-                  ? "예약 내용 확인하기"
-                  : !guidanceReady
-                    ? "예약금 안내하기"
-                    : q.guidance.kind === "REQUIRED"
-                      ? "입금을 확인했어요"
-                      : "예약 안내 확인하기"}
+            {merchantStep.label}
           </Button>
           {contact}
         </>
-      )}
+      ) : null}
       {panel && (
         <Dialog
           labelledBy={titleId}
@@ -365,10 +342,10 @@ function CompletionContent({
             sentInquiryContent
           ) : panel === "details" ? (
             <div className="space-y-4">
-              <AgreementTerms data={q} />
+              <AgreementTerms data={q} merchant={!organizer} />
               <OrderSummary data={q} />
-              <DepositSummary data={q} />
-              <GuidanceSummary data={q} />
+              <DepositSummary data={q} merchant={!organizer} />
+              {organizer && <GuidanceSummary data={q} />}
               {inquiryContent && (
                 <section className="pt-4">
                   <h3 className="mb-4 font-semibold">
@@ -377,10 +354,41 @@ function CompletionContent({
                   {inquiryContent}
                 </section>
               )}
-              <details className="pt-4 text-xs">
-                <summary>예약 기록·문자 상태</summary>
-                <ReservationHistory data={q} />
-              </details>
+              {!organizer && hasPaymentActions && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setPanel("payments")}
+                >
+                  예약금 관리
+                </Button>
+              )}
+              {organizer ? (
+                <details className="pt-4 text-xs">
+                  <summary>예약 기록·문자 상태</summary>
+                  <ReservationHistory data={q} />
+                </details>
+              ) : q.history.length > 0 ? (
+                <details className="rounded-control bg-soft p-4 text-sm">
+                  <summary className="cursor-pointer font-medium">
+                    처리 이력
+                  </summary>
+                  <ul className="mt-3 space-y-3">
+                    {q.history.map((h) => (
+                      <li key={h.version}>
+                        <p>{actionLabels[h.action] ?? "예약 기록"}</p>
+                        <p className="text-xs text-muted">
+                          {koreanDateLabel(h.audit.confirmedAt)}
+                          {h.action === "RECEIPT_RECORDED" &&
+                            ` · 수령 ${h.receivedAmount.toLocaleString("ko-KR")}원`}
+                          {h.refund &&
+                            ` · 반환 ${h.refund.amount.toLocaleString("ko-KR")}원`}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
             </div>
           ) : panel === "changes" ? (
             <ChangeForms
@@ -393,14 +401,13 @@ function CompletionContent({
             />
           ) : (
             <div className="space-y-5">
-              <GuidanceSummary data={q} />
-              <PaymentForms data={q} access={access} />
-              {!organizer && (
-                <details className="text-xs">
-                  <summary>예약 기록·문자 상태</summary>
-                  <ReservationHistory data={q} />
-                </details>
+              {(organizer ||
+                (q.guidance.kind !== "NONE" &&
+                  guidanceReady &&
+                  !isFirstReceipt)) && (
+                <GuidanceSummary data={q} merchant={!organizer} />
               )}
+              <PaymentForms data={q} access={access} />
             </div>
           )}
           {panel !== "changes" && (

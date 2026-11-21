@@ -71,9 +71,9 @@ export function MerchantSummary({
             <Link
               href={`/calendar?restaurant=${restaurantId}`}
               className="shrink-0 text-sm text-secondary"
-              aria-label="예약 관리 열기"
+              aria-label="예약 달력 보기"
             >
-              예약 관리 ›
+              예약 달력 ›
             </Link>
           </div>
           {!selectedRows.length && (

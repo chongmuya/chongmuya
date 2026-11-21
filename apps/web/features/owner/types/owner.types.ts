@@ -61,6 +61,8 @@ export type InquiryList = {
     expectedGuests: number;
     response: Reply | null;
     closed: boolean;
+    candidateState: string;
+    reservationId: string | null;
   }[];
   nextCursor: string | null;
 };

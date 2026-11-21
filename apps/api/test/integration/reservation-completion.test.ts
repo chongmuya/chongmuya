@@ -181,6 +181,51 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     webConsent: channel === "WEB",
   });
   await t.test(
+    "chosen inquiry links the owner to the selected reservation",
+    async () => {
+      const owner = await existingOwner();
+      const identity = await json<{ id: string }>(await call("auth/me", owner));
+      const v = await fixture();
+      const restaurant = await db.manager.findOneByOrFail(Restaurant, {
+        id: v.restaurantId,
+      });
+      await db.manager.update(
+        Restaurant,
+        { id: restaurant.id },
+        {
+          ownerAccountId: identity.id,
+        },
+      );
+      try {
+        const page = await json<{
+          inquiries: {
+            targetId: string;
+            candidateState: string;
+            reservationId: string | null;
+            closed: boolean;
+          }[];
+        }>(await call("owner/inquiries", owner));
+        const chosen = page.inquiries.filter((i) => i.targetId === v.targetId);
+        assert.equal(chosen.length, 1);
+        assert.equal(chosen[0].candidateState, "SELECTED");
+        assert.equal(chosen[0].reservationId, v.id);
+        assert.equal(chosen[0].closed, true);
+        assert.equal(
+          (await call(`owner/reservations/${v.id}`, owner)).status,
+          200,
+        );
+      } finally {
+        await db.manager.update(
+          Restaurant,
+          { id: restaurant.id },
+          {
+            ownerAccountId: restaurant.ownerAccountId,
+          },
+        );
+      }
+    },
+  );
+  await t.test(
     "reservation contacts use an independent public number and scoped current organizer contact",
     async () => {
       const v = await fixture();

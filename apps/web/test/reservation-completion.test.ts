@@ -401,16 +401,142 @@ test("merchant sees the existing reservation's receipt action after rejecting a 
     await until(() =>
       assert.match(
         view.container.textContent!,
-        /문의 처리 불가 안내 · 다른 예약이 있어요/,
+        /변경 불가 답변 · 다른 예약이 있어요/,
       ),
     );
-    assert.match(view.container.textContent!, /실제 입금을 확인한 뒤/);
-    assert.doesNotMatch(view.container.textContent!, /예약 변경 확인하기/);
-    await click(view.container, "입금을 확인했어요");
-    assert.match(
-      view.container.querySelector("dialog")!.textContent!,
-      /은행 실입금 확인/,
+    assert.match(view.container.textContent!, /은행 내역에서 입금이 확인되면/);
+    assert.doesNotMatch(view.container.textContent!, /요청에 답하기/);
+    await click(view.container, "실입금 확인");
+    const dialog = view.container.querySelector("dialog")!;
+    assert.match(dialog.textContent!, /실입금 기록하기/);
+    assert.equal(dialog.querySelector('[name="reason"]'), null);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("merchant sees menu wait and can still correct an already recorded deposit", async () => {
+  const data = {
+    ...rejectedChangeFixture(),
+    changes: [],
+    progress: "MENU_REQUIRED",
+    order: null,
+    receivedAmount: 10000,
+    receipt: {
+      id: "receipt",
+      receivedAt: "2098-12-30T02:00:00Z",
+      amount: 10000,
+    } as NonNullable<Completion["receipt"]>,
+  };
+  const view = await render(
+    createElement(CompletionWorkspace, {
+      id: data.id,
+      access: {
+        kind: "owner",
+        accountId: "owner-with-receipt",
+        request: async <T>() => data as T,
+      },
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /메뉴 전달 대기/),
     );
+    assert.doesNotMatch(view.container.textContent!, /실입금 확인/);
+    await click(view.container, "예약 내용 보기");
+    await click(view.container, "예약금 관리");
+    const dialog = view.container.querySelector("dialog")!;
+    const correction = [...dialog.querySelectorAll("details")].find(
+      (item) => item.querySelector("summary")?.textContent === "입금 기록 정정",
+    );
+    assert(correction);
+    assert.equal(correction.open, false);
+    assert(correction.querySelector('[name="reason"]'));
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("merchant sees only menu wait for a reservation agreed without a deposit", async () => {
+  const data = {
+    ...rejectedChangeFixture(),
+    guidance: { ...fixture().guidance, policy: "사전 협의" },
+    progress: "MENU_REQUIRED",
+    changes: [],
+    order: null,
+  } as Completion;
+  const view = await render(
+    createElement(CompletionWorkspace, {
+      id: data.id,
+      access: {
+        kind: "owner",
+        accountId: "owner-none",
+        request: async <T>() => data as T,
+      },
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /메뉴 전달 대기/),
+    );
+    await click(view.container, "예약 내용 보기");
+    assert.doesNotMatch(
+      view.container.querySelector("dialog")!.textContent!,
+      /예약금 관리|안내 보내기|실입금 확인/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("merchant can send a deposit waiver without amount, account, deadline or consent", async () => {
+  const data = {
+    ...rejectedChangeFixture(),
+    guidance: {
+      ...rejectedChangeFixture().guidance,
+      kind: "UNKNOWN" as const,
+      policy: "하루 전까지 취소 가능",
+    },
+  };
+  const writes: Record<string, unknown>[] = [];
+  const view = await render(
+    createElement(PaymentForms, {
+      data,
+      access: {
+        kind: "owner",
+        accountId: "owner-with-waiver",
+        request: async <T>(_path: string, options?: RequestInit) => {
+          if (options?.method === "POST") {
+            writes.push(JSON.parse(String(options.body)).command);
+          }
+          return data as T;
+        },
+      },
+    }),
+  );
+  try {
+    const kind = view.container.querySelector<HTMLSelectElement>(
+      'select[name="kind"]',
+    )!;
+    await act(() => {
+      kind.value = "NONE";
+      kind.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    for (const name of [
+      "amount",
+      "deadline",
+      "channel",
+      "account",
+      "webConsent",
+    ]) {
+      assert.equal(view.container.querySelector(`[name="${name}"]`), null);
+    }
+    await submit(view.container);
+    await until(() => assert.equal(writes.length, 1));
+    assert.equal(writes[0].amount, 0);
+    assert.equal(writes[0].deadline, null);
+    assert.equal(writes[0].account, "");
+    assert.equal(writes[0].webConsent, false);
   } finally {
     await view.unmount();
   }
@@ -540,10 +666,7 @@ test("confirmed and cancelled reservations never render an empty guidance disclo
     const view = await render(createElement(PaymentForms, { data, access }));
     try {
       assert.equal(view.container.querySelector("details"), null);
-      assert.doesNotMatch(
-        view.container.textContent!,
-        /예약금·계좌·변경 조건 안내/,
-      );
+      assert.doesNotMatch(view.container.textContent!, /예약금 안내 편집/);
     } finally {
       await view.unmount();
     }
@@ -557,7 +680,10 @@ test("guidance draft and its disclosure survive a background confirmation with s
     request: async <T>() => ({}) as T,
   };
   function Screen() {
-    const [data, setData] = useState<Completion>({ ...fixture(), issues: [] });
+    const [data, setData] = useState<Completion>({
+      ...rejectedChangeFixture(),
+      issues: [],
+    });
     return createElement(
       "div",
       null,
@@ -578,15 +704,18 @@ test("guidance draft and its disclosure survive a background confirmation with s
   }
   const view = await render(createElement(Screen));
   try {
-    await act(async () => {
-      view.container.querySelector("summary")!.click();
-    });
-    const form = view.container.querySelector("form")!;
+    const guidance = [...view.container.querySelectorAll("details")].find(
+      (details) =>
+        details.querySelector("summary")?.textContent === "예약금 안내 편집",
+    );
+    assert(guidance);
+    await act(() => guidance.querySelector("summary")!.click());
+    const form = guidance.querySelector("form")!;
     const field = form.querySelector<HTMLInputElement>('input[type="number"]');
     assert(field);
-    await fill(view.container, field.name, "12345");
+    await fill(form, field.name, "12345");
     await click(view.container, "다른 화면에서 확정");
-    assert(view.container.querySelector("details")?.open);
+    assert(guidance.open);
     assert.equal(field.value, "12345");
     assert(form.querySelector("fieldset")?.disabled);
     assert.match(form.textContent!, /최신|바뀌|진행할 수/);

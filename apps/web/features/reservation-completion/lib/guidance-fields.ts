@@ -1,6 +1,9 @@
 import type { Completion } from "../types/completion.types";
 import type { Field } from "../types/command-field";
 import { isoDate, localDate } from "./command-values";
+const requiresDeposit = (values: Partial<Record<string, string>>) =>
+  values.kind === "REQUIRED";
+
 export const guidanceFields = (
   q: Completion,
   useRegisteredAccount = false,
@@ -16,20 +19,23 @@ export const guidanceFields = (
   },
   {
     name: "amount",
-    label: "예약금 (원, 불필요하면 0)",
+    label: "예약금 (원)",
+    when: requiresDeposit,
     type: "number",
-    value: String(q.guidance.amount ?? 0),
+    minValue: 1,
+    value: q.guidance.amount ? String(q.guidance.amount) : "",
   },
   {
     name: "deadline",
-    label: "입금 기한 (예약금 있을 때 필수)",
+    label: "입금 기한",
+    when: requiresDeposit,
     type: "datetime-local",
     value: localDate(q.guidance.deadline),
-    optional: true,
   },
   {
     name: "channel",
     label: "계좌 안내 방식",
+    when: requiresDeposit,
     value: q.guidance.channel === "PENDING" ? "SMS" : q.guidance.channel,
     options: [
       { value: "SMS", label: "문자로만 안내" },
@@ -40,23 +46,23 @@ export const guidanceFields = (
     ? [
         {
           name: "bank",
-          label: "은행 (예약금 있을 때 필수)",
+          label: "은행",
+          when: requiresDeposit,
           value: q.guidance.bank,
-          optional: true,
           max: 80,
         },
         {
           name: "account",
-          label: "계좌번호 (예약금 있을 때 필수)",
+          label: "계좌번호",
+          when: requiresDeposit,
           value: q.guidance.account,
-          optional: true,
           max: 100,
         },
         {
           name: "holder",
-          label: "예금주 (예약금 있을 때 필수)",
+          label: "예금주",
+          when: requiresDeposit,
           value: q.guidance.holder,
-          optional: true,
           max: 80,
         },
       ]
@@ -70,9 +76,9 @@ export const guidanceFields = (
   },
   {
     name: "webConsent",
-    label: "화면 표시 선택 시 계좌 공개에 동의해요",
+    label: "이 예약의 총무에게 계좌를 공개하는 데 동의해요",
+    when: (v) => requiresDeposit(v) && v.channel === "WEB",
     type: "checkbox",
-    optional: true,
   },
 ];
 export const buildGuidance = (
@@ -80,14 +86,15 @@ export const buildGuidance = (
   depositAccountRevision?: number,
 ) => ({
   kind: v.kind,
-  amount: Number(v.amount),
-  deadline: v.deadline ? isoDate(v.deadline) : null,
-  channel: v.channel,
-  bank: v.bank ?? "",
-  account: v.account ?? "",
-  holder: v.holder ?? "",
+  amount: v.kind === "REQUIRED" ? Number(v.amount) : 0,
+  deadline: v.kind === "REQUIRED" && v.deadline ? isoDate(v.deadline) : null,
+  channel: v.kind === "REQUIRED" ? v.channel : "SMS",
+  bank: v.kind === "REQUIRED" ? (v.bank ?? "") : "",
+  account: v.kind === "REQUIRED" ? (v.account ?? "") : "",
+  holder: v.kind === "REQUIRED" ? (v.holder ?? "") : "",
   policy: v.policy,
-  webConsent: v.webConsent === "yes",
+  webConsent:
+    v.kind === "REQUIRED" && v.channel === "WEB" && v.webConsent === "yes",
   ...(v.kind === "REQUIRED" &&
     depositAccountRevision !== undefined && { depositAccountRevision }),
 });

@@ -10,10 +10,12 @@ import {
 export function AgreementTerms({
   data: q,
   compact = false,
+  merchant = false,
   onOpen,
 }: {
   data: Completion;
   compact?: boolean;
+  merchant?: boolean;
   onOpen?: () => void;
 }) {
   const a = q.agreement;
@@ -43,11 +45,13 @@ export function AgreementTerms({
     ["변경·취소", a.changeCancellationPolicy || "미확인"],
     ["추가 안내", a.note || "없음"],
   ];
-  const visibleRows = compact
-    ? rows.filter(([label]) =>
-        ["날짜·시간", "인원", "공간", "최소 주문"].includes(label),
-      )
-    : rows;
+  const visibleRows = rows.filter(([label, value]) => {
+    if (merchant && (value === "미확인" || (label === "추가 안내" && !a.note)))
+      return false;
+    return (
+      !compact || ["날짜·시간", "인원", "공간", "최소 주문"].includes(label)
+    );
+  });
   return (
     <section
       id={`reservation-terms-${q.id}`}

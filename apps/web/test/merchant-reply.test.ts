@@ -157,6 +157,49 @@ function merchantInquiryFixture(): MerchantInquiry {
   return inquiry;
 }
 
+test("first reply uses the stored no-deposit policy without opening the fee field", async () => {
+  const inquiry = merchantInquiryFixture();
+  let deposit: unknown;
+  const view = await render(
+    createElement(ReplyWorkspace, {
+      targetId: inquiry.targetId,
+      access: {
+        kind: "owner",
+        accountId: merchantAccount.id,
+        request: async <T>(_path: string, options?: RequestInit) => {
+          if (options?.method === "POST") {
+            deposit = JSON.parse(String(options.body)).reply.proposal.deposit;
+            return { version: 1, response: null } as T;
+          }
+          return inquiry as T;
+        },
+      },
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /요청 조건으로 가능/),
+    );
+    await click(view.container, "요청 조건으로 가능");
+    const fee = view.container
+      .querySelector('[name="proposal.deposit.amount"]')
+      ?.closest("details");
+    assert(fee);
+    assert.equal(fee.open, false);
+    assert.match(fee.querySelector("summary")!.textContent!, /예약금 없음/);
+    await fill(view.container, "usageHours", "2");
+    await act(() =>
+      view.container
+        .querySelector<HTMLInputElement>('[name="holdConfirmed"]')!
+        .click(),
+    );
+    await submit(view.container);
+    await until(() => assert.deepEqual(deposit, { kind: "NONE", amount: 0 }));
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("merchant proposal deadlines use Korean wall time and respect the original event even after postponement", () => {
   const original = {
     ...merchantInquiryFixture().defaults.proposal,
@@ -466,10 +509,7 @@ test("owner and link show the saved first reply and keep the submission key acro
         });
         await submit(view.container);
         await until(() =>
-          assert.match(
-            view.container.textContent!,
-            /이미 변경 제안을 보냈어요/,
-          ),
+          assert.match(view.container.textContent!, /조건 변경을 제안했어요/),
         );
         assert.equal(writes.length, 2);
         assert.deepEqual(writes[1], writes[0]);
@@ -492,7 +532,7 @@ test("owner and link show the saved first reply and keep the submission key acro
         await until(() =>
           assert.match(
             reopened.container.textContent!,
-            /이미 변경 제안을 보냈어요/,
+            /조건 변경을 제안했어요/,
           ),
         );
         assert.match(reopened.container.textContent!, /30,000원/);
@@ -511,7 +551,7 @@ test("owner and link show the saved first reply and keep the submission key acro
         await until(() =>
           assert.match(
             expired.container.textContent!,
-            /이미 변경 제안을 보냈어요/,
+            /조건 변경을 제안했어요/,
           ),
         );
         assert.match(
