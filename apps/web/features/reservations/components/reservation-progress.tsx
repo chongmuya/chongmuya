@@ -1,6 +1,9 @@
 "use client";
-import { CompletionWorkspace } from "@/features/reservation-completion/client";
-import { useState } from "react";
+import {
+  CompletionSteps,
+  CompletionWorkspace,
+} from "@/features/reservation-completion/client";
+import { useId, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,6 +19,7 @@ import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { inquiryQuery, inquiryKey } from "../api/reservations.api";
 import { useReservationDecision } from "../hooks/use-reservation-decision";
 import { ConditionSummary } from "./condition-summary";
+import { InquiryNotice } from "./inquiry-notice";
 import { ProposalCard, candidateLabels } from "./proposal-card";
 import { RebookingCard } from "./rebooking-card";
 import type {
@@ -24,17 +28,18 @@ import type {
 } from "../types/inquiry.types";
 
 type Target = ReservationRequest["targets"][number];
-export function InquiryReceipt({
+function InquiryReceipt({
   inquiry: q,
-  showEventLink = false,
   onDecide,
   busy = false,
 }: {
   inquiry: ReservationRequest;
-  showEventLink?: boolean;
   onDecide?: (action: "select" | "decline", target: Target) => void;
   busy?: boolean;
 }) {
+  const [sentRequestOpen, setSentRequestOpen] = useState(false);
+  const sentRequestTitle = useId();
+  const comparing = !q.selection && !q.canReinquire;
   const available = q.targets.filter((t) => t.canSelect).length,
     waiting = q.targets.filter(
       (t) =>
@@ -45,29 +50,37 @@ export function InquiryReceipt({
   const reinquire = `/restaurants?event=${q.eventId}&inquiry=1&reinquire=${q.id}`;
   return (
     <section className="my-6 space-y-5 text-copy">
-      {showEventLink && (
-        <h1 className="text-2xl font-bold">{q.snapshot.eventName}</h1>
+      {!q.selection && (
+        <div className="pb-9">
+          <CompletionSteps current={1} />
+        </div>
       )}
-      <ol
-        aria-label="예약 진행"
-        className="mb-10 grid grid-cols-4 gap-2 text-center text-xs"
-      >
-        {["조건 입력", "매장 선택", "메뉴·예약금", "예약 확정"].map(
-          (label, i) => (
-            <li
-              key={label}
-              className={
-                i === (q.selection ? 2 : 1) ? "text-brand" : "text-muted"
-              }
-            >
-              <span className="mx-auto mb-2 flex size-5 items-center justify-center rounded-full border border-current">
-                {i < (q.selection ? 2 : 1) ? "✓" : i + 1}
-              </span>
-              {label}
-            </li>
-          ),
+      <header className="flex items-center justify-between gap-3">
+        {comparing && (
+          <div className="min-w-0">
+            <h2 className="text-base leading-tight font-medium break-keep">
+              답변이 도착한 매장을 확인해요
+            </h2>
+            <p className="mt-2 text-xs text-muted" aria-live="polite">
+              예약 가능 {available}곳 · 응답 대기 {waiting}곳
+            </p>
+          </div>
         )}
-      </ol>
+        <Button
+          variant="outline"
+          className="ml-auto min-h-[45px] shrink-0 gap-2 rounded-control border-placeholder px-3 py-2 text-sm leading-tight text-muted"
+          aria-haspopup="dialog"
+          onClick={() => setSentRequestOpen(true)}
+        >
+          <Image
+            src="/images/reservations/sent-request.svg"
+            alt=""
+            width={15}
+            height={20}
+          />
+          보낸 요청 보기
+        </Button>
+      </header>
       {q.selection ? (
         <div className="space-y-4 rounded-card bg-surface p-6 shadow-card">
           <p className="text-xs text-brand">매장 선택 당시 응답</p>
@@ -79,10 +92,6 @@ export function InquiryReceipt({
           )}
           <p className="text-sm">
             선택 당시 조건을 보존한 이력이에요. 현재 메뉴·입금·확정 상태는 예약
-            관리에서 확인해 주세요.
-          </p>
-          <p className="text-xs text-muted">
-            선택 당시 조건과 답변은 이력으로 보존돼요. 최신 예약 진행은 위 예약
             관리에서 확인해 주세요.
           </p>
         </div>
@@ -130,25 +139,10 @@ export function InquiryReceipt({
           </Link>
         </div>
       ) : (
-        <>
-          <header className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-medium">
-                답변이 도착한 매장을 확인해요
-              </h2>
-              <p className="mt-2 text-xs text-muted">
-                선택 가능 {available}곳 · 응답 대기 {waiting}곳
-              </p>
-            </div>
-            <span className="shrink-0 text-xs text-muted">
-              {q.round ?? 1}회차
-            </span>
-          </header>
-          <p className="rounded-control bg-choice px-4 py-3 text-xs shadow-control">
-            모든 답변을 기다리지 않아도 괜찮아요.
-            <br />한 곳을 선택하면 다른 매장의 문의는 종료돼요.
-          </p>
-        </>
+        <InquiryNotice>
+          <p>모든 답변을 기다리지 않아도 괜찮아요.</p>
+          <p>한 곳을 선택하면 다른 매장의 문의는 종료돼요.</p>
+        </InquiryNotice>
       )}
       {q.canReinquire || q.selection ? (
         <>
@@ -172,28 +166,43 @@ export function InquiryReceipt({
         </>
       ) : (
         <ul className="space-y-5">
-          {q.targets.map((t) => (
-            <ProposalCard
-              key={t.id}
-              target={t}
-              onDecide={onDecide}
-              busy={busy}
-            />
-          ))}
+          {q.targets
+            .toSorted((a, b) => Number(!!b.canSelect) - Number(!!a.canSelect))
+            .map((t) => (
+              <ProposalCard
+                key={t.id}
+                target={t}
+                onDecide={onDecide}
+                busy={busy}
+              />
+            ))}
         </ul>
       )}
-      <details className="rounded-control bg-surface p-5 text-sm shadow-card">
-        <summary className="cursor-pointer font-semibold">
-          보낸 요청 보기
-        </summary>
-        <div className="mt-4">
+      {sentRequestOpen && (
+        <Dialog
+          labelledBy={sentRequestTitle}
+          onClose={() => setSentRequestOpen(false)}
+          showCloseButton
+          dismissOnBackdrop
+          className="space-y-4 text-sm text-copy"
+        >
+          <h2 id={sentRequestTitle} className="text-xl font-semibold">
+            보낸 예약 문의
+          </h2>
           <ConditionSummary conditions={q.snapshot} />
-        </div>
-        <InquiryDetails
-          conditions={q.snapshot}
-          contact={{ name: q.contact.name, phone: q.contact.maskedPhone }}
-        />
-      </details>
+          <InquiryDetails
+            conditions={q.snapshot}
+            contact={{ name: q.contact.name, phone: q.contact.maskedPhone }}
+          />
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setSentRequestOpen(false)}
+          >
+            확인
+          </Button>
+        </Dialog>
+      )}
       {!!q.notifications?.length && (
         <details className="text-xs">
           <summary className="cursor-pointer">안내 문자 전달 상태</summary>
@@ -218,25 +227,19 @@ export function InquiryReceipt({
           </ul>
         </details>
       )}
-      {showEventLink && (
-        <Link
-          className={buttonStyles({ variant: "outline", className: "w-full" })}
-          href={`/events?event=${q.eventId}`}
-        >
-          행사로 돌아가기
-        </Link>
-      )}
     </section>
   );
 }
-function DecisionReceipt({
+export function DecisionReceipt({
   inquiry,
   accountId,
   request,
+  showEventLink = false,
 }: {
   inquiry: ReservationRequest;
   accountId: string;
   request: SessionRequest;
+  showEventLink?: boolean;
 }) {
   const [decision, setDecision] = useState<{
     action: "select" | "decline";
@@ -253,6 +256,11 @@ function DecisionReceipt({
     active = useActiveScreen();
   return (
     <>
+      {showEventLink && (
+        <h1 className="mt-6 text-2xl font-bold wrap-break-word">
+          {inquiry.snapshot.eventName}
+        </h1>
+      )}
       <FormError
         message={action.error ? safeErrorMessage(action.error) : undefined}
       />
@@ -331,6 +339,14 @@ function DecisionReceipt({
             </Button>
           </div>
         </Dialog>
+      )}
+      {showEventLink && (
+        <Link
+          className={buttonStyles({ variant: "outline", className: "w-full" })}
+          href={`/events?event=${inquiry.eventId}`}
+        >
+          행사로 돌아가기
+        </Link>
       )}
     </>
   );

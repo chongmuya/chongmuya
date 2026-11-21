@@ -1,0 +1,8 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="15" height="20" viewBox="0 0 15 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Group 17">
+<path id="Rectangle 25" d="M11 2.5C12.4045 2.5 13.1067 2.5 13.6111 2.83706C13.8295 2.98298 14.017 3.17048 14.1629 3.38886C14.5 3.89331 14.5 4.59554 14.5 6V15.5C14.5 17.3856 14.5 18.3284 13.9142 18.9142C13.3284 19.5 12.3856 19.5 10.5 19.5H4.5C2.61438 19.5 1.67157 19.5 1.08579 18.9142C0.500001 18.3284 0.500001 17.3856 0.500001 15.5V6C0.500001 4.59554 0.500001 3.89331 0.837061 3.38886C0.982979 3.17048 1.17048 2.98298 1.38886 2.83706C1.89331 2.5 2.59554 2.5 4 2.5" stroke="black" stroke-opacity="0.5"/>
+<path id="Rectangle 26" d="M6.5 4.5H8.5C9.60457 4.5 10.5 3.60457 10.5 2.5C10.5 1.39543 9.60457 0.5 8.5 0.5H6.5C5.39543 0.5 4.5 1.39543 4.5 2.5C4.5 3.60457 5.39543 4.5 6.5 4.5Z" stroke="black" stroke-opacity="0.5"/>
+<path id="Vector 55" d="M4.5 9.5L10.5 9.5" stroke-linecap="round" stroke="black" stroke-opacity="0.5"/>
+<path id="Vector 58" d="M4.5 13.5L8.5 13.5" stroke-linecap="round" stroke="black" stroke-opacity="0.5"/>
+</g>
+</svg>

@@ -98,6 +98,86 @@ function selected(q: ReservationRequest): ReservationRequest {
   };
 }
 
+test("the receipt stays above the cards and a changed reply replaces the waiting state", async () => {
+  const q = fixture();
+  const proposal = q.targets[0];
+  const waiting = {
+    ...proposal,
+    candidateState: "AWAITING_REPLY",
+    canSelect: false,
+    response: null,
+  };
+  let inquiry: ReservationRequest = {
+    ...q,
+    responseCount: 0,
+    targets: [waiting],
+  };
+  const request: SessionRequest = async <T>() => ({ request: inquiry }) as T;
+  const view = await render(
+    createElement(ReservationProgress, {
+      accountId: "a",
+      eventId: q.eventId,
+      request,
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(
+        view.container.textContent!,
+        /예약 가능 0곳 · 응답 대기 1곳/,
+      ),
+    );
+    assert.match(view.container.textContent!, /확정 입금/);
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /1회차|메뉴 · 매장 정보|수락/,
+    );
+    assert.match(
+      view.container.querySelector("header")!.textContent!,
+      /보낸 요청 보기/,
+    );
+    await click(view.container, "보낸 요청 보기");
+    assert.match(
+      view.container.querySelector("dialog[open]")!.textContent!,
+      /010-\*{4}-1234/,
+    );
+    await click(view.container, "확인");
+    assert.equal(view.container.querySelector("dialog"), null);
+
+    const reply = proposal.response!;
+    inquiry = {
+      ...q,
+      targets: [
+        {
+          ...proposal,
+          response: {
+            ...reply,
+            kind: "CHANGE",
+            snapshot: {
+              ...reply.snapshot,
+              offered: {
+                ...reply.snapshot.offered!,
+                startsAt: "2099-12-01T09:30:00.000Z",
+              },
+            },
+          },
+        },
+      ],
+    };
+    await act(async () => void (await view.cache.refetchQueries()));
+    await until(() => assert.match(view.container.textContent!, /조건 불일치/));
+    assert.match(view.container.textContent!, /18:00 → 18:30/);
+    assert.match(view.container.textContent!, /선택 기한이 지나면/);
+    await click(view.container, "수락");
+    assert.match(
+      view.container.querySelector("dialog[open]")!.textContent!,
+      /이 매장 선택/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("selection retries keep the seen revision and key; refresh shows the saved preparation state", async () => {
   let q = fixture();
   q.targets[0].response!.snapshot.offered!.separateFee = 30000;

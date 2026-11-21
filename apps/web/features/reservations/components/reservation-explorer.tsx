@@ -47,7 +47,7 @@ import { koreanDateInput } from "@/shared/lib/korean-date";
 import { InquiryReview } from "./inquiry-review";
 import { isAccessError } from "@/shared/http/access-error";
 import type { ReservationRequest } from "../types/inquiry.types";
-import { InquiryReceipt } from "./reservation-progress";
+import { DecisionReceipt } from "./reservation-progress";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -318,7 +318,13 @@ function InquiryFlow({
             최신 상태를 확인하지 못했어요. 마지막 접수 내역입니다.
           </ErrorState>
         )}
-        <InquiryReceipt inquiry={existing.data} showEventLink />
+        <DecisionReceipt
+          key={existing.data.id}
+          inquiry={existing.data}
+          accountId={account.id}
+          request={request}
+          showEventLink
+        />
       </StepLayout>
     );
   if (event.data.expectedGuests == null)

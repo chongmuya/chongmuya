@@ -4,6 +4,7 @@ import { test, type TestContext } from "node:test";
 import { act, createElement, useSyncExternalStore } from "react";
 import { SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { AuthProvider } from "../features/auth/components/auth-provider";
+import { inquiryKey } from "../features/reservations/api/reservations.api";
 import { ReservationExplorer } from "../features/reservations/components/reservation-explorer";
 import { restaurantQuery } from "../features/restaurants/api/restaurants.api";
 import type {
@@ -313,6 +314,104 @@ test("an older event registers its estimate once before inquiry conditions", asy
     { expectedVersion: 1, expectedGuests: 24 },
   ]);
   assert.equal(fixture.posts.length, 0);
+});
+
+test("a saved inquiry lets the organizer accept a matching reply while another restaurant is still waiting", async (t) => {
+  const { container, cache, fixture } = await fixtureForTest(t, "list");
+  const snapshot: ReservationRequest["snapshot"] = {
+    eventName: event.name,
+    groupName: null,
+    groupType: null,
+    startsAt: event.scheduledAt,
+    expectedGuests: 24,
+    region: "건대입구",
+    seating: "ANY",
+    space: "ANY",
+    seatingImportance: null,
+    spaceImportance: null,
+    budgetBasis: null,
+    budgetAmount: null,
+    alcohol: null,
+    additionalRequests: null,
+  };
+  fixture.receipt = {
+    id: crypto.randomUUID(),
+    eventId: event.id,
+    createdAt: "2099-11-20T00:00:00.000Z",
+    status: "RECEIVED",
+    lifecycle: "ACTIVE",
+    version: 2,
+    responseCount: 1,
+    snapshot,
+    contact: {
+      name: account.name,
+      maskedPhone: "010****0000",
+      phoneVerifiedAt: null,
+    },
+    targets: [
+      {
+        id: crypto.randomUUID(),
+        restaurantId: a.id,
+        restaurantName: a.name,
+        address: "가상 주소",
+        isDemo: true,
+        deliveryStatus: "ACCEPTED",
+        candidateState: "PROPOSED",
+        canSelect: true,
+        response: {
+          kind: "AVAILABLE",
+          revision: 1,
+          state: "PROPOSED",
+          createdAt: "2099-11-20T01:00:00.000Z",
+          expiresAt: "2099-11-23T00:00:00.000Z",
+          reason: "",
+          snapshot: {
+            ...snapshot,
+            requested: snapshot,
+            offered: {
+              ...snapshot,
+              minimumSpend: 50000,
+              separateFee: null,
+              deposit: { kind: "NONE", amount: 0 },
+              menuDeadlineAt: null,
+              changeCancellationPolicy: "전날까지 변경 가능",
+              note: "",
+            },
+          },
+        },
+      },
+      {
+        id: crypto.randomUUID(),
+        restaurantId: b.id,
+        restaurantName: b.name,
+        address: "가상 주소",
+        isDemo: true,
+        deliveryStatus: "ACCEPTED",
+        candidateState: "AWAITING_REPLY",
+        canSelect: false,
+        response: null,
+      },
+    ],
+  };
+  await act(async () => {
+    await cache.refetchQueries({ queryKey: inquiryKey(account.id, event.id) });
+  });
+  await until(() => {
+    assert.match(container.textContent!, /예약 가능 1곳 · 응답 대기 1곳/);
+    assert.equal(button(container, "수락").disabled, false);
+  });
+  assert.match(
+    button(container, "수락").closest("li")!.textContent!,
+    /조건 일치/,
+  );
+  assert.match(container.textContent!, /50,000원.*전날까지 변경 가능/);
+  assert.doesNotMatch(
+    container.textContent!,
+    /메뉴·이용·변경 조건|메뉴 · 매장 정보/,
+  );
+  await click(container, "수락");
+  assert.match(sheet(container).textContent!, /온기식탁을 선택할까요/);
+  assert.equal(button(sheet(container), "이 매장 선택").disabled, false);
 });
 
 test("an old first-review link returns to the list and a changed event requires confirmation before sending again", async (t) => {

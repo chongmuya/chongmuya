@@ -6,7 +6,7 @@ export function CompletionSteps({ current }: { current: 1 | 2 | 3 }) {
       aria-label="예약 진행 단계"
       className="relative mx-auto grid w-full max-w-[333px] grid-cols-[repeat(3,minmax(0,1fr))_48px] text-center text-xs leading-[14px] text-brand-ink"
     >
-      {["조건 입력", "매장 선택", "메뉴·예약금", "매장 확인"].map(
+      {["조건 입력", "매장 선택", "확정 입금", "매장 확인"].map(
         (label, index) => (
           <li
             key={label}
@@ -48,9 +48,11 @@ export function CompletionSteps({ current }: { current: 1 | 2 | 3 }) {
                   </span>
                 </>
               ) : (
-                <span
-                  aria-hidden="true"
-                  className="size-[18px] rounded-full border border-placeholder bg-surface"
+                <Image
+                  src="/images/reservations/progress-upcoming.svg"
+                  width={19}
+                  height={19}
+                  alt=""
                 />
               )}
             </span>
