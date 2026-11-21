@@ -9,6 +9,7 @@ import { ApiError } from "@/shared/http/api-error";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { ChoiceCard } from "@/shared/ui/choice-card";
 import { Dialog } from "@/shared/ui/dialog";
+import { MenuLink } from "@/shared/ui/menu-link";
 import { StepHeading, StepLayout } from "@/shared/ui/step-layout";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import type { WithdrawalStatus } from "../api/withdrawal.api";
@@ -37,14 +38,7 @@ const dataRows = [
 ];
 
 export function WithdrawalEntry() {
-  return (
-    <Link
-      href="/mypage/withdrawal"
-      className="flex min-h-control items-center justify-between gap-3 py-2 text-base"
-    >
-      회원 탈퇴 <span aria-hidden>›</span>
-    </Link>
-  );
+  return <MenuLink href="/mypage/withdrawal">회원 탈퇴</MenuLink>;
 }
 
 export function AccountWithdrawalScreen() {

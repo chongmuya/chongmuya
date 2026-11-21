@@ -119,7 +119,7 @@ function NoticeForm({
             ).map(([scope, label]) => (
               <label
                 key={scope}
-                className={`cursor-pointer rounded-pill p-3 text-center text-sm ${v.scope === scope ? "bg-brand text-copy" : "text-secondary"}`}
+                className={`cursor-pointer rounded-pill p-3 text-center text-sm ${v.scope === scope ? "bg-brand text-white" : "text-secondary"}`}
               >
                 <input
                   className="sr-only"

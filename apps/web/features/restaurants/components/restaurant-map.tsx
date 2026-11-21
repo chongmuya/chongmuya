@@ -129,7 +129,7 @@ export function RestaurantMap({
           const label = document.createElement("button");
           label.type = "button";
           label.className =
-            "-translate-x-1/2 -translate-y-full whitespace-nowrap rounded-control bg-brand px-3 py-3 text-sm font-semibold text-copy shadow-control";
+            "-translate-x-1/2 -translate-y-full whitespace-nowrap rounded-control bg-brand px-3 py-3 text-sm font-semibold text-white shadow-control";
           label.textContent = restaurant.name;
           label.addEventListener("click", () => open.current(restaurant.id));
           markers.push(

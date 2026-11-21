@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { Dialog } from "./dialog";
 
 export function NoticeDialog({
@@ -13,16 +13,23 @@ export function NoticeDialog({
   onClose: () => void;
 }) {
   const id = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
   return (
     <Dialog
       showCloseButton
       labelledBy={`${id}-title`}
       describedBy={`${id}-description`}
+      initialFocusRef={heading}
       onClose={onClose}
       className="max-w-[362px] space-y-7 text-center"
     >
       <div>
-        <h2 id={`${id}-title`} className="text-2xl leading-normal font-bold">
+        <h2
+          ref={heading}
+          id={`${id}-title`}
+          tabIndex={-1}
+          className="text-2xl leading-normal font-bold focus:outline-none"
+        >
           {title}
         </h2>
         <p

@@ -174,7 +174,7 @@ export function PublicAttendance({ shareId }: { shareId: string }) {
                   ? koreanDateLabel(info.data.scheduledAt)
                   : "행사 일정 미정"}
               </p>
-              <span className="absolute -top-3 right-[18px] flex min-h-[46px] min-w-[51px] items-center justify-center rounded-pill bg-brand px-3 text-base font-medium text-copy">
+              <span className="absolute -top-3 right-[18px] flex min-h-[46px] min-w-[51px] items-center justify-center rounded-pill bg-brand px-3 text-base font-medium text-white">
                 {info.data.roundTitle}
               </span>
             </section>

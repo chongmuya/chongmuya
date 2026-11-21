@@ -30,7 +30,7 @@ export function NotificationBadge({
       href="/notifications"
       className={cn(
         "relative flex min-h-11 min-w-11 items-center justify-center rounded-full",
-        !icon && "bg-brand px-3 text-copy",
+        !icon && "bg-brand px-3 text-white",
       )}
       aria-label={`알림${q.data && !isAccessError(q.error) ? ` 미읽음 ${q.data.unread}개` : ""}`}
     >

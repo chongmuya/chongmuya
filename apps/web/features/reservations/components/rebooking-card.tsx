@@ -63,7 +63,7 @@ export function RebookingCard({
             </p>
             <Link
               href={`/restaurants?event=${inquiry.eventId}&inquiry=1&reinquire=${inquiry.id}&view=list`}
-              className="inline-flex min-h-11 items-center gap-5 rounded-control bg-brand px-3.5 py-4 text-xs leading-[normal] text-copy"
+              className="inline-flex min-h-11 items-center gap-5 rounded-control bg-brand px-3.5 py-4 text-xs leading-[normal] text-white"
             >
               매장 선택하기
               <Image

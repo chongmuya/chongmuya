@@ -81,7 +81,7 @@ export function AttendanceWorkspace({
                 aria-current={round.id === roundId ? "page" : undefined}
                 className={cn(
                   "rounded-pill border border-brand px-4 py-2 text-sm",
-                  round.id === roundId ? "bg-brand text-copy" : "text-brand",
+                  round.id === roundId ? "bg-brand text-white" : "text-brand",
                 )}
               >
                 {round.title}

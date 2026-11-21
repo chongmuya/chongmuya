@@ -4,7 +4,7 @@ import { cn } from "../lib/cn";
 type Variant = "solid" | "outline" | "brand-outline" | "ink" | "kakao";
 const variants: Record<Variant, string> = {
   solid:
-    "border-brand bg-brand text-copy not-disabled:hover:bg-brand/90 not-disabled:active:bg-brand/80",
+    "border-brand bg-brand text-white not-disabled:hover:bg-brand/90 not-disabled:active:bg-brand/80",
   outline:
     "border-brand-ink bg-transparent text-brand-ink [&:not(:disabled):hover]:bg-brand-ink/5",
   "brand-outline":

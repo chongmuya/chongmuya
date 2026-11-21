@@ -623,7 +623,7 @@ function Loaded({
               aria-selected={tab === id}
               aria-controls={`${tabsId}-panel-${id}`}
               tabIndex={tab === id ? 0 : -1}
-              className={`min-h-control flex-1 rounded-pill px-2 text-xs ${tab === id ? "bg-brand text-copy" : "text-secondary"}`}
+              className={`min-h-control flex-1 rounded-pill px-2 text-xs ${tab === id ? "bg-brand text-white" : "text-secondary"}`}
               onClick={() => setTab(id)}
               onKeyDown={(event) => {
                 const count = settlementTabs.length;
@@ -671,7 +671,7 @@ function Loaded({
                 className="flex flex-wrap items-center justify-between gap-3"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <span className="shrink-0 rounded-lg bg-brand px-2 py-3 text-copy">
+                  <span className="shrink-0 rounded-lg bg-brand px-2 py-3 text-white">
                     {data.facts.rounds.find((r) => r.id === e.roundId)?.title ??
                       "차수"}
                   </span>

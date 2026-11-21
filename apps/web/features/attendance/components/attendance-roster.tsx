@@ -92,7 +92,7 @@ export function AttendanceRoster({
                       className={cn(
                         "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold",
                         person.response.finalState === value
-                          ? "bg-brand text-copy"
+                          ? "bg-brand text-white"
                           : "text-secondary",
                       )}
                     >
