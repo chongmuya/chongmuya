@@ -20,15 +20,7 @@ import/update/menu-prices는 `--execute`가 있어야 반영한다. actor/reason
 
 ## 로컬 준비
 
-`.nvmrc`와 `packageManager`의 버전을 사용한다. `apps/api/.env.example`을 `apps/api/.env`로 준비하고 DATABASE_URL을 저장소 로컬 Compose와 맞춘다. `MESSAGE_PROVIDER=fake`, 로컬 WEB_ORIGIN, 개발용 AUTH_SECRET을 사용한다. 시드는 무관한 외부 서비스 키를 읽거나 공급자를 실행하지 않는다.
-
-```sh
-pnpm install --frozen-lockfile
-pnpm db:up
-pnpm --filter @chongmuya/api build
-pnpm --filter @chongmuya/api db:migration:run
-pnpm db:seed
-```
+[README의 로컬 시작 절차](../README.md#로컬-시작)로 API 환경변수, DB, migration과 개발 seed를 준비한다.
 
 demo 계정의 최초 비밀번호는 `Demo1234!`다. `DEMO_SEED_PASSWORD`로 최초 생성 비밀번호를 바꿀 수 있으며 기존 비밀번호는 재실행해도 유지한다. 외부 인증 없이 다음 이메일로 일반 로그인할 수 있다.
 
@@ -63,29 +55,7 @@ pnpm --filter @chongmuya/api db:demo:links
 
 재실행은 기존 계정·명단·매장 수정과 삭제·동의 철회·소유권 해제를 보존하며 링크 만료를 연장하지 않는다. 새 `--set`은 공용 계정·매장을 재사용하고 행사 시나리오만 추가한다. 특정 세트만 다시 만들려면 `pnpm db:seed --set second --recreate`를 사용한다. 이 명령은 해당 세트의 행사·참석·문의 수정을 삭제한다. 예약 선택·제안 거절·예약 진행 기록, 정산 변경 기록, 증빙 파일이 생긴 세트는 보존하며 새 세트를 안내한다.
 
-로컬 부분 수정도 아래 운영 도구의 update를 사용할 수 있다. 개발용 000 번호를 운영 import/update에 전달하지 않는다. 개발 fixture의 고정 c021/c022/c023 ID는 `show --id`로 확인하고 자원 ID로 수정한다.
-
-예를 들어 `data:restaurants show --id c0210000-0000-4000-8000-000000000001`로 version을 확인한 뒤, 아래 파일의 expectedVersion을 조회 값으로 맞춘다. 파일을 0600으로 저장하고 `data:restaurants update --file <파일> --actor local-dev --reason '가상 매장 메뉴 수정'`으로 미리보기한 다음 `--execute`로 반영한다.
-
-```json
-{
-  "restaurants": [
-    {
-      "id": "c0210000-0000-4000-8000-000000000001",
-      "expectedVersion": 1,
-      "changes": {
-        "menus": [
-          {
-            "action": "update",
-            "id": "c0230000-0000-4000-8000-000000000001",
-            "changes": { "price": 12000 }
-          }
-        ]
-      }
-    }
-  ]
-}
-```
+기존 로컬 fixture를 수정할 때도 `data:restaurants update`와 [부분 수정 JSON](#부분-수정-json)을 사용한다. 예를 들어 `show --id c0210000-0000-4000-8000-000000000001`로 대상 매장의 version과 공간·메뉴 ID를 조회한다. 개발용 000 번호는 로컬 fixture에만 둔다.
 
 ## 초기 등록 JSON
 

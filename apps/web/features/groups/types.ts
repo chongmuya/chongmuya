@@ -1,1 +1,1 @@
-export type { Group, GroupMember, MemberHistory } from "./types/group.types";
+export type { GroupMember, MemberHistory } from "./types/group.types";

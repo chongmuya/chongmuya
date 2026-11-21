@@ -1,1 +1,1 @@
-export type { Restaurant, BrowseNavigation } from "./types/restaurant.types";
+export type { BrowseNavigation } from "./types/restaurant.types";

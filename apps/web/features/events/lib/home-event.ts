@@ -41,8 +41,6 @@ export function featuredEvent(
 
 export function reservationLabel(summary?: EventSummary) {
   const reservation = summary?.reservation;
-  if (reservation?.status === "CANCELLED" && reservation.refundedAmount)
-    return "예약 취소 완료";
   if (reservation?.progress === "REFUND_PENDING") return "환불 확인 중";
   if (reservation?.progress === "REFUND_REVIEW") return "환불 협의 중";
   if (reservation?.status === "CANCELLED") return "예약 취소 완료";

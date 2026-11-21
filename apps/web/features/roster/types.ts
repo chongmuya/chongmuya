@@ -1,5 +1,1 @@
-export type {
-  RosterRow,
-  ExistingPerson,
-  ColumnSelection,
-} from "./lib/parse-roster";
+export type { RosterRow, ExistingPerson } from "./lib/parse-roster";

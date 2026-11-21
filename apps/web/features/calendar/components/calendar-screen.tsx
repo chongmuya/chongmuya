@@ -43,7 +43,9 @@ export function CalendarScreen() {
       scheduleId={params.get("schedule") ?? undefined}
     />
   ) : (
-    <AuthScreen />
+    <AuthScreen
+      returnPath={params.size ? `/calendar?${params}` : "/calendar"}
+    />
   );
 }
 function CalendarContent({

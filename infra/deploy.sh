@@ -20,8 +20,9 @@ case "$action" in
       merchant) operation_args=("${@:3}") ;;
       reservations) operation_script=reservation-operations.mjs; operation_args=("${@:3}") ;;
       completion) operation_script=reservation-completion.mjs; operation_args=("${@:3}") ;;
+      withdrawals) operation_script=account-withdrawals.mjs; operation_args=("${@:3}") ;;
       --*|'') ;; # Preserve the existing merchant operations invocation.
-      *) die 'Usage: deploy.sh operations [merchant|reservations|completion] [options]' ;;
+      *) die 'Usage: deploy.sh operations [merchant|reservations|completion|withdrawals] [options]' ;;
     esac ;;
   *) die 'Commands: deploy | rollback | data-restaurants | operations' ;;
 esac

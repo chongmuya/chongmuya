@@ -13,7 +13,7 @@ export type ExistingPerson = {
   phoneLast4: string | null;
   label: string | null;
 };
-export type ColumnSelection = {
+type ColumnSelection = {
   name: number;
   phone: number | null;
   header: boolean;

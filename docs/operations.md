@@ -1,15 +1,15 @@
 # 운영
 
-매장 JSON 입력·개발 seed는 [매장 데이터](restaurant-data.md), 외부 인증은 [인증](authentication.md)에 둔다. 아래 절차는 운영자가 명시적으로 실행하는 기능이다. 문서 확인이나 앱 시작만으로 데이터 등록·migration·장애 복구를 실행하지 않는다.
+매장 JSON 입력·개발 seed는 [매장 데이터](restaurant-data.md), 외부 인증은 [인증](authentication.md), 탈퇴 접수·카카오 연결 해제 복구는 [회원 탈퇴](account-withdrawal.md)에 둔다.
 
 ## 배포와 복구
 
 [배포 워크플로](../.github/workflows/deploy-api.yml)는 이미지와 소스 SHA를 확인하고 [deploy.sh](../infra/deploy.sh)로 EC2에 적용한다. API는 [운영 Compose](../infra/compose.prod.yml), migration·데이터 작업은 [도구 Compose](../infra/compose.tools.yml)를 사용한다. 루트 Compose는 로컬 DB 전용이다.
 
-- 배포 순서는 설정 확인 → migrator 권한으로 migration → API 교체·readiness 확인 → 성공 릴리스 기록이다. 웹은 호환되는 API 전환 후 배포한다. 인수인계처럼 권한 계약이 바뀌는 기능은 이전 API 인스턴스가 남아 있을 때 공개하지 않는다.
+- API 배포 순서는 설정 확인 → migrator 권한으로 migration → API 교체·readiness 확인 → 성공 릴리스 기록이다. 웹과 API의 계약이 함께 바뀌는 경우 양쪽 버전의 호환성을 확인한다. 가입 약관 전환은 [인증 설정](authentication.md#외부-인증-설정)을 따른다.
 - 앱 DML은 Parameter Store `/chongmuya/prod/DATABASE_URL`, migration은 `/chongmuya/deploy/prod/DATABASE_URL`을 사용한다. RDS CA 마운트와 TLS 검증을 유지한다.
-- 현재 링크·알림 구현에는 `1795764000000-NotificationHeldIntent`까지 적용해야 한다. 미적용 migration을 포함한 새 코드는 해당 migration 이후 실행한다. 데이터 JSON은 이미지나 migration에 넣지 않는다.
-- 실패 시 자동으로 이전 스키마로 되돌리지 않는다. [롤백 워크플로](../.github/workflows/rollback-api.yml)는 보존된 성공 릴리스와 현재 DB 호환성을 확인한 뒤 실행한다. 감사 자료를 잃는 down/reset으로 복구하지 않는다.
+- 새 API를 실행하기 전에 해당 이미지의 모든 migration을 적용한다. 현재 예약금·명단·예약 확정 스키마는 [migration 목록](../apps/api/src/database/migrations/)을 기준으로 확인한다.
+- [롤백 워크플로](../.github/workflows/rollback-api.yml)는 현재 DB와 호환되는 성공 릴리스에 사용한다. `1795811000000-RemoveFavorites` 적용 이후의 DB에는 구 즐겨찾기 API가 필요로 하는 테이블이 없다. 스키마 변경으로 이전 앱이 호환되지 않으면 후속 릴리스로 복구한다.
 - `current`는 마지막 성공 릴리스, `previous`는 이전 성공 릴리스다. 일회성 작업은 현재 성공 릴리스의 이미지·설정을 사용하고 API를 중단하거나 포트를 추가하지 않는다.
 
 [Nginx 템플릿](../infra/nginx/api.conf)은 앱 배포가 호스트에 자동 설치하지 않는다. 파일 크기·timeout·전달 헤더 변경은 호스트 설정에도 별도로 반영해야 한다. 웹의 `NEXT_PUBLIC_API_ORIGIN` 변경은 재빌드가 필요하다.
@@ -71,7 +71,10 @@ pnpm --filter @chongmuya/api merchant:operations --action publish --restaurant <
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations merchant --action deliveries
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations reservations --action notifications
 sudo bash /opt/chongmuya/deployment/current/deploy.sh operations completion --action inspect --reservation <예약_UUID>
+sudo bash /opt/chongmuya/deployment/current/deploy.sh operations withdrawals list
 ```
+
+탈퇴 접수 및 카카오 대기 건은 같은 `operations withdrawals` 뒤에 [회원 탈퇴 문서](account-withdrawal.md#웹-접수와-운영-검토)의 `review`, `kakao-list`, `kakao-retry` 인자를 사용한다.
 
 입력 파일이 필요한 예약 대리 명령은 EC2에 0600 파일을 먼저 준비하고, 호스트에는 `OPERATOR_INPUT_FILE`, CLI에는 마운트된 `/run/input.json`을 지정한다. 아래는 미리보기이며 모든 대괄호 자리 값을 실제 확인한 값으로 바꾼다.
 
@@ -108,4 +111,4 @@ receipt 입력은 `requestKey`, `expectedVersion`, `guidanceRevision`, `amount`(
 
 기본 `REMINDERS_ENABLED=false`다. true인 API는 매일 09:00 Asia/Seoul에 다음 날 일정을 처리한다. 09:00 이전 시작은 정시까지 기다리고, 이후 시작은 그날 미처리분만 한 번 보완한다. 실패한 배치만 각 실패 후 1분·5분·15분 간격으로 최대 3회 추가 시도하며, 한국 날짜가 바뀌거나 프로세스가 종료되면 중단한다. 한도 초과는 `REMINDER_RETRIES_EXHAUSTED`로 기록한다.
 
-현재 관리자·일정 세대·삭제·수신 설정을 다시 검사하고 고유 fact와 자원 잠금으로 중복을 막는다. 늦게 생성/변경된 일정과 과거 알림은 소급 생성하지 않는다. 알림함만 기록하며 SMS는 보내지 않는다. 관리 CLI는 Nest 초기화 전에 해당 프로세스의 자동 리마인더를 끄며, 수동 리마인더 CLI는 제거했다. 새 API 이미지 배포 외에 추가 인프라·필수 환경변수·migration은 필요하지 않다.
+현재 관리자·일정 세대·삭제·수신 설정을 다시 검사하고 고유 fact와 자원 잠금으로 중복을 막는다. 늦게 생성/변경된 일정과 과거 알림은 소급 생성하지 않는다. 전날 리마인더는 알림함에 기록한다. 관리 CLI는 Nest 초기화 전에 해당 프로세스의 자동 리마인더를 끈다.
