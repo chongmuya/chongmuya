@@ -1,5 +1,3 @@
-// Figma illustration layers keep their original geometry; the viewBox scales
-// the composition together at narrow widths. Existing brand art is reused.
 export function IntroductionArt({ page }: { page: number }) {
   return (
     <svg

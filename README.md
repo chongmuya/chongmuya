@@ -62,9 +62,7 @@ pnpm dev
 | [아키텍처](docs/architecture.md)       | 책임·의존 경계, 권한·트랜잭션, 업무 불변 조건                  |
 | [인증](docs/authentication.md)         | 쿠키·CSRF·세션, 가입·복구·외부 인증 설정                       |
 | [매장 데이터](docs/restaurant-data.md) | 개발 seed/reset, 비공개 JSON import/update, 메뉴 가격·EC2 실행 |
-| [운영](docs/operations.md)             | 배포 순서, 문자·예약 복구, 파일 저장소, 리마인더               |
+| [운영](docs/operations.md)             | 배포·복구, 예약 문자, 회원 탈퇴, 증빙·리마인더                 |
 | [협업](docs/CONTRIBUTING.md)           | 브랜치·커밋·PR·검증·병합                                       |
-
-현재 명령과 설정은 `package.json`, `.env.example`, CLI `--help`를 기준으로 확인합니다. 과거 PR의 검수 과정·스크린샷·테스트 건수는 PR 이력을 참고합니다.
 
 화면 원본은 [Figma](https://www.figma.com/design/VlhXK42QbSbn4eZxI00MNS), 제품 문서 링크는 [AGENTS.md](AGENTS.md#제품-문서-참고)에 모아 둡니다.

@@ -24,7 +24,7 @@ test("web recognizes the HTTP status of every API domain error", () => {
   }
 });
 
-test("login return paths preserve the same organizer context on both sides", () => {
+test("login return paths preserve the same context on both sides", () => {
   const id = "d4a0081c-790c-42be-b072-6e6012423632";
   for (const path of [
     "/?view=personal",
@@ -43,5 +43,34 @@ test("login return paths preserve the same organizer context on both sides", () 
     "//example.test",
   ]) {
     assert.equal(serverReturn(path), browserReturn(path), path);
+  }
+  for (const [path, expected] of [
+    [
+      `/calendar?schedule=${id}&group=${id}`,
+      `/calendar?group=${id}&schedule=${id}`,
+    ],
+    [
+      `/owner/reservations?reservation=${id}`,
+      `/owner/reservations?reservation=${id}`,
+    ],
+    [`/owner/hours?restaurant=${id}`, `/owner/hours?restaurant=${id}`],
+    ["/notifications", "/notifications"],
+    ["/mypage?view=terms", "/mypage?view=terms"],
+    [
+      `/events?event=${id}&view=settlement&action=expense`,
+      `/events?event=${id}&action=expense&view=settlement`,
+    ],
+    [
+      `/events?event=${id}&view=record&action=expense`,
+      `/events?event=${id}&view=record`,
+    ],
+    ["/events?view=settlement&action=expense", "/events?view=settlement"],
+    [
+      "/owner/reservations?reservation=invalid&next=https://example.test",
+      "/owner/reservations",
+    ],
+  ]) {
+    assert.equal(serverReturn(path), expected, path);
+    assert.equal(browserReturn(path), expected, path);
   }
 });

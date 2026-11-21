@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-export const legalDocumentsVersion = "2026-11-21";
+export const originalLegalDocumentsVersion = "2026-11-21";
+export const legalDocumentsVersion = "2026-11-21-v2";
+export type LegalDocumentsVersion =
+  typeof originalLegalDocumentsVersion | typeof legalDocumentsVersion;
 export const privacyPolicyHref = `/legal/${legalDocumentsVersion}#privacy-policy`;
 
 export const legalDocuments = [
@@ -33,8 +36,8 @@ const contact = (
   </a>
 );
 
-const contents = {
-  serviceTerms: (
+function ServiceTerms({ version }: { version: LegalDocumentsVersion }) {
+  return (
     <>
       <h3>제1조 서비스</h3>
       <p>
@@ -44,10 +47,10 @@ const contents = {
 
       <h3>제2조 회원가입과 계정</h3>
       <p>
-        약관에 동의하고 이메일 또는 카카오 가입 절차를 마치면 총무 계정이
-        만들어집니다. 기존 매장 계정은 부여된 권한으로 매장 기능을 이용할 수
-        있습니다. 행사 참여자는 주최 측이 보낸 링크나 QR로 참석 여부를 응답할 수
-        있습니다.
+        {version === originalLegalDocumentsVersion
+          ? "약관에 동의하고 이메일 또는 카카오 가입 절차를 마치면 총무 계정이 만들어집니다. 기존 매장 계정은 부여된 권한으로 매장 기능을 이용할 수 있습니다. "
+          : "약관에 동의하고 이메일 또는 카카오로 가입한 회원은 첫 설정에서 총무 또는 사장님을 선택할 수 있습니다. 사장님은 등록한 매장의 정보를 관리하고 예약 문의에 답할 수 있습니다. "}
+        행사 참여자는 주최 측이 보낸 링크나 QR로 참석 여부를 응답할 수 있습니다.
       </p>
       <p>
         회원은 본인의 계정을 사용하고 인증 정보를 안전하게 관리해야 합니다. 명의
@@ -99,7 +102,10 @@ const contents = {
         {contact}으로 접수합니다.
       </p>
     </>
-  ),
+  );
+}
+
+const contents = {
   privacyCollection: (
     <>
       <dl className="space-y-2">
@@ -316,6 +322,13 @@ const contents = {
   ),
 };
 
-export function LegalDocumentContent({ id }: { id: LegalDocumentId }) {
+export function LegalDocumentContent({
+  id,
+  version = legalDocumentsVersion,
+}: {
+  id: LegalDocumentId;
+  version?: LegalDocumentsVersion;
+}) {
+  if (id === "serviceTerms") return <ServiceTerms version={version} />;
   return contents[id];
 }

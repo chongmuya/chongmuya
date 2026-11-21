@@ -339,6 +339,11 @@ const result=cp.spawnSync('/usr/local/bin/docker-real',mapped,{env,stdio:'inheri
         .split("\n")
         .find((line) => line.startsWith("{") || line.startsWith("[")),
     );
+  assert.deepEqual(
+    jsonOutput(invoke(["operations", "withdrawals", "list"])),
+    [],
+    "withdrawal review uses the current release and app database",
+  );
   const menus = jsonOutput(
     invoke(["data-restaurants", "menus", "--id", restaurantId]),
   );

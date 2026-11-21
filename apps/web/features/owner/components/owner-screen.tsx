@@ -47,7 +47,7 @@ export function OwnerScreen({
           매장을 등록하고 예약 문의를 받아보세요
         </h1>
         <p className="my-5 text-muted">
-          파일럿 기간에는 기존 사장님 계정으로 매장을 관리할 수 있어요.
+          새로 가입한다면 첫 설정에서 사장님을 선택해 주세요.
         </p>
         <Link
           className={buttonStyles()}
@@ -67,7 +67,6 @@ export function OwnerScreen({
     return (
       <main className="app-page">
         <h1>사장님 계정으로 이용해 주세요</h1>
-        <p>파일럿 기간에는 기존 사장님 계정으로 매장을 관리할 수 있어요.</p>
         <Link href="/">내 홈으로 가기</Link>
       </main>
     );

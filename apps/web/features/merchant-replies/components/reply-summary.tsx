@@ -217,7 +217,7 @@ export function SubmittedReply({
   );
 }
 
-export function ReplySummary({
+function ReplySummary({
   response: r,
   showHold = true,
 }: {

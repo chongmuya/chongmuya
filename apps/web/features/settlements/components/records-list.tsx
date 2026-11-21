@@ -123,8 +123,8 @@ export function RecordsList({
         <div className="space-y-2">
           <h1 className="text-label">모임의 기억을 모아둬요</h1>
           <p className="text-xs leading-tight">
-            {personal ? "개인 행사의" : "지난 행사의"} 정산 내역과 증빙 자료를
-            한눈에 확인해요.
+            {personal ? "개인 행사의" : "행사의"} 정산 내역과 증빙 자료를 한눈에
+            확인해요.
           </p>
         </div>
       </div>

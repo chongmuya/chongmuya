@@ -28,9 +28,9 @@ test("email codes bind owner/address, survive resend limits, expire and consume 
   assert.deepEqual(
     catalog.terms.map(({ url }: { url: string }) => url),
     [
-      "http://localhost:3000/legal/2026-11-21#service-terms",
-      "http://localhost:3000/legal/2026-11-21#privacy-collection",
-      "http://localhost:3000/legal/2026-11-21#marketing",
+      "http://localhost:3000/legal/2026-11-21-v2#service-terms",
+      "http://localhost:3000/legal/2026-11-21-v2#privacy-collection",
+      "http://localhost:3000/legal/2026-11-21-v2#marketing",
     ],
   );
   assert(
@@ -43,7 +43,7 @@ test("email codes bind owner/address, survive resend limits, expire and consume 
         version: string;
         body: string[];
         draft: boolean;
-      }) => version === "2026-11-21" && body.length === 0 && !draft,
+      }) => version === "2026-11-21-v2" && body.length === 0 && !draft,
     ),
   );
   const mail = app.get(ResendMailService);

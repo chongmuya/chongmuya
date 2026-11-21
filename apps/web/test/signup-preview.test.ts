@@ -27,7 +27,7 @@ import {
 } from "../features/auth/schemas/password.schema";
 import { credentialsSchema } from "../features/auth/schemas/credentials.schema";
 import { ApiError } from "../shared/http/api-error";
-import { legalDocumentsVersion } from "../shared/legal/documents-2026-11-21";
+import { legalDocumentsVersion } from "../shared/legal/documents";
 import { GettingStartedFlow } from "../features/onboarding/components/getting-started-flow";
 
 async function render(element: ReactElement) {
@@ -277,7 +277,7 @@ test("signup keeps values and consent across details/back, validates steps and s
       terms: previewTerms.map((term) => ({
         ...term,
         version: legalDocumentsVersion,
-        url: "https://example.test/legal/2026-11-21",
+        url: "https://example.test/legal/2026-11-21-v2",
         body: [],
         draft: false,
       })),
@@ -309,7 +309,7 @@ test("signup keeps values and consent across details/back, validates steps and s
   assert.match(fresh.container.textContent!, /필수 항목 모두 동의/);
   assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
   for (const [title, contains] of [
-    ["이용약관 동의", /제1조 서비스/],
+    ["이용약관 동의", /첫 설정에서 총무 또는 사장님을 선택할 수 있습니다/],
     ["개인정보 수집 및 이용동의", /인증 요청과 결과/],
     ["마케팅 정보 수신", /광고를 보내게 되면/],
   ] as const) {

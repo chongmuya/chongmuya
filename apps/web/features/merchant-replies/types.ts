@@ -1,1 +1,1 @@
-export type { Reply, MerchantInquiry } from "./types/reply.types";
+export type { Reply } from "./types/reply.types";

@@ -12,7 +12,6 @@ import { LoginScreen } from "./login-screen";
 import { StartScreen } from "./start-screen";
 import { SplashScreen } from "./splash-screen";
 
-// Entry routing is separate from the account and recovery panel used in workspace screens.
 export function AuthEntryScreen({ screen }: { screen: "start" | "login" }) {
   const { status, account } = useAuth();
   const params = useSearchParams();

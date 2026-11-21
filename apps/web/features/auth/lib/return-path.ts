@@ -122,7 +122,7 @@ export function safeReturnPath(
   if (
     url.pathname === "/mypage" &&
     view &&
-    ["account", "groups", "roster"].includes(view)
+    ["account", "groups", "roster", "terms"].includes(view)
   )
     params.set("view", view);
   if (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ApiError } from "@/shared/http/api-error";
-import { privacyPolicyHref } from "@/shared/legal/documents-2026-11-21";
+import { privacyPolicyHref } from "@/shared/legal/documents";
 import { useAuthActions } from "../hooks/use-auth-actions";
 import { authErrorMessage } from "../lib/auth-error-message";
 import { authEntryPath } from "../lib/auth-entry-path";

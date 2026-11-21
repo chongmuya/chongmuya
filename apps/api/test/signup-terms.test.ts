@@ -29,18 +29,18 @@ test("production uses the published legal documents even with an obsolete catalo
     [
       {
         id: "serviceTerms",
-        version: "2026-11-21",
-        url: "https://example.test/legal/2026-11-21#service-terms",
+        version: "2026-11-21-v2",
+        url: "https://example.test/legal/2026-11-21-v2#service-terms",
       },
       {
         id: "privacyCollection",
-        version: "2026-11-21",
-        url: "https://example.test/legal/2026-11-21#privacy-collection",
+        version: "2026-11-21-v2",
+        url: "https://example.test/legal/2026-11-21-v2#privacy-collection",
       },
       {
         id: "marketing",
-        version: "2026-11-21",
-        url: "https://example.test/legal/2026-11-21#marketing",
+        version: "2026-11-21-v2",
+        url: "https://example.test/legal/2026-11-21-v2#marketing",
       },
     ],
   );
@@ -56,7 +56,7 @@ test("production uses the published legal documents even with an obsolete catalo
       service.validate(
         consents.map((consent) => ({
           ...consent,
-          version: "draft-2026-11-18",
+          version: "2026-11-21",
         })),
       ),
     { code: "SIGNUP_TERMS_CHANGED" },

@@ -42,7 +42,6 @@ export class Account {
   })
   withdrawalReceiptHash!: string | null;
   @Column("timestamptz") createdAt!: Date;
-  // Legacy accounts keep their IDs and remain explicitly unverified.
   @Column({ type: "varchar", length: 100, nullable: true }) name!:
     string | null;
   @Column({ type: "varchar", length: 100, nullable: true }) nickname!:

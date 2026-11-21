@@ -144,6 +144,30 @@ test("settlement and records work promote the second past card without reorderin
   }
 });
 
+test("records date filters include the entire last day in Korean time", async () => {
+  const paths: string[] = [];
+  const request: SessionRequest = async <T>(path: string) => {
+    paths.push(path);
+    return { count: 0, events: [] } as T;
+  };
+  const cache = new QueryClient();
+  try {
+    await cache.fetchQuery(
+      recordsQuery("a", request, null, {
+        search: "",
+        after: "2026-11-21",
+        before: "2026-11-21",
+        offset: 0,
+      }),
+    );
+    const params = new URL(paths[0]!, "http://localhost").searchParams;
+    assert.equal(params.get("after"), "2026-11-21T00:00:00+09:00");
+    assert.equal(params.get("before"), "2026-11-21T23:59:59.999+09:00");
+  } finally {
+    cache.clear();
+  }
+});
+
 test("a saved finalization survives a fresh summary and reopened work takes priority", () => {
   const past = event("past", "2026-11-10T12:00:00Z");
   const done = summary(past.id, "COMPLETE");
@@ -209,6 +233,7 @@ test("a saved finalization survives a fresh summary and reopened work takes prio
           reservationId: "r",
           status: "CANCELLED",
           progress: "REFUND_PENDING",
+          refundedAmount: 4000,
           restaurantName: null,
           startsAt: past.scheduledAt!,
         },
