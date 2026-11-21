@@ -5,14 +5,29 @@ export function ReviewCurrent({
   data,
   baseVersion,
   accountChanged = false,
+  compact = false,
   onReview,
 }: {
   data: Completion;
   baseVersion: number;
   accountChanged?: boolean;
+  compact?: boolean;
   onReview: () => void;
 }) {
   if (data.version === baseVersion && !accountChanged) return null;
+  if (compact)
+    return (
+      <div role="alert" className="rounded-control bg-choice px-4 py-2 text-sm">
+        <p>예약 정보가 바뀌었어요. 입력한 내용은 유지됩니다.</p>
+        <button
+          type="button"
+          className="min-h-11 font-medium text-link underline"
+          onClick={onReview}
+        >
+          최신 정보로 계속
+        </button>
+      </div>
+    );
   return (
     <div
       role="alert"

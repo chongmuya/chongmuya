@@ -40,6 +40,7 @@ import {
 } from "../../src/modules/notifications/entities/notification.entity.js";
 import type { ReservationRequestDto } from "../../src/modules/reservations/dto/response/reservation-request.response.dto.js";
 import type { ReservationPrincipal } from "../../src/modules/reservations/types/reservation-completion.js";
+import { ConfirmReceivedReservations1795814000000 } from "../../src/database/migrations/1795814000000-ConfirmReceivedReservations.js";
 const json = async <T>(r: Response, status = 200) => {
   const b = await r.json();
   assert.equal(r.status, status, JSON.stringify(b));
@@ -1541,7 +1542,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     },
   );
   await t.test(
-    "guidance revision, stale menu and mutation authorization require fresh confirmation",
+    "only a current receipt can confirm after guidance changes, without organizer acknowledgment",
     async () => {
       let v = await fixture("UNKNOWN");
       v = await payments.guidance(v.id, operator, guide(v));
@@ -1603,6 +1604,23 @@ test("reservation completion preserves contracts, scoped links, money evidence a
         { ...key(v.version), guidanceRevision: oldRevision, confirmed: true },
         409,
       );
+      const startsAt = v.agreement.startsAt;
+      const proposedStart = new Date(
+        Date.parse(startsAt) + 900_000,
+      ).toISOString();
+      v = await post(v.id, "change-request", {
+        ...key(v.version),
+        kind: "CHANGE",
+        subject: "SCHEDULE",
+        reason: "15분 늦춰 주세요",
+      });
+      const changeId = v.changes[0].id;
+      v = await changes.propose(v.id, operator, {
+        ...key(v.version),
+        changeId,
+        agreement: { ...v.agreement, startsAt: proposedStart },
+        reason: "시간 변경 가능",
+      });
       v = await payments.receipt(v.id, operator, {
         ...key(v.version),
         guidanceRevision: v.guidance.revision,
@@ -1611,13 +1629,82 @@ test("reservation completion preserves contracts, scoped links, money evidence a
         corrects: null,
         reason: "bank",
       });
-      assert.notEqual(v.status, "CONFIRMED");
-      v = await post(v.id, "acknowledge", {
+      assert.equal(v.status, "CONFIRMED");
+      assert.equal(v.acknowledgedRevision, null);
+      assert.equal(v.transfer, null);
+      assert.equal(v.confirmation?.receivedAmount, 10000);
+      assert.equal((await view(v.id)).progress, "CONFIRMED");
+      assert.equal(v.agreement.startsAt, startsAt);
+      assert.equal(v.changes[0].status, "PROPOSED");
+      v = await post(v.id, "change-accept", {
         ...key(v.version),
-        guidanceRevision: v.guidance.revision,
+        changeId,
         confirmed: true,
       });
-      assert.equal(v.status, "CONFIRMED");
+      assert.equal(v.changes[0].status, "APPLIED");
+      assert.equal(v.agreement.startsAt, proposedStart);
+      assert(v.issues.includes("RECEIPT_REVIEW"));
+    },
+  );
+  await t.test(
+    "backfill confirms an eligible legacy receipt only once and leaves stale receipts pending",
+    async () => {
+      const migration = new ConfirmReceivedReservations1795814000000();
+      let paid = await fixture("UNKNOWN");
+      paid = await post(paid.id, "menu-submit", menu(paid));
+      paid = await payments.guidance(paid.id, operator, guide(paid));
+      paid = await payments.receipt(paid.id, operator, {
+        ...key(paid.version),
+        guidanceRevision: paid.guidance.revision,
+        amount: 10000,
+        corrects: null,
+        reason: "은행 확인",
+        receivedAt: new Date().toISOString(),
+      });
+      const runner = db.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      try {
+        const repo = runner.manager.getRepository(ReservationProgress);
+        const progress = await repo.findOneByOrFail({ reservationId: paid.id });
+        const legacy = { ...progress.state, confirmation: null };
+        const selections = runner.manager.getRepository(SelectedReservation);
+        await selections.update(paid.id, { status: "PREPARING" });
+        await repo.update(paid.id, {
+          state: {
+            ...legacy,
+            receipt: {
+              ...legacy.receipt!,
+              guidanceRevision: paid.guidance.revision - 1,
+            },
+          },
+        });
+        await migration.up(runner);
+        assert.equal(
+          (await repo.findOneByOrFail({ reservationId: paid.id })).state
+            .confirmation,
+          null,
+        );
+        assert.equal(
+          (await selections.findOneByOrFail({ id: paid.id })).version,
+          paid.version,
+        );
+        await repo.update(paid.id, { state: legacy });
+        await migration.up(runner);
+        const confirmed = (
+          await repo.findOneByOrFail({ reservationId: paid.id })
+        ).state;
+        assert.equal(completionStatus(confirmed), "CONFIRMED");
+        assert.equal(confirmed.acknowledgedRevision, null);
+        assert.deepEqual(confirmed.confirmation?.audit, legacy.receipt?.audit);
+        await migration.up(runner);
+        const selection = await selections.findOneByOrFail({ id: paid.id });
+        assert.equal(selection.status, "CONFIRMED");
+        assert.equal(selection.version, paid.version + 1);
+      } finally {
+        await runner.rollbackTransaction();
+        await runner.release();
+      }
     },
   );
   await t.test(

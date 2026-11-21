@@ -40,54 +40,7 @@ export function PaymentForms({
 }) {
   const props = { data: q, access };
   const ready = depositGuidanceReady(q);
-  if (access.kind === "organizer")
-    return (
-      <div className="space-y-5">
-        <RetainedCommand
-          available={
-            !q.cancellation &&
-            !!q.order &&
-            ready &&
-            q.acknowledgedRevision !== q.guidance.revision
-          }
-          {...props}
-          action="acknowledge"
-          title="새 안내 확인"
-          fields={[
-            {
-              name: "confirmed",
-              label: "최신 금액·기한·계좌 안내·변경 조건을 확인했어요",
-              type: "checkbox",
-            },
-          ]}
-          build={(_, b) => ({
-            guidanceRevision: b.guidance.revision,
-            confirmed: true,
-          })}
-        />
-        <RetainedCommand
-          available={
-            !q.cancellation &&
-            !!q.order &&
-            ready &&
-            q.guidance.kind === "REQUIRED"
-          }
-          {...props}
-          action="transfer"
-          title="송금 사실 신고"
-          description="신고만으로 예약이 확정되지 않아요. 실제 은행 입금은 사장님이 확인해요."
-          fields={[
-            { name: "payer", label: "입금자명", max: 80 },
-            { name: "amount", label: "송금 신고 금액 (원)", type: "number" },
-          ]}
-          build={(v, b) => ({
-            guidanceRevision: b.guidance.revision,
-            payer: v.payer,
-            amount: Number(v.amount),
-          })}
-        />
-      </div>
-    );
+  if (access.kind === "organizer") return <OrganizerPayment {...props} />;
   return (
     <div className="space-y-5">
       {access.kind === "owner" && !q.cancellation && !q.confirmation && (
@@ -196,6 +149,100 @@ export function PaymentForms({
           },
         ]}
         build={(v) => ({ reason: v.reason })}
+      />
+    </div>
+  );
+}
+
+function OrganizerPayment({
+  data,
+  access,
+}: {
+  data: Completion;
+  access: CompletionAccess;
+}) {
+  const [editing, setEditing] = useState(false);
+  const { guidance, transfer, receipt, receivedAmount, refundedAmount } = data;
+  const canAct =
+    !data.cancellation && !!data.order && depositGuidanceReady(data);
+  const needsReview = canAct && data.issues.includes("GUIDANCE_REVIEW");
+  const confirmed = data.progress === "CONFIRMED";
+  const receiptComplete =
+    guidance.kind === "REQUIRED" &&
+    receipt?.guidanceRevision === guidance.revision &&
+    receivedAmount - refundedAmount >= (guidance.amount ?? Infinity);
+  const transferRecorded = transfer?.guidanceRevision === guidance.revision;
+  const canReport =
+    canAct &&
+    !needsReview &&
+    !confirmed &&
+    guidance.kind === "REQUIRED" &&
+    (!receiptComplete || data.issues.includes("TRANSFER_REVIEW"));
+  const status = data.cancellation
+    ? "예약이 취소됐어요."
+    : confirmed
+      ? "예약이 확정됐어요."
+      : receiptComplete
+        ? "매장이 입금을 확인했어요."
+        : transferRecorded && !needsReview
+          ? "매장의 입금 확인을 기다리고 있어요."
+          : null;
+  const props = { data, access };
+  return (
+    <div className="space-y-4">
+      {status && (
+        <p role="status" className="text-sm font-medium text-brand-ink">
+          {status}
+        </p>
+      )}
+      <RetainedCommand
+        {...props}
+        available={needsReview}
+        action="acknowledge"
+        title="안내를 확인했어요"
+        hideTitle
+        fields={[]}
+        build={(_, base) => ({
+          guidanceRevision: base.guidance.revision,
+          confirmed: true,
+        })}
+      />
+      {canReport && transferRecorded && !editing && (
+        <button
+          type="button"
+          className="min-h-11 text-sm text-link underline"
+          onClick={() => setEditing(true)}
+        >
+          송금 정보 수정
+        </button>
+      )}
+      <RetainedCommand
+        {...props}
+        available={canReport && (!transferRecorded || editing)}
+        action="transfer"
+        title={transferRecorded ? "송금 정보 저장" : "송금했어요"}
+        hideTitle
+        fields={(base) => [
+          {
+            name: "payer",
+            label: "입금자명",
+            max: 80,
+            value: base.transfer?.payer,
+          },
+          {
+            name: "amount",
+            label: "보낸 금액 (원)",
+            type: "number",
+            minValue: 1,
+            value: base.transfer ? String(base.transfer.amount) : undefined,
+          },
+        ]}
+        build={(values, base) => ({
+          guidanceRevision: base.guidance.revision,
+          payer: values.payer,
+          amount: Number(values.amount),
+        })}
+        onDone={() => setEditing(false)}
       />
     </div>
   );

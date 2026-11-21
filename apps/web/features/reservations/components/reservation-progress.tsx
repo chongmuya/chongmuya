@@ -189,11 +189,7 @@ function InquiryReceipt({
           <h2 id={sentRequestTitle} className="text-xl font-semibold">
             보낸 예약 문의
           </h2>
-          <ConditionSummary conditions={q.snapshot} />
-          <InquiryDetails
-            conditions={q.snapshot}
-            contact={{ name: q.contact.name, phone: q.contact.maskedPhone }}
-          />
+          <SentInquiryContent inquiry={q} />
           <Button
             variant="outline"
             className="w-full"
@@ -230,6 +226,22 @@ function InquiryReceipt({
     </section>
   );
 }
+
+function SentInquiryContent({ inquiry }: { inquiry: ReservationRequest }) {
+  return (
+    <div className="text-sm">
+      <ConditionSummary conditions={inquiry.snapshot} />
+      <InquiryDetails
+        conditions={inquiry.snapshot}
+        contact={{
+          name: inquiry.contact.name,
+          phone: inquiry.contact.maskedPhone,
+        }}
+      />
+    </div>
+  );
+}
+
 export function DecisionReceipt({
   inquiry,
   accountId,
@@ -269,6 +281,7 @@ export function DecisionReceipt({
           id={inquiry.selection.id}
           access={{ kind: "organizer", accountId, request }}
           inquiryContent={<InquiryReceipt inquiry={inquiry} />}
+          sentInquiryContent={<SentInquiryContent inquiry={inquiry} />}
         />
       )}
       {!inquiry.selection && (

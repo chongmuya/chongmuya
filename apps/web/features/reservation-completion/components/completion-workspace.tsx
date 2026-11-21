@@ -45,10 +45,12 @@ export function CompletionWorkspace({
   id,
   access,
   inquiryContent,
+  sentInquiryContent,
 }: {
   id: string;
   access: CompletionAccess;
   inquiryContent?: ReactNode;
+  sentInquiryContent?: ReactNode;
 }) {
   const cache = useQueryClient(),
     [expired, setExpired] = useState(false);
@@ -79,6 +81,7 @@ export function CompletionWorkspace({
       access={access}
       onAccessLost={setExpired}
       inquiryContent={inquiryContent}
+      sentInquiryContent={sentInquiryContent}
     />
   );
 }
@@ -87,17 +90,19 @@ function CompletionContent({
   access,
   onAccessLost,
   inquiryContent,
+  sentInquiryContent,
 }: {
   id: string;
   access: CompletionAccess;
   onAccessLost: (lost: boolean) => void;
   inquiryContent?: ReactNode;
+  sentInquiryContent?: ReactNode;
 }) {
   const visible = usePageVisible(),
     titleId = useId();
-  const [panel, setPanel] = useState<"details" | "changes" | "payments" | null>(
-    null,
-  );
+  const [panel, setPanel] = useState<
+    "details" | "changes" | "payments" | "sentInquiry" | null
+  >(null);
   const dialogTitle = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (panel) dialogTitle.current?.focus();
@@ -135,7 +140,11 @@ function CompletionContent({
     organizer &&
     !q.cancellation &&
     mostRecent?.status === "REJECTED" &&
-    mostRecent.id === continuedChangeId
+    (mostRecent.id === continuedChangeId ||
+      (q.progress === "CONFIRMED" &&
+        q.confirmation &&
+        mostRecent.resolvedAt &&
+        Date.parse(q.confirmation.at) >= Date.parse(mostRecent.resolvedAt)))
       ? undefined
       : mostRecent;
   const rejectionReason =
@@ -145,6 +154,12 @@ function CompletionContent({
     q.guidance.kind === "REQUIRED" &&
     guidanceReady &&
     !q.receipt;
+  const panelTitles = {
+    details: "예약 상세",
+    changes: "예약 변경·취소",
+    payments: !organizer && !guidanceReady ? "예약금 안내" : "예약금 확인",
+    sentInquiry: "보낸 예약 문의",
+  };
   const review = () => {
     setCancelFirst(false);
     setPanel("changes");
@@ -161,13 +176,16 @@ function CompletionContent({
       {latest?.status !== "REJECTED" && <CompletionFacts data={q} />}
       <div className="flex flex-wrap items-center justify-between gap-x-3">
         {contact}
-        <button
-          type="button"
-          className="relative ml-auto text-sm leading-[normal] font-semibold text-brand before:absolute before:inset-x-0 before:-inset-y-3.5"
-          onClick={() => setPanel("details")}
-        >
-          보낸 예약문의 보기
-        </button>
+        {sentInquiryContent && (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            className="relative ml-auto text-sm leading-[normal] font-semibold text-brand before:absolute before:inset-x-0 before:-inset-y-3.5"
+            onClick={() => setPanel("sentInquiry")}
+          >
+            보낸 예약문의 보기
+          </button>
+        )}
       </div>
       {q.cancellation && organizer && (
         <Button variant="outline" className="w-full" onClick={review}>
@@ -194,7 +212,15 @@ function CompletionContent({
       )}
       {organizer ? (
         <>
-          <CompletionSteps current={q.order && !paymentInProgress ? 3 : 2} />
+          <CompletionSteps
+            current={
+              q.progress === "CONFIRMED"
+                ? 4
+                : q.order && !paymentInProgress
+                  ? 3
+                  : 2
+            }
+          />
           {latest ? (
             <ChangeResult
               data={q}
@@ -333,15 +359,11 @@ function CompletionContent({
                 : "mb-6 text-center text-xl font-semibold outline-none"
             }
           >
-            {panel === "details"
-              ? "예약 상세"
-              : panel === "changes"
-                ? "예약 변경·취소"
-                : !organizer && !guidanceReady
-                  ? "예약금 안내"
-                  : "예약금 확인"}
+            {panelTitles[panel]}
           </h2>
-          {panel === "details" ? (
+          {panel === "sentInquiry" ? (
+            sentInquiryContent
+          ) : panel === "details" ? (
             <div className="space-y-4">
               <AgreementTerms data={q} />
               <OrderSummary data={q} />
@@ -373,10 +395,12 @@ function CompletionContent({
             <div className="space-y-5">
               <GuidanceSummary data={q} />
               <PaymentForms data={q} access={access} />
-              <details className="text-xs">
-                <summary>예약 기록·문자 상태</summary>
-                <ReservationHistory data={q} />
-              </details>
+              {!organizer && (
+                <details className="text-xs">
+                  <summary>예약 기록·문자 상태</summary>
+                  <ReservationHistory data={q} />
+                </details>
+              )}
             </div>
           )}
           {panel !== "changes" && (

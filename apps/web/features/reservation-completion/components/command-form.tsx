@@ -179,11 +179,15 @@ export function CommandForm({
             }
           </FormField>
         ))}
-        {!mutation.uncertain && (
+        {available && !mutation.uncertain && (
           <ReviewCurrent
             data={data}
             baseVersion={base.version}
             accountChanged={accountChanged}
+            compact={
+              access.kind === "organizer" &&
+              (action === "acknowledge" || action === "transfer")
+            }
             onReview={() => {
               setBase(data);
               mutation.reset();
