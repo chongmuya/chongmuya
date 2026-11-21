@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-export function CompletionSteps({ current }: { current: 1 | 2 | 3 }) {
+export function CompletionSteps({ current }: { current: 1 | 2 | 3 | 4 }) {
   return (
     <ol
       aria-label="예약 진행 단계"

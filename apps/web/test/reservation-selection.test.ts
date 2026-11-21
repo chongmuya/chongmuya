@@ -178,6 +178,65 @@ test("the receipt stays above the cards and a changed reply replaces the waiting
   }
 });
 
+test("selected reservation opens only the original inquiry from the sent inquiry button", async () => {
+  const original = fixture();
+  original.snapshot.additionalRequests = "창가 자리가 있으면 부탁드려요";
+  const inquiry = selected(original);
+  const completion = {
+    id: inquiry.selection!.id,
+    eventId: inquiry.eventId,
+    restaurantName: inquiry.targets[0].restaurantName,
+    agreement: { ...inquiry.selection!.snapshot.offered!, expectedGuests: 24 },
+    guidance: {
+      kind: "REQUIRED",
+      channel: "SMS",
+      revision: 2,
+      amount: 10000,
+      deadline: "2099-11-30T09:00:00.000Z",
+    },
+    order: { total: 1000, lines: [] },
+    issues: ["GUIDANCE_REVIEW"],
+    changes: [],
+    history: [],
+    notifications: [],
+    progress: "GUIDANCE_REVIEW",
+  };
+  const request: SessionRequest = async <T>(path: string) =>
+    (path === `/api/v1/reservations/${completion.id}`
+      ? completion
+      : { request: inquiry }) as T;
+  const view = await render(
+    createElement(ReservationProgress, {
+      accountId: "a",
+      eventId: inquiry.eventId,
+      request,
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /보낸 예약문의 보기/),
+    );
+    await click(view.container, "보낸 예약문의 보기");
+    const dialog = view.container.querySelector("dialog[open]")!;
+    assert.equal(dialog.querySelector("h2")?.textContent, "보낸 예약 문의");
+    assert.match(dialog.textContent!, /20명.*18:00.*건대입구/);
+    assert.match(dialog.textContent!, /창가 자리가 있으면 부탁드려요/);
+    assert.match(dialog.textContent!, /010-\*{4}-1234/);
+    assert.doesNotMatch(
+      dialog.textContent!,
+      /24명|주문 메뉴|예약금 안내|매장 선택 당시|이전 후보|문자 상태/,
+    );
+    await click(view.container, "뒤로가기");
+    await click(view.container, "예약금 안내 확인하기");
+    assert.match(
+      view.container.querySelector("dialog[open]")!.textContent!,
+      /안내를 확인했어요/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("selection retries keep the seen revision and key; refresh shows the saved preparation state", async () => {
   let q = fixture();
   q.targets[0].response!.snapshot.offered!.separateFee = 30000;

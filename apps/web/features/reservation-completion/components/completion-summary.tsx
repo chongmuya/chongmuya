@@ -50,7 +50,7 @@ export function CompletionSummary({
                 ? "메뉴를 보냈어요"
                 : (progressLabels[q.progress] ?? "예약 진행 확인")}
           </h2>
-          <p className="mx-auto max-w-[162px] text-xs leading-[normal]">
+          <p className="mx-auto max-w-[219px] text-xs leading-[normal] break-keep">
             {q.progress === "CONFIRMED"
               ? q.guidance.kind === "NONE"
                 ? "주문 메뉴를 보냈어요. 이제 참석 명단을 준비해볼까요?"
@@ -266,27 +266,30 @@ export function GuidanceSummary({ data: q }: { data: Completion }) {
   const g = q.guidance;
   const [copy, setCopy] = useState("");
   return (
-    <section className="space-y-4 rounded-card bg-surface p-5 shadow-card">
-      <h3 className="font-semibold">예약금 안내 · {g.revision}차</h3>
-      <p>
+    <section className="space-y-3 rounded-control bg-soft p-4">
+      <h3 className="text-sm font-medium text-secondary">예약금 안내</h3>
+      <p className="text-xl font-semibold text-brand-ink">
         {g.kind === "NONE"
-          ? "예약금 없음이 확인됐어요."
+          ? "예약금 없음"
           : g.kind === "UNKNOWN"
-            ? "예약금 여부·금액 확인 중"
-            : `예약금 ${won(g.amount)}`}
+            ? "확인 중"
+            : won(g.amount)}
       </p>
       {g.deadline && (
-        <p className="text-sm">입금 기한 {koreanDateLabel(g.deadline)}</p>
+        <p className="text-sm text-secondary">
+          입금 기한{" "}
+          <time dateTime={g.deadline}>{koreanDateLabel(g.deadline)}</time>
+        </p>
       )}
       {g.channel === "WEB" && g.account ? (
-        <div className="rounded-control bg-brand p-5 text-white">
-          <p className="text-xl font-bold break-all">{g.account}</p>
-          <p className="my-2 text-sm">
+        <div className="space-y-1 border-t border-border pt-3 text-sm">
+          <p className="text-secondary">
             {g.bank} · {g.holder}
           </p>
+          <p className="font-semibold break-all">{g.account}</p>
           <button
             type="button"
-            className="min-h-11 underline"
+            className="min-h-11 text-sm font-medium text-link underline"
             onClick={() => {
               void navigator.clipboard
                 .writeText(`${g.bank} ${g.account} ${g.holder}`)
@@ -300,7 +303,7 @@ export function GuidanceSummary({ data: q }: { data: Completion }) {
           >
             계좌 복사
           </button>
-          <p role="status" className="text-xs">
+          <p role="status" className="text-xs empty:hidden">
             {copy}
           </p>
         </div>
@@ -308,19 +311,19 @@ export function GuidanceSummary({ data: q }: { data: Completion }) {
         g.kind !== "NONE" && (
           <p className="text-sm text-muted">
             {g.channel === "SMS"
-              ? "계좌는 문자로만 안내해요. 문자를 받지 못했다면 매장에 안내 상태를 확인해 주세요."
-              : "사장님이 확인 후 예약금 정보를 안내해 드려요."}
+              ? "계좌는 문자에서 확인해 주세요."
+              : "매장이 계좌를 확인하고 있어요."}
           </p>
         )
       )}
-      <p className="whitespace-pre-wrap text-sm">
-        변경·취소·환불 조건: {g.policy}
-      </p>
-      <p className="text-xs text-muted">
-        {g.audit
-          ? `${g.audit.confirmer} · ${koreanDateLabel(g.issuedAt)}`
-          : "선택 당시 제안 기준"}
-      </p>
+      {g.policy && g.policy !== "미확인" && (
+        <details className="border-t border-border pt-3 text-sm">
+          <summary className="cursor-pointer text-secondary">
+            변경·취소·환불 조건
+          </summary>
+          <p className="mt-2 wrap-anywhere whitespace-pre-wrap">{g.policy}</p>
+        </details>
+      )}
     </section>
   );
 }

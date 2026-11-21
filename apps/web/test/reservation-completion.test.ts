@@ -250,13 +250,135 @@ test("organizer can resume the existing reservation and request another change a
     await click(view.container, "예약금 안내 확인하기");
     assert.match(
       view.container.querySelector("dialog")!.textContent!,
-      /송금 사실 신고/,
+      /송금했어요/,
     );
     await click(view.container, "뒤로가기");
     await click(view.container, "변경·취소 문의하기");
     assert.match(
       view.container.querySelector("dialog")!.textContent!,
       /변경·취소 문의 보내기/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("full payment updates the organizer's dialog and reservation screen without another acknowledgment", async () => {
+  let data: Completion = {
+    ...rejectedChangeFixture(),
+    acknowledgedRevision: null,
+    issues: ["GUIDANCE_REVIEW", "DEPOSIT_UNCONFIRMED"],
+  };
+  const access: CompletionAccess = {
+    kind: "organizer",
+    accountId: "organizer",
+    request: async <T>(_path: string, options?: RequestInit) => {
+      assert.notEqual(options?.method, "POST");
+      return data as T;
+    },
+  };
+  const view = await render(
+    createElement(CompletionWorkspace, { id: data.id, access }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /예약금 안내 확인하기/),
+    );
+    await click(view.container, "예약금 안내 확인하기");
+    const dialog = view.container.querySelector("dialog")!;
+    assert.match(dialog.textContent!, /안내를 확인했어요/);
+    assert.equal(dialog.querySelector("input"), null);
+    assert.doesNotMatch(
+      dialog.textContent!,
+      /예약 기록·문자 상태|안내 · 1차|미확인/,
+    );
+    data = {
+      ...data,
+      version: 2,
+      progress: "CONFIRMED",
+      status: "CONFIRMED",
+      issues: [],
+      receipt: { guidanceRevision: 1, amount: 10000 } as Completion["receipt"],
+      receivedAmount: 10000,
+      confirmation: {
+        at: "2098-12-31T00:00:00Z",
+      } as Completion["confirmation"],
+    };
+    await act(async () => void (await view.cache.refetchQueries()));
+    await until(() => assert.match(dialog.textContent!, /예약이 확정됐어요/));
+    assert.equal(dialog.querySelector("form"), null);
+    await click(view.container, "뒤로가기");
+    assert.match(view.container.textContent!, /예약이 확정됐어요/);
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /예약 변경이 어려워요|예약금 안내 확인하기/,
+    );
+    assert.equal(
+      view.container.querySelectorAll('ol img[src*="progress-done"]').length,
+      4,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("organizer keeps transfer inputs on refresh and sees a compact waiting state after reporting", async () => {
+  let data = rejectedChangeFixture();
+  const writes: Record<string, unknown>[] = [];
+  const access: CompletionAccess = {
+    kind: "organizer",
+    accountId: "transfer-organizer",
+    request: async <T>(_path: string, options?: RequestInit) => {
+      if (options?.method === "POST") {
+        const { command } = JSON.parse(String(options.body));
+        writes.push(command);
+        data = {
+          ...data,
+          version: 3,
+          transfer: { ...command, reportedAt: "2098-12-30T03:00:00Z" },
+        };
+      }
+      return data as T;
+    },
+  };
+  function Screen() {
+    const query = useQuery(completionQuery(data.id, access));
+    return query.data
+      ? createElement(PaymentForms, { data: query.data, access })
+      : null;
+  }
+  const view = await render(createElement(Screen));
+  try {
+    await until(() => assert.match(view.container.textContent!, /송금했어요/));
+    await fill(view.container, "payer", "테스트 총무");
+    await fill(view.container, "amount", "10000");
+    data = { ...data, version: 2 };
+    await act(async () => void (await view.cache.refetchQueries()));
+    await until(() =>
+      assert.match(view.container.textContent!, /최신 정보로 계속/),
+    );
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /실제 수령|실제 반환|안내 1차/,
+    );
+    await submit(view.container);
+    assert.equal(writes.length, 0);
+    await click(view.container, "최신 정보로 계속");
+    await click(view.container, "송금했어요");
+    await until(() =>
+      assert.match(
+        view.container.textContent!,
+        /매장의 입금 확인을 기다리고 있어요/,
+      ),
+    );
+    assert.equal(writes[0].expectedVersion, 2);
+    assert.equal(writes[0].payer, "테스트 총무");
+    assert.equal(writes[0].amount, 10000);
+    assert.equal(view.container.querySelector("input"), null);
+    await click(view.container, "송금 정보 수정");
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('[name="amount"]')?.value,
+      "10000",
     );
   } finally {
     await view.unmount();
@@ -342,11 +464,8 @@ test("current agreement shows missing, zero and unlimited independently after a 
       )!;
       assert.equal(term.nextElementSibling!.textContent, expected);
     }
-    assert.match(
-      view.container.textContent!,
-      /예약금 안내 · 2차예약금 10,000원/,
-    );
-    assert.match(view.container.textContent!, /계좌는 문자로만 안내/);
+    assert.match(view.container.textContent!, /예약금 안내10,000원/);
+    assert.match(view.container.textContent!, /계좌는 문자에서 확인/);
   } finally {
     await view.unmount();
   }
