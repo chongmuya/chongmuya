@@ -33,7 +33,7 @@ import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
 import { koreanDateOnly } from "../shared/lib/korean-date";
 
-test("event creation hands the reservation date and guest estimate to the next step", async () => {
+test("event creation requires and saves the reservation date and guest estimate", async () => {
   const eventId = "00000000-0000-4000-8000-000000000221";
   const date = koreanDateOnly(new Date(Date.now() + 3 * 86400_000));
   let body: Record<string, unknown> | undefined;
@@ -47,6 +47,7 @@ test("event creation hands the reservation date and guest estimate to the next s
       id: eventId,
       name: body?.name,
       scheduledAt: body?.scheduledAt,
+      expectedGuests: body?.expectedGuests,
     } as T;
   };
   const cache = client();
@@ -70,6 +71,11 @@ test("event creation hands the reservation date and guest estimate to the next s
     assert.equal(body, undefined);
     await chooseDate(view.container, "date", date);
     await chooseTime(view.container, "time", "00:00");
+    await submit(view.container);
+    await until(() =>
+      assert.match(view.container.textContent!, /예상 인원을 입력해 주세요/),
+    );
+    assert.equal(body, undefined);
     await fill(view.container, "expectedGuests", "24");
     await submit(view.container);
     await until(() =>
@@ -82,16 +88,15 @@ test("event creation hands the reservation date and guest estimate to the next s
       new Date(`${date}T00:00:00+09:00`).toISOString(),
     );
     assert.equal(
-      cache.getQueryData(eventKeys.guestEstimate("a", eventId)),
-      "24",
+      cache.getQueryData<{ expectedGuests: number }>(
+        eventKeys.detail("a", eventId),
+      )?.expectedGuests,
+      24,
     );
-    assert.equal(
-      cache.getQueryData(eventKeys.guestEstimate("b", eventId)),
-      undefined,
-    );
+    assert.equal(cache.getQueryData(eventKeys.detail("b", eventId)), undefined);
     assert.equal(
       (body as Record<string, unknown> | undefined)?.expectedGuests,
-      undefined,
+      24,
     );
   } finally {
     await view.unmount();
@@ -100,20 +105,18 @@ test("event creation hands the reservation date and guest estimate to the next s
 
 test("first inquiry summarizes a saved date and disables reverse auction, while editable schedules keep both pickers", async () => {
   const startsAt = "2099-12-01T09:30:45.000Z";
-  const initial = {
-    ...initialConditions(
-      { name: "총무", phone: "01000000000" } as Parameters<
-        typeof initialConditions
-      >[0],
-      startsAt,
-    ),
-    expectedGuests: "24",
-  };
+  const initial = initialConditions(
+    { name: "총무", phone: "01000000000" } as Parameters<
+      typeof initialConditions
+    >[0],
+    startsAt,
+  );
   for (const savedStartsAt of [startsAt, undefined]) {
     let next: typeof initial | undefined;
     const view = await render(
       createElement(ConditionsForm, {
         initial,
+        expectedGuests: 24,
         savedStartsAt,
         onContinue: (values) => {
           next = values;
@@ -144,12 +147,10 @@ test("first inquiry summarizes a saved date and disables reverse auction, while 
         null,
       );
       if (savedStartsAt) assert.match(view.container.textContent!, /18:30/);
+      assert.match(view.container.textContent!, /24명/);
+      assert.doesNotMatch(view.container.textContent!, /예상 인원 변경/);
       await submit(view.container);
       await until(() => assert.equal(next?.time, "18:30"));
-      await click(view.container, "예상 인원 변경");
-      await fill(view.container, "expectedGuests", "25");
-      await submit(view.container);
-      await until(() => assert.equal(next?.expectedGuests, "25"));
     } finally {
       await view.unmount();
     }

@@ -235,19 +235,11 @@ export function RestaurantBrowser({
                       ? "조건에 맞는 매장이 없어요"
                       : "이 지역에 등록된 매장이 없어요"}
                   </h2>
-                  {onEditConditions && (
-                    <>
-                      <p className="mx-auto mt-2 max-w-[235px] text-xs text-muted">
-                        {serviceArea.label}에서 예상 인원을 조정해 다시
-                        찾아보세요.
-                      </p>
-                      <Button
-                        className="mt-5 w-full"
-                        onClick={onEditConditions}
-                      >
-                        조건 넓혀서 다시 찾기
-                      </Button>
-                    </>
+                  {expectedGuests !== undefined && (
+                    <p className="mx-auto mt-2 max-w-[235px] text-xs text-muted">
+                      {serviceArea.label}에서 예상 인원 {expectedGuests}명을
+                      수용할 수 있는 매장이 없어요.
+                    </p>
                   )}
                 </section>
               ) : (

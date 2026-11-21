@@ -18,7 +18,6 @@ test("room choice and importance survive form validation and inquiry conversion"
   const values = conditionsSchema.parse({
     date: "2099-01-01",
     time: "18:00",
-    expectedGuests: "20",
     seating: "CLOSE",
     space: "ROOM",
     seatingImportance: "PREFERRED",
@@ -34,7 +33,7 @@ test("room choice and importance survive form validation and inquiry conversion"
   assert.equal(inquiry.region, "건대입구 · 세종대");
   assert.equal(inquiry.space, "ROOM");
   assert.equal(inquiry.spaceImportance, "REQUIRED");
-  assert.equal(inquiry.expectedGuests, 20);
+  assert.equal(Object.hasOwn(inquiry, "expectedGuests"), false);
 
   const startsAt = "2099-01-01T09:00:45.000Z";
   const saved = savedInquirySchedule(startsAt);

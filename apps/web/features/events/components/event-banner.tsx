@@ -95,7 +95,7 @@ export function ActiveEventBanner({
       width: 26.112,
       height: 29.184,
       state: summary
-        ? summary.roundCount
+        ? summary.hasAttendanceRecords || summary.attendanceComplete
           ? `${summary.attendingCount}명 참석`
           : "명단 준비"
         : "확인 중",

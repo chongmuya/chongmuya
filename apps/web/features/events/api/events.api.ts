@@ -21,7 +21,12 @@ export const createEvent = (request: SessionRequest, input: EventInput) =>
 export const updateEvent = (
   request: SessionRequest,
   eventId: string,
-  input: { expectedVersion: number; name: string; scheduledAt?: string | null },
+  input: {
+    expectedVersion: number;
+    name?: string;
+    scheduledAt?: string | null;
+    expectedGuests?: number;
+  },
 ) =>
   request<Event>(`${path}/${eventId}`, {
     method: "PATCH",

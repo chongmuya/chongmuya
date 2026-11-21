@@ -1,9 +1,8 @@
 import { serviceArea } from "@/shared/lib/service-area";
 import { fromKoreanDateInput, koreanDateInput } from "@/shared/lib/korean-date";
-import { guestCountSchema } from "@/shared/lib/guest-count";
 import { z } from "zod";
 import type { Account } from "@/features/auth/types";
-import type { InquiryConditions } from "../types/inquiry.types";
+import type { CreateInquiry } from "../types/inquiry.types";
 
 export const conditionsSchema = z
   .object({
@@ -11,7 +10,6 @@ export const conditionsSchema = z
     time: z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "시작 시간을 입력해 주세요."),
-    expectedGuests: guestCountSchema,
     seating: z.enum(["CLOSE", "SEPARATED", "ANY"]),
     space: z.enum(["HALL", "ROOM", "FLOOR", "WHOLE", "ANY"]),
     seatingImportance: z.enum(["REQUIRED", "PREFERRED"]),
@@ -67,7 +65,6 @@ export function initialConditions(
 ): ConditionsValues {
   return {
     ...conditionSchedule(scheduledAt),
-    expectedGuests: "",
     seating: "ANY",
     space: "ANY",
     seatingImportance: "PREFERRED",
@@ -83,11 +80,10 @@ export function initialConditions(
 export function inquiryConditions(
   v: ConditionsValues,
   savedStartsAt?: string,
-): InquiryConditions {
+): CreateInquiry["conditions"] {
   return {
     startsAt:
       savedStartsAt ?? new Date(`${v.date}T${v.time}:00+09:00`).toISOString(),
-    expectedGuests: Number(v.expectedGuests),
     region: serviceArea.label,
     seating: v.seating,
     space: v.space,

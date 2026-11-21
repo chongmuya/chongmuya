@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { serviceArea } from "@/shared/lib/service-area";
@@ -17,6 +17,7 @@ import {
 
 export function ConditionsForm({
   initial,
+  expectedGuests,
   savedStartsAt,
   groupType,
   onContinue,
@@ -24,13 +25,13 @@ export function ConditionsForm({
   onChange,
 }: {
   initial: ConditionsValues;
+  expectedGuests: number;
   savedStartsAt?: string;
   groupType?: string | null;
   onContinue: (values: ConditionsValues) => void;
   nextLabel?: string;
   onChange?: (values: ConditionsValues) => void;
 }) {
-  const [editGuests, setEditGuests] = useState(!initial.expectedGuests);
   const {
     register,
     subscribe,
@@ -72,11 +73,7 @@ export function ConditionsForm({
           control={control}
           name={name}
           type={type}
-          inputMode={
-            name === "expectedGuests" || name === "budgetAmount"
-              ? "numeric"
-              : undefined
-          }
+          inputMode={name === "budgetAmount" ? "numeric" : undefined}
           variant="form"
           className="min-w-0"
         />
@@ -110,10 +107,7 @@ export function ConditionsForm({
       <div className="mb-7">
         <ConditionSummary
           conditions={{
-            expectedGuests:
-              !editGuests && initial.expectedGuests
-                ? Number(initial.expectedGuests)
-                : null,
+            expectedGuests,
             startsAt: savedStartsAt ?? null,
             region: serviceArea.label,
           }}
@@ -132,23 +126,6 @@ export function ConditionsForm({
             </div>
           ) : (
             <FormError message={errors.date?.message} />
-          )}
-          {editGuests ? (
-            input(
-              "expectedGuests",
-              "예상 인원",
-              "text",
-              true,
-              "명단 없이 예상 인원만으로 문의할 수 있어요.",
-            )
-          ) : (
-            <button
-              type="button"
-              className="min-h-8 text-xs font-medium text-link underline underline-offset-4"
-              onClick={() => setEditGuests(true)}
-            >
-              예상 인원 변경
-            </button>
           )}
           <dl className="space-y-4 text-xs">
             {groupType && (

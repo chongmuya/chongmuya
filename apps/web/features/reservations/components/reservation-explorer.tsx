@@ -11,7 +11,12 @@ import {
   safeReturnPath,
 } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
-import { EventPicker, eventKeys, useEvent } from "@/features/events/client";
+import {
+  EventGuestEstimateForm,
+  EventPicker,
+  eventKeys,
+  useEvent,
+} from "@/features/events/client";
 import { useGroups } from "@/features/groups/client";
 import {
   canInquireAtRestaurants,
@@ -313,6 +318,33 @@ function InquiryFlow({
         <InquiryReceipt inquiry={existing.data} showEventLink />
       </StepLayout>
     );
+  if (event.data.expectedGuests == null)
+    return (
+      <StepLayout
+        variant="flow"
+        title=""
+        onBack={() => router.push(`/events?event=${eventId}`)}
+      >
+        <StepHeading
+          title="행사 예상 인원을 등록해 주세요"
+          description={event.data.name}
+        />
+        {event.isError || existing.isError ? (
+          <ErrorState
+            retry={() => {
+              void event.refetch();
+              void existing.refetch();
+            }}
+          />
+        ) : (
+          <EventGuestEstimateForm
+            accountId={account.id}
+            event={event.data}
+            request={request}
+          />
+        )}
+      </StepLayout>
+    );
   return (
     <InquiryDraft
       key={previous?.id ?? "initial"}
@@ -331,6 +363,7 @@ function InquiryFlow({
         version: event.data.version,
         name: event.data.name,
         scheduledAt: event.data.scheduledAt,
+        expectedGuests: event.data.expectedGuests,
       }}
       request={request}
       browse={browse}
@@ -358,6 +391,7 @@ function InquiryDraft({
     version: number;
     name: string;
     scheduledAt: string | null;
+    expectedGuests: number;
   };
   request: SessionRequest;
   browse: BrowseNavigation;
@@ -366,6 +400,7 @@ function InquiryDraft({
   const params = useSearchParams();
   const active = useActiveScreen();
   const cache = useQueryClient();
+  const { expectedGuests } = event;
   const savedSchedule = previous
     ? null
     : savedInquirySchedule(event.scheduledAt);
@@ -378,7 +413,6 @@ function InquiryDraft({
     return p
       ? {
           ...initial,
-          expectedGuests: String(p.expectedGuests),
           seating: p.seating,
           space: p.space,
           seatingImportance: p.seatingImportance ?? ("PREFERRED" as const),
@@ -388,20 +422,14 @@ function InquiryDraft({
           alcohol: p.alcohol ?? ("UNKNOWN" as const),
           additionalRequests: p.additionalRequests ?? "",
         }
-      : {
-          ...initial,
-          expectedGuests:
-            cache.getQueryData<string>(
-              eventKeys.guestEstimate(account.id, event.id),
-            ) ?? "",
-        };
+      : initial;
   });
   const values = savedSchedule
     ? { ...draftValues, date: savedSchedule.date, time: savedSchedule.time }
     : draftValues;
   const valid = conditionsSchema.safeParse(values).success;
   const conditions = valid
-    ? inquiryConditions(values, savedSchedule?.startsAt)
+    ? { ...inquiryConditions(values, savedSchedule?.startsAt), expectedGuests }
     : null;
   const [scheduleConfirmed, setScheduleConfirmed] = useState(false);
   const scheduleChanged =
@@ -435,7 +463,6 @@ function InquiryDraft({
     null,
   );
   const targets = useSelectedRestaurants(browse.selected);
-  const expectedGuests = Number(values.expectedGuests);
   const issues = targets.map((target) =>
     restaurantInquiryIssue(target, expectedGuests),
   );
@@ -612,6 +639,7 @@ function InquiryDraft({
         <ConditionsForm
           key={savedSchedule?.startsAt ?? "editable"}
           initial={values}
+          expectedGuests={expectedGuests}
           savedStartsAt={savedSchedule?.startsAt}
           groupType={groupType}
           onChange={setValues}

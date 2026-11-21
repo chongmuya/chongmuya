@@ -90,6 +90,14 @@ export const messages: Record<
     message:
       "발송한 문의 또는 선택한 매장의 일정이 있어요. 모두 종료된 문의는 재문의에서 날짜를 바꿀 수 있어요. 선택한 예약의 일정 변경은 아직 지원하지 않아요.",
   },
+  EVENT_EXPECTED_GUESTS_REQUIRED: {
+    status: 400,
+    message: "행사에 예상 인원을 등록해 주세요.",
+  },
+  EVENT_EXPECTED_GUESTS_LOCKED: {
+    status: 409,
+    message: "이미 등록한 예상 인원은 변경할 수 없어요.",
+  },
 
   OWNER_REQUIRED: { status: 403, message: "사장님 계정으로 이용해 주세요." },
   RESTAURANT_DUPLICATE: {

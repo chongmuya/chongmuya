@@ -79,6 +79,7 @@ type HomeAction = {
 // The existing list card keeps its destination and does not depend on the
 // banner's date or finalization policy.
 export function eventCardView(
+  event: Event,
   summary?: EventSummary,
 ): ProgressView | undefined {
   if (!summary) return;
@@ -89,8 +90,8 @@ export function eventCardView(
   if (summary.reservation?.status === "CANCELLED") return "reservation";
   if (summary.reservation?.progress === "CONFIRMED") return "attendance";
   if (summary.reservation) return "reservation";
-  if (summary.roundCount > 0) return "attendance";
-  return summary.inquiry && summary.inquiry.state !== "CLOSED"
+  return (summary.inquiry && summary.inquiry.state !== "CLOSED") ||
+    (event.expectedGuests != null && !summary.hasAttendanceRecords)
     ? "reservation"
     : "attendance";
 }
@@ -172,7 +173,13 @@ export function homeAction(
       view: "reservation",
       target: "venue",
     };
-  if (confirmed || (!reservation && summary.roundCount > 0))
+  if (
+    confirmed ||
+    (!reservation &&
+      (!summary.inquiry || summary.inquiry.state === "CLOSED") &&
+      (summary.hasAttendanceRecords ||
+        (event.expectedGuests == null && summary.roundCount > 0)))
+  )
     return {
       title: "함께할 사람들을\n확인해볼까요?",
       action: "참석 현황을 확인해볼까요?",
@@ -213,7 +220,7 @@ export function homeActionPath(
     return `${homeEventPath(event, "settlement")}&action=expense`;
   if (next.target === "venue") {
     const request = summary?.inquiry?.requestId;
-    return `/restaurants?event=${event.id}&inquiry=1&view=list${request ? `&reinquire=${request}` : ""}`;
+    return `/restaurants?event=${event.id}&inquiry=1&view=${request ? `list&reinquire=${request}` : "conditions"}`;
   }
   return homeEventPath(event, next.view);
 }

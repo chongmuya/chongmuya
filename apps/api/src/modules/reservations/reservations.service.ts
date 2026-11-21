@@ -46,39 +46,6 @@ export class ReservationsService {
     input: CreateReservationRequestInput,
   ): Promise<ReservationRequestDto> {
     const c = input.conditions;
-    const conditions: InquiryConditions = {
-      startsAt: new Date(c.startsAt).toISOString(),
-      expectedGuests: c.expectedGuests,
-      region: c.region,
-      seating: c.seating,
-      space: c.space,
-      seatingImportance:
-        c.seating === "ANY" ? null : (c.seatingImportance ?? null),
-      spaceImportance: c.space === "ANY" ? null : (c.spaceImportance ?? null),
-      budgetBasis: c.budgetBasis ?? null,
-      budgetAmount: c.budgetAmount ?? null,
-      alcohol: c.budgetAmount ? (c.alcohol ?? "UNKNOWN") : null,
-      additionalRequests: c.additionalRequests || null,
-    };
-    const digest = createHash("sha256")
-      .update(
-        JSON.stringify({
-          conditions,
-          contact: { name: input.contact.name, phone: input.contact.phone },
-          restaurantIds: [...input.restaurantIds].sort(),
-          expectedEventVersion: input.expectedEventVersion,
-          ...(input.previousRequestId ||
-          input.expectedRequestVersion !== undefined ||
-          input.updateEventSchedule !== undefined
-            ? {
-                previousRequestId: input.previousRequestId ?? null,
-                expectedRequestVersion: input.expectedRequestVersion ?? null,
-                updateEventSchedule: input.updateEventSchedule ?? false,
-              }
-            : {}),
-        }),
-      )
-      .digest("hex");
     const db = await this.database.connect();
     let created = false;
     const result = await db.transaction(async (manager) => {
@@ -88,6 +55,44 @@ export class ReservationsService {
         manager,
         true,
       );
+      // Older clients send the count. Keep their exact retries valid, including
+      // requests sent before the event had a stored estimate.
+      const expectedGuests = c.expectedGuests ?? event.expectedGuests;
+      if (expectedGuests === null)
+        throw new DomainHttpException("EVENT_EXPECTED_GUESTS_REQUIRED");
+      const conditions: InquiryConditions = {
+        startsAt: new Date(c.startsAt).toISOString(),
+        expectedGuests,
+        region: c.region,
+        seating: c.seating,
+        space: c.space,
+        seatingImportance:
+          c.seating === "ANY" ? null : (c.seatingImportance ?? null),
+        spaceImportance: c.space === "ANY" ? null : (c.spaceImportance ?? null),
+        budgetBasis: c.budgetBasis ?? null,
+        budgetAmount: c.budgetAmount ?? null,
+        alcohol: c.budgetAmount ? (c.alcohol ?? "UNKNOWN") : null,
+        additionalRequests: c.additionalRequests || null,
+      };
+      const digest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            conditions,
+            contact: { name: input.contact.name, phone: input.contact.phone },
+            restaurantIds: [...input.restaurantIds].sort(),
+            expectedEventVersion: input.expectedEventVersion,
+            ...(input.previousRequestId ||
+            input.expectedRequestVersion !== undefined ||
+            input.updateEventSchedule !== undefined
+              ? {
+                  previousRequestId: input.previousRequestId ?? null,
+                  expectedRequestVersion: input.expectedRequestVersion ?? null,
+                  updateEventSchedule: input.updateEventSchedule ?? false,
+                }
+              : {}),
+          }),
+        )
+        .digest("hex");
       const existing = await manager
         .getRepository(ReservationRequest)
         .findOneBy({ eventId, requestKey: input.requestKey });
@@ -111,6 +116,11 @@ export class ReservationsService {
         throw new DomainHttpException("RESERVATION_SELECTION_CONFLICT");
       if (event.version !== input.expectedEventVersion)
         throw new DomainHttpException("VERSION_CONFLICT");
+      if (
+        event.expectedGuests !== null &&
+        expectedGuests !== event.expectedGuests
+      )
+        throw new DomainHttpException("EVENT_EXPECTED_GUESTS_LOCKED");
       if (new Date(conditions.startsAt).getTime() <= Date.now())
         throw new DomainHttpException("RESERVATION_DATE_INVALID");
       if (
@@ -136,6 +146,7 @@ export class ReservationsService {
         conditions.startsAt,
         true,
         manager,
+        event.expectedGuests === null ? expectedGuests : undefined,
       );
       const row = await manager.getRepository(ReservationRequest).save({
         id: randomUUID(),

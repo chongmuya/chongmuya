@@ -34,6 +34,106 @@ const body = () => ({
   contact: { name: "문의 담당", phone: "01000001234" },
 });
 
+test("planned reservations share the event estimate and one initial attendance round", async (t) => {
+  const { app, db, call, signup } = await startResourceApplication(t);
+  t.mock.method(
+    app.get(MessageDeliveryService),
+    "dispatchRequest",
+    async () => undefined,
+  );
+  await seedDemoRestaurants(db);
+  const owner = await signup();
+  const input = body();
+  const create = {
+    creationKey: randomUUID(),
+    name: "예약하는 행사",
+    scheduledAt: input.conditions.startsAt,
+    expectedGuests: 24,
+  };
+  const responses = await Promise.all([
+    call("events", owner, "POST", create),
+    call("events", owner, "POST", create),
+  ]);
+  assert.deepEqual(
+    responses.map(({ status }) => status),
+    [201, 201],
+  );
+  const [event, retry] = await Promise.all(
+    responses.map((response) => response.json()),
+  );
+  assert.equal(event.id, retry.id);
+  const base = `events/${event.id}`;
+  const path = `${base}/reservation-requests`;
+  assert.equal((await (await call(base, owner)).json()).expectedGuests, 24);
+  const attendance = await (
+    await call(`${base}/attendance-rounds`, owner)
+  ).json();
+  assert.equal(attendance.nextTitle, "2차");
+  assert.deepEqual(
+    attendance.rounds.map(({ title }: { title: string }) => title),
+    ["1차"],
+  );
+  assert.equal(
+    await (await call(path, owner)).json().then(({ request }) => request),
+    null,
+  );
+  assert.equal(
+    (await call("events", owner, "POST", { ...create, expectedGuests: 25 }))
+      .status,
+    409,
+  );
+  assert.equal(
+    (
+      await call(base, owner, "PATCH", {
+        expectedVersion: 1,
+        expectedGuests: 25,
+      })
+    ).status,
+    409,
+  );
+  const modified = await call(path, owner, "POST", {
+    ...input,
+    conditions: { ...input.conditions, expectedGuests: 25 },
+  });
+  assert.equal(modified.status, 409);
+  assert.equal((await modified.json()).code, "EVENT_EXPECTED_GUESTS_LOCKED");
+  const bodyWithoutEstimate = {
+    ...input,
+    conditions: { ...input.conditions, expectedGuests: undefined },
+  };
+  const submitted = await call(path, owner, "POST", bodyWithoutEstimate);
+  assert.equal(submitted.status, 201);
+  assert.equal((await submitted.json()).snapshot.expectedGuests, 24);
+  assert.deepEqual(
+    await (await call(`${base}/attendance-rounds`, owner)).json(),
+    attendance,
+  );
+
+  const older = await (
+    await call("events", owner, "POST", { name: "기존 행사" })
+  ).json();
+  const olderBase = `events/${older.id}`;
+  const missed = await call(
+    `${olderBase}/reservation-requests`,
+    owner,
+    "POST",
+    bodyWithoutEstimate,
+  );
+  assert.equal(missed.status, 400);
+  assert.equal((await missed.json()).code, "EVENT_EXPECTED_GUESTS_REQUIRED");
+  const initialized = await call(olderBase, owner, "PATCH", {
+    expectedVersion: 1,
+    expectedGuests: 18,
+  });
+  assert.equal(initialized.status, 200);
+  assert.equal((await initialized.json()).expectedGuests, 18);
+  assert.equal(
+    (await (await call(`${olderBase}/attendance-rounds`, owner)).json()).rounds
+      .length,
+    1,
+  );
+});
+
 test("public catalog excludes private contacts; one inquiry per owned event, concurrent retries, immutable snapshot and rollback", async (t) => {
   const { app, db, call, signup, logs } = await startResourceApplication(t);
   t.mock.method(

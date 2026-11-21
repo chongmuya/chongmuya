@@ -23,6 +23,7 @@ const event = (id: string, date: string | null): Event => ({
   ownerId: "a",
   groupId: null,
   version: 1,
+  expectedGuests: null,
   scheduledAt: date,
 });
 const summary = (
@@ -83,7 +84,12 @@ test("a new event opens the actual inquiry workspace and an unknown summary does
   assert.equal(next.title, "행사에 딱 맞는\n식당을 찾아볼까요?");
   assert.equal(
     homeActionPath(e, empty, next),
-    "/restaurants?event=past&inquiry=1&view=list",
+    "/restaurants?event=past&inquiry=1&view=conditions",
+  );
+  const planned = { ...e, expectedGuests: 24 };
+  assert.equal(
+    homeAction(planned, { ...empty, roundCount: 1 }, now).view,
+    "reservation",
   );
   assert.equal(reservationLabel(empty), "예약 미선택");
 });

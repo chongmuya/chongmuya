@@ -15,11 +15,8 @@ export function useUpdateEvent(
     active = useActiveScreen();
   return useMutation({
     mutationKey: [...eventKeys.detail(accountId, eventId), "update"],
-    mutationFn: (input: {
-      expectedVersion: number;
-      name: string;
-      scheduledAt?: string | null;
-    }) => updateEvent(request, eventId, input),
+    mutationFn: (input: Parameters<typeof updateEvent>[2]) =>
+      updateEvent(request, eventId, input),
     retry: false,
     networkMode: "always",
     onSuccess: (event) => updateEventCache(cache, accountId, event, active),

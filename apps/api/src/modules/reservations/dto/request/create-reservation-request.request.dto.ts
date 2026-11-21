@@ -18,6 +18,7 @@ import {
   ValidateNested,
   IsObject,
   IsBoolean,
+  ValidateIf,
 } from "class-validator";
 
 const trim = ({ value }: { value: unknown }) =>
@@ -26,7 +27,11 @@ export class InquiryConditionsInput {
   @IsISO8601({ strict: true })
   @Matches(/T.*(?:Z|[+-]\d{2}:\d{2})$/)
   startsAt!: string;
-  @IsInt() @Min(1) @Max(100000) expectedGuests!: number;
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  expectedGuests?: number;
   @Transform(trim) @IsString() @Length(1, 80) region!: string;
   @IsIn(["CLOSE", "SEPARATED", "ANY"]) seating!: "CLOSE" | "SEPARATED" | "ANY";
   @IsIn(["HALL", "ROOM", "FLOOR", "WHOLE", "ANY"]) space!:
