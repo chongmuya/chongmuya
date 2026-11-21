@@ -81,15 +81,8 @@ function InboxContent({
     active = useActiveScreen(),
     router = useRouter();
   const read = useMutation({
-    mutationFn: (input: {
-      id?: string;
-      through?: string;
-      destination?: string;
-    }) =>
-      readInbox(
-        request,
-        input.id ? { id: input.id } : { through: input.through },
-      ),
+    mutationFn: (input: { id: string; destination?: string }) =>
+      readInbox(request, input.id),
     onSuccess: async (_, input) => {
       if (!active.current) return;
       await cache.invalidateQueries({ queryKey: inboxKey(accountId) });
@@ -100,26 +93,7 @@ function InboxContent({
   const data =
     isAccessError(q.error) || isAccessError(read.error) ? undefined : q.data;
   return (
-    <StepLayout
-      title="알림"
-      onBack={() => router.push("/")}
-      action={
-        data && data.items.length > 0 ? (
-          <button
-            type="button"
-            className="min-h-11 px-2 text-xs text-secondary disabled:text-placeholder"
-            disabled={
-              read.isPending || (latest.data?.unread ?? data.unread) === 0
-            }
-            onClick={() =>
-              read.mutate({ through: latest.data?.through ?? data.through })
-            }
-          >
-            전체 읽음
-          </button>
-        ) : undefined
-      }
-    >
+    <StepLayout title="알림" onBack={() => router.push("/")}>
       {data && (
         <p className="sr-only" aria-live="polite">
           미읽음 {latest.data?.unread ?? data.unread}개

@@ -25,13 +25,10 @@ export const preferencesQuery = (id: string, request: SessionRequest) =>
     retry: false,
     staleTime: 0,
   });
-export const readInbox = (
-  request: SessionRequest,
-  input: { id?: string; through?: string },
-) =>
+export const readInbox = (request: SessionRequest, id: string) =>
   request("/api/v1/notifications/read", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ id }),
   });
 export const savePreferences = (request: SessionRequest, p: Preferences) =>
   request<Preferences>("/api/v1/notifications/preferences", {
