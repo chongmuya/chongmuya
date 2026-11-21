@@ -37,11 +37,11 @@ export function GroupRosterScreen({
               {selected.name}
             </span>
             <Image
-              src="/images/calendar/scope-arrow.svg"
+              src="/images/select-arrow.svg"
               alt=""
-              width={6.59099}
-              height={11.0607}
-              className="shrink-0 -rotate-90 -scale-y-100"
+              width={10}
+              height={7}
+              className="shrink-0"
             />
           </button>
           <div className="-mr-1.5 flex shrink-0 items-center gap-1.5">

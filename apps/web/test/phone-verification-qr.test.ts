@@ -15,6 +15,8 @@ const pending: VerificationState = {
   message: "test-only-message",
   qrCode: "data:image/png;base64,aGVsbG8=",
   checksRemaining: 12,
+  expiresAt: 300000,
+  retryAt: 60000,
 };
 
 async function setup(state: VerificationState) {
@@ -22,15 +24,18 @@ async function setup(state: VerificationState) {
   document.body.append(container);
   const root = createRoot(container);
   let checks = 0;
-  const update = async (next: VerificationState) => {
+  let requests = 0;
+  const update = async (next: VerificationState, now = 0) => {
     await act(async () =>
       root.render(
         createElement(ContactVerification, {
           state: next,
-          now: 0,
+          now,
           available: true,
           renderField: (requestButton) => requestButton,
-          onRequest() {},
+          onRequest() {
+            requests++;
+          },
           onCheck() {
             checks++;
           },
@@ -43,6 +48,7 @@ async function setup(state: VerificationState) {
     container,
     update,
     checks: () => checks,
+    requests: () => requests,
     close: async () => {
       await act(async () => root.unmount());
       container.remove();
@@ -50,12 +56,14 @@ async function setup(state: VerificationState) {
   };
 }
 
-test("desktop phone QR opens as a modal, can close and reopen, and resets only for a new request", async () => {
+test("phone QR opens after a request, reopens the same QR, and checks inside the dialog", async () => {
   const previousOverflow = document.body.style.overflow;
   const view = await setup({ value: pending.value, status: "idle" });
   try {
     const request = view.container.querySelector<HTMLButtonElement>("button")!;
     request.focus();
+    await click(view.container, "휴대폰 인증 요청");
+    assert.equal(view.requests(), 1);
     await view.update(pending);
     const dialog =
       view.container.querySelector<HTMLDialogElement>("dialog[open]")!;
@@ -64,38 +72,50 @@ test("desktop phone QR opens as a modal, can close and reopen, and resets only f
       view.container.querySelector("img")?.closest("dialog"),
       dialog,
     );
-    assert.equal(document.activeElement, dialog.querySelector("button"));
+    const qr = dialog.querySelector("img")!.getAttribute("src");
+    assert.equal(document.activeElement, dialog.querySelector("h2"));
     assert.equal(document.body.style.overflow, "hidden");
     assert(dialog.getAttribute("aria-labelledby"));
     assert(dialog.getAttribute("aria-describedby"));
+    assert.match(dialog.textContent!, /남은 인증 시간 300초/);
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /인증 결과 확인|확인 가능 횟수|QR 코드 보기|번호·문구 직접 확인/,
+    );
 
-    await click(dialog, "확인");
+    await click(dialog, "닫기");
     assert.equal(view.container.querySelector("dialog"), null);
     assert.equal(view.container.querySelector("img"), null);
     assert.equal(document.body.style.overflow, previousOverflow);
-    assert.equal(document.activeElement?.textContent, "QR 코드 보기");
+    assert.equal(document.activeElement, request);
+    assert.equal(request.textContent, "인증 다시 열기");
     assert.equal(view.checks(), 0);
-    await view.update({ ...pending, checksRemaining: 11 });
+    await view.update(pending, 1000);
     assert.equal(view.container.querySelector("dialog"), null);
+    assert.doesNotMatch(view.container.textContent!, /남은 인증 시간/);
 
-    const reopen = view.container.querySelector<HTMLButtonElement>(
-      '[aria-haspopup="dialog"]',
-    )!;
-    reopen.focus();
-    await click(view.container, "QR 코드 보기");
+    await click(view.container, "인증 다시 열기");
+    assert.equal(
+      view.container.querySelector("dialog img")!.getAttribute("src"),
+      qr,
+    );
+    assert.equal(view.requests(), 1);
     await act(async () => {
       view.container
         .querySelector("dialog")!
         .dispatchEvent(new window.Event("cancel", { cancelable: true }));
     });
     assert.equal(view.container.querySelector("dialog"), null);
-    assert.equal(document.activeElement, reopen);
-    await click(view.container, "인증 결과 확인");
+    assert.equal(document.activeElement, request);
+    await click(view.container, "인증 다시 열기");
+    await click(view.container.querySelector("dialog")!, "문자 보냈어요");
     assert.equal(view.checks(), 1);
+    assert.match(
+      view.container.querySelector("dialog[open]")!.textContent!,
+      /아직 문자가 확인되지/,
+    );
 
-    await view.update({ ...pending, id: "second-request" });
-    assert(view.container.querySelector("dialog[open]"));
-    await view.update({ ...pending, id: "second-request", status: "verified" });
+    await view.update({ ...pending, status: "verified" });
     assert.equal(view.container.querySelector("dialog"), null);
     assert.equal(document.body.style.overflow, previousOverflow);
     assert.match(view.container.textContent!, /휴대폰 인증이 완료/);
@@ -104,38 +124,45 @@ test("desktop phone QR opens as a modal, can close and reopen, and resets only f
   }
 });
 
-test("expiry or editing the phone removes the QR modal and its challenge", async () => {
+test("expiry, editing the phone, or exhausting checks returns to requesting verification", async () => {
   for (const state of [
     { ...pending, status: "expired" },
     { value: "01011111111", status: "idle" },
+    { ...pending, checksRemaining: 0 },
   ] satisfies VerificationState[]) {
     const view = await setup(pending);
     try {
       assert(view.container.querySelector("dialog[open]"));
-      await view.update(state);
+      await view.update(state, 61000);
       assert.equal(view.container.querySelector("dialog"), null);
       assert.equal(view.container.querySelector("img"), null);
       assert.doesNotMatch(view.container.textContent!, /test-only-message/);
       assert.notEqual(document.body.style.overflow, "hidden");
+      await click(view.container, "인증 요청");
+      assert.equal(view.requests(), 1);
+      await view.update({ ...pending, id: "second-request" });
+      assert(view.container.querySelector("dialog[open]"));
     } finally {
       await view.close();
     }
   }
 });
 
-test("touch devices keep the SMS link without automatically opening a QR modal", async (t) => {
-  const media = window.matchMedia("(hover: none) and (pointer: coarse)");
-  t.mock.method(window, "matchMedia", () => ({ ...media, matches: true }));
-  const view = await setup(pending);
+test("the dialog keeps the mobile SMS link and waits for the server check interval", async () => {
+  const state = { ...pending, nextCheckAt: 10000 };
+  const view = await setup(state);
   try {
-    assert.equal(view.container.querySelector("dialog"), null);
-    assert.equal(view.container.querySelector("img"), null);
+    const dialog = view.container.querySelector("dialog[open]")!;
+    assert(dialog);
     assert.equal(
-      view.container.querySelector('a[href^="sms:"]')?.getAttribute("href"),
+      dialog.querySelector('a[href^="sms:"]')?.getAttribute("href"),
       `sms:${pending.receiver}?body=${encodeURIComponent(pending.message!)}`,
     );
-    assert.notEqual(document.body.style.overflow, "hidden");
-    await click(view.container, "인증 결과 확인");
+    assert.match(dialog.textContent!, /10초 후 확인할 수 있어요/);
+    await click(dialog as HTMLElement, "문자 보냈어요");
+    assert.equal(view.checks(), 0);
+    await view.update(state, 10000);
+    await click(dialog as HTMLElement, "문자 보냈어요");
     assert.equal(view.checks(), 1);
   } finally {
     await view.close();

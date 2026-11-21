@@ -115,10 +115,13 @@ async function information(container: HTMLElement) {
   for (const name of ["serviceTerms", "privacyCollection"])
     await agree(container, name);
   await submit(container);
-  for (const label of ["이메일 인증하기", "휴대폰 인증하기"]) {
+  for (const [label, text] of [
+    ["이메일 인증하기", "인증하기"],
+    ["휴대폰 인증 요청", "인증 요청"],
+  ]) {
     assert.equal(
       container.querySelector(`button[aria-label="${label}"]`)?.textContent,
-      "인증하기",
+      text,
     );
   }
   assert.doesNotMatch(
@@ -133,7 +136,7 @@ async function information(container: HTMLElement) {
     "passwordConfirm",
   ] as const)
     await fill(container, name, data[name]);
-  await click(container, "휴대폰 인증하기");
+  await click(container, "휴대폰 인증 요청");
   await click(container, "이메일 인증하기");
 }
 

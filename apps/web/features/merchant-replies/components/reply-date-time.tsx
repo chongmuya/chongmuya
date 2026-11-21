@@ -48,7 +48,7 @@ export function ReplyDateTime({
         <Button
           id="reply-time"
           variant="outline"
-          className="min-h-[49px] w-full justify-between border-placeholder px-3 text-left font-normal text-copy"
+          className="min-h-[49px] w-full justify-between border-placeholder ps-3 pe-3.5 text-left font-normal text-copy"
           aria-haspopup="dialog"
           aria-expanded={draftTime !== null}
           aria-invalid={invalid}
@@ -57,11 +57,11 @@ export function ReplyDateTime({
         >
           {time || "시간 선택"}
           <Image
-            src="/images/calendar/field-arrow.svg"
+            src="/images/select-arrow.svg"
             alt=""
-            width={8}
-            height={13}
-            className="-rotate-90"
+            width={10}
+            height={7}
+            className="shrink-0"
           />
         </Button>
       </div>
