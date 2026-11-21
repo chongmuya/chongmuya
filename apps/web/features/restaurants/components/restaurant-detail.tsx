@@ -1,11 +1,12 @@
 "use client";
 import { Favorites } from "@/features/favorites/client";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Button } from "@/shared/ui/button";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { restaurantQuery } from "../api/restaurants.api";
+import { restaurantInquiryIssue } from "../hooks/use-restaurants";
 import type { Restaurant } from "../types/restaurant.types";
 import { RestaurantPhoto } from "./restaurant-photo";
 import { spaceCost } from "../lib/space-cost";
@@ -16,6 +17,7 @@ export function RestaurantDetail({
   full,
   selectionBlocked,
   opensInquirySheet,
+  expectedGuests,
   targetCount,
   onSelect,
   onInquiry,
@@ -26,6 +28,7 @@ export function RestaurantDetail({
   full: boolean;
   selectionBlocked: boolean;
   opensInquirySheet: boolean;
+  expectedGuests?: number;
   targetCount: number;
   onSelect: () => void;
   onInquiry: (trigger: HTMLButtonElement) => void;
@@ -35,26 +38,53 @@ export function RestaurantDetail({
   const [section, setSection] = useState<"booking" | "spaces" | "menus">(
     "booking",
   );
+  const title = useRef<HTMLHeadingElement>(null);
+  const retryFocused = useRef(false);
+  const unavailableNotice = useRef<HTMLParagraphElement>(null);
   const r = result.data;
+  const inquiryIssue = restaurantInquiryIssue(result, expectedGuests);
+  const retry = () => {
+    if (!result.isFetching) void result.refetch({ cancelRefetch: false });
+  };
+  useEffect(() => {
+    if (!result.isSuccess || !retryFocused.current) return;
+    retryFocused.current = false;
+    // The retry button disappears on success. Don't take focus from another control.
+    if (document.activeElement === document.body) title.current?.focus();
+  }, [result.isSuccess]);
   return (
     <article className="pb-28">
-      {(!r || result.isError) && (
+      {!r && (
         <h2 id="restaurant-detail-title" className="sr-only">
           매장 상세
         </h2>
       )}
       {result.isError && !r ? (
-        <ErrorState retry={() => void result.refetch()} />
+        <ErrorState retry={retry} />
       ) : !r ? (
         <LoadingState>매장 확인 중…</LoadingState>
       ) : (
         <>
           {result.isError && (
-            <ErrorState
-              retry={() => void result.refetch({ cancelRefetch: false })}
-            >
-              최신 매장 정보를 확인하지 못했어요. 다시 확인해 주세요.
-            </ErrorState>
+            <div className="space-y-2 py-3">
+              <p role="alert">
+                최신 매장 정보를 확인하지 못했어요. 담은 매장은 유지돼요. 다시
+                확인한 뒤 문의를 진행해 주세요.
+              </p>
+              <Button
+                aria-disabled={result.isFetching}
+                aria-busy={result.isFetching}
+                onClick={retry}
+                onFocus={() => {
+                  retryFocused.current = true;
+                }}
+                onBlur={() => {
+                  retryFocused.current = false;
+                }}
+              >
+                {result.isFetching ? "매장 확인 중…" : "다시 시도"}
+              </Button>
+            </div>
           )}
           <RestaurantPhoto
             src={r.photoPath}
@@ -62,7 +92,12 @@ export function RestaurantDetail({
             eager
           />
           <div className="space-y-7 pt-6 pb-5">
-            <h1 id="restaurant-detail-title" className="text-2xl font-bold">
+            <h1
+              ref={title}
+              id="restaurant-detail-title"
+              tabIndex={-1}
+              className="text-2xl font-bold"
+            >
               {r.name}
             </h1>
             <Favorites restaurantId={r.id} />
@@ -237,8 +272,15 @@ export function RestaurantDetail({
                 <Button
                   variant="brand-outline"
                   className="w-full border-field text-xs font-normal"
-                  disabled={!selected && full}
-                  onClick={onSelect}
+                  disabled={!selected && (full || result.isError)}
+                  onClick={(event) => {
+                    if (
+                      !r.inquiryAvailable &&
+                      document.activeElement === event.currentTarget
+                    )
+                      unavailableNotice.current?.focus();
+                    onSelect();
+                  }}
                 >
                   {selected
                     ? "문의 담기 취소"
@@ -252,8 +294,7 @@ export function RestaurantDetail({
                   className="w-full"
                   disabled={
                     (!selected && full) ||
-                    (!opensInquirySheet &&
-                      (selectionBlocked || result.isError || result.isFetching))
+                    (!opensInquirySheet && (selectionBlocked || !!inquiryIssue))
                   }
                   onClick={(event) => onInquiry(event.currentTarget)}
                 >
@@ -265,11 +306,25 @@ export function RestaurantDetail({
                 </Button>
               )}
               {!r.inquiryAvailable && (
-                <p role="status" className="rounded-control bg-background p-3">
+                <p
+                  ref={unavailableNotice}
+                  role="status"
+                  tabIndex={-1}
+                  className="rounded-control bg-background p-3"
+                >
                   문의 수신 확인 전인 매장이에요. 현재는 문의를 접수할 수
                   없어요.
                 </p>
               )}
+              {!opensInquirySheet &&
+                (selectionBlocked || inquiryIssue === "loading") &&
+                r.inquiryAvailable &&
+                !result.isError && (
+                  <p role="status" className="text-sm text-muted">
+                    선택한 매장을 모두 확인해야 계속할 수 있어요. 매장 목록에서
+                    선택을 확인해 주세요.
+                  </p>
+                )}
             </div>
           </div>
         </>

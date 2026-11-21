@@ -32,7 +32,7 @@ export function restaurantInquiryIssue(
 export function canInquireAtRestaurants(
   cache: QueryClient,
   ids: string[],
-  expectedGuests: number,
+  expectedGuests?: number,
 ) {
   return ids.every(
     (id) =>

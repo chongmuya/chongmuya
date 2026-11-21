@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
@@ -13,6 +13,7 @@ import {
 } from "../api/restaurants.api";
 import type { BrowseNavigation } from "../types/restaurant.types";
 import {
+  canInquireAtRestaurants,
   restaurantInquiryIssue,
   useSelectedRestaurants,
 } from "../hooks/use-restaurants";
@@ -46,6 +47,7 @@ export function RestaurantBrowser({
     onSubmit: () => void;
   };
 }) {
+  const cache = useQueryClient();
   const [sheet, setSheet] = useState(false);
   const listFocus = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -71,6 +73,8 @@ export function RestaurantBrowser({
     restaurantInquiryIssue(result, expectedGuests),
   );
   const selectionBlocked = issues.some(Boolean);
+  const canContinue = (ids: string[]) =>
+    ids.length > 0 && canInquireAtRestaurants(cache, ids, expectedGuests);
   const toggle = (id: string) => {
     if (sending) return;
     if (sheet && view === "list" && selected.length === 1 && selected[0] === id)
@@ -157,6 +161,7 @@ export function RestaurantBrowser({
           full={selected.length === 3}
           selectionBlocked={selectionBlocked}
           opensInquirySheet={sendsInquiry}
+          expectedGuests={expectedGuests}
           targetCount={
             selected.includes(restaurantId)
               ? selected.length
@@ -172,7 +177,7 @@ export function RestaurantBrowser({
             if (!added && selected.length >= 3) return;
             const ids = added ? selected : [...selected, restaurantId];
             if (sendsInquiry) openSheet(trigger, ids);
-            else onInquiry?.(ids);
+            else if (canContinue(ids)) onInquiry?.(ids);
           }}
         />
       ) : view === "map" ? (
@@ -403,7 +408,7 @@ export function RestaurantBrowser({
             disabled={!sendsInquiry && selectionBlocked}
             onClick={(event) => {
               if (sendsInquiry) openSheet(event.currentTarget);
-              else onInquiry?.(selected);
+              else if (canContinue(selected)) onInquiry?.(selected);
             }}
           >
             {sendsInquiry ? "문의 진행하기" : "문의 조건 확인"}
@@ -442,7 +447,7 @@ export function RestaurantBrowser({
               loading={sending}
               onClick={() => {
                 if (inquirySheet) inquirySheet.onSubmit();
-                else {
+                else if (canContinue(selected)) {
                   closeSheet();
                   onInquiry?.(selected);
                 }
