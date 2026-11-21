@@ -144,7 +144,7 @@ test("phone proof is requester-bound, expiring, revocable, single-use and atomic
     400,
   );
   for (const invalid of [
-    input.consents.filter((term) => term.id !== "serviceTerms"),
+    legacyInput.consents.filter((term) => term.id !== "serviceTerms"),
     input.consents.map((term) =>
       term.id === "privacyCollection" ? input.consents[0]! : term,
     ),
