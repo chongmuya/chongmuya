@@ -83,5 +83,8 @@ export type BrowseNavigation = {
   view: "list" | "map" | "detail";
   page: number;
   onSelect: (ids: string[]) => void;
-  onNavigate: (changes: Record<string, string | null>) => void;
+  onNavigate: (
+    changes: Record<string, string | null>,
+    options?: { replace?: boolean },
+  ) => void;
 };

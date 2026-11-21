@@ -14,6 +14,8 @@ export function RestaurantDetail({
   id,
   selected,
   full,
+  selectionBlocked,
+  opensInquirySheet,
   targetCount,
   onSelect,
   onInquiry,
@@ -22,9 +24,11 @@ export function RestaurantDetail({
   id: string;
   selected: boolean;
   full: boolean;
+  selectionBlocked: boolean;
+  opensInquirySheet: boolean;
   targetCount: number;
   onSelect: () => void;
-  onInquiry: () => void;
+  onInquiry: (trigger: HTMLButtonElement) => void;
   onMap: (restaurant: Restaurant) => void;
 }) {
   const result = useQuery(restaurantQuery(id));
@@ -45,6 +49,13 @@ export function RestaurantDetail({
         <LoadingState>매장 확인 중…</LoadingState>
       ) : (
         <>
+          {result.isError && (
+            <ErrorState
+              retry={() => void result.refetch({ cancelRefetch: false })}
+            >
+              최신 매장 정보를 확인하지 못했어요. 다시 확인해 주세요.
+            </ErrorState>
+          )}
           <RestaurantPhoto
             src={r.photoPath}
             alt={`${r.name} 대표 사진`}
@@ -221,8 +232,8 @@ export function RestaurantDetail({
                 지도로 보기
               </Button>
             </section>
-            {r.inquiryAvailable ? (
-              <div className="space-y-2">
+            <div className="space-y-2">
+              {(r.inquiryAvailable || selected) && (
                 <Button
                   variant="brand-outline"
                   className="w-full border-field text-xs font-normal"
@@ -235,21 +246,31 @@ export function RestaurantDetail({
                       ? "최대 3곳까지 담을 수 있어요"
                       : "문의 담기"}
                 </Button>
+              )}
+              {(r.inquiryAvailable || (opensInquirySheet && selected)) && (
                 <Button
                   className="w-full"
-                  disabled={!selected && full}
-                  onClick={onInquiry}
+                  disabled={
+                    (!selected && full) ||
+                    (!opensInquirySheet &&
+                      (selectionBlocked || result.isError || result.isFetching))
+                  }
+                  onClick={(event) => onInquiry(event.currentTarget)}
                 >
                   {!selected && full
                     ? "선택한 매장을 먼저 빼 주세요"
-                    : `선택한 ${targetCount}곳으로 계속`}
+                    : opensInquirySheet
+                      ? "문의 진행하기"
+                      : `선택한 ${targetCount}곳으로 계속`}
                 </Button>
-              </div>
-            ) : (
-              <p role="status" className="rounded-control bg-background p-3">
-                문의 수신 확인 전인 매장이에요. 현재는 문의를 접수할 수 없어요.
-              </p>
-            )}
+              )}
+              {!r.inquiryAvailable && (
+                <p role="status" className="rounded-control bg-background p-3">
+                  문의 수신 확인 전인 매장이에요. 현재는 문의를 접수할 수
+                  없어요.
+                </p>
+              )}
+            </div>
           </div>
         </>
       )}
