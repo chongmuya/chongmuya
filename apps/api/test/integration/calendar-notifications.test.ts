@@ -288,15 +288,9 @@ test("phone change proofs bind purpose/account/session/number, atomic consume an
   );
 });
 test("store hours preserve defaults and historical conditions, merchant range is ownership bound", async (t) => {
-  const { db, call, signup } = await startResourceApplication(t),
-    owner = await signup(),
-    other = await signup();
-  await json(
-    await call("auth/first-setup", owner, "PATCH", { accountType: "owner" }),
-  );
-  await json(
-    await call("auth/first-setup", other, "PATCH", { accountType: "owner" }),
-  );
+  const { db, call, existingOwner } = await startResourceApplication(t),
+    owner = await existingOwner(),
+    other = await existingOwner();
   const me = await json<{ id: string }>(await call("auth/me", owner));
   const { Restaurant } =
     await import("../../src/modules/restaurants/entities/restaurant.entity.js");
@@ -614,12 +608,10 @@ test("title and memo edits preserve event and other-schedule reminder recovery g
 });
 
 test("merchant calendar uses the same decline lifecycle as inquiry detail", async (t) => {
-  const { app, db, call, signup } = await startResourceApplication(t);
+  const { app, db, call, signup, existingOwner } =
+    await startResourceApplication(t);
   const organizer = await signup(),
-    owner = await signup();
-  await json(
-    await call("auth/first-setup", owner, "PATCH", { accountType: "owner" }),
-  );
+    owner = await existingOwner();
   const me = await json<{ id: string }>(await call("auth/me", owner));
   const { Restaurant } =
     await import("../../src/modules/restaurants/entities/restaurant.entity.js");

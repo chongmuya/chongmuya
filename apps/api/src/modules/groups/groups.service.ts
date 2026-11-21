@@ -1,14 +1,9 @@
 import { AuthService } from "../auth/auth.service.js";
-import { consumeRequestLimit } from "../../common/http/request-limit.js";
 import {
   GroupMembership,
-  GroupInvitation,
   GroupRosterEdit,
 } from "./entities/group-membership.entity.js";
-import type {
-  InvitationInput,
-  EditGroupMemberInput,
-} from "./dto/request/membership.request.dto.js";
+import type { EditGroupMemberInput } from "./dto/request/edit-group-member.request.dto.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { IsNull, type EntityManager } from "typeorm";
@@ -383,7 +378,7 @@ export class GroupsService {
       const accounts = [];
       for (const row of memberships) {
         try {
-          const a = await this.auth.groupAccount(m, { id: row.accountId });
+          const a = await this.auth.groupAccount(m, row.accountId);
           accounts.push({
             id: a.id,
             name: a.name,
@@ -398,156 +393,7 @@ export class GroupsService {
             throw error;
         }
       }
-      const invitations = await m.find(GroupInvitation, {
-        where: { groupId: id },
-        order: { createdAt: "DESC" },
-        take: 20,
-      });
-      return {
-        version: group.version,
-        ownerId: group.ownerId,
-        accounts,
-        invitations: await Promise.all(
-          invitations.map(async (r) => {
-            let targetLabel = "사용할 수 없는 계정";
-            try {
-              const target = await this.auth.groupAccount(m, {
-                id: r.targetId,
-              });
-              const [local, domain] = target.email.split("@");
-              targetLabel = `${target.name} · ${local!.slice(0, 2)}***@${domain}`;
-            } catch (error) {
-              if (
-                !(error instanceof DomainHttpException) ||
-                error.code !== "GROUP_TARGET_UNAVAILABLE"
-              )
-                throw error;
-            }
-            return {
-              id: r.id,
-              targetLabel,
-              status: r.status,
-              expiresAt: r.expiresAt,
-            };
-          }),
-        ),
-      };
-    });
-  }
-  async invite(ownerId: string, id: string, input: InvitationInput) {
-    const db = await this.database.connect();
-    await consumeRequestLimit(db.manager, `group-invite:${ownerId}`, 20);
-    return db.transaction(async (m) => {
-      await this.assertOwned(ownerId, id, m);
-      const target = await this.auth.groupAccount(m, { email: input.email });
-      if (target.id === ownerId)
-        throw new DomainHttpException("GROUP_TARGET_UNAVAILABLE");
-      const tokenHash = createHash("sha256")
-        .update(`group-invitation:${input.token}`)
-        .digest("hex");
-      const digest = createHash("sha256")
-        .update(JSON.stringify({ id, target: target.id, tokenHash }))
-        .digest("hex");
-      const previous = await m.findOneBy(GroupInvitation, {
-        actorId: ownerId,
-        requestKey: input.requestKey,
-      });
-      if (previous) {
-        if (previous.digest !== digest)
-          throw new DomainHttpException("GROUP_HANDOVER_CONFLICT");
-        return {
-          id: previous.id,
-          status: previous.status,
-          expiresAt: previous.expiresAt,
-        };
-      }
-      const row = await m.save(GroupInvitation, {
-        id: randomUUID(),
-        groupId: id,
-        actorId: ownerId,
-        targetId: target.id,
-        requestKey: input.requestKey,
-        digest,
-        tokenHash,
-        status: "PENDING",
-        createdAt: new Date(),
-        expiresAt: new Date(Date.now() + 86400000),
-        completedAt: null,
-      });
-      return { id: row.id, status: row.status, expiresAt: row.expiresAt };
-    });
-  }
-  async invitation(
-    accountId: string,
-    id: string,
-    token: string,
-    accept = false,
-  ) {
-    const db = await this.database.connect();
-    await consumeRequestLimit(
-      db.manager,
-      `group-invitation-link:${accountId}`,
-      60,
-    );
-    return db.transaction(async (m) => {
-      const seed = await m.findOneBy(GroupInvitation, { id });
-      if (!seed) throw new DomainHttpException("GROUP_LINK_UNAVAILABLE");
-      const group = await this.lock(seed.groupId, m);
-      const row = await m.findOneOrFail(GroupInvitation, {
-        where: { id },
-        lock: { mode: "pessimistic_write" },
-      });
-      const hash = createHash("sha256")
-        .update(`group-invitation:${token}`)
-        .digest("hex");
-      if (
-        row.targetId !== accountId ||
-        row.tokenHash !== hash ||
-        row.status === "CANCELLED"
-      )
-        throw new DomainHttpException("GROUP_LINK_UNAVAILABLE");
-      // Accepted links return only a completion receipt and never regain admin data.
-      if (row.status === "ACCEPTED")
-        return { id, status: row.status, completedAt: row.completedAt };
-      if (row.expiresAt <= new Date() || row.actorId !== group.ownerId)
-        throw new DomainHttpException("GROUP_LINK_UNAVAILABLE");
-      await this.auth.groupAccount(m, { id: accountId });
-      if (!accept)
-        return {
-          id,
-          status: row.status,
-          groupName: group.name,
-          expiresAt: row.expiresAt,
-        };
-      await m
-        .createQueryBuilder()
-        .insert()
-        .into(GroupMembership)
-        .values({
-          groupId: group.id,
-          accountId,
-          role: "MEMBER",
-          joinedAt: new Date(),
-        })
-        .orIgnore()
-        .execute();
-      row.status = "ACCEPTED";
-      row.completedAt = new Date();
-      await m.save(row);
-      return { id, status: row.status, completedAt: row.completedAt };
-    });
-  }
-  async cancelInvitation(ownerId: string, groupId: string, id: string) {
-    const db = await this.database.connect();
-    return db.transaction(async (m) => {
-      await this.assertOwned(ownerId, groupId, m);
-      const row = await m.findOneBy(GroupInvitation, { id, groupId });
-      if (!row) throw new NotFoundException();
-      if (row.status === "ACCEPTED")
-        throw new DomainHttpException("GROUP_HANDOVER_CONFLICT");
-      row.status = "CANCELLED";
-      await m.save(row);
-      return { ok: true };
+      return { version: group.version, ownerId: group.ownerId, accounts };
     });
   }
   async assertActiveMember(
@@ -557,7 +403,7 @@ export class GroupsService {
   ) {
     if (!(await m.existsBy(GroupMembership, { groupId, accountId })))
       throw new DomainHttpException("GROUP_TARGET_UNAVAILABLE");
-    return this.auth.groupAccount(m, { id: accountId });
+    return this.auth.groupAccount(m, accountId);
   }
   async acceptManager(
     groupId: string,

@@ -71,14 +71,7 @@ function GettingStartedContent({
   useEffect(() => {
     if (complete && !showGuide) router.replace(returnTo);
   }, [complete, showGuide, returnTo, router]);
-  if (!complete)
-    return (
-      <FirstSetupForm
-        key={account.accountType ?? "role"}
-        step={!account.accountType ? "role" : "nickname"}
-        onExit={() => router.push("/")}
-      />
-    );
+  if (!complete) return <FirstSetupForm onExit={() => router.push("/")} />;
   if (!showGuide)
     return (
       <main className="app-page">
