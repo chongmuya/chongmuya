@@ -53,6 +53,7 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
       "accounts",
       "attendance_responses",
       "attendance_reviews",
+      "attendance_round_exclusions",
       "attendance_rounds",
       "auth_attempts",
       "auth_sessions",

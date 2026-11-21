@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -7,7 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { StepLayout } from "@/shared/ui/step-layout";
-import { Button } from "@/shared/ui/button";
+import { Button, buttonStyles } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import { ApiError } from "@/shared/http/api-error";
@@ -25,7 +26,6 @@ import { roundsQuery, roundQuery } from "../api/attendance.api";
 import { useAttendanceAction } from "../hooks/use-attendance-action";
 import { stateLabel, reasonLabel } from "../lib/attendance-labels";
 import type {
-  AttendanceCounts,
   RoundDetailDto,
   ReviewDto,
   AttendanceAnswer,
@@ -37,114 +37,110 @@ export function AttendanceWorkspace({
   roundId,
   ...props
 }: OwnerProps & { roundId: string | null }) {
-  const router = useRouter(),
-    params = useSearchParams(),
-    list = useQuery({
-      ...roundsQuery(props.accountId, props.eventId, props.request),
-      enabled: !(roundId && params.get("review")),
-      refetchInterval: roundId ? false : 5000,
-    });
+  const router = useRouter();
+  const reviewId = useSearchParams().get("review");
+  const list = useQuery({
+    ...roundsQuery(props.accountId, props.eventId, props.request),
+    enabled: !(roundId && reviewId),
+    refetchInterval: roundId ? false : 5000,
+  });
   const [creating, setCreating] = useState(false);
-  if (roundId && params.get("review"))
-    return <RoundDetail key={roundId} {...props} roundId={roundId} />;
+  if (roundId && reviewId)
+    return (
+      <RoundDetail
+        key={roundId}
+        {...props}
+        roundId={roundId}
+        reviewId={reviewId}
+      />
+    );
   if (list.isError && (!list.data || isAccessError(list.error)))
     return <ErrorState retry={() => void list.refetch()} />;
   if (!list.data) return <LoadingState>참석 차수 확인 중…</LoadingState>;
+  const selectedRoundId = roundId ?? list.data.rounds[0]?.id;
+  const rosterHref = `/events?event=${props.eventId}&view=roster`;
+  const roundPicker = (
+    <nav aria-label="참석 차수" className="flex min-w-0 flex-wrap gap-1">
+      {list.data.rounds.map((round) => (
+        <Link
+          key={round.id}
+          href={`/events?event=${props.eventId}&view=attendance&round=${round.id}`}
+          aria-current={round.id === selectedRoundId ? "page" : undefined}
+          className={buttonStyles({
+            variant: round.id === selectedRoundId ? "solid" : "outline",
+            className: cn(
+              "min-h-input min-w-[51px] px-3.5 font-medium",
+              round.id !== selectedRoundId &&
+                "border-placeholder text-secondary",
+            ),
+          })}
+        >
+          {round.title}
+        </Link>
+      ))}
+      <Button
+        variant="outline"
+        onClick={() => setCreating(true)}
+        className={cn(
+          "min-h-input min-w-[51px] border-placeholder",
+          selectedRoundId ? "px-0" : "gap-2 px-3.5 text-sm",
+        )}
+        aria-label="차수 만들기"
+        aria-haspopup="dialog"
+      >
+        <Image
+          src="/images/attendance/add-round.svg"
+          alt=""
+          width={13}
+          height={13}
+        />
+        {!selectedRoundId && "차수 만들기"}
+      </Button>
+    </nav>
+  );
   return (
     <section className="space-y-5">
       {list.isError && (
         <p role="alert">최신 정보를 불러오지 못했어요. 입력은 유지됩니다.</p>
       )}
-      <div className="min-w-0 space-y-5">
-        <div className="flex items-center justify-between gap-2">
-          <Link
-            href={`/events?event=${props.eventId}&view=roster`}
-            className="inline-flex min-h-control items-center text-sm text-secondary underline underline-offset-4"
-          >
-            명단 관리
-          </Link>
-          <Button
-            variant="outline"
-            onClick={() => setCreating(true)}
-            className="size-11 p-0 text-xl"
-            aria-label="차수 만들기"
-          >
-            <span aria-hidden="true">＋</span>
-          </Button>
-        </div>
-        {roundId && (
-          <nav aria-label="참석 차수" className="flex flex-wrap gap-2">
-            {list.data.rounds.map((round) => (
-              <Link
-                key={round.id}
-                href={`/events?event=${props.eventId}&view=attendance&round=${round.id}`}
-                aria-current={round.id === roundId ? "page" : undefined}
-                className={cn(
-                  "rounded-pill border border-brand px-4 py-2 text-sm",
-                  round.id === roundId ? "bg-brand text-white" : "text-brand",
-                )}
-              >
-                {round.title}
-              </Link>
-            ))}
-          </nav>
-        )}
-        {roundId ? (
-          <RoundDetail key={roundId} {...props} roundId={roundId} />
-        ) : list.data.rounds.length ? (
-          <ul className="space-y-3">
-            {list.data.rounds.map((round) => (
-              <li key={round.id}>
-                <Link
-                  className="block space-y-3 rounded-control bg-surface p-5 shadow-card"
-                  href={`/events?event=${props.eventId}&view=attendance&round=${round.id}`}
-                >
-                  <strong>{round.title}</strong>
-                  <p className="text-xs text-muted">
-                    {round.closedAt ? "참여자 응답 마감" : "응답 받는 중"}
-                  </p>
-                  <Counts counts={round.counts} />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
+      {selectedRoundId ? (
+        <RoundDetail
+          key={selectedRoundId}
+          {...props}
+          roundId={selectedRoundId}
+          roundPicker={roundPicker}
+        />
+      ) : (
+        <>
+          {roundPicker}
           <p className="rounded-control bg-surface p-5 text-sm">
             차수를 만들어 참석을 받아 보세요.
           </p>
-        )}
-        {creating && (
-          <CreateRound
-            {...props}
-            defaultTitle={list.data.nextTitle}
-            onClose={() => setCreating(false)}
-            onCreated={(id) => {
-              setCreating(false);
-              router.push(
-                `/events?event=${props.eventId}&view=attendance&round=${id}`,
-              );
-            }}
-          />
-        )}
-      </div>
+          <Link
+            href={rosterHref}
+            className={buttonStyles({
+              variant: "outline",
+              className: "w-full",
+            })}
+          >
+            명단 수정
+          </Link>
+        </>
+      )}
+      {creating && (
+        <CreateRound
+          {...props}
+          defaultTitle={list.data.nextTitle}
+          onClose={() => setCreating(false)}
+          onCreated={(id) => {
+            setCreating(false);
+            router.push(
+              `/events?event=${props.eventId}&view=attendance&round=${id}`,
+            );
+          }}
+        />
+      )}
     </section>
-  );
-}
-function Counts({ counts }: { counts: AttendanceCounts }) {
-  return (
-    <div
-      className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"
-      aria-label="최종 참석 집계"
-    >
-      <span>
-        참석{" "}
-        <strong className="ml-1 text-lg text-brand">{counts.attending}</strong>
-        명
-      </span>
-      <span>불참 {counts.absent}명</span>
-      <span>미응답 {counts.unanswered}명</span>
-      {counts.pending > 0 && <span>연결할 응답 {counts.pending}건</span>}
-    </div>
   );
 }
 const titleSchema = z.object({
@@ -201,7 +197,7 @@ function CreateRound({
     };
     action.mutate(pending.current, {
       onSuccess: (result) => {
-        if (!active.current || !("id" in result)) return;
+        if (!active.current || !result || !("id" in result)) return;
         pending.current = null;
         onCreated(result.id);
       },
@@ -280,9 +276,17 @@ function CreateRound({
     </BottomSheet>
   );
 }
-function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
-  const params = useSearchParams(),
-    router = useRouter();
+function RoundDetail({
+  roundId,
+  roundPicker,
+  reviewId,
+  ...props
+}: OwnerProps & {
+  roundId: string;
+  roundPicker?: ReactNode;
+  reviewId?: string;
+}) {
+  const router = useRouter();
   const query = useQuery(
       roundQuery(props.accountId, props.eventId, roundId, props.request),
     ),
@@ -301,7 +305,6 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
       managerOverride: value,
     });
   }
-  const reviewId = params.get("review");
   const closeReview = () =>
     router.replace(
       `/events?event=${props.eventId}&view=attendance&round=${roundId}`,
@@ -322,7 +325,10 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
         {state}
       </StepLayout>
     ) : (
-      state
+      <div className="space-y-6">
+        {roundPicker}
+        {state}
+      </div>
     );
   }
   const round = query.data;
@@ -352,32 +358,35 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
       </StepLayout>
     );
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {query.isError && (
         <p role="alert">최신 정보를 불러오지 못했어요. 입력은 유지됩니다.</p>
       )}
-      <fieldset className="min-w-0 space-y-5">
-        <div className="rounded-control bg-surface p-5 shadow-card">
-          <Counts counts={round.counts} />
-        </div>
-        <div className="flex gap-2">
-          {!round.closedAt && (
-            <Button className="flex-1" onClick={() => setShare(true)}>
-              참여자 초대
-            </Button>
-          )}
-          <Button
-            className="flex-1 break-keep"
-            variant="outline"
-            disabled={!!round.closedAt || action.isPending}
-            onClick={() => setClosing(true)}
+      <div className="flex items-start justify-between gap-3">
+        {roundPicker}
+        {!round.closedAt && (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            className="group flex shrink-0 cursor-pointer flex-col items-center gap-1 rounded-control text-xs leading-none text-secondary"
+            onClick={() => setShare(true)}
           >
-            {round.closedAt ? "참여자 응답 마감됨" : "참여자 응답 마감"}
-          </Button>
-        </div>
+            <span className="grid size-10 place-items-center rounded-control bg-brand-ink transition-colors group-hover:bg-brand-ink-hover">
+              <Image
+                src="/images/attendance/invite.svg"
+                alt=""
+                width={24}
+                height={24}
+              />
+            </span>
+            참여자 초대
+          </button>
+        )}
+      </div>
+      <fieldset className="min-w-0 space-y-5">
         <AttendanceRoster
           people={round.participants}
-          eventId={props.eventId}
+          counts={round.counts}
           saving={action.isPending}
           onCorrect={correct}
         />
@@ -441,6 +450,28 @@ function RoundDetail({ roundId, ...props }: OwnerProps & { roundId: string }) {
         <FormError
           message={action.error ? safeErrorMessage(action.error) : undefined}
         />
+        <div className="space-y-2 pt-2">
+          <Link
+            href={`/events?event=${props.eventId}&view=roster&round=${roundId}`}
+            className={buttonStyles({
+              variant: "outline",
+              className: "w-full",
+            })}
+          >
+            {round.participants.length ? "명단 수정" : "명단 추가"}
+          </Link>
+          <Button
+            className="w-full"
+            variant={round.closedAt ? "outline" : "solid"}
+            disabled={!!round.closedAt || action.isPending}
+            onClick={() => {
+              action.reset();
+              setClosing(true);
+            }}
+          >
+            {round.closedAt ? "참여자 응답 마감됨" : "참여자 응답 마감"}
+          </Button>
+        </div>
         {share && (
           <InviteParticipants
             shareId={round.shareId}

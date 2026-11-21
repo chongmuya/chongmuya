@@ -6,10 +6,11 @@ import type {
 } from "./dto/response/event-summary.response.dto.js";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import { In, type EntityManager } from "typeorm";
+import { In, JsonContains, type EntityManager } from "typeorm";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { EventsService } from "../events/events.service.js";
+import { EventRosterService } from "../events/event-roster.service.js";
 import { ReservationFactsService } from "../reservations/reservation-facts.service.js";
 import { FilesService } from "../files/files.service.js";
 import {
@@ -81,6 +82,7 @@ export class SettlementsService {
     private readonly notifications: NotificationsService,
     private readonly database: DatabaseService,
     private readonly events: EventsService,
+    private readonly roster: EventRosterService,
     private readonly reservations: ReservationFactsService,
     private readonly files: FilesService,
   ) {}
@@ -89,6 +91,55 @@ export class SettlementsService {
       (await m.findOneBy(EventSettlement, { eventId: event }))?.state ??
       initialSettlement()
     );
+  }
+
+  async removeEventParticipant(
+    owner: string,
+    eventId: string,
+    participantId: string,
+    expectedVersion: number,
+    roundId?: string,
+  ): Promise<void> {
+    const db = await this.database.connect();
+    await db.transaction(async (manager) => {
+      await this.events.assertOwned(owner, eventId, manager, true);
+      const person = { id: participantId };
+      const round = roundId ? { roundId } : {};
+      const references = [
+        { expenses: [{ ...round, payers: [person] }] },
+        { expenses: [{ ...round, remainder: person }] },
+        ...(roundId
+          ? []
+          : [
+              { payments: [{ participant: person }] },
+              { notices: [{ snapshot: { people: [person] } }] },
+            ]),
+      ];
+      if (
+        (await manager.existsBy(
+          EventSettlement,
+          references.map((reference) => ({
+            eventId,
+            state: JsonContains(reference),
+          })),
+        )) ||
+        (await manager.existsBy(
+          SettlementCommand,
+          references.map((reference) => ({
+            eventId,
+            snapshot: JsonContains(reference),
+          })),
+        ))
+      )
+        throw new DomainHttpException("ATTENDANCE_PARTICIPANT_HAS_RECORDS");
+      await this.roster.removeUnrecorded(
+        eventId,
+        participantId,
+        expectedVersion,
+        manager,
+        roundId,
+      );
+    });
   }
   private depositBalances(states: Iterable<SettlementState>, m: EntityManager) {
     const ids = new Set<string>();

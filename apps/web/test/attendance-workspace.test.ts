@@ -16,7 +16,66 @@ import type { SessionRequest } from "../features/auth/types";
 import { ApiError } from "../shared/http/api-error";
 import { EventRoster } from "../features/attendance/components/event-roster";
 import { SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
-import type { ParticipantDto } from "../features/attendance/types/attendance.types";
+import type {
+  ParticipantDto,
+  RoundDetailDto,
+} from "../features/attendance/types/attendance.types";
+
+test("attendance opens the first round directly and honors a selected round", async () => {
+  const eventId = crypto.randomUUID();
+  const rounds = ["1차", "2차"].map((title, index): RoundDetailDto => ({
+    id: crypto.randomUUID(),
+    eventId,
+    title,
+    position: index + 1,
+    shareId: crypto.randomUUID(),
+    closedAt: null,
+    counts: { attending: 0, absent: 0, unanswered: 0, pending: 0 },
+    participants: [],
+    reviews: [],
+  }));
+  const base = `/api/v1/events/${eventId}/attendance-rounds`;
+  const request: SessionRequest = async <T>(path: string) => {
+    if (path === base) return { rounds, nextTitle: "3차" } as T;
+    const detail = rounds.find(({ id }) => path === `${base}/${id}`);
+    assert(detail, `Unexpected request: ${path}`);
+    return detail as T;
+  };
+
+  for (const [roundId, title] of [
+    [null, "1차"],
+    [rounds[1]!.id, "2차"],
+  ] as const) {
+    const view = await render(
+      createElement(AttendanceWorkspace, {
+        accountId: "owner",
+        eventId,
+        roundId,
+        request,
+      }),
+    );
+    try {
+      await until(() =>
+        assert.match(view.container.textContent!, /참여자 초대/),
+      );
+      const picker = view.container.querySelector(
+        'nav[aria-label="참석 차수"]',
+      );
+      assert(picker);
+      assert.equal(
+        picker.querySelector('[aria-current="page"]')?.textContent,
+        title,
+      );
+      assert.deepEqual(
+        [...picker.querySelectorAll("a")].map((link) => link.textContent),
+        ["1차", "2차"],
+      );
+      assert(picker.querySelector('button[aria-label="차수 만들기"]'));
+    } finally {
+      await view.unmount();
+    }
+  }
+});
 
 test("lost roster-add response retries the reviewed identities even after a fresh roster arrives", async () => {
   const eventId = crypto.randomUUID();

@@ -42,10 +42,11 @@ export function InviteParticipants({
         <h2 id={titleId} className="text-2xl leading-normal font-bold">
           참여자 초대
         </h2>
-        <p id={descriptionId} className="text-base leading-normal text-copy/80">
-          QR코드를 스캔한 뒤 이름과 전화번호 뒤
-          <br />
-          4자리를 입력해 주세요.
+        <p
+          id={descriptionId}
+          className="mx-auto max-w-[270px] text-base leading-normal break-keep text-copy/80"
+        >
+          QR코드를 스캔한 뒤 이름과 전화번호 뒤 4자리를 입력해 주세요.
         </p>
       </header>
       <div className="mx-auto w-full max-w-[250px]">
@@ -58,7 +59,7 @@ export function InviteParticipants({
         />
         <button
           type="button"
-          className="mt-2 ml-auto flex min-h-control cursor-pointer items-center justify-end gap-2 rounded-control px-3 text-sm font-semibold text-secondary"
+          className="mt-1.5 ml-auto flex min-h-control cursor-pointer items-center justify-end gap-2 rounded-control px-3 text-sm font-semibold text-secondary"
           onClick={() => void copyLink()}
         >
           <Image
@@ -80,8 +81,12 @@ export function InviteParticipants({
           </a>
         </div>
       )}
-      <Button className="w-full" onClick={onClose}>
-        확인
+      <Button
+        variant="brand-outline"
+        className="w-full border-2 text-brand"
+        onClick={onClose}
+      >
+        닫기
       </Button>
     </Dialog>
   );

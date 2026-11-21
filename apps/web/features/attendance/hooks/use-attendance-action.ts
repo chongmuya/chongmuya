@@ -17,13 +17,18 @@ export function useAttendanceAction(
   accountId: string,
   eventId: string,
   request: SessionRequest,
+  roundId?: string,
 ) {
   const cache = useQueryClient(),
     active = useActiveScreen();
   return useMutation({
-    mutationKey: [...attendanceKey(accountId, eventId), "write"],
+    mutationKey: [
+      ...attendanceKey(accountId, eventId),
+      "write",
+      roundId ?? null,
+    ],
     mutationFn: (action: AttendanceAction) =>
-      writeAttendance(request, eventId, action),
+      writeAttendance(request, eventId, action, roundId),
     retry: false,
     networkMode: "always",
     onSettled: async (data) => {

@@ -14,15 +14,25 @@ import type {
 export const attendanceKey = (accountId: string, eventId: string) =>
   ["user", accountId, "attendance", eventId] as const;
 const path = (eventId: string) => `/api/v1/events/${eventId}` as const;
+const rosterScope = (roundId?: string) =>
+  roundId ? `?roundId=${encodeURIComponent(roundId)}` : "";
 export const participantsQuery = (
   accountId: string,
   eventId: string,
   request: SessionRequest,
+  roundId?: string,
 ) =>
   queryOptions({
-    queryKey: [...attendanceKey(accountId, eventId), "participants"],
+    queryKey: [
+      ...attendanceKey(accountId, eventId),
+      "participants",
+      ...(roundId ? [roundId] : []),
+    ],
     queryFn: ({ signal }) =>
-      request<ParticipantDto[]>(`${path(eventId)}/participants`, { signal }),
+      request<ParticipantDto[]>(
+        `${path(eventId)}/participants${rosterScope(roundId)}`,
+        { signal },
+      ),
     staleTime: 0,
     retry: false,
   });
@@ -92,6 +102,7 @@ export type AttendanceAction =
       expectedVersion: number;
       person: PersonInput;
     }
+  | { kind: "remove"; participantId: string; expectedVersion: number }
   | { kind: "create"; requestKey: string; title: string }
   | { kind: "close"; roundId: string }
   | {
@@ -111,11 +122,21 @@ export async function writeAttendance(
   request: SessionRequest,
   eventId: string,
   action: AttendanceAction,
+  roundId?: string,
 ) {
   const base = path(eventId);
+  const scope = rosterScope(roundId);
   switch (action.kind) {
+    case "remove":
+      return request<void>(
+        `${base}/participants/${action.participantId}${scope}`,
+        {
+          method: "DELETE",
+          body: JSON.stringify({ expectedVersion: action.expectedVersion }),
+        },
+      );
     case "add":
-      return request<{ addedCount: number }>(`${base}/participants`, {
+      return request<{ addedCount: number }>(`${base}/participants${scope}`, {
         method: "POST",
         body: JSON.stringify({
           requestKey: action.requestKey,
@@ -126,12 +147,12 @@ export async function writeAttendance(
       });
     case "import":
       return request<{ addedCount: number }>(
-        `${base}/participants/import-group`,
+        `${base}/participants/import-group${scope}`,
         { method: "POST" },
       );
     case "import-selected":
       return request<{ addedCount: number }>(
-        `${base}/participants/import-group/selected`,
+        `${base}/participants/import-group/selected${scope}`,
         {
           method: "POST",
           body: JSON.stringify({
@@ -145,7 +166,7 @@ export async function writeAttendance(
       );
     case "edit":
       return request<ParticipantDto>(
-        `${base}/participants/${action.participantId}`,
+        `${base}/participants/${action.participantId}${scope}`,
         {
           method: "PATCH",
           body: JSON.stringify({

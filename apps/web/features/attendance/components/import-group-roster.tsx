@@ -38,23 +38,31 @@ const rosterVersions = (people: { id: string; version: number }[]) =>
 export function ImportGroupRoster({
   accountId,
   eventId,
+  rosterRoundId,
   request,
   groupId,
   existing,
+  identities = existing,
   onClose,
   onImported,
 }: OwnerProps & {
   groupId: string;
   existing: ParticipantDto[];
+  identities?: ParticipantDto[];
   onClose: () => void;
   onImported: (addedCount: number) => void;
 }) {
   const members = useGroupMembers(accountId, groupId, request);
-  const action = useAttendanceAction(accountId, eventId, request);
+  const action = useAttendanceAction(
+    accountId,
+    eventId,
+    request,
+    rosterRoundId,
+  );
   const active = useActiveScreen();
   const [search, setSearch] = useState("");
   const [uncertain, setUncertain] = useState(false);
-  const [reviewedRoster, setReviewedRoster] = useState(existing);
+  const [reviewedRoster, setReviewedRoster] = useState(identities);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const pending = useRef<Extract<
@@ -91,17 +99,22 @@ export function ImportGroupRoster({
   // Source IDs participate only in namesake review, never as an existing event-participant ID.
   const reviewPeople = [
     ...reviewedRoster,
-    ...selectedPeople.map((person) => ({
-      ...person,
-      id: `group:${person.id}`,
-    })),
+    ...selectedPeople
+      .filter(
+        (person) =>
+          !reviewedRoster.some((row) => row.groupMemberId === person.id),
+      )
+      .map((person) => ({
+        ...person,
+        id: `group:${person.id}`,
+      })),
   ];
   const review = reviewRoster(direct, reviewPeople);
   const fingerprint = JSON.stringify([direct, reviewPeople]);
   const confirmed = confirmation === fingerprint;
   const rosterChanged =
     direct.length > 0 &&
-    rosterVersions(existing) !== rosterVersions(reviewedRoster);
+    rosterVersions(identities) !== rosterVersions(reviewedRoster);
   const draftDirty = Object.values(directDraft).some(
     (value) => !!value?.trim(),
   );
@@ -137,7 +150,7 @@ export function ImportGroupRoster({
     if (!pending.current) return;
     action.mutate(pending.current, {
       onSuccess: (result) => {
-        if (!active.current || !("addedCount" in result)) return;
+        if (!active.current || !result || !("addedCount" in result)) return;
         pending.current = null;
         onImported(result.addedCount);
       },
@@ -407,7 +420,7 @@ export function ImportGroupRoster({
                 variant="outline"
                 disabled={uncertain || action.isPending}
                 onClick={() => {
-                  setReviewedRoster(existing);
+                  setReviewedRoster(identities);
                   form.clearErrors();
                   action.reset();
                 }}

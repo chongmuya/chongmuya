@@ -171,6 +171,12 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
               : "/mypage",
           );
         const id = params.get("event");
+        if (mode === "events" && id && params.get("view") === "roster") {
+          const round = params.get("round");
+          return router.replace(
+            `/events?event=${id}&view=attendance${round ? `&round=${encodeURIComponent(round)}` : ""}`,
+          );
+        }
         const event =
           id && mode === "events"
             ? cache.getQueryData<{ groupId: string | null }>(
@@ -289,7 +295,11 @@ export function WorkspaceContent({
                 request={request}
                 eventId={eventId}
               />
-              <EventNavigation eventId={eventId} view={view} />
+              <EventNavigation
+                eventId={eventId}
+                view={view}
+                roundId={roundId}
+              />
             </>
           )}
           {view === "settlement" || view === "record" ? (

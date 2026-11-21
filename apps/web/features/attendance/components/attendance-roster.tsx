@@ -1,22 +1,23 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
+import Image from "next/image";
 import { Input } from "@/shared/ui/input";
 import { cn } from "@/shared/lib/cn";
 import { stateLabel } from "../lib/attendance-labels";
 import type {
   AttendanceAnswer,
+  AttendanceCounts,
   RoundDetailDto,
 } from "../types/attendance.types";
 
 export function AttendanceRoster({
   people,
-  eventId,
+  counts,
   saving,
   onCorrect,
 }: {
   people: RoundDetailDto["participants"];
-  eventId: string;
+  counts: AttendanceCounts;
   saving: boolean;
   onCorrect: (
     person: RoundDetailDto["participants"][number],
@@ -34,100 +35,168 @@ export function AttendanceRoster({
       ),
   );
   return (
-    <>
-      <label className="block text-sm">
-        명단 검색
+    <div className="space-y-3">
+      <div className="relative">
+        <Image
+          src="/images/groups/search.svg"
+          alt=""
+          width={20}
+          height={20}
+          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+        />
         <Input
-          variant="pill"
-          className="mt-2"
+          type="search"
+          aria-label="명단 검색"
+          className="min-h-control rounded-[14px] border-transparent pl-10 text-xs shadow-control"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="이름, 전화번호 뒤 4자리 또는 메모"
+          placeholder="이름 · 전화번호 뒤 4자리 · 메모"
         />
-      </label>
-      <label className="flex min-h-control w-fit cursor-pointer items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          role="switch"
-          className="peer sr-only"
-          checked={attendingOnly}
-          onChange={(e) => setAttendingOnly(e.target.checked)}
-        />
-        <span
-          aria-hidden="true"
-          className="relative h-5 w-9 rounded-pill bg-secondary/30 transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-brand peer-checked:after:translate-x-4 peer-focus-visible:focus-outline"
-        />
-        참석만 보기
-      </label>
-      <ul className="divide-y divide-border">
-        {shown.map((person) => (
-          <li key={person.id} className="py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <strong className="break-words text-sm">{person.name}</strong>
-                {(person.phoneLast4 || person.label) && (
-                  <p className="text-xs text-muted">
-                    {[person.phoneLast4, person.label]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                )}
-              </div>
-              <div className="shrink-0 text-right">
-                {person.response.finalState === "UNANSWERED" && (
-                  <span className="mr-2 text-xs text-secondary">미응답</span>
-                )}
-                <div
-                  role="group"
-                  aria-label={person.name + " 참석 상태"}
-                  className="inline-flex gap-1 rounded-pill bg-soft p-1"
-                >
-                  {(["ATTENDING", "ABSENT"] as const).map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-pressed={person.response.finalState === value}
-                      disabled={saving}
-                      onClick={() => onCorrect(person, value)}
-                      className={cn(
-                        "min-h-control min-w-12 rounded-pill px-3 text-xs font-semibold",
-                        person.response.finalState === value
-                          ? "bg-brand text-white"
-                          : "text-secondary",
-                      )}
-                    >
-                      {stateLabel(value)}
-                    </button>
-                  ))}
-                </div>
-                {person.response.managerOverride !== null && (
-                  <button
-                    type="button"
-                    className="ml-auto block py-1 text-xs text-secondary underline"
-                    disabled={saving}
-                    onClick={() => onCorrect(person, null)}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 px-2">
+        <div
+          role="group"
+          aria-label="최종 참석 집계"
+          className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-secondary min-[380px]:gap-x-3"
+        >
+          <span>
+            참석{" "}
+            <strong className="text-xl text-brand">{counts.attending}</strong>명
+          </span>
+          <span>
+            불참 <strong className="text-xl">{counts.absent}</strong>명
+          </span>
+          <span>
+            미응답 <strong className="text-xl">{counts.unanswered}</strong>명
+          </span>
+        </div>
+        <label className="ml-auto flex min-h-control cursor-pointer items-center gap-2 text-xs">
+          참석만 보기
+          <input
+            type="checkbox"
+            role="switch"
+            className="peer sr-only"
+            checked={attendingOnly}
+            onChange={(event) => setAttendingOnly(event.target.checked)}
+          />
+          <span
+            aria-hidden="true"
+            className="flex h-4 w-8 items-center justify-end rounded-pill bg-placeholder px-px shadow-control peer-checked:justify-start peer-checked:bg-brand peer-focus-visible:focus-outline"
+          >
+            <Image
+              src="/images/attendance/filter-thumb.svg"
+              alt=""
+              width={13}
+              height={13}
+            />
+          </span>
+        </label>
+      </div>
+      {shown.length ? (
+        <table className="w-full table-fixed">
+          <caption className="sr-only">참여자 참석 명단</caption>
+          <thead className="border-b border-placeholder text-left text-xs text-secondary">
+            <tr>
+              <th
+                scope="col"
+                className="w-[27%] pb-1 pl-3 font-normal min-[380px]:pl-5"
+              >
+                이름
+              </th>
+              <th scope="col" className="pb-1 font-normal">
+                전화번호 뒷자리
+              </th>
+              <th
+                scope="col"
+                className="w-[92px] pb-1 pr-3 text-center font-normal min-[380px]:w-[100px] min-[380px]:pr-5"
+              >
+                참석 여부
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((person) => {
+              const state = person.response.finalState;
+              const next = state === "ATTENDING" ? "ABSENT" : "ATTENDING";
+              return (
+                <tr key={person.id}>
+                  <th
+                    scope="row"
+                    className="py-1.5 pr-2 pl-3 text-left text-sm font-semibold wrap-anywhere min-[380px]:pl-5"
                   >
-                    정정 해제
-                  </button>
-                )}
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-      {people.length > 0 && shown.length === 0 && (
-        <p role="status" className="text-sm text-secondary">
-          조건에 맞는 참여자가 없어요.
+                    {person.name}
+                    {person.label && (
+                      <span className="block text-xs font-normal text-secondary">
+                        {person.label}
+                      </span>
+                    )}
+                  </th>
+                  <td className="text-base font-medium text-secondary tabular-nums">
+                    {person.phoneLast4 ?? "—"}
+                  </td>
+                  <td className="py-1.5 pr-3 text-center min-[380px]:pr-5">
+                    <button
+                      type="button"
+                      aria-label={`${person.name} ${stateLabel(state)} · ${stateLabel(next)}으로 변경`}
+                      aria-disabled={saving}
+                      onClick={() => {
+                        if (!saving) onCorrect(person, next);
+                      }}
+                      className="mx-auto grid min-h-control w-20 cursor-pointer place-items-center rounded-pill aria-disabled:cursor-wait aria-disabled:opacity-60"
+                    >
+                      <span
+                        className={cn(
+                          "relative flex h-8 w-full items-center rounded-pill border text-xs transition-colors",
+                          state === "ATTENDING" &&
+                            "justify-end border-transparent bg-brand pr-3 text-white shadow-control",
+                          state === "ABSENT" &&
+                            "justify-start border-transparent bg-placeholder pl-3 text-copy shadow-control",
+                          state === "UNANSWERED" &&
+                            "justify-center border-border bg-transparent text-secondary",
+                        )}
+                      >
+                        {state !== "UNANSWERED" && (
+                          <Image
+                            src="/images/attendance/response-thumb.svg"
+                            alt=""
+                            width={26}
+                            height={26}
+                            className={cn(
+                              "absolute top-1",
+                              state === "ATTENDING" ? "left-px" : "right-[3px]",
+                            )}
+                          />
+                        )}
+                        {stateLabel(state)}
+                      </span>
+                    </button>
+                    {person.response.managerOverride !== null && (
+                      <button
+                        type="button"
+                        aria-label={`${person.name} 정정 해제`}
+                        className="mx-auto block min-h-6 cursor-pointer text-xs text-secondary underline disabled:cursor-wait"
+                        disabled={saving}
+                        onClick={() => onCorrect(person, null)}
+                      >
+                        정정 해제
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <p
+          role="status"
+          className="rounded-control bg-surface p-5 text-center text-sm text-secondary"
+        >
+          {people.length
+            ? "조건에 맞는 참여자가 없어요."
+            : "아직 참여자가 없어요."}
         </p>
       )}
-      {!people.length && (
-        <Link
-          className="text-sm text-link underline"
-          href={`/events?event=${eventId}&view=roster`}
-        >
-          명단 관리에서 참여자 등록하기
-        </Link>
-      )}
-    </>
+    </div>
   );
 }

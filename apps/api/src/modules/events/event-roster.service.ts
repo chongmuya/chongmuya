@@ -9,6 +9,15 @@ import { GroupsService } from "../groups/groups.service.js";
 import { EventsService } from "./events.service.js";
 import { EventParticipant } from "./entities/event-participant.entity.js";
 import { EventRosterAddition } from "./entities/event-roster-addition.entity.js";
+import { AttendanceResponse } from "./entities/attendance-response.entity.js";
+import { AttendanceReview } from "./entities/attendance-review.entity.js";
+import { AttendanceRound } from "./entities/attendance-round.entity.js";
+import { AttendanceRoundExclusion } from "./entities/attendance-round-exclusion.entity.js";
+import {
+  attendancePeople,
+  includeInRound,
+  requireAttendanceRound,
+} from "./lib/round-roster.js";
 import { participantDto } from "./lib/attendance-rules.js";
 import type {
   AddEventParticipantsInput,
@@ -41,10 +50,16 @@ export class EventRosterService {
       order: { position: "ASC", id: "ASC" },
     });
   }
-  async list(ownerId: string, eventId: string) {
+  async list(ownerId: string, eventId: string, roundId?: string) {
     const db = await this.database.connect();
-    await this.events.assertOwned(ownerId, eventId, db.manager);
-    return (await this.rows(eventId, db.manager)).map(participantDto);
+    return db.transaction("REPEATABLE READ", async (manager) => {
+      await this.events.assertOwned(ownerId, eventId, manager);
+      if (roundId) await requireAttendanceRound(eventId, roundId, manager);
+      const people = roundId
+        ? await attendancePeople(eventId, roundId, manager)
+        : await this.rows(eventId, manager);
+      return people.map(participantDto);
+    });
   }
   private async appendDirect(
     manager: EntityManager,
@@ -55,6 +70,7 @@ export class EventRosterService {
       "expectedRoster" | "duplicatesConfirmed"
     >,
     reviewedRoster?: EventParticipant[],
+    roundId?: string,
   ) {
     const existing = await this.rows(eventId, manager);
     const reviewed = reviewedRoster ?? existing;
@@ -102,22 +118,29 @@ export class EventRosterService {
       0,
     );
     const createdAt = new Date();
-    if (members.length)
-      await manager.insert(
-        EventParticipant,
-        members.map((p, i) => ({
-          ...p,
-          id: randomUUID(),
-          eventId,
-          groupMemberId: null,
-          position: position + i,
-          version: 1,
-          identityVersion: 1,
-          createdAt,
-        })),
-      );
+    const added = members.map((p, i) => ({
+      ...p,
+      id: randomUUID(),
+      eventId,
+      groupMemberId: null,
+      position: position + i,
+      version: 1,
+      identityVersion: 1,
+      createdAt,
+    }));
+    if (added.length) await manager.insert(EventParticipant, added);
     return {
-      addedCount: members.length,
+      addedCount: roundId
+        ? await includeInRound(
+            eventId,
+            roundId,
+            added.map(({ id }) => id),
+            choices.flatMap(({ existingParticipantId }) =>
+              existingParticipantId ? [existingParticipantId] : [],
+            ),
+            manager,
+          )
+        : added.length,
       totalCount: existing.length + members.length,
     };
   }
@@ -125,9 +148,11 @@ export class EventRosterService {
     ownerId: string,
     eventId: string,
     input: AddEventParticipantsInput,
+    roundId?: string,
   ) {
     const choices = normalizeChoices(input.members);
     const digest = createHash("sha256")
+      .update(roundId ? `${roundId}:` : "")
       .update(
         JSON.stringify(
           input.expectedRoster === undefined &&
@@ -158,6 +183,7 @@ export class EventRosterService {
         manager,
         true,
       );
+      if (roundId) await requireAttendanceRound(eventId, roundId, manager);
       const receipt = await manager.findOneBy(EventRosterAddition, {
         eventId,
         requestKey: input.requestKey,
@@ -167,7 +193,14 @@ export class EventRosterService {
           throw new DomainHttpException("ROSTER_SAVE_CONFLICT");
         return { addedCount: receipt.addedCount };
       }
-      const result = await this.appendDirect(manager, eventId, choices, input);
+      const result = await this.appendDirect(
+        manager,
+        eventId,
+        choices,
+        input,
+        undefined,
+        roundId,
+      );
       const createdAt = new Date();
       await manager.insert(EventRosterAddition, {
         eventId,
@@ -189,7 +222,7 @@ export class EventRosterService {
               id: ownerId,
               title: "행사에 새 구성원이 추가됐어요",
               summary: `${event.name} · ${result.addedCount}명이 추가됐어요.`,
-              destination: `/events?event=${eventId}&view=roster`,
+              destination: `/events?event=${eventId}&view=roster${roundId ? `&round=${roundId}` : ""}`,
             },
           ],
           messages: [],
@@ -197,7 +230,7 @@ export class EventRosterService {
       return { addedCount: result.addedCount };
     });
   }
-  async importGroup(ownerId: string, eventId: string) {
+  async importGroup(ownerId: string, eventId: string, roundId?: string) {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
       const event = await this.events.assertOwned(
@@ -206,6 +239,7 @@ export class EventRosterService {
         manager,
         true,
       );
+      if (roundId) await requireAttendanceRound(eventId, roundId, manager);
       if (!event.groupId) throw new DomainHttpException("EVENT_GROUP_REQUIRED");
       const members = await this.groups.membersInTransaction(
         ownerId,
@@ -213,34 +247,44 @@ export class EventRosterService {
         manager,
         true,
       );
-      const result = await copyGroupRoster(manager, eventId, members);
-      if (result.addedCount)
+      const { addedIds, existingIds } = await copyGroupRoster(
+        manager,
+        eventId,
+        members,
+      );
+      const addedCount = roundId
+        ? await includeInRound(eventId, roundId, addedIds, existingIds, manager)
+        : addedIds.length;
+      if (addedCount) {
+        const requestId = roundId ? randomUUID() : eventId;
         await this.notifications.record(manager, {
-          eventKey: `roster-import:${eventId}:${createHash("sha256")
+          eventKey: `roster-import:${requestId}:${createHash("sha256")
             .update(JSON.stringify(members.map((r) => r.id).sort()))
             .digest("hex")}`,
           kind: "MEMBERS_ADDED",
           category: "EVENT",
           eventId,
-          requestId: eventId,
+          requestId,
           revision: members.length,
           accounts: [
             {
               id: ownerId,
               title: "행사에 새 구성원이 추가됐어요",
-              summary: `${event.name} · ${result.addedCount}명이 추가됐어요.`,
-              destination: `/events?event=${eventId}&view=roster`,
+              summary: `${event.name} · ${addedCount}명이 추가됐어요.`,
+              destination: `/events?event=${eventId}&view=roster${roundId ? `&round=${roundId}` : ""}`,
             },
           ],
           messages: [],
         });
-      return result;
+      }
+      return { addedCount };
     });
   }
   async importSelectedGroup(
     ownerId: string,
     eventId: string,
     input: ImportSelectedGroupMembersInput,
+    roundId?: string,
   ) {
     const selected = [...input.members].sort((a, b) =>
       a.id.localeCompare(b.id),
@@ -249,6 +293,7 @@ export class EventRosterService {
     if (!selected.length && !direct.length)
       throw new DomainHttpException("VALIDATION_FAILED");
     const digest = createHash("sha256")
+      .update(roundId ? `${roundId}:` : "")
       .update(
         JSON.stringify({
           kind: "IMPORT_SELECTED_GROUP",
@@ -274,6 +319,7 @@ export class EventRosterService {
         manager,
         true,
       );
+      if (roundId) await requireAttendanceRound(eventId, roundId, manager);
       if (!event.groupId) throw new DomainHttpException("EVENT_GROUP_REQUIRED");
       const receipt = await manager.findOneBy(EventRosterAddition, {
         eventId,
@@ -297,15 +343,23 @@ export class EventRosterService {
         return member;
       });
       const reviewedRoster = await this.rows(eventId, manager);
-      const copied = await copyGroupRoster(manager, eventId, chosen);
+      const { addedIds, existingIds } = await copyGroupRoster(
+        manager,
+        eventId,
+        chosen,
+      );
+      const copied = roundId
+        ? await includeInRound(eventId, roundId, addedIds, existingIds, manager)
+        : addedIds.length;
       const appended = await this.appendDirect(
         manager,
         eventId,
         direct,
         input,
         reviewedRoster,
+        roundId,
       );
-      const result = { addedCount: copied.addedCount + appended.addedCount };
+      const result = { addedCount: copied + appended.addedCount };
       await manager.insert(EventRosterAddition, {
         eventId,
         requestKey: input.requestKey,
@@ -326,7 +380,7 @@ export class EventRosterService {
               id: ownerId,
               title: "행사에 새 구성원이 추가됐어요",
               summary: `${event.name} · ${result.addedCount}명이 추가됐어요.`,
-              destination: `/events?event=${eventId}&view=roster`,
+              destination: `/events?event=${eventId}&view=roster${roundId ? `&round=${roundId}` : ""}`,
             },
           ],
           messages: [],
@@ -339,10 +393,21 @@ export class EventRosterService {
     eventId: string,
     id: string,
     input: UpdateEventParticipantInput,
+    roundId?: string,
   ) {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
       await this.events.assertOwned(ownerId, eventId, manager, true);
+      if (roundId) {
+        await requireAttendanceRound(eventId, roundId, manager);
+        if (
+          await manager.existsBy(AttendanceRoundExclusion, {
+            roundId,
+            participantId: id,
+          })
+        )
+          throw new NotFoundException();
+      }
       const p = await manager.findOneBy(EventParticipant, { id, eventId });
       if (!p) throw new NotFoundException();
       if (p.version !== input.expectedVersion)
@@ -356,5 +421,51 @@ export class EventRosterService {
       p.version++;
       return participantDto(await manager.save(p));
     });
+  }
+
+  // The caller holds the event lock and checks settlement references in this transaction.
+  async removeUnrecorded(
+    eventId: string,
+    id: string,
+    expectedVersion: number,
+    manager: EntityManager,
+    roundId?: string,
+  ): Promise<void> {
+    if (roundId) {
+      await requireAttendanceRound(eventId, roundId, manager);
+      if (
+        await manager.existsBy(AttendanceRoundExclusion, {
+          roundId,
+          participantId: id,
+        })
+      )
+        return;
+    } else if (await manager.existsBy(AttendanceRound, { eventId })) {
+      throw new DomainHttpException("ATTENDANCE_CONFLICT");
+    }
+    const participant = await manager.findOneBy(EventParticipant, {
+      id,
+      eventId,
+    });
+    if (!participant) return;
+    if (participant.version !== expectedVersion)
+      throw new DomainHttpException("ATTENDANCE_CONFLICT");
+    const reference = {
+      eventId,
+      participantId: id,
+      ...(roundId && { roundId }),
+    };
+    if (
+      (await manager.existsBy(AttendanceResponse, reference)) ||
+      (await manager.existsBy(AttendanceReview, reference))
+    )
+      throw new DomainHttpException("ATTENDANCE_PARTICIPANT_HAS_RECORDS");
+    if (roundId)
+      await manager.insert(AttendanceRoundExclusion, {
+        eventId,
+        roundId,
+        participantId: id,
+      });
+    else await manager.delete(EventParticipant, { id, eventId });
   }
 }
