@@ -22,6 +22,8 @@ test("the map uses coordinates, cleans up after auth failure and shows addresses
   };
   let created = 0;
   let destroyed = 0;
+  let markerContent: HTMLElement | undefined;
+  const opened: string[] = [];
   window.naver = {
     maps: {
       Map: class {
@@ -42,6 +44,9 @@ test("the map uses coordinates, cleans up after auth failure and shows addresses
       },
       LatLng: class {},
       Marker: class {
+        constructor({ icon }: { icon: { content: HTMLElement } }) {
+          markerContent = icon.content;
+        }
         setMap() {}
       },
     },
@@ -62,7 +67,7 @@ test("the map uses coordinates, cleans up after auth failure and shows addresses
               longitude: 127.1,
             } as Restaurant,
           ],
-          onOpen() {},
+          onOpen: (id) => opened.push(id),
         }),
       ),
     );
@@ -76,6 +81,16 @@ test("the map uses coordinates, cleans up after auth failure and shows addresses
       }
     });
     assert.equal(created, 1);
+    assert(markerContent instanceof window.HTMLButtonElement);
+    assert.equal(markerContent.textContent, "지도 매장");
+    const tail = markerContent.querySelector("img");
+    assert.equal(
+      tail?.getAttribute("src"),
+      "/images/restaurants/marker-tail.svg",
+    );
+    assert.equal(tail?.alt, "");
+    markerContent.click();
+    assert.deepEqual(opened, ["known"]);
     await act(async () =>
       root.render(
         createElement(RestaurantMap, {
