@@ -11,7 +11,11 @@ export function DateTimePicker({
   const set = (d: string, t: string) => onChange(!d && !t ? "" : `${d}T${t}`);
   return (
     <div className="grid min-w-0 gap-2">
-      <DatePicker {...props} value={date} onChange={(d) => set(d, time)} />
+      <DatePicker
+        {...props}
+        value={date}
+        onChange={(d) => set(d, d ? time : "")}
+      />
       <TimePicker
         id={props.id ? `${props.id}-time` : undefined}
         name={props.name}

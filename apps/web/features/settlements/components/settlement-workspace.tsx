@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { FormInput } from "@/shared/ui/form-input";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
 import { EventFiles } from "@/features/files/client";
@@ -132,18 +133,21 @@ function MoneyAction({
           </label>
         )}
         {target.kind === "RETURN" && (
-          <label>
-            실제 반환 시각
-            <Input
+          <div>
+            <label htmlFor="return-time">실제 반환 시각</label>
+            <FormInput
+              id="return-time"
               type="datetime-local"
-              {...form.register("returnedAt")}
+              control={form.control}
+              name="returnedAt"
+              aria-label="실제 반환 시각"
               aria-invalid={!!form.formState.errors.returnedAt}
               aria-describedby="return-time-error"
             />
             <span id="return-time-error" className="text-danger">
               {form.formState.errors.returnedAt?.message}
             </span>
-          </label>
+          </div>
         )}
         <label>
           사유

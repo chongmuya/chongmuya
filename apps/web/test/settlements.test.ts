@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { render, until, click, fill, submit } from "./support/form-dom";
+import { chooseDate, chooseTime } from "./support/date-controls";
 import { ApiError } from "../shared/http/api-error";
 import { useSettlementCommand } from "../features/settlements/hooks/use-settlement-command";
 import {
@@ -570,7 +571,8 @@ test("switching settlement tabs preserves an unresolved return command", async (
     await click(view.container, "개인별 정산");
     await click(view.container, "실제 반환 기록");
     await fill(view.container, "reason", "실제 확인");
-    await fill(view.container, "returnedAt", "2026-01-01T10:00");
+    await chooseDate(view.container, "returnedAt", "2026-01-01");
+    await chooseTime(view.container, "returnedAt", "10:00");
     await submit(view.container);
     await until(() =>
       assert.match(view.container.textContent!, /같은 요청 재시도/),

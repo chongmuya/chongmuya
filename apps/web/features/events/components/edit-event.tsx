@@ -78,6 +78,7 @@ export function EditEvent({
                 control={form.control}
                 name={key}
                 type={key === "name" ? "text" : key}
+                allowDateClear
                 disabled={
                   save.isPending ||
                   (key !== "name" && base.reservationScheduleLocked)
