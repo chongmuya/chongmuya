@@ -1,3 +1,4 @@
+import { KakaoWithdrawalProvider } from "../../src/modules/account-withdrawal/kakao-withdrawal-provider.js";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -78,8 +79,19 @@ test("requests are idempotent and reviewable; active inquiries block only curren
     {
       KAKAO_CLIENT_ID: "test-client",
       KAKAO_CLIENT_SECRET: "test-secret",
+      KAKAO_ADMIN_KEY: "isolated-admin-key",
       KAKAO_REDIRECT_URI: "http://localhost:3001/api/v1/auth/kakao/callback",
     },
+  );
+  t.mock.method(
+    app.get(KakaoWithdrawalProvider),
+    "inspect",
+    async () => "matched",
+  );
+  t.mock.method(
+    app.get(KakaoWithdrawalProvider),
+    "unlink",
+    async () => "matched",
   );
   const dispatched = t.mock.method(
     app.get(MessageDeliveryService),
@@ -217,7 +229,7 @@ test("requests are idempotent and reviewable; active inquiries block only curren
   assert.equal(second.status, 200);
   const secondJar = cookies(second);
 
-  const sub = randomUUID();
+  const sub = "1376016924426222222";
   await db.manager.insert(ExternalIdentity, {
     issuer: KAKAO_ISSUER,
     sub,

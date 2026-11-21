@@ -22,9 +22,17 @@ const statusSchema = z.object({
   ),
   request: z.object({ id: z.uuid(), reviewed: z.boolean() }).nullable(),
 });
-const receiptSchema = z.object({ completed: z.boolean() });
-const completionSchema = z.discriminatedUnion("completed", [
+const receiptSchema = z.object({
+  completed: z.boolean(),
+  pending: z.literal(true).optional(),
+});
+const pending = z.object({
+  completed: z.literal(false),
+  pending: z.literal(true),
+});
+const completionSchema = z.union([
   z.object({ completed: z.literal(true) }),
+  pending,
   statusSchema.extend({ completed: z.literal(false) }),
 ]);
 
@@ -47,9 +55,17 @@ export async function requestWithdrawal(request: SessionRequest, key: string) {
 }
 
 export async function completeWithdrawal(request: SessionRequest, key: string) {
-  return completionSchema.parse(await request(`${prefix}/complete`, post(key)));
+  return completionSchema.parse(
+    await request(`${prefix}/complete`, post(key), 15000),
+  );
 }
 
 export async function withdrawalReceipt(request: SessionRequest, key: string) {
   return receiptSchema.parse(await request(`${prefix}/receipt`, post(key)));
+}
+
+export async function retryWithdrawal(request: SessionRequest, key: string) {
+  return receiptSchema.parse(
+    await request(`${prefix}/retry`, post(key), 15000),
+  );
 }

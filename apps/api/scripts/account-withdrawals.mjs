@@ -17,16 +17,21 @@ async function run() {
     actor &&
     actor.length <= 80 &&
     !/\p{Cc}/u.test(actor);
-  if (!list && !review) throw new Error("INVALID_ARGUMENT");
-  const requestId = review ? operationId(id) : null;
+  const kakaoList = command === "kakao-list" && !id && !actor;
+  const kakaoRetry = command === "kakao-retry" && id && !extra && !actor;
+  if (!list && !review && !kakaoList && !kakaoRetry)
+    throw new Error("INVALID_ARGUMENT");
+  const requestId = review || kakaoRetry ? operationId(id) : null;
   const { AccountWithdrawalService } =
     await import("../dist/modules/account-withdrawal/account-withdrawal.service.js");
   const app = await createOperationsApplication();
   try {
     const service = app.get(AccountWithdrawalService);
-    const result = requestId
-      ? await service.review(requestId, actor)
-      : await service.listPending();
+    let result;
+    if (kakaoList) result = await service.listKakaoPending();
+    else if (kakaoRetry) result = await service.retryKakaoPending(requestId);
+    else if (review) result = await service.review(requestId, actor);
+    else result = await service.listPending();
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } finally {
     await app.close();

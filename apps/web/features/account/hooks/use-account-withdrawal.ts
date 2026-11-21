@@ -4,6 +4,7 @@ import { useAuth } from "@/features/auth/client";
 import {
   completeWithdrawal,
   requestWithdrawal,
+  retryWithdrawal,
   withdrawalReceipt,
   withdrawalStatusQuery,
   type WithdrawalStatus,
@@ -11,17 +12,26 @@ import {
 
 type Attempt = { accountId: string; key: string };
 
-export function useWithdrawalReceipt(onComplete: (attempt: Attempt) => void) {
+export function useWithdrawalReceipt(callbacks: {
+  onComplete: (attempt: Attempt) => void;
+  onPending: (attempt: Attempt) => void;
+}) {
   const { client } = useAuth();
   return useMutation({
-    mutationFn: async (attempt: Attempt) => {
-      if (
-        !(await withdrawalReceipt(client.request.bind(client), attempt.key))
-          .completed
-      )
-        return false;
-      onComplete(attempt);
-      return true;
+    mutationFn: async ({
+      attempt,
+      resume,
+    }: {
+      attempt: Attempt;
+      resume: boolean;
+    }) => {
+      const request = client.request.bind(client);
+      const result = resume
+        ? await retryWithdrawal(request, attempt.key)
+        : await withdrawalReceipt(request, attempt.key);
+      if (result.completed) callbacks.onComplete(attempt);
+      else if (result.pending) callbacks.onPending(attempt);
+      return result;
     },
   });
 }
@@ -31,6 +41,7 @@ export function useWithdrawal(
   callbacks: {
     onAttempt: (key: string) => void;
     onComplete: (key: string) => void;
+    onPending: (key: string) => void;
     onStateChange: () => void;
   },
 ) {
@@ -62,6 +73,7 @@ export function useWithdrawal(
       try {
         const result = await completeWithdrawal(request, key);
         if (result.completed) callbacks.onComplete(key);
+        else if ("pending" in result) callbacks.onPending(key);
         else await apply(result);
       } catch (error) {
         // A lost success response also ends the session on the server.
@@ -69,6 +81,7 @@ export function useWithdrawal(
           () => null,
         );
         if (received?.completed) callbacks.onComplete(key);
+        else if (received?.pending) callbacks.onPending(key);
         else throw error;
       }
     },

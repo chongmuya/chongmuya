@@ -52,7 +52,7 @@ export class AccountWithdrawalController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.withdrawals.complete(user, requestKey);
-    if (result.completed)
+    if (result.completed || ("pending" in result && result.pending))
       clearSessionCookies(
         response,
         this.config.environment.nodeEnv === "production",
@@ -67,5 +67,12 @@ export class AccountWithdrawalController {
   @Header("Cache-Control", "no-store")
   receipt(@Body() { requestKey }: WithdrawalKeyDto) {
     return this.withdrawals.receipt(requestKey);
+  }
+
+  @Post("retry")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store")
+  retry(@Body() { requestKey }: WithdrawalKeyDto) {
+    return this.withdrawals.retry(requestKey);
   }
 }

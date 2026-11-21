@@ -1,5 +1,6 @@
 import { IsNull, MoreThan, type EntityManager } from "typeorm";
 import type { AuthUser } from "./types/auth-user.js";
+import { KAKAO_ISSUER } from "./kakao-oidc.service.js";
 import { ExternalIdentity } from "./entities/external-identity.entity.js";
 import { KakaoAttempt } from "./entities/kakao-attempt.entity.js";
 import { PasswordReset } from "./entities/password-reset.entity.js";
@@ -41,7 +42,8 @@ export class AuthService {
       where: { id },
       lock: { mode: "pessimistic_write" },
     });
-    if (!account || account.withdrawnAt) throw new AuthError("SESSION_INVALID");
+    if (!account || account.withdrawnAt || account.withdrawalStartedAt)
+      throw new AuthError("SESSION_INVALID");
     return account;
   }
 
@@ -56,13 +58,49 @@ export class AuthService {
     if (!active) throw new AuthError("SESSION_INVALID");
   }
 
-  async closeAccount(id: string, receiptHash: string, manager: EntityManager) {
+  async withdrawalKakaoSubject(id: string, manager: EntityManager) {
+    const link = await manager.findOneBy(ExternalIdentity, {
+      accountId: id,
+      issuer: KAKAO_ISSUER,
+    });
+    return link?.sub ?? null;
+  }
+
+  async markWithdrawalStarted(id: string, manager: EntityManager) {
+    const now = new Date();
+    await manager.update(Account, { id }, { withdrawalStartedAt: now });
+    await manager.update(
+      AuthSession,
+      { accountId: id, revokedAt: IsNull() },
+      { revokedAt: now },
+    );
+  }
+
+  async lockKakaoWithdrawal(id: string, manager: EntityManager) {
+    const account = await manager.findOne(Account, {
+      where: { id },
+      lock: { mode: "pessimistic_write" },
+    });
+    return account?.withdrawalStartedAt && !account.withdrawnAt
+      ? this.withdrawalKakaoSubject(id, manager)
+      : null;
+  }
+
+  async closeAccount(
+    id: string,
+    receiptHash: string,
+    manager: EntityManager,
+    unlinkedSubject: string | null = null,
+  ) {
+    if ((await this.withdrawalKakaoSubject(id, manager)) !== unlinkedSubject)
+      throw new DomainHttpException("KAKAO_INVALID");
     const now = new Date();
     await manager.update(
       Account,
       { id },
       {
         withdrawnAt: now,
+        withdrawalStartedAt: null,
         withdrawalReceiptHash: receiptHash,
         email: `${id}@withdrawn.invalid`,
         emailVerifiedAt: null,
@@ -83,7 +121,12 @@ export class AuthService {
     );
     await manager.delete(PasswordReset, { accountId: id });
     await manager.delete(PhoneChange, { accountId: id });
-    await manager.delete(KakaoAttempt, { accountId: id });
+    await manager.delete(
+      KakaoAttempt,
+      unlinkedSubject
+        ? [{ accountId: id }, { issuer: KAKAO_ISSUER, sub: unlinkedSubject }]
+        : { accountId: id },
+    );
     await manager.delete(ExternalIdentity, { accountId: id });
   }
 
@@ -102,6 +145,7 @@ export class AuthService {
     const a = await m.findOneBy(Account, identity);
     if (
       !a ||
+      a.withdrawalStartedAt ||
       a.accountType !== "organizer" ||
       !a.emailVerifiedAt ||
       !a.phoneVerifiedAt ||
@@ -116,14 +160,14 @@ export class AuthService {
       id,
       accountType: "organizer",
     });
-    return !!account?.nickname?.trim();
+    return !account?.withdrawalStartedAt && !!account?.nickname?.trim();
   }
   async assertOwnerAccount(id: string, manager: EntityManager) {
     const account = await manager.findOne(Account, {
       where: { id, accountType: "owner" },
       lock: { mode: "pessimistic_write" },
     });
-    if (!account || account.withdrawnAt)
+    if (!account || account.withdrawnAt || account.withdrawalStartedAt)
       throw new DomainHttpException("OWNER_REQUIRED");
   }
   private async limit(ip: string, email: string) {
@@ -149,6 +193,7 @@ export class AuthService {
       if (
         !current ||
         current.withdrawnAt ||
+        current.withdrawalStartedAt ||
         current.passwordHash !== account.passwordHash
       )
         throw new AuthError("INVALID_CREDENTIALS");
@@ -215,7 +260,7 @@ export class AuthService {
         where: { id: accountId },
         lock: { mode: "pessimistic_write" },
       });
-      if (!account || account.withdrawnAt)
+      if (!account || account.withdrawnAt || account.withdrawalStartedAt)
         throw new AuthError("SESSION_INVALID");
       if (
         input.accountType &&

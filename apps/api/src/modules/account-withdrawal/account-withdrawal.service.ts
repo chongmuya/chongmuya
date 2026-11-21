@@ -1,6 +1,15 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { IsNull, type EntityManager } from "typeorm";
+import { DomainHttpException } from "../../common/http/domain-http.exception.js";
+import {
+  KakaoWithdrawal,
+  KakaoWithdrawalApp,
+} from "./entities/kakao-withdrawal.entity.js";
+import {
+  KakaoWithdrawalProvider,
+  validKakaoSubject,
+} from "./kakao-withdrawal-provider.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { AuthService } from "../auth/auth.service.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
@@ -23,6 +32,7 @@ export class AccountWithdrawalService {
     private readonly groups: GroupsService,
     private readonly restaurants: RestaurantsService,
     private readonly reservations: ReservationWithdrawalService,
+    private readonly kakao: KakaoWithdrawalProvider,
   ) {}
 
   private async check(accountId: string, m: EntityManager) {
@@ -125,9 +135,9 @@ export class AccountWithdrawalService {
 
   async complete(user: AuthUser, key: string) {
     const db = await this.database.connect();
-    return db.transaction(async (m) => {
-      // Each path that can create a new reservation responsibility or attach
-      // exclusive ownership takes this same account lock before writing.
+    const hash = receiptHash(key);
+    const result = await db.transaction(async (m) => {
+      // Business writes take this account lock before assigning a reservation or ownership.
       await this.auth.lockWithdrawalSession(user, m);
       const state = await this.check(user.id, m);
       if (state.blockers.length)
@@ -136,27 +146,188 @@ export class AccountWithdrawalService {
           ...state,
           request: this.summary(await this.pending(user.id, m)),
         };
-      await this.auth.closeAccount(user.id, receiptHash(key), m);
+      const subject = await this.auth.withdrawalKakaoSubject(user.id, m);
+      if (subject !== null) {
+        if (!validKakaoSubject(subject) || !this.kakao.binding())
+          throw new DomainHttpException("KAKAO_CONFIGURATION");
+        await this.auth.markWithdrawalStarted(user.id, m);
+        await m.insert(KakaoWithdrawal, {
+          accountId: user.id,
+          receiptHash: hash,
+          openedAt: new Date(),
+        });
+        return null;
+      }
+      await this.finish(user.id, hash, m);
+      return { completed: true as const };
+    });
+    return result ?? this.processKakao(user.id, hash);
+  }
+
+  private async finish(
+    accountId: string,
+    hash: string,
+    m: EntityManager,
+    subject: string | null = null,
+  ) {
+    await this.auth.closeAccount(accountId, hash, m, subject);
+    await m.update(
+      AccountWithdrawalRequest,
+      { accountId, resolvedAt: IsNull() },
+      { resolvedAt: new Date(), resolution: "WITHDRAWN" },
+    );
+  }
+
+  private async processKakao(accountId: string, hash: string) {
+    const db = await this.database.connect();
+    const pending = { completed: false as const, pending: true as const };
+    const leaseId = randomUUID();
+    const claim = await db.transaction<
+      | { completed: true }
+      | typeof pending
+      | {
+          subject: string;
+          job: KakaoWithdrawal;
+          binding: string;
+          verified: boolean;
+        }
+    >(async (m) => {
+      const subject = await this.auth.lockKakaoWithdrawal(accountId, m);
+      const job = await m.findOneBy(KakaoWithdrawal, {
+        accountId,
+        receiptHash: hash,
+      });
+      if (!job)
+        return (await this.auth.hasWithdrawalReceipt(hash, m))
+          ? { completed: true as const }
+          : pending;
+      const binding =
+        subject && validKakaoSubject(subject) ? this.kakao.binding() : null;
+      if (
+        !subject ||
+        !binding ||
+        (job.leaseUntil && job.leaseUntil > new Date())
+      )
+        return pending;
+      if ((await this.check(accountId, m)).blockers.length) return pending;
       await m.update(
-        AccountWithdrawalRequest,
-        { accountId: user.id, resolvedAt: IsNull() },
+        KakaoWithdrawal,
+        { accountId },
         {
-          resolvedAt: new Date(),
-          resolution: "WITHDRAWN",
+          leaseId,
+          leaseUntil: new Date(Date.now() + 60000),
         },
       );
-      return { completed: true as const };
+      const verified = await m.existsBy(KakaoWithdrawalApp, { binding });
+      return { subject, job, binding, verified };
+    });
+    if ("completed" in claim) return claim;
+    const { subject, job, binding, verified } = claim;
+    const inspected = await this.kakao.inspect(subject);
+    let confirmed = inspected === "absent" && verified;
+    if (inspected === "matched" && !job.unlinkStarted) {
+      // An expired/crashed worker may have sent the mutation. Persist that intent before network I/O.
+      const reserved = await db.transaction(async (m) => {
+        if ((await this.auth.lockKakaoWithdrawal(accountId, m)) !== subject)
+          return false;
+        const current = await m.findOneBy(KakaoWithdrawal, {
+          accountId,
+          leaseId,
+        });
+        if (!current || !current.leaseUntil || current.leaseUntil <= new Date())
+          return false;
+        if ((await this.check(accountId, m)).blockers.length) return false;
+        await m
+          .createQueryBuilder()
+          .insert()
+          .into(KakaoWithdrawalApp)
+          .values({ binding })
+          .orIgnore()
+          .execute();
+        await m.update(
+          KakaoWithdrawal,
+          { accountId, leaseId },
+          { unlinkStarted: true },
+        );
+        return true;
+      });
+      if (reserved) {
+        const outcome = await this.kakao.unlink(subject);
+        confirmed = outcome === "matched" || outcome === "absent";
+        if (outcome === "rejected") {
+          // Only a documented definitive rejection permits another mutation attempt.
+          await db.manager.update(
+            KakaoWithdrawal,
+            { accountId, leaseId },
+            { unlinkStarted: false },
+          );
+        }
+      }
+    }
+    return db.transaction(async (m) => {
+      const currentSubject = await this.auth.lockKakaoWithdrawal(accountId, m);
+      const current = await m.findOneBy(KakaoWithdrawal, { accountId });
+      if (!current)
+        return (await this.auth.hasWithdrawalReceipt(hash, m))
+          ? { completed: true as const }
+          : pending;
+      if (currentSubject !== subject || current.leaseId !== leaseId)
+        return pending;
+      if (confirmed && !(await this.check(accountId, m)).blockers.length) {
+        await this.finish(accountId, current.receiptHash, m, subject);
+        await m.delete(KakaoWithdrawal, { accountId, leaseId });
+        return { completed: true as const };
+      }
+      await m.update(
+        KakaoWithdrawal,
+        { accountId, leaseId },
+        { leaseId: null, leaseUntil: null },
+      );
+      return pending;
     });
   }
 
   async receipt(key: string) {
     const db = await this.database.connect();
-    return {
-      completed: await this.auth.hasWithdrawalReceipt(
-        receiptHash(key),
-        db.manager,
-      ),
-    };
+    const hash = receiptHash(key);
+    return db.transaction("REPEATABLE READ", async (m) => {
+      if (await this.auth.hasWithdrawalReceipt(hash, m))
+        return { completed: true as const };
+      if (await m.existsBy(KakaoWithdrawal, { receiptHash: hash }))
+        return { completed: false as const, pending: true as const };
+      return { completed: false as const };
+    });
+  }
+
+  async retry(key: string) {
+    const db = await this.database.connect();
+    const job = await db.manager.findOneBy(KakaoWithdrawal, {
+      receiptHash: receiptHash(key),
+    });
+    return job
+      ? this.processKakao(job.accountId, job.receiptHash)
+      : this.receipt(key);
+  }
+
+  async listKakaoPending() {
+    const db = await this.database.connect();
+    const jobs = await db.manager.find(KakaoWithdrawal, {
+      select: {
+        accountId: true,
+        openedAt: true,
+        unlinkStarted: true,
+        leaseUntil: true,
+      },
+      order: { openedAt: "ASC", accountId: "ASC" },
+    });
+    return jobs;
+  }
+
+  async retryKakaoPending(accountId: string) {
+    const db = await this.database.connect();
+    const job = await db.manager.findOneBy(KakaoWithdrawal, { accountId });
+    if (!job) throw new NotFoundException();
+    return this.processKakao(accountId, job.receiptHash);
   }
 
   async listPending() {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { notifySessionChange, useAuth } from "@/features/auth/client";
+import { ApiError } from "@/shared/http/api-error";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { ChoiceCard } from "@/shared/ui/choice-card";
 import { Dialog } from "@/shared/ui/dialog";
@@ -52,22 +53,33 @@ export function AccountWithdrawalScreen() {
   const [receipt, setReceipt] = useState<{
     accountId: string;
     key: string;
-    completed: boolean;
+    state: "checking" | "pending" | "completed";
   } | null>(null);
-  const pendingReceipt = receipt && !receipt.completed;
+  const pendingReceipt = receipt && receipt.state !== "completed";
+  const processing = pendingReceipt && receipt.state === "pending";
   const successHeading = useRef<HTMLHeadingElement>(null);
+  const pendingStatus = useRef<HTMLDivElement>(null);
   const showSuccess = Boolean(
-    receipt?.completed && (!account || account.id === receipt.accountId),
+    receipt?.state === "completed" &&
+    (!account || account.id === receipt.accountId),
   );
   useEffect(() => {
     if (showSuccess) successHeading.current?.focus();
   }, [showSuccess]);
+  useEffect(() => {
+    if (processing) pendingStatus.current?.querySelector("h1")?.focus();
+  }, [processing, status]);
   const onComplete = (attempt: { accountId: string; key: string }) => {
     client.endWithdrawnSession(attempt.accountId);
     notifySessionChange();
-    setReceipt({ ...attempt, completed: true });
+    setReceipt({ ...attempt, state: "completed" });
   };
-  const receiptCheck = useWithdrawalReceipt(onComplete);
+  const onPending = (attempt: { accountId: string; key: string }) => {
+    client.endWithdrawnSession(attempt.accountId);
+    notifySessionChange();
+    setReceipt({ ...attempt, state: "pending" });
+  };
+  const receiptCheck = useWithdrawalReceipt({ onComplete, onPending });
   if (showSuccess)
     return (
       <StepLayout title="" onBack={() => router.replace("/")}>
@@ -101,9 +113,10 @@ export function AccountWithdrawalScreen() {
         key={account.id}
         accountId={account.id}
         onAttempt={(key) =>
-          setReceipt({ accountId: account.id, key, completed: false })
+          setReceipt({ accountId: account.id, key, state: "checking" })
         }
         onComplete={(key) => onComplete({ key, accountId: account.id })}
+        onPending={(key) => onPending({ key, accountId: account.id })}
       />
     );
   return (
@@ -115,26 +128,42 @@ export function AccountWithdrawalScreen() {
           로그인 상태를 확인하지 못했어요.
         </ErrorState>
       ) : (
-        <div className="space-y-4">
+        <div ref={pendingStatus} className="space-y-4">
           <StepHeading
             title={
-              pendingReceipt
-                ? "탈퇴 결과를 확인해 주세요"
-                : "로그인하고 이어서 진행해 주세요"
+              processing
+                ? "카카오 연결 해제를 확인하고 있어요"
+                : pendingReceipt
+                  ? "탈퇴 결과를 확인해 주세요"
+                  : "로그인하고 이어서 진행해 주세요"
             }
             className="mb-4"
           />
           {pendingReceipt && (
             <>
+              {processing && (
+                <p role="status">
+                  총무야 로그인은 종료됐어요. 카카오 연결 해제가 확인되면 탈퇴가
+                  완료돼요.
+                </p>
+              )}
               <Button
                 variant="brand-outline"
                 className={outline}
                 loading={receiptCheck.isPending}
-                onClick={() => receiptCheck.mutate(receipt)}
+                onClick={() =>
+                  receiptCheck.mutate({
+                    attempt: receipt,
+                    resume: Boolean(processing),
+                  })
+                }
               >
-                탈퇴 결과 확인
+                {processing ? "카카오 연결 해제 다시 확인" : "탈퇴 결과 확인"}
               </Button>
-              {(receiptCheck.isError || receiptCheck.data === false) && (
+              {(receiptCheck.isError ||
+                (receiptCheck.data &&
+                  !receiptCheck.data.completed &&
+                  !receiptCheck.data.pending)) && (
                 <p role="status">
                   아직 완료 여부를 확인하지 못했어요. 다시 확인하거나 로그인해
                   주세요.
@@ -142,9 +171,11 @@ export function AccountWithdrawalScreen() {
               )}
             </>
           )}
-          <Link href={login} className={buttonStyles({ variant: "outline" })}>
-            로그인
-          </Link>
+          {!processing && (
+            <Link href={login} className={buttonStyles({ variant: "outline" })}>
+              로그인
+            </Link>
+          )}
           <p className="text-sm">
             로그인할 수 없다면{" "}
             <a
@@ -184,10 +215,12 @@ function WithdrawalFlow({
   accountId,
   onAttempt,
   onComplete,
+  onPending,
 }: {
   accountId: string;
   onAttempt: (key: string) => void;
   onComplete: (key: string) => void;
+  onPending: (key: string) => void;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -198,6 +231,7 @@ function WithdrawalFlow({
   const { status, action } = useWithdrawal(accountId, {
     onAttempt,
     onComplete,
+    onPending,
     onStateChange: () => initialFocus.current?.focus(),
   });
   const current = status.data;
@@ -360,7 +394,10 @@ function WithdrawalFlow({
             <WithdrawalNotice state={current} />
             {action.isError && (
               <p role="alert" className="text-danger">
-                처리 결과를 확인하지 못했어요. 같은 버튼으로 다시 시도해 주세요.
+                {action.error instanceof ApiError &&
+                action.error.code === "KAKAO_CONFIGURATION"
+                  ? "카카오 연결 해제를 시작하지 못했어요. 잠시 후 다시 시도하거나 고객지원에 문의해 주세요."
+                  : "처리 결과를 확인하지 못했어요. 같은 버튼으로 다시 시도해 주세요."}
               </p>
             )}
             <div className="grid gap-2">

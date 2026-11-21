@@ -1,3 +1,4 @@
+import { KakaoWithdrawalProvider } from "./kakao-withdrawal-provider.js";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "../../config/config.module.js";
 import { DatabaseModule } from "../../database/database.module.js";
@@ -18,6 +19,6 @@ import { AccountWithdrawalService } from "./account-withdrawal.service.js";
     ReservationsModule,
   ],
   controllers: [AccountWithdrawalController],
-  providers: [AccountWithdrawalService],
+  providers: [AccountWithdrawalService, KakaoWithdrawalProvider],
 })
 export class AccountWithdrawalModule {}

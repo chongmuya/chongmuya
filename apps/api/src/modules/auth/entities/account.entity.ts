@@ -29,6 +29,12 @@ export class Account {
   @Column({ name: "withdrawn_at", type: "timestamptz", nullable: true })
   withdrawnAt!: Date | null;
   @Column({
+    name: "withdrawal_started_at",
+    type: "timestamptz",
+    nullable: true,
+  })
+  withdrawalStartedAt!: Date | null;
+  @Column({
     name: "withdrawal_receipt_hash",
     type: "varchar",
     length: 64,

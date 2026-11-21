@@ -56,7 +56,8 @@ export class JwtAccessStrategy extends PassportStrategy(
     )
       throw new AuthError("SESSION_INVALID");
     const account = await db.getRepository(Account).findOneBy({ id: sub });
-    if (!account || account.withdrawnAt) throw new AuthError("SESSION_INVALID");
+    if (!account || account.withdrawnAt || account.withdrawalStartedAt)
+      throw new AuthError("SESSION_INVALID");
     // Internal session context is deliberately absent from JSON responses.
     return Object.defineProperty(publicAccount(account), "sessionId", {
       value: sid,
