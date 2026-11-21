@@ -39,18 +39,21 @@ const noticeOutdated = (n: Notice, s: SettlementState) =>
           .map((p) => [p.person.id, p.remaining])
           .sort(),
       ));
+function appliedDeposits(expenses: Expense[]) {
+  const amounts = new Map<string, number>();
+  for (const { deletedAt, reservationId, deposit } of expenses)
+    if (!deletedAt && reservationId && deposit > 0)
+      amounts.set(reservationId, (amounts.get(reservationId) ?? 0) + deposit);
+  return amounts;
+}
 const depositConflicts = (
-  s: Pick<SettlementState, "expenses">,
+  s: SettlementState,
   facts: { reservationId: string; remainingAmount: number }[],
 ) => {
   const balances = new Map(
     facts.map((f) => [f.reservationId, f.remainingAmount]),
   );
-  const used = new Map<string, number>();
-  for (const e of s.expenses)
-    if (!e.deletedAt && e.reservationId)
-      used.set(e.reservationId, (used.get(e.reservationId) ?? 0) + e.deposit);
-  return [...used]
+  return [...appliedDeposits(s.expenses)]
     .filter(([id, amount]) => amount > (balances.get(id) ?? 0))
     .map(([reservationId, applied]) => ({
       reservationId,
@@ -90,9 +93,7 @@ export class SettlementsService {
   private depositBalances(states: Iterable<SettlementState>, m: EntityManager) {
     const ids = new Set<string>();
     for (const state of states)
-      for (const expense of state.expenses)
-        if (!expense.deletedAt && expense.reservationId && expense.deposit > 0)
-          ids.add(expense.reservationId);
+      for (const id of appliedDeposits(state.expenses).keys()) ids.add(id);
     return this.reservations.depositBalances([...ids], m);
   }
   async get(owner: string, event: string): Promise<SettlementDetailDto> {
@@ -222,27 +223,31 @@ export class SettlementsService {
       if (!n) throw new NotFoundException();
       const reservations = await this.reservations.forEvent(owner, event, m);
       const needsReview = depositConflicts(s, reservations).length > 0;
-      const refunded = new Set(
-        reservations
-          .filter((r) => r.refundedAmount > 0)
-          .map((r) => r.reservationId),
-      );
-      const noticeConflicts = depositConflicts(
-        { expenses: n.snapshot?.expenses ?? [] },
-        reservations,
-      ).filter(({ reservationId }) => refunded.has(reservationId));
-      const newRefunds = await this.reservations.refundTotalsRecordedAfter(
-        noticeConflicts.map(({ reservationId }) => reservationId),
-        n.createdAt,
+      const { reservationVersions, ...notice } = n;
+      const applied = appliedDeposits(n.snapshot?.expenses ?? []);
+      const refunds = await this.reservations.depositRefunds(
+        [...applied.keys()],
         m,
       );
-      // Only a shortage that disappears without the new refunds is refund-driven.
-      const refundRequiresRegeneration = noticeConflicts.some(
-        ({ reservationId, applied, remaining }) =>
-          remaining + (newRefunds.get(reservationId) ?? 0) >= applied,
+      const refundRequiresRegeneration = refunds.some(
+        ({ reservationId, version, recordedAt, balanceAfter, amount }) => {
+          const used = applied.get(reservationId);
+          if (used === undefined || amount === null) return false;
+          const issuedVersion = reservationVersions?.[reservationId];
+          // Legacy notices only have a timestamp. Include ties when the refund made the balance insufficient.
+          const recordedAfter =
+            issuedVersion === undefined
+              ? Date.parse(recordedAt) >= Date.parse(n.createdAt)
+              : version > issuedVersion;
+          return (
+            recordedAfter &&
+            balanceAfter < used &&
+            balanceAfter + amount >= used
+          );
+        },
       );
       return {
-        ...n,
+        ...notice,
         needsReview,
         refundRequiresRegeneration,
         outdated:
@@ -522,10 +527,9 @@ export class SettlementsService {
       return;
     }
     if (c.action === "NOTICE") {
-      if (
-        depositConflicts(s, await this.reservations.forEvent(owner, event, m))
-          .length
-      )
+      // Refunds also lock this event, so these versions describe the balances used at issuance.
+      const balances = await this.depositBalances([s], m);
+      if (depositConflicts(s, balances).length)
         throw new DomainHttpException("SETTLEMENT_CONFLICT");
       if (summary.drafts || summary.status === "EMPTY")
         throw new DomainHttpException("SETTLEMENT_DRAFT");
@@ -584,6 +588,12 @@ export class SettlementsService {
         calculationVersion: s.calculationVersion,
         createdAt: now,
         actorId: owner,
+        reservationVersions: Object.fromEntries(
+          balances.map(({ reservationId, version }) => [
+            reservationId,
+            version,
+          ]),
+        ),
         snapshot: {
           expenses: structuredClone(expenses),
           people,

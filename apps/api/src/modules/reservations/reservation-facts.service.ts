@@ -310,41 +310,53 @@ export class ReservationFactsService {
 
   async depositBalances(reservationIds: string[], m: EntityManager) {
     if (!reservationIds.length) return [];
-    const rows = await m.findBy(ReservationProgress, {
-      reservationId: In(reservationIds),
-    });
-    return rows.map(({ reservationId, state }) => ({
+    const rows = await m
+      .createQueryBuilder(ReservationProgress, "progress")
+      .innerJoin(
+        SelectedReservation,
+        "reservation",
+        "reservation.id=progress.reservation_id",
+      )
+      .select("progress.reservationId", "reservationId")
+      .addSelect("progress.state", "state")
+      .addSelect("reservation.version", "version")
+      .where("progress.reservationId IN (:...reservationIds)", {
+        reservationIds,
+      })
+      .getRawMany<{
+        reservationId: string;
+        state: ReservationPreparation;
+        version: number;
+      }>();
+    return rows.map(({ reservationId, state, version }) => ({
       reservationId,
       remainingAmount: (state.receipt?.amount ?? 0) - state.refunded,
+      version,
     }));
   }
 
-  async refundTotalsRecordedAfter(
-    reservationIds: string[],
-    createdAt: string,
-    m: EntityManager,
-  ): Promise<Map<string, number>> {
-    if (!reservationIds.length) return new Map();
-    // Use the server's UTC record time. A transfer can be entered retroactively.
-    const totals = await m
+  async depositRefunds(reservationIds: string[], m: EntityManager) {
+    if (!reservationIds.length) return [];
+    return m
       .createQueryBuilder(ReservationCompletionHistory, "history")
       .select("history.reservationId", "reservationId")
+      .addSelect("history.version", "version")
+      .addSelect("history.audit->>'recordedAt'", "recordedAt")
       .addSelect(
-        "COALESCE(SUM((history.evidence->'refund'->>'amount')::integer), 0)",
-        "amount",
+        "COALESCE((history.snapshot->'receipt'->>'amount')::integer, 0) - (history.snapshot->>'refunded')::integer",
+        "balanceAfter",
       )
+      .addSelect("(history.evidence->'refund'->>'amount')::integer", "amount")
       .where("history.reservationId IN (:...reservationIds)", {
         reservationIds,
       })
       .andWhere("history.action = :action", { action: "REFUND_RECORDED" })
-      .andWhere("history.audit->>'recordedAt' > :createdAt", { createdAt })
-      .groupBy("history.reservationId")
-      .getRawMany<{ reservationId: string; amount: string }>();
-    return new Map(
-      totals.map(({ reservationId, amount }) => [
-        reservationId,
-        Number(amount),
-      ]),
-    );
+      .getRawMany<{
+        reservationId: string;
+        version: number;
+        recordedAt: string;
+        balanceAfter: number;
+        amount: number | null;
+      }>();
   }
 }

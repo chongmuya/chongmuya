@@ -1021,7 +1021,16 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   assert.equal(receiptCorrectionOnly.outdated, true);
   assert.equal(receiptCorrectionOnly.needsReview, false);
   assert.equal(receiptCorrectionOnly.refundRequiresRegeneration, false);
-  v = await save(notice);
+  const sameTime = new Date();
+  const atSameTime = async <T>(run: () => Promise<T>) => {
+    t.mock.timers.enable({ apis: ["Date"], now: sameTime });
+    try {
+      return await run();
+    } finally {
+      t.mock.timers.reset();
+    }
+  };
+  v = await atSameTime(() => save(notice));
   assert.equal(v.state.notices.length, 2);
   const beforeReturn = v;
   const beforeReturnId = v.state.notices.at(-1)!.id;
@@ -1076,13 +1085,15 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
       },
     }),
   );
-  progress = await changes.refund(reservationId, operator, {
-    requestKey: randomUUID(),
-    expectedVersion: progress.version,
-    amount: 1000,
-    refundedAt: "2026-01-01T10:00:00.000Z",
-    reason: "실제 반환 확인",
-  });
+  progress = await atSameTime(() =>
+    changes.refund(reservationId, operator, {
+      requestKey: randomUUID(),
+      expectedVersion: progress.version,
+      amount: 1000,
+      refundedAt: "2026-01-01T10:00:00.000Z",
+      reason: "실제 반환 확인",
+    }),
+  );
   v = await json<View>(await call(path, owner));
   assert.equal(v.depositConflicts?.[0]?.remaining, 4000);
   assert.deepEqual(v.state.expenses, beforeReturn.state.expenses);
@@ -1098,6 +1109,10 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   assert.equal(staleNotice.outdated, true);
   assert.equal(staleNotice.needsReview, true);
   assert.equal(staleNotice.refundRequiresRegeneration, true);
+  assert.equal(
+    (await getNotice(oldNoticeId)).refundRequiresRegeneration,
+    false,
+  );
   await save(notice, 409);
   await json(
     await call(`events/${e.id}/participants`, owner, "POST", {
@@ -1135,8 +1150,13 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
     ...notice,
     bank: { bank: "테스트은행", account: "1234", holder: "테스트 총무" },
   };
-  v = await save({ ...withBank, replaces: beforeReturnId });
+  v = await atSameTime(() => save({ ...withBank, replaces: beforeReturnId }));
   assert.equal(v.state.notices.length, 3);
+  assert.equal(v.state.notices.at(-1)!.createdAt, sameTime.toISOString());
+  assert.equal(
+    beforeReturn.state.notices.at(-1)!.createdAt,
+    sameTime.toISOString(),
+  );
   const regeneratedId = v.state.notices.at(-1)!.id;
   const regenerated = await getNotice(regeneratedId);
   assert.equal(regenerated.outdated, false);
@@ -1164,6 +1184,7 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   v = await adjustExpense(2500);
   assert.deepEqual(v.depositConflicts, []);
   assert.equal(v.reservations[0]!.refundedAmount, 1000);
+  assert.deepEqual(await getNotice(beforeReturnId), beforeRegeneration);
   assert.deepEqual(await getNotice(regeneratedId), {
     ...regenerated,
     outdated: true,
@@ -1240,4 +1261,37 @@ test("confirmed reservation funds are explicitly allocated once, never inferred 
   assert.equal(latestNotice.refundRequiresRegeneration, false);
   assert.equal(latestNotice.outdated, false);
   assert.match(latestNotice.text, /테스트 참가자.*4,900원/);
+
+  await atSameTime(async () => {
+    v = await save(withBank);
+    const issuedBeforeRefund = v.state.notices.at(-1)!;
+    progress = await changes.refund(reservationId, operator, {
+      requestKey: randomUUID(),
+      expectedVersion: progress.version,
+      amount: 50,
+      refundedAt: "2026-01-02T10:00:00.000Z",
+      reason: "같은 시각에 반환 확인",
+    });
+    progress = await payments.receipt(reservationId, operator, {
+      requestKey: randomUUID(),
+      expectedVersion: progress.version,
+      guidanceRevision: progress.guidance.revision,
+      amount: 1750,
+      receivedAt: "2026-01-01T10:00:00.000Z",
+      corrects: progress.receipt!.id,
+      reason: "같은 시각에 수령액 확인",
+    });
+    v = await save({ ...withBank, replaces: issuedBeforeRefund.id });
+    const issuedAfterRefund = v.state.notices.at(-1)!;
+    assert.equal(issuedBeforeRefund.createdAt, issuedAfterRefund.createdAt);
+    assert.equal(v.reservations[0]!.remainingAmount, 100);
+    assert.equal(
+      (await getNotice(issuedBeforeRefund.id)).refundRequiresRegeneration,
+      true,
+    );
+    assert.equal(
+      (await getNotice(issuedAfterRefund.id)).refundRequiresRegeneration,
+      false,
+    );
+  });
 });

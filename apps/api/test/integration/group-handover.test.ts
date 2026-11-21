@@ -19,14 +19,12 @@ import {
 import type { ReservationRequestDto } from "../../src/modules/reservations/dto/response/reservation-request.response.dto.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { randomBytes, randomUUID } from "node:crypto";
+import type { DataSource } from "typeorm";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { startResourceApplication } from "../support/resource-application.js";
 import { Account } from "../../src/modules/auth/entities/account.entity.js";
 import { Group } from "../../src/modules/groups/entities/group.entity.js";
-import {
-  GroupMembership,
-  GroupInvitation,
-} from "../../src/modules/groups/entities/group-membership.entity.js";
+import { GroupMembership } from "../../src/modules/groups/entities/group-membership.entity.js";
 import { GroupHandover } from "../../src/modules/handovers/entities/group-handover.entity.js";
 import { Event } from "../../src/modules/events/entities/event.entity.js";
 import { EventsService } from "../../src/modules/events/events.service.js";
@@ -48,21 +46,114 @@ const json = async <T = Record<string, unknown>>(r: Response, status = 200) => {
   return b as T;
 };
 const token = () => randomBytes(32).toString("hex");
+
+async function seedLegacyMemberships(
+  db: DataSource,
+  groupId: string,
+  ...accountIds: string[]
+) {
+  await db.manager.insert(
+    GroupMembership,
+    accountIds.map((accountId) => ({
+      groupId,
+      accountId,
+      role: "MEMBER",
+      joinedAt: new Date(),
+    })),
+  );
+}
+
+test("retired invitation endpoints leave valid legacy invitations and memberships untouched", async (t) => {
+  const { db, call, signup, createGroup } = await startResourceApplication(t);
+  const owner = await signup();
+  const recipient = await signup();
+  const group = await createGroup("초대 종료 검증 모임", owner);
+  const actor = await json<{ id: string }>(await call("auth/me", owner));
+  const target = await json<{ id: string; email: string }>(
+    await call("auth/me", recipient),
+  );
+  const invitationId = randomUUID();
+  const requestKey = randomUUID();
+  const invitationToken = token();
+  const tokenHash = createHash("sha256")
+    .update(`group-invitation:${invitationToken}`)
+    .digest("hex");
+  const digest = createHash("sha256")
+    .update(JSON.stringify({ id: group.id, target: target.id, tokenHash }))
+    .digest("hex");
+  await db.query(
+    `INSERT INTO group_invitations (
+      id, group_id, actor_id, target_id, request_key, digest, token_hash,
+      status, created_at, expires_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', now(), now() + interval '1 day')`,
+    [
+      invitationId,
+      group.id,
+      actor.id,
+      target.id,
+      requestKey,
+      digest,
+      tokenHash,
+    ],
+  );
+  const storedInvitation = () =>
+    db.query("SELECT * FROM group_invitations WHERE group_id = $1", [group.id]);
+  const before = await storedInvitation();
+
+  assert.equal(
+    (
+      await call(`groups/${group.id}/invitations`, owner, "POST", {
+        email: target.email,
+        token: token(),
+        requestKey: randomUUID(),
+      })
+    ).status,
+    404,
+  );
+  for (const action of ["preview", "accept"])
+    assert.equal(
+      (
+        await call(
+          `groups/invitations/${invitationId}/${action}`,
+          recipient,
+          "POST",
+          {
+            token: invitationToken,
+          },
+        )
+      ).status,
+      404,
+    );
+  assert.equal(
+    (
+      await call(
+        `groups/${group.id}/invitations/${invitationId}/cancel`,
+        owner,
+        "POST",
+        {},
+      )
+    ).status,
+    404,
+  );
+
+  assert.deepEqual(await storedInvitation(), before);
+  assert.deepEqual(await json(await call("groups/memberships", recipient)), []);
+  const state = await json(await call(`groups/${group.id}/accounts`, owner));
+  assert.equal(state.ownerId, actor.id);
+  assert.deepEqual(Object.keys(state).sort(), [
+    "accounts",
+    "ownerId",
+    "version",
+  ]);
+});
+
 test("accepted handover preserves private history and personal ownership; memberships and retries never grant early access", async (t) => {
   const { app, db, call, signup } = await startResourceApplication(t);
   const a = await signup(),
-    b = await signup(),
-    c = await signup();
+    b = await signup();
   type Me = { id: string; email: string };
   const aa = await json<Me>(await call("auth/me", a)),
-    bb = await json<Me>(await call("auth/me", b)),
-    cc = await json<Me>(await call("auth/me", c));
-  for (const user of [aa, bb, cc])
-    await db.manager.update(
-      Account,
-      { id: user.id },
-      { accountType: "organizer" },
-    );
+    bb = await json<Me>(await call("auth/me", b));
   const creationKey = randomUUID();
   const group = await json<{ id: string }>(
     await call("groups", a, "POST", {
@@ -149,33 +240,7 @@ test("accepted handover preserves private history and personal ownership; member
     await json(await call(`events/${event.id}/participants`, a)),
     people,
   );
-  const inviteToken = token(),
-    inviteBody = {
-      email: bb.email,
-      token: inviteToken,
-      requestKey: randomUUID(),
-    };
-  const invite = await json<{ id: string }>(
-    await call(`groups/${group.id}/invitations`, a, "POST", inviteBody),
-    201,
-  );
-  assert.equal(
-    (
-      await call(`groups/invitations/${invite.id}/accept`, c, "POST", {
-        token: inviteToken,
-      })
-    ).status,
-    404,
-  );
-  const joins = await Promise.all([
-    call(`groups/invitations/${invite.id}/accept`, b, "POST", {
-      token: inviteToken,
-    }),
-    call(`groups/invitations/${invite.id}/accept`, b, "POST", {
-      token: inviteToken,
-    }),
-  ]);
-  for (const r of joins) await json(r, 201);
+  await seedLegacyMemberships(db, group.id, bb.id);
   assert.equal(
     await db.manager.countBy(GroupMembership, {
       groupId: group.id,
@@ -192,42 +257,6 @@ test("accepted handover preserves private history and personal ownership; member
     ["MEMBER"],
   );
   assert.equal((await call(`groups/${group.id}/accounts`, b)).status, 404);
-  // Cancellation and expiration cannot be bypassed by the correct intended account.
-  for (const expire of [false, true]) {
-    const tk = token();
-    const inv = await json<{ id: string }>(
-      await call(`groups/${group.id}/invitations`, a, "POST", {
-        email: cc.email,
-        token: tk,
-        requestKey: randomUUID(),
-      }),
-      201,
-    );
-    if (expire)
-      await db.manager.update(
-        GroupInvitation,
-        { id: inv.id },
-        { expiresAt: new Date(0) },
-      );
-    else
-      await json(
-        await call(
-          `groups/${group.id}/invitations/${inv.id}/cancel`,
-          a,
-          "POST",
-          {},
-        ),
-        201,
-      );
-    assert.equal(
-      (
-        await call(`groups/invitations/${inv.id}/accept`, c, "POST", {
-          token: tk,
-        })
-      ).status,
-      404,
-    );
-  }
   await seedDemoRestaurants(db);
   for (const groupId of [undefined, group.id])
     await json(
@@ -613,36 +642,11 @@ test("group lock serializes handover against stale writers, upload completion an
     ),
     bb = await json<{ id: string; email: string }>(await call("auth/me", b)),
     cc = await json<{ id: string; email: string }>(await call("auth/me", c));
-  for (const u of [aa, bb, cc])
-    await db.manager.update(
-      Account,
-      { id: u.id },
-      { accountType: "organizer" },
-    );
   const g = await json<{ id: string }>(
     await call("groups", a, "POST", { name: "경합 합성 모임" }),
     201,
   );
-  for (const [u, jar] of [
-    [bb, b],
-    [cc, c],
-  ] as const) {
-    const tk = token();
-    const inv = await json<{ id: string }>(
-      await call(`groups/${g.id}/invitations`, a, "POST", {
-        email: u.email,
-        token: tk,
-        requestKey: randomUUID(),
-      }),
-      201,
-    );
-    await json(
-      await call(`groups/invitations/${inv.id}/accept`, jar, "POST", {
-        token: tk,
-      }),
-      201,
-    );
-  }
+  await seedLegacyMemberships(db, g.id, bb.id, cc.id);
   const e = await json<{ id: string; version: number }>(
     await call("events", a, "POST", { name: "경합 행사", groupId: g.id }),
     201,
@@ -866,29 +870,16 @@ test("reservation selection race, current merchant contact, pending SMS replanni
       await call("auth/me", a),
     ),
     bb = await json<{ id: string; email: string }>(await call("auth/me", b));
-  await db.manager.update(Account, { id: aa.id }, { accountType: "organizer" });
   await db.manager.update(
     Account,
     { id: bb.id },
-    { accountType: "organizer", name: "새 합성 총무", phone: "01000009999" },
+    { name: "새 합성 총무", phone: "01000009999" },
   );
   const g = await json<{ id: string }>(
-      await call("groups", a, "POST", { name: "예약 모임" }),
-      201,
-    ),
-    tk = token();
-  const inv = await json<{ id: string }>(
-    await call(`groups/${g.id}/invitations`, a, "POST", {
-      email: bb.email,
-      token: tk,
-      requestKey: randomUUID(),
-    }),
+    await call("groups", a, "POST", { name: "예약 모임" }),
     201,
   );
-  await json(
-    await call(`groups/invitations/${inv.id}/accept`, b, "POST", { token: tk }),
-    201,
-  );
+  await seedLegacyMemberships(db, g.id, bb.id);
   const e = await json<{ id: string; version: number }>(
     await call("events", a, "POST", { name: "합성 예약 흐름", groupId: g.id }),
     201,
@@ -1260,31 +1251,11 @@ test("handover cancellation, expiry, membership loss and stale group version blo
       await call("auth/me", a),
     ),
     bb = await json<{ id: string; email: string }>(await call("auth/me", b));
-  for (const u of [aa, bb])
-    await db.manager.update(
-      Account,
-      { id: u.id },
-      { accountType: "organizer" },
-    );
   const g = await json<{ id: string }>(
-      await call("groups", a, "POST", { name: "수락 검증 모임" }),
-      201,
-    ),
-    it = token();
-  const invite = await json<{ id: string }>(
-    await call(`groups/${g.id}/invitations`, a, "POST", {
-      email: bb.email,
-      requestKey: randomUUID(),
-      token: it,
-    }),
+    await call("groups", a, "POST", { name: "수락 검증 모임" }),
     201,
   );
-  await json(
-    await call(`groups/invitations/${invite.id}/accept`, b, "POST", {
-      token: it,
-    }),
-    201,
-  );
+  await seedLegacyMemberships(db, g.id, bb.id);
   let version = 1;
   for (const failure of ["cancel", "expiry", "membership", "version"]) {
     const tk = token(),

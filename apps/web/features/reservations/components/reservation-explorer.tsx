@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useAuth,
   AuthScreen,
@@ -11,13 +11,16 @@ import {
   safeReturnPath,
 } from "@/features/auth/client";
 import type { Account, SessionRequest } from "@/features/auth/types";
-import { EventPicker, useEvent } from "@/features/events/client";
+import { EventPicker, eventKeys, useEvent } from "@/features/events/client";
+import { useGroups } from "@/features/groups/client";
 import {
+  canInquireAtRestaurants,
   RestaurantBrowser,
+  restaurantInquiryIssue,
   useSelectedRestaurants,
 } from "@/features/restaurants/client";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
-import { buttonStyles } from "@/shared/ui/button";
+import { Button, buttonStyles } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
@@ -27,6 +30,7 @@ import {
   initialConditions,
   inquiryConditions,
   conditionsSchema,
+  savedInquirySchedule,
 } from "../schemas/conditions.schema";
 import { ConditionsForm } from "./conditions-form";
 import { ConditionSummary } from "./condition-summary";
@@ -34,6 +38,7 @@ import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import type { BrowseNavigation } from "@/features/restaurants/types";
 import { serviceArea } from "@/shared/lib/service-area";
 import { ApiError } from "@/shared/http/api-error";
+import { koreanDateInput } from "@/shared/lib/korean-date";
 import { InquiryReview } from "./inquiry-review";
 import { isAccessError } from "@/shared/http/access-error";
 import type { ReservationRequest } from "../types/inquiry.types";
@@ -41,6 +46,11 @@ import { InquiryReceipt } from "./reservation-progress";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const koreanWeekday = new Intl.DateTimeFormat("ko-KR", {
+  weekday: "short",
+  timeZone: "Asia/Seoul",
+});
+
 export function ReservationExplorer() {
   const params = useSearchParams();
   const router = useRouter();
@@ -55,8 +65,8 @@ export function ReservationExplorer() {
   // Selection belongs to this flow. Older history entries must not resurrect removed stores.
   useEffect(() => {
     const value = selected.join(",");
-    if ((params.get("selected") ?? "") === value) return;
-    const next = new URLSearchParams(params);
+    const next = new URLSearchParams(window.location.search);
+    if ((next.get("selected") ?? "") === value) return;
     next.delete("region");
     if (value) next.set("selected", value);
     else next.delete("selected");
@@ -64,6 +74,8 @@ export function ReservationExplorer() {
       {
         restaurantNavigation:
           window.history.state?.restaurantNavigation === true,
+        restaurantInquirySheet:
+          window.history.state?.restaurantInquirySheet === true,
       },
       "",
       safeReturnPath(`/restaurants?${next}`),
@@ -83,7 +95,7 @@ export function ReservationExplorer() {
     }
     return safeReturnPath(`/restaurants?${next}`);
   };
-  const navigate = (changes: Record<string, string | null>) => {
+  const navigate: BrowseNavigation["onNavigate"] = (changes, options) => {
     if (changes.selected !== undefined)
       setSelected(
         (changes.selected ?? "")
@@ -91,7 +103,21 @@ export function ReservationExplorer() {
           .filter((id) => uuid.test(id))
           .slice(0, 3),
       );
-    window.history.pushState({ restaurantNavigation: true }, "", href(changes));
+    if (options?.replace)
+      window.history.replaceState(
+        {
+          restaurantNavigation:
+            window.history.state?.restaurantNavigation === true,
+        },
+        "",
+        href(changes),
+      );
+    else
+      window.history.pushState(
+        { restaurantNavigation: true },
+        "",
+        href(changes),
+      );
     window.scrollTo(0, 0);
   };
   const back = () => {
@@ -223,12 +249,22 @@ function InquiryFlow({
   const router = useRouter();
   const params = useSearchParams();
   const event = useEvent(account.id, eventId, request);
+  const groups = useGroups(account.id, request);
   const existing = useQuery({
     ...inquiryQuery(account.id, eventId, request),
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
     staleTime: 0,
   });
+  const previous =
+    existing.data?.canReinquire && params.get("reinquire") === existing.data.id
+      ? existing.data
+      : undefined;
+  const received = !!existing.data && !previous;
+  useEffect(() => {
+    if (received && window.history.state?.restaurantInquirySheet)
+      window.history.back();
+  }, [received]);
   if (
     (event.isError || existing.isError) &&
     (!event.data ||
@@ -262,10 +298,6 @@ function InquiryFlow({
         <LoadingState>행사와 기존 문의 확인 중…</LoadingState>
       </StepLayout>
     );
-  const previous =
-    existing.data?.canReinquire && params.get("reinquire") === existing.data.id
-      ? existing.data
-      : undefined;
   if (existing.data && !previous)
     return (
       <StepLayout
@@ -291,6 +323,9 @@ function InquiryFlow({
         void existing.refetch();
       }}
       account={account}
+      groupType={
+        groups.data?.find((group) => group.id === event.data.groupId)?.groupType
+      }
       event={{
         id: eventId,
         version: event.data.version,
@@ -308,6 +343,7 @@ function InquiryDraft({
   unavailable,
   retry,
   account,
+  groupType,
   event,
   request,
   browse,
@@ -316,6 +352,7 @@ function InquiryDraft({
   unavailable: boolean;
   retry: () => void;
   account: Account;
+  groupType?: string | null;
   event: {
     id: string;
     version: number;
@@ -328,7 +365,11 @@ function InquiryDraft({
   const router = useRouter();
   const params = useSearchParams();
   const active = useActiveScreen();
-  const [values, setValues] = useState(() => {
+  const cache = useQueryClient();
+  const savedSchedule = previous
+    ? null
+    : savedInquirySchedule(event.scheduledAt);
+  const [draftValues, setValues] = useState(() => {
     const initial = initialConditions(
       account,
       previous?.snapshot.startsAt ?? event.scheduledAt,
@@ -347,40 +388,78 @@ function InquiryDraft({
           alcohol: p.alcohol ?? ("UNKNOWN" as const),
           additionalRequests: p.additionalRequests ?? "",
         }
-      : initial;
+      : {
+          ...initial,
+          expectedGuests:
+            cache.getQueryData<string>(
+              eventKeys.guestEstimate(account.id, event.id),
+            ) ?? "",
+        };
   });
+  const values = savedSchedule
+    ? { ...draftValues, date: savedSchedule.date, time: savedSchedule.time }
+    : draftValues;
+  const valid = conditionsSchema.safeParse(values).success;
+  const conditions = valid
+    ? inquiryConditions(values, savedSchedule?.startsAt)
+    : null;
   const [scheduleConfirmed, setScheduleConfirmed] = useState(false);
   const scheduleChanged =
-    !!previous &&
-    conditionsSchema.safeParse(values).success &&
-    inquiryConditions(values).startsAt !== event.scheduledAt;
+    !!previous && !!conditions && conditions.startsAt !== event.scheduledAt;
   const [error, setError] = useState<string>();
-  const valid = conditionsSchema.safeParse(values).success;
+  const view = params.get("view");
+  const legacyReview = !previous && view === "review";
+  const browseView = legacyReview ? "list" : browse.view;
+  const needsConditions = !conditions && !!view && view !== "conditions";
+  useEffect(() => {
+    if (!legacyReview && !needsConditions) return;
+    const next = new URLSearchParams(window.location.search);
+    next.set("view", needsConditions ? "conditions" : "list");
+    next.delete("restaurant");
+    window.history.replaceState(
+      {
+        restaurantNavigation:
+          window.history.state?.restaurantNavigation === true,
+      },
+      "",
+      safeReturnPath(`/restaurants?${next}`),
+    );
+  }, [legacyReview, needsConditions]);
   const step =
-    !valid || params.get("view") === "conditions" || !params.get("view")
+    !conditions || view === "conditions" || !view
       ? "conditions"
-      : params.get("view") === "review"
+      : previous && view === "review"
         ? "review"
         : "browse";
   const requestIdentity = useRef<{ fingerprint: string; key: string } | null>(
     null,
   );
   const targets = useSelectedRestaurants(browse.selected);
-  const targetState = targets.some((target) => target.isError)
+  const expectedGuests = Number(values.expectedGuests);
+  const issues = targets.map((target) =>
+    restaurantInquiryIssue(target, expectedGuests),
+  );
+  const targetState = issues.includes("error")
     ? "error"
-    : targets.some((target) => target.isPending)
+    : issues.includes("loading")
       ? "loading"
-      : targets.some(
-            ({ data }) =>
-              !data?.inquiryAvailable ||
-              data.maxCapacity === null ||
-              data.maxCapacity < Number(values.expectedGuests),
-          )
+      : issues.some(Boolean)
         ? "unavailable"
         : "ready";
   const [confirmationVersion, setConfirmationVersion] = useState(event.version);
   const submitting = useRef(false);
   const create = useCreateInquiry(account.id, event.id, request);
+  const versionChanged = confirmationVersion !== event.version;
+  const versionConflict =
+    create.error instanceof ApiError &&
+    create.error.code === "VERSION_CONFLICT";
+  const awaitingEvent =
+    versionConflict && create.variables?.expectedEventVersion === event.version;
+  const submissionError =
+    error ??
+    (create.error && !versionConflict
+      ? safeErrorMessage(create.error)
+      : undefined);
   const review = (ids: string[]) => {
     setError(undefined);
     create.reset();
@@ -395,18 +474,26 @@ function InquiryDraft({
     if (
       submitting.current ||
       unavailable ||
-      targetState !== "ready" ||
+      awaitingEvent ||
       !browse.selected.length ||
+      !canInquireAtRestaurants(cache, browse.selected, expectedGuests) ||
       (scheduleChanged && !scheduleConfirmed)
     )
       return;
     const parsed = conditionsSchema.safeParse(values);
     if (!parsed.success) {
       setError("날짜와 입력 조건을 다시 확인해 주세요.");
-      browse.onNavigate({ view: "conditions", restaurant: null });
+      if (previous) browse.onNavigate({ view: "conditions", restaurant: null });
       return;
     }
-    if (confirmationVersion !== event.version) {
+    if (
+      cache.getQueryData<{ version: number }>(
+        eventKeys.detail(account.id, event.id),
+      )?.version !== event.version
+    )
+      return;
+    if (versionChanged) {
+      if (!previous) return;
       setConfirmationVersion(event.version);
       setError(
         "행사 정보가 변경됐어요. 최신 행사명과 조건을 확인한 뒤 다시 보내 주세요.",
@@ -421,7 +508,7 @@ function InquiryDraft({
       expectedRequestVersion: previous?.version,
       updateEventSchedule: scheduleConfirmed,
       restaurantIds: browse.selected,
-      conditions: inquiryConditions(parsed.data),
+      conditions: inquiryConditions(parsed.data, savedSchedule?.startsAt),
       contact: {
         name: parsed.data.contactName,
         phone: parsed.data.contactPhone,
@@ -435,7 +522,11 @@ function InquiryDraft({
       {
         onError: (cause) => {
           if (!active.current) return;
-          if (cause instanceof ApiError && cause.code === "VERSION_CONFLICT") {
+          if (
+            previous &&
+            cause instanceof ApiError &&
+            cause.code === "VERSION_CONFLICT"
+          ) {
             setError(
               "행사가 변경됐어요. 입력과 선택은 유지됩니다. 최신 행사 정보를 확인해 주세요.",
             );
@@ -454,25 +545,31 @@ function InquiryDraft({
       title={
         step === "review"
           ? "문의 보내기"
-          : step === "conditions"
-            ? "문의 조건"
-            : browse.view === "map"
-              ? "매장 지도"
-              : browse.view === "detail"
-                ? "매장 상세"
-                : "매장 선택"
+          : step === "browse" && browseView === "map"
+            ? "매장 지도"
+            : step === "browse" && browseView === "detail"
+              ? "매장 상세"
+              : ""
       }
       busy={create.isPending}
       onBack={() => {
         if (window.history.state?.restaurantNavigation) router.back();
+        else if (step === "browse" && browseView !== "list")
+          browse.onNavigate(
+            { view: "list", restaurant: null },
+            { replace: true },
+          );
         else if (step !== "conditions")
-          browse.onNavigate({ view: "conditions", restaurant: null });
+          browse.onNavigate(
+            { view: "conditions", restaurant: null },
+            { replace: true },
+          );
         else router.push(`/events?event=${event.id}`);
       }}
     >
-      {(step !== "browse" || browse.view === "list") && (
+      {(step !== "browse" || browseView === "list") && (
         <StepHeading
-          className="mb-7"
+          className={step === "review" ? "mb-7" : "mb-5 break-keep"}
           title={
             step === "conditions"
               ? "매장에 어떤 조건을 전달할까요?"
@@ -480,10 +577,16 @@ function InquiryDraft({
                 ? `${browse.selected.length}곳에 문의를 보낼까요?`
                 : "우리 모임에 맞는 매장을 찾아요"
           }
-          description={event.name}
+          description={
+            step === "browse"
+              ? "선택한 매장에 문자로 문의를 보내요. 답변이 오면 알려드려요. 매장을 최대 3곳 선택할 수 있어요."
+              : step === "review"
+                ? event.name
+                : undefined
+          }
         />
       )}
-      {unavailable && (
+      {unavailable && (step !== "browse" || previous) && (
         <ErrorState retry={retry}>
           최신 행사 상태를 확인하지 못했어요. 다시 확인한 뒤 보내 주세요.
         </ErrorState>
@@ -507,15 +610,21 @@ function InquiryDraft({
       )}
       {step === "conditions" ? (
         <ConditionsForm
+          key={savedSchedule?.startsAt ?? "editable"}
           initial={values}
+          savedStartsAt={savedSchedule?.startsAt}
+          groupType={groupType}
           onChange={setValues}
           nextLabel={
-            browse.selected.length ? "보낼 내용 확인하기" : "매장 선택하기"
+            previous && browse.selected.length
+              ? "보낼 내용 확인하기"
+              : "매장 선택하기"
           }
           onContinue={(next) => {
             setValues(next);
             setError(undefined);
-            if (browse.selected.length) review(browse.selected);
+            setScheduleConfirmed(false);
+            if (previous && browse.selected.length) review(browse.selected);
             else
               browse.onNavigate({
                 view: "list",
@@ -523,37 +632,104 @@ function InquiryDraft({
               });
           }}
         />
-      ) : step === "review" ? (
+      ) : step === "review" && conditions ? (
         <InquiryReview
-          values={values}
+          conditions={conditions}
+          contact={{ name: values.contactName, phone: values.contactPhone }}
           browse={browse}
           targets={targets}
           targetState={targetState}
-          unavailable={unavailable || (scheduleChanged && !scheduleConfirmed)}
+          unavailable={
+            unavailable ||
+            awaitingEvent ||
+            (scheduleChanged && !scheduleConfirmed)
+          }
           sending={create.isPending}
           onSubmit={submit}
-          error={
-            error ?? (create.error ? safeErrorMessage(create.error) : undefined)
-          }
+          error={submissionError}
         />
       ) : (
-        <>
-          {browse.view === "list" && (
-            <div className="mb-6">
-              <ConditionSummary conditions={inquiryConditions(values)} />
-            </div>
-          )}
-          <RestaurantBrowser
-            {...browse}
-            expectedGuests={Number(values.expectedGuests)}
-            onEditConditions={() =>
-              browse.onNavigate({ view: "conditions", restaurant: null })
-            }
-            onInquiry={review}
-          />
-        </>
+        conditions && (
+          <>
+            {browseView === "list" && (
+              <div className="mb-6">
+                <ConditionSummary conditions={conditions} />
+              </div>
+            )}
+            <RestaurantBrowser
+              {...browse}
+              view={browseView}
+              restaurantId={legacyReview ? null : browse.restaurantId}
+              expectedGuests={expectedGuests}
+              onEditConditions={() =>
+                browse.onNavigate({ view: "conditions", restaurant: null })
+              }
+              onInquiry={previous ? review : undefined}
+              inquirySheet={
+                previous
+                  ? undefined
+                  : {
+                      summary: <InquirySheetSummary conditions={conditions} />,
+                      notice:
+                        unavailable || awaitingEvent ? (
+                          <ErrorState retry={retry}>
+                            최신 행사 상태를 확인하지 못했어요. 다시 확인한 뒤
+                            보내 주세요.
+                          </ErrorState>
+                        ) : versionChanged ? (
+                          <div
+                            role="alert"
+                            className="my-3 space-y-2 rounded-control bg-choice p-3 text-sm"
+                          >
+                            <p>
+                              행사 정보가 변경됐어요. 위 일정과 최신 행사명을
+                              확인해 주세요.
+                            </p>
+                            <p className="font-semibold wrap-break-word">
+                              {event.name}
+                            </p>
+                            <Button
+                              variant="outline"
+                              disabled={create.isPending}
+                              onClick={() => {
+                                setConfirmationVersion(event.version);
+                                setError(undefined);
+                                create.reset();
+                              }}
+                            >
+                              최신 행사 정보 확인
+                            </Button>
+                          </div>
+                        ) : null,
+                      disabled: unavailable || awaitingEvent || versionChanged,
+                      sending: create.isPending,
+                      onSubmit: submit,
+                      error: submissionError,
+                    }
+              }
+            />
+          </>
+        )
       )}
       {step !== "review" && <FormError message={error} />}
     </StepLayout>
+  );
+}
+
+function InquirySheetSummary({
+  conditions: { startsAt, expectedGuests },
+}: {
+  conditions: { startsAt: string; expectedGuests: number };
+}) {
+  const local = koreanDateInput(startsAt);
+  return (
+    <p className="mb-3 text-sm text-secondary">
+      <time dateTime={startsAt}>
+        {local.slice(5, 10).replace("-", ".")} (
+        {koreanWeekday.format(new Date(startsAt))}) {local.slice(11, 16)}
+      </time>
+      {" · "}
+      {expectedGuests}명
+    </p>
   );
 }

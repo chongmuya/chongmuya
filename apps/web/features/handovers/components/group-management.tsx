@@ -11,13 +11,12 @@ import { isAccessError } from "@/shared/http/access-error";
 import {
   groupPreviewQuery,
   groupAccountsQuery,
-  invitationPath,
   handoverPath,
   type Receipt,
 } from "../api/handovers.api";
-import { invitationSchema, handoverSchema } from "../schemas/forms";
+import { handoverSchema } from "../schemas/forms";
 import { useCommand } from "../hooks/use-command";
-import { accessLink, accessToken } from "../lib/link";
+import { handoverLink, accessToken } from "../lib/link";
 import { groupHandoverEnabled } from "../lib/availability";
 import { TransferScope } from "./scope";
 export function GroupManagement({
@@ -34,10 +33,6 @@ export function GroupManagement({
   const [copied, setCopied] = useState(false);
   const preview = useQuery(groupPreviewQuery(request, accountId, groupId));
   const accounts = useQuery(groupAccountsQuery(request, accountId, groupId));
-  const inviteForm = useForm({
-    resolver: zodResolver(invitationSchema),
-    defaultValues: { email: "" },
-  });
   const transferForm = useForm({
     resolver: zodResolver(handoverSchema),
     defaultValues: { targetId: "" },
@@ -47,17 +42,8 @@ export function GroupManagement({
     void accounts.refetch();
     void cache.invalidateQueries({ queryKey: ["user", accountId, "groups"] });
   };
-  const invite = useCommand<Receipt>(request, (r, body) => {
-    setLink(
-      accessLink("invitation", r.id, "token" in body ? String(body.token) : ""),
-    );
-    setCopied(false);
-    refresh();
-  });
   const transfer = useCommand<Receipt>(request, (r, body) => {
-    setLink(
-      accessLink("handover", r.id, "token" in body ? String(body.token) : ""),
-    );
+    setLink(handoverLink(r.id, "token" in body ? String(body.token) : ""));
     setCopied(false);
     refresh();
   });
@@ -79,17 +65,17 @@ export function GroupManagement({
     ) : (
       <LoadingState>모임 관리 정보 확인 중…</LoadingState>
     );
-  const busy = invite.isPending || transfer.isPending || cancel.isPending;
-  const unresolved = invite.uncertain || transfer.uncertain || cancel.uncertain;
+  const busy = transfer.isPending || cancel.isPending;
+  const unresolved = transfer.uncertain || cancel.uncertain;
   const pending = preview.data.requests.find(
     (r) =>
       r.status === "PENDING" && Date.parse(r.expiresAt) > preview.dataUpdatedAt,
   );
   return (
-    <section className="mt-8 space-y-6" aria-label="계정 멤버와 인수인계">
+    <section className="mt-8 space-y-6" aria-label="모임 현황과 관리 권한">
       <div className="grid grid-cols-2 divide-x divide-border rounded-card bg-surface py-6 text-center shadow-card">
         <div>
-          <p className="text-sm text-secondary">모임 인원</p>
+          <p className="text-sm text-secondary">기본 명단</p>
           <strong className="mt-2 block text-2xl">
             {preview.data.scope.roster}명
           </strong>
@@ -127,7 +113,7 @@ export function GroupManagement({
           <summary className="cursor-pointer text-lg font-semibold text-brand">
             {groupHandoverEnabled
               ? "다음 총무에게 넘기기"
-              : "기존 인수인계 요청 확인"}
+              : "대기 중인 인수인계"}
           </summary>
           <p className="text-sm text-muted">
             {groupHandoverEnabled
@@ -202,69 +188,6 @@ export function GroupManagement({
           )}
         </details>
       )}
-      <details className="rounded-card bg-surface p-5 shadow-card">
-        <summary className="mb-3 cursor-pointer text-lg font-semibold">
-          로그인 계정 멤버 · 참여 초대
-        </summary>
-        <p className="text-caption text-muted">
-          기본 명단과 별개예요. 가입 수락만으로 관리권한을 주지 않아요.
-        </p>
-        <ul>
-          {accounts.data.accounts.map((a) => (
-            <li key={a.id} className="py-2 break-all">
-              {a.name} · {a.email} · {a.role === "ADMIN" ? "총무" : "일반 멤버"}
-            </li>
-          ))}
-        </ul>
-        <form
-          className="mt-3 space-y-2"
-          onSubmit={inviteForm.handleSubmit((v) => {
-            const t = accessToken();
-            invite.send(invitationPath(groupId), {
-              ...v,
-              token: t,
-              requestKey: crypto.randomUUID(),
-            });
-          })}
-        >
-          <label htmlFor="invite-email">초대할 총무 계정의 인증된 이메일</label>
-          <Input
-            id="invite-email"
-            {...inviteForm.register("email")}
-            aria-invalid={!!inviteForm.formState.errors.email}
-            aria-describedby="invite-error"
-            disabled={busy || unresolved}
-          />
-          <p id="invite-error" role="alert">
-            {inviteForm.formState.errors.email?.message}
-          </p>
-          <Button type="submit" disabled={busy || unresolved}>
-            참여 초대 링크 만들기
-          </Button>
-        </form>
-        {accounts.data.invitations
-          .filter(
-            (r) =>
-              r.status === "PENDING" &&
-              Date.parse(r.expiresAt) > preview.dataUpdatedAt,
-          )
-          .map((r) => (
-            <p key={r.id}>
-              {r.targetLabel} · 초대 수락 대기 · 만료{" "}
-              {new Date(r.expiresAt).toLocaleString("ko-KR", {
-                timeZone: "Asia/Seoul",
-              })}{" "}
-              (한국 시간){" "}
-              <Button
-                variant="outline"
-                disabled={busy || unresolved}
-                onClick={() => cancel.send(invitationPath(groupId, r.id), {})}
-              >
-                {r.targetLabel} 초대 취소
-              </Button>
-            </p>
-          ))}
-      </details>
       {link && (
         <div className="space-y-2">
           <p>
@@ -284,7 +207,7 @@ export function GroupManagement({
           </Button>
         </div>
       )}
-      {[invite, transfer, cancel].map(
+      {[transfer, cancel].map(
         (m, i) =>
           m.isError && (
             <ErrorState key={i} retry={m.uncertain ? m.retry : refresh}>

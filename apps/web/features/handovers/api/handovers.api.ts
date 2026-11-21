@@ -24,7 +24,6 @@ export type Accounts = {
   version: number;
   ownerId: string;
   accounts: { id: string; name: string; email: string; role: string }[];
-  invitations: (Receipt & { targetLabel: string; expiresAt: string })[];
 };
 export const handoverKey = (account: string, group: string) =>
   ["user", account, "handover", group] as const;
@@ -68,35 +67,24 @@ export const groupAccountsQuery = (
     ["user", accountId, "group-accounts", groupId],
     `/api/v1/groups/${groupId}/accounts`,
   );
-export const invitationPath = (
-  groupId: string,
-  cancelId?: string,
-): `/api/v1/${string}` =>
-  `/api/v1/groups/${groupId}/invitations${cancelId ? `/${cancelId}/cancel` : ""}`;
 export const handoverPath = (
   groupId: string,
   cancelId?: string,
 ): `/api/v1/${string}` =>
   `/api/v1/handovers/groups/${groupId}${cancelId ? `/${cancelId}/cancel` : ""}`;
-export const accessPath = (
-  kind: "handover" | "invitation",
-  id: string,
-): `/api/v1/${string}` =>
-  kind === "handover"
-    ? `/api/v1/handovers/${id}`
-    : `/api/v1/groups/invitations/${id}`;
-export const accessPreviewQuery = (
+export const handoverAccessPath = (id: string): `/api/v1/${string}` =>
+  `/api/v1/handovers/${id}`;
+export const handoverAccessPreviewQuery = (
   request: SessionRequest,
   accountId: string,
-  kind: "handover" | "invitation",
   id: string,
   token: string,
 ) => ({
-  queryKey: ["user", accountId, "group-access", kind, id],
+  queryKey: ["user", accountId, "group-access", "handover", id],
   queryFn: () =>
-    command<Preview & { groupName?: string; status?: string }>(
+    command<Pick<Preview, "group" | "scope">>(
       request,
-      `${accessPath(kind, id)}/preview`,
+      `${handoverAccessPath(id)}/preview`,
       { token },
     ),
   retry: false as const,
