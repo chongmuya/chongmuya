@@ -4,16 +4,22 @@ import { Checkbox } from "@/shared/ui/checkbox";
 import { IconButton } from "@/shared/ui/icon-button";
 import { FormError } from "@/shared/ui/form-error";
 import { Button } from "@/shared/ui/button";
+import { privacyPolicyHref } from "@/shared/legal/links";
 import type { SignupValues } from "../../schemas/signup.schema";
 
-import type { SignupTerm, SignupTermId } from "../../types/signup.types";
+import type {
+  SignupConsentTerm,
+  SignupConsentTermId,
+} from "../../types/signup.types";
 
 export function SignupTerms({
   onDetail,
   terms,
+  privacyPolicyUrl = privacyPolicyHref,
 }: {
-  onDetail: (term: SignupTermId) => void;
-  terms: SignupTerm[];
+  onDetail: (term: SignupConsentTermId) => void;
+  terms: SignupConsentTerm[];
+  privacyPolicyUrl?: string;
 }) {
   const {
     register,
@@ -22,7 +28,8 @@ export function SignupTerms({
     formState: { errors },
   } = useFormContext<SignupValues>();
   const values = useWatch({ control });
-  const all = terms.every((term) => values[term.id]);
+  const requiredTerms = terms.filter((term) => term.required);
+  const allRequired = requiredTerms.every((term) => values[term.id]);
   return (
     <div className="flex flex-1 flex-col">
       <div className="px-3.5 pt-[clamp(24px,9.2svh,87px)]">
@@ -86,9 +93,9 @@ export function SignupTerms({
           ))}
           <label className="flex min-h-11 cursor-pointer items-center gap-3 text-label text-muted">
             <Checkbox
-              checked={all}
+              checked={allRequired}
               onChange={(event) =>
-                terms.forEach((term) =>
+                requiredTerms.forEach((term) =>
                   setValue(term.id, event.target.checked, {
                     shouldDirty: true,
                     shouldValidate: true,
@@ -96,10 +103,18 @@ export function SignupTerms({
                 )
               }
             />
-            전체 동의
+            필수 항목 모두 동의
           </label>
         </div>
       </fieldset>
+      <a
+        href={privacyPolicyUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 w-fit text-caption text-link underline"
+      >
+        개인정보 처리방침 보기 (새 창)
+      </a>
     </div>
   );
 }
@@ -109,7 +124,7 @@ export function SignupTermsDetail({
   onAgree,
   onClose,
 }: {
-  term: SignupTerm;
+  term: SignupConsentTerm;
   onAgree: () => void;
   onClose: () => void;
 }) {

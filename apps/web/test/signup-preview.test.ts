@@ -98,7 +98,6 @@ const data = {
   accountType: "organizer",
   serviceTerms: true,
   privacyCollection: true,
-  privacyPolicy: true,
   email: "preview@example.test",
   name: "테스트",
   phone: "01000000000",
@@ -107,7 +106,7 @@ const data = {
   nickname: "총무",
 };
 async function information(container: HTMLElement) {
-  for (const name of ["serviceTerms", "privacyCollection", "privacyPolicy"])
+  for (const name of ["serviceTerms", "privacyCollection"])
     await agree(container, name);
   await submit(container);
   for (const label of ["이메일 인증하기", "휴대폰 인증하기"]) {
@@ -233,7 +232,16 @@ test("signup keeps values and consent across details/back, validates steps and s
     await click(view.container, "이용약관 동의 상세 보기");
     assert.match(view.container.textContent!, /테스트 약관 본문/);
     await click(view.container, "이전 단계로 돌아가기");
-    assert.equal(view.container.querySelectorAll("input:checked").length, 3);
+    assert.equal(
+      view.container.querySelectorAll("input[name]:checked").length,
+      2,
+    );
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>(
+        'input[type="checkbox"]:not([name])',
+      )?.checked,
+      true,
+    );
     await submit(view.container);
     assert.equal(
       view.container.querySelector<HTMLInputElement>('input[name="email"]')!
@@ -279,8 +287,29 @@ test("signup keeps values and consent across details/back, validates steps and s
       onComplete: noop,
     }),
   );
-  assert.match(fresh.container.textContent!, /전체 동의/);
+  assert.match(fresh.container.textContent!, /필수 항목 모두 동의/);
   assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
+  const policyLink = fresh.container.querySelector<HTMLAnchorElement>(
+    'a[href="/legal/2026-11-21#privacy-policy"]',
+  );
+  assert.equal(policyLink?.textContent, "개인정보 처리방침 보기 (새 창)");
+  assert.equal(policyLink?.target, "_blank");
+  assert.equal(
+    fresh.container.querySelector('input[name="privacyPolicy"]'),
+    null,
+  );
+  const all = fresh.container.querySelector<HTMLInputElement>(
+    'input[type="checkbox"]:not([name])',
+  )!;
+  await act(async () => all.click());
+  assert.deepEqual(
+    [
+      ...fresh.container.querySelectorAll<HTMLInputElement>(
+        "input[name]:checked",
+      ),
+    ].map((input) => input.name),
+    ["serviceTerms", "privacyCollection"],
+  );
   await fresh.unmount();
 });
 

@@ -43,7 +43,9 @@ export function SignupFlow(
           <FormProvider {...flow.methods}>
             {flow.detail ? (
               <SignupTermsDetail
-                term={props.terms.find((term) => term.id === flow.detail)!}
+                term={flow.consentTerms.find(
+                  (term) => term.id === flow.detail,
+                )!}
                 onAgree={() => {
                   if (flow.detail)
                     flow.methods.setValue(flow.detail, true, {
@@ -78,7 +80,11 @@ export function SignupFlow(
                   {flow.step === "terms" && (
                     <SignupTerms
                       onDetail={flow.setDetail}
-                      terms={props.terms}
+                      terms={flow.consentTerms}
+                      privacyPolicyUrl={
+                        props.terms.find((term) => term.id === "privacyPolicy")
+                          ?.url ?? undefined
+                      }
                     />
                   )}
                   {flow.step === "information" && (

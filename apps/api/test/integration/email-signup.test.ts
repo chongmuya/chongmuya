@@ -5,6 +5,7 @@ import { startResourceApplication } from "../support/resource-application.js";
 import { signupFixture } from "../support/signup-fixture.js";
 import { ResendMailService } from "../../src/modules/auth/resend-mail.service.js";
 import { EmailVerification } from "../../src/modules/auth/entities/email-verification.entity.js";
+import { AccountConsent } from "../../src/modules/auth/entities/account-consent.entity.js";
 import { PhoneVerification } from "../../src/modules/auth/entities/phone-verification.entity.js";
 import { AuthAttempt } from "../../src/modules/auth/entities/auth-attempt.entity.js";
 import { tokenHash } from "../../src/modules/auth/utils/token-hash.js";
@@ -12,6 +13,41 @@ import { DomainHttpException } from "../../src/common/http/domain-http.exception
 
 test("email codes bind owner/address, survive resend limits, expire and consume only with both proofs", async (t) => {
   const { app, db, call, logs } = await startResourceApplication(t);
+  const catalog = await (await call("auth/signup/terms")).json();
+  assert.deepEqual(
+    catalog.terms.map(({ id, required }: { id: string; required: boolean }) => [
+      id,
+      required,
+    ]),
+    [
+      ["serviceTerms", true],
+      ["privacyCollection", true],
+      ["privacyPolicy", false],
+      ["marketing", false],
+    ],
+  );
+  assert.deepEqual(
+    catalog.terms.map(({ url }: { url: string }) => url),
+    [
+      "http://localhost:3000/legal/2026-11-21#service-terms",
+      "http://localhost:3000/legal/2026-11-21#privacy-collection",
+      "http://localhost:3000/legal/2026-11-21#privacy-policy",
+      "http://localhost:3000/legal/2026-11-21#marketing",
+    ],
+  );
+  assert(
+    catalog.terms.every(
+      ({
+        version,
+        body,
+        draft,
+      }: {
+        version: string;
+        body: string[];
+        draft: boolean;
+      }) => version === "2026-11-21" && body.length === 0 && !draft,
+    ),
+  );
   const mail = app.get(ResendMailService);
   const messages = new Map<string, string>();
   t.mock.method(
@@ -152,9 +188,16 @@ test("email codes bind owner/address, survive resend limits, expire and consume 
     .update({ id: fixture.id }, { verifiedAt: new Date() });
   const joined = await call("auth/signup", fixture.jar, "POST", input());
   assert.equal(joined.status, 201);
-  assert.equal(
-    (await joined.json()).account.emailVerifiedAt,
-    verifiedAt!.toISOString(),
+  const { account } = await joined.json();
+  assert.equal(account.emailVerifiedAt, verifiedAt!.toISOString());
+  const consents = await db
+    .getRepository(AccountConsent)
+    .findBy({ accountId: account.id });
+  assert.deepEqual(
+    Object.fromEntries(
+      consents.map(({ termId, accepted }) => [termId, accepted]),
+    ),
+    { serviceTerms: true, privacyCollection: true, marketing: false },
   );
   assert.equal((await check(proof.id)).status, 400);
   assert.equal(

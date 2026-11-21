@@ -9,6 +9,8 @@ export type SignupTerm = {
   body: string[];
   draft: boolean;
 };
+export type SignupConsentTermId = Exclude<SignupTermId, "privacyPolicy">;
+export type SignupConsentTerm = SignupTerm & { id: SignupConsentTermId };
 export type AccountType = "organizer" | "owner";
 export type SignupRequest = {
   email: string;
@@ -17,7 +19,7 @@ export type SignupRequest = {
   phone: string;
   emailVerificationId: string;
   phoneVerificationId: string;
-  consents: { id: SignupTermId; version: string; accepted: boolean }[];
+  consents: { id: SignupConsentTermId; version: string; accepted: boolean }[];
 };
 
 export type FirstSetupInput = { accountType?: AccountType; nickname?: string };

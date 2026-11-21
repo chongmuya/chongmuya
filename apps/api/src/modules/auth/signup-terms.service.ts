@@ -11,29 +11,35 @@ import {
 export class SignupTermsService {
   constructor(private readonly config: ConfigService) {}
   get() {
-    const configured = this.config.environment.signupTerms;
+    const { signupTerms: configured, webOrigin } = this.config.environment;
     return {
-      terms: catalog.map((item) => {
+      terms: catalog.map(({ anchor, ...item }) => {
         const term = configured?.find((entry) => entry.id === item.id);
         return {
           ...item,
           version: term?.version ?? signupTermsVersion,
-          url: term?.url ?? null,
-          body: term ? [] : [...item.body],
-          draft: !term,
+          url:
+            term?.url ??
+            new URL(`/legal/${signupTermsVersion}#${anchor}`, webOrigin).href,
+          body: [],
+          draft: false,
         };
       }),
     };
   }
   validate(consents: SignupConsentDto[]) {
-    const current = this.get();
+    // Old tabs may still send a consent for this read-only document.
+    const submitted = consents.filter((entry) => entry.id !== "privacyPolicy");
+    const current = this.get().terms.filter(
+      (term) => term.id !== "privacyPolicy",
+    );
     if (
-      new Set(consents.map((entry) => entry.id)).size !== catalog.length ||
-      consents.length !== catalog.length
+      submitted.length !== current.length ||
+      new Set(submitted.map((entry) => entry.id)).size !== current.length
     )
       throw new DomainHttpException("SIGNUP_TERMS_CHANGED");
-    for (const term of current.terms) {
-      const consent = consents.find((entry) => entry.id === term.id);
+    for (const term of current) {
+      const consent = submitted.find((entry) => entry.id === term.id);
       if (!consent || consent.version !== term.version)
         throw new DomainHttpException("SIGNUP_TERMS_CHANGED");
       if (term.required && !consent.accepted)
@@ -41,5 +47,6 @@ export class SignupTermsService {
           { field: "consents", code: "INVALID_VALUE" },
         ]);
     }
+    return submitted;
   }
 }

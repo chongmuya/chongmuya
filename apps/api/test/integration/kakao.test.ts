@@ -3,9 +3,13 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { DataSource } from "typeorm";
 import { startTestApplication } from "../support/test-application.js";
-import { signupFixture } from "../support/signup-fixture.js";
+import {
+  legacyPolicyConsent,
+  signupFixture,
+} from "../support/signup-fixture.js";
 import { DatabaseService } from "../../src/database/database.service.js";
 import { Account } from "../../src/modules/auth/entities/account.entity.js";
+import { AccountConsent } from "../../src/modules/auth/entities/account-consent.entity.js";
 import { AuthAttempt } from "../../src/modules/auth/entities/auth-attempt.entity.js";
 import { KakaoAttempt } from "../../src/modules/auth/entities/kakao-attempt.entity.js";
 import { ExternalIdentity } from "../../src/modules/auth/entities/external-identity.entity.js";
@@ -190,6 +194,38 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
   const fixture = await signupFixture(db, identity.email!);
   const { emailVerificationId, ...signup } = fixture.body;
   const jar = `${flow.jar}; ${fixture.jar}`;
+  for (const [consents, expectedStatus, expectedCode] of [
+    [
+      signup.consents.filter((term) => term.id !== "serviceTerms"),
+      400,
+      "VALIDATION_FAILED",
+    ],
+    [
+      signup.consents.map((term) =>
+        term.id === "serviceTerms" ? { ...term, accepted: false } : term,
+      ),
+      400,
+      "VALIDATION_FAILED",
+    ],
+    [
+      signup.consents.map((term) =>
+        term.id === "privacyCollection" ? signup.consents[0]! : term,
+      ),
+      409,
+      "SIGNUP_TERMS_CHANGED",
+    ],
+    [
+      signup.consents.map((term) =>
+        term.id === "marketing" ? { ...term, version: "old-marketing" } : term,
+      ),
+      409,
+      "SIGNUP_TERMS_CHANGED",
+    ],
+  ] as const) {
+    const rejected = await post("kakao/signup", { ...signup, consents }, jar);
+    assert.equal(rejected.status, expectedStatus);
+    assert.equal((await rejected.json()).code, expectedCode);
+  }
   assert.equal(
     (
       await post(
@@ -236,6 +272,15 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
   const created = simultaneous.find((value) => value.status === 201)!;
   const account = (await created.json()).account;
   const stored = await db.manager.findOneByOrFail(Account, { id: account.id });
+  const consents = await db.manager.findBy(AccountConsent, {
+    accountId: account.id,
+  });
+  assert.deepEqual(
+    Object.fromEntries(
+      consents.map(({ termId, accepted }) => [termId, accepted]),
+    ),
+    { serviceTerms: true, privacyCollection: true, marketing: false },
+  );
   assert.equal(stored.passwordHash, null);
   assert.equal(stored.name, signup.name);
   assert.equal(account.accountType, "organizer");
@@ -471,10 +516,23 @@ test("Kakao browser flow: state lifetime/replay, signup atomicity, explicit exis
     ).status,
     400,
   );
+  const joinedWithLegacyPolicy = await post(
+    "kakao/signup",
+    { ...extra.body, consents: [...extra.body.consents, legacyPolicyConsent] },
+    `${unverified.jar}; ${extra.jar}`,
+  );
+  assert.equal(joinedWithLegacyPolicy.status, 201);
+  const legacyAccount = (await joinedWithLegacyPolicy.json()).account;
   assert.equal(
-    (await post("kakao/signup", extra.body, `${unverified.jar}; ${extra.jar}`))
-      .status,
-    201,
+    await db.manager.countBy(AccountConsent, { accountId: legacyAccount.id }),
+    3,
+  );
+  assert.equal(
+    await db.manager.countBy(AccountConsent, {
+      accountId: legacyAccount.id,
+      termId: "privacyPolicy",
+    }),
+    0,
   );
   // Reauthentication expiration is independent of the OAuth attempt lifetime.
   identity = {

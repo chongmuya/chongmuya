@@ -5,7 +5,7 @@ export const previewTerms = [
     title: "개인정보 수집 및 이용동의",
     required: true,
   },
-  { id: "privacyPolicy", title: "개인정보 처리방침", required: true },
+  { id: "privacyPolicy", title: "개인정보 처리방침", required: false },
   { id: "marketing", title: "마케팅 정보 수신", required: false },
 ].map((term) => ({
   ...term,
