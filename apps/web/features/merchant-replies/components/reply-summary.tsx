@@ -96,7 +96,6 @@ export function SubmittedReply({
   const declined = response.kind === "DECLINE";
   const request = response.snapshot.requested;
   const offer = response.snapshot.offered;
-  const buttonClass = "w-full border-brand bg-brand text-soft";
   return (
     <main className="grid min-h-svh place-items-center bg-field px-3.5 pt-[11px] pb-[17px]">
       <section className="flex min-h-[min(804px,calc(100svh-28px))] w-full max-w-[360px] flex-col justify-center gap-3.5 rounded-[16px] bg-surface px-6 pt-7 pb-6 shadow-[0_3px_14px_rgb(0_0_0/0.12)]">
@@ -205,11 +204,11 @@ export function SubmittedReply({
           </>
         )}
         {onDone ? (
-          <Button className={buttonClass} onClick={onDone}>
+          <Button className="w-full" onClick={onDone}>
             확인
           </Button>
         ) : (
-          <Link className={buttonStyles({ className: buttonClass })} href="/">
+          <Link className={buttonStyles({ className: "w-full" })} href="/">
             확인
           </Link>
         )}

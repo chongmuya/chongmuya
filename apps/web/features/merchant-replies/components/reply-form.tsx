@@ -574,7 +574,7 @@ export function ReplyForm({
             />
             <Button
               type="submit"
-              className="w-full border-brand bg-brand text-soft"
+              className="w-full"
               loading={mutation.isPending}
             >
               답변 보내기

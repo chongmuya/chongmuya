@@ -21,7 +21,10 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
           </Link>
           <Link
             href={authEntryPath("/auth", returnTo)}
-            className={buttonStyles({ variant: "outline" })}
+            className={buttonStyles({
+              variant: "outline",
+              className: "text-white",
+            })}
           >
             이미 계정이 있어요
           </Link>
@@ -29,7 +32,7 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
         <button
           type="button"
           onClick={() => setGuest(true)}
-          className="mx-auto mt-8 block w-fit text-center text-caption text-black underline underline-offset-2"
+          className="mx-auto mt-8 block w-fit text-center text-caption text-white underline underline-offset-2"
         >
           회원가입 없이 사용해볼래요
         </button>

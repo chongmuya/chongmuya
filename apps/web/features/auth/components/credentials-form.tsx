@@ -62,7 +62,7 @@ export function CredentialsForm({
         error={errors.email?.message}
         className="gap-[7px] [&+div]:mt-[7px] [&_input]:mx-auto [&_input]:w-[calc(100%-8px)]"
         labelClassName="text-label text-white/80"
-        errorClassName="m-0 px-4 font-semibold text-brand-ink"
+        errorClassName="m-0 px-4 font-semibold text-white"
       >
         {(attributes) => (
           <Input
@@ -87,7 +87,7 @@ export function CredentialsForm({
         error={errors.password?.message}
         className="gap-[7px] [&+div]:mt-[7px] [&_input]:mx-auto [&_input]:w-[calc(100%-8px)]"
         labelClassName="text-label text-white/80"
-        errorClassName="m-0 px-4 font-semibold text-brand-ink"
+        errorClassName="m-0 px-4 font-semibold text-white"
       >
         {(attributes) => (
           <Input
@@ -121,7 +121,7 @@ export function CredentialsForm({
       <div className="mt-[26px] text-center">
         <Link
           href={authEntryPath("/auth/recovery", returnTo)}
-          className="text-caption text-black/70 underline underline-offset-2"
+          className="text-caption text-white underline underline-offset-2"
         >
           비밀번호를 잊으셨나요?
         </Link>
