@@ -4,10 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { buttonStyles } from "@/shared/ui/button";
 import { NoticeDialog } from "@/shared/ui/notice-dialog";
-import {
-  legalDocumentsHref,
-  legalDocumentsPublished,
-} from "@/shared/legal/links";
+import { legalDocumentsHref } from "@/shared/legal/links";
 import { authEntryPath } from "../lib/auth-entry-path";
 import { AuthLayout } from "./auth-layout";
 
@@ -44,14 +41,12 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
         >
           회원가입 없이 사용해볼래요
         </button>
-        {legalDocumentsPublished && (
-          <Link
-            href={legalDocumentsHref}
-            className="mx-auto mt-4 block w-fit text-caption text-black underline underline-offset-2"
-          >
-            이용약관 및 개인정보 안내
-          </Link>
-        )}
+        <Link
+          href={legalDocumentsHref}
+          className="mx-auto mt-4 block w-fit text-caption text-black underline underline-offset-2"
+        >
+          이용약관 및 개인정보 안내
+        </Link>
       </div>
       {guest && (
         <NoticeDialog

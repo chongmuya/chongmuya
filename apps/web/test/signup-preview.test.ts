@@ -22,6 +22,7 @@ import {
 } from "../features/auth/schemas/password.schema";
 import { credentialsSchema } from "../features/auth/schemas/credentials.schema";
 import { ApiError } from "../shared/http/api-error";
+import { legalDocumentsVersion } from "../shared/legal/links";
 import { GettingStartedFlow } from "../features/onboarding/components/getting-started-flow";
 
 async function render(element: ReactElement) {
@@ -261,11 +262,13 @@ test("signup keeps values and consent across details/back, validates steps and s
   }
   const fresh = await render(
     createElement(SignupFlow, {
-      terms: previewTerms.map((term) =>
-        term.id === "privacyPolicy"
-          ? { ...term, url: "https://example.test/legal/privacy-policy" }
-          : term,
-      ),
+      terms: previewTerms.map((term) => ({
+        ...term,
+        version: legalDocumentsVersion,
+        url: "https://example.test/legal/2026-11-21",
+        body: [],
+        draft: false,
+      })),
       verification: {
         email: {
           request: async (value) => ({
@@ -293,11 +296,31 @@ test("signup keeps values and consent across details/back, validates steps and s
   );
   assert.match(fresh.container.textContent!, /필수 항목 모두 동의/);
   assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
-  const policyLink = fresh.container.querySelector<HTMLAnchorElement>(
-    'a[href="https://example.test/legal/privacy-policy"]',
-  );
-  assert.equal(policyLink?.textContent, "개인정보 처리방침 보기 (새 창)");
-  assert.equal(policyLink?.target, "_blank");
+  for (const [title, contains] of [
+    ["이용약관 동의", /제1조 서비스/],
+    ["개인정보 수집 및 이용동의", /인증 요청과 결과/],
+    ["개인정보 처리방침", /국외 이전/],
+    ["마케팅 정보 수신", /광고를 보내게 되면/],
+  ] as const) {
+    await click(fresh.container, `${title} 상세 보기`);
+    assert.match(
+      fresh.container.querySelector('[role="region"]')!.textContent!,
+      contains,
+    );
+    assert.equal(fresh.container.querySelector('a[target="_blank"]'), null);
+    assert.equal(document.activeElement, fresh.container.querySelector("h1"));
+    if (title === "개인정보 처리방침") {
+      assert.doesNotMatch(fresh.container.textContent!, /동의하고 닫기/);
+      await click(fresh.container, "닫기");
+    } else {
+      await click(fresh.container, "이전 단계로 돌아가기");
+    }
+    assert.equal(
+      document.activeElement?.getAttribute("aria-label"),
+      `${title} 상세 보기`,
+    );
+  }
+  assert.equal(fresh.container.querySelectorAll("input:checked").length, 0);
   assert.equal(
     fresh.container.querySelector('input[name="privacyPolicy"]'),
     null,
@@ -326,17 +349,10 @@ test("closing signup terms returns focus to the control that opened them", async
   };
   const view = await render(createElement(SignupFlow, props));
   const opener = '[aria-label="이용약관 동의 상세 보기"]';
-  const policy = () =>
-    [...view.container.querySelectorAll("button")].find(
-      (button) => button.textContent === "개인정보 처리방침 보기",
-    );
+  const policy = '[aria-label="개인정보 처리방침 상세 보기"]';
 
   try {
-    for (const close of [
-      "이전 단계로 돌아가기",
-      "동의하고 닫기",
-      "동의하지 않고 돌아가기",
-    ]) {
+    for (const close of ["이전 단계로 돌아가기", "동의하고 닫기"]) {
       await click(view.container, "이용약관 동의 상세 보기");
       assert.equal(document.activeElement, view.container.querySelector("h1"));
       await click(view.container, close);
@@ -346,9 +362,9 @@ test("closing signup terms returns focus to the control that opened them", async
       );
     }
 
-    await click(view.container, "개인정보 처리방침 보기");
-    await click(view.container, "돌아가기");
-    assert.ok(document.activeElement === policy());
+    await click(view.container, "개인정보 처리방침 상세 보기");
+    await click(view.container, "닫기");
+    assert.equal(document.activeElement, view.container.querySelector(policy));
 
     await click(view.container, "이용약관 동의 상세 보기");
     await view.update(
@@ -446,10 +462,10 @@ test("signup follows the API policy requirement without assuming consent", async
     }),
   );
   try {
-    await click(preview.container, "개인정보 처리방침 보기");
+    await click(preview.container, "개인정보 처리방침 상세 보기");
     assert.match(preview.container.textContent!, /테스트 약관 본문/);
     assert.doesNotMatch(preview.container.textContent!, /동의하고 닫기/);
-    await click(preview.container, "돌아가기");
+    await click(preview.container, "닫기");
     assert.equal(
       preview.container.querySelector('input[name="privacyPolicy"]'),
       null,

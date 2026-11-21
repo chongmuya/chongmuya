@@ -220,21 +220,15 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     RESEND_API_KEY: "test-key",
     RESEND_FROM: '총무 "Team" $literal # 안내 <sender@example.test>',
     EMAIL_VERIFICATION_SECRET: "test-email-secret-12345678901234567890",
-    SIGNUP_TERMS_JSON: JSON.stringify(
-      ["serviceTerms", "privacyCollection", "privacyPolicy", "marketing"].map(
-        (id) => ({
-          id,
-          version: "test",
-          url: `https://example.test/${id}?x=$value#section`,
-        }),
-      ),
-    ),
   };
   const payload = {
-    Parameters: Object.entries(env).map(([Name, Value]) => ({
-      Name: `/chongmuya/prod/${Name}`,
-      Value,
-    })),
+    Parameters: [
+      ...Object.entries(env).map(([Name, Value]) => ({
+        Name: `/chongmuya/prod/${Name}`,
+        Value,
+      })),
+      { Name: "/chongmuya/prod/SIGNUP_TERMS_JSON", Value: "obsolete" },
+    ],
   };
   const prepare = [
     "run",
@@ -268,6 +262,10 @@ test("production image preserves raw configuration, verifies TLS, migrates twice
     /DO_NOT_LOG_THIS|postgresql:/,
   );
   ok(run("docker", prepare, { input: JSON.stringify(payload) }));
+  assert.doesNotMatch(
+    readFileSync(join(directory, "api.env"), "utf8"),
+    /^SIGNUP_TERMS_JSON=/m,
+  );
   assert.equal(
     readFileSync(join(directory, "db.env"), "utf8"),
     `DATABASE_URL=${migrationUrl}\n`,

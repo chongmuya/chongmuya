@@ -98,40 +98,6 @@ const environmentInputSchema = z.object({
   EMAIL_VERIFICATION_SECRET: z.string().min(32).optional(),
   RESEND_DEBUG: z.enum(["false"]).optional(),
   OCTOMO_API_KEY: z.string().min(1).regex(/^\S+$/).optional(),
-  SIGNUP_TERMS_JSON: z
-    .string()
-    .transform((value, ctx) => {
-      try {
-        return JSON.parse(value) as unknown;
-      } catch {
-        ctx.addIssue({ code: "custom", message: "Invalid JSON" });
-        return z.NEVER;
-      }
-    })
-    .pipe(
-      z
-        .array(
-          z.object({
-            id: z.enum([
-              "serviceTerms",
-              "privacyCollection",
-              "privacyPolicy",
-              "marketing",
-            ]),
-            version: z
-              .string()
-              .min(1)
-              .max(64)
-              .regex(/^[A-Za-z0-9._-]+$/),
-            url: z
-              .url()
-              .refine((value) => new URL(value).protocol === "https:"),
-          }),
-        )
-        .length(4)
-        .refine((items) => new Set(items.map((item) => item.id)).size === 4),
-    )
-    .optional(),
   // Boolean("false") is true; accept only these two explicit strings.
   API_DOCS_ENABLED: z.enum(["true", "false"]).optional(),
 });
@@ -249,7 +215,6 @@ const environmentSchema = environmentInputSchema
     emailVerificationSecret: env.EMAIL_VERIFICATION_SECRET,
     authSecret: env.AUTH_SECRET,
     octomoApiKey: env.OCTOMO_API_KEY,
-    signupTerms: env.SIGNUP_TERMS_JSON,
     webOrigin: env.WEB_ORIGIN,
     nodeEnv: env.NODE_ENV,
     port: env.API_PORT,

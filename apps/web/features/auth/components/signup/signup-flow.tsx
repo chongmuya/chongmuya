@@ -19,9 +19,9 @@ export function SignupFlow(
   const flow = useSignupFlow(props);
   const detail = props.terms.find((term) => term.id === flow.detail);
   const detailId = detail?.id ?? null;
-  const choose = (accepted: boolean) => {
+  const agree = () => {
     if (detail && detail !== flow.readOnlyPolicy)
-      flow.methods.setValue(detail.id, accepted, {
+      flow.methods.setValue(detail.id, true, {
         shouldDirty: true,
         shouldValidate: true,
       });
@@ -48,13 +48,12 @@ export function SignupFlow(
     <div ref={container}>
       <StepLayout
         title={
-          flow.complete
-            ? ""
-            : flow.detail
-              ? "약관 상세"
-              : flow.step === "terms"
-                ? ""
-                : "회원가입"
+          flow.complete || detail || flow.step === "terms" ? "" : "회원가입"
+        }
+        className={
+          detail
+            ? "h-svh min-h-0 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+            : undefined
         }
         onBack={flow.complete ? props.onComplete : flow.back}
         busy={flow.pending}
@@ -66,12 +65,8 @@ export function SignupFlow(
             {detail ? (
               <SignupTermsDetail
                 term={detail}
-                onAgree={
-                  detail === flow.readOnlyPolicy
-                    ? undefined
-                    : () => choose(true)
-                }
-                onClose={() => choose(false)}
+                onAgree={detail === flow.readOnlyPolicy ? undefined : agree}
+                onClose={flow.back}
               />
             ) : (
               <form

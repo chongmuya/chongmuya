@@ -45,7 +45,6 @@
         "AUTH_SECRET",
         "WEB_ORIGIN",
         "OCTOMO_API_KEY",
-        "SIGNUP_TERMS_JSON",
         "RESEND_API_KEY",
         "RESEND_FROM",
         "RESEND_REPLY_TO",
