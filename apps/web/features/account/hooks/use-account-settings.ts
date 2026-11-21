@@ -59,6 +59,7 @@ export function useAccountSettings() {
         setProof(p);
         setDone(false);
         setWaiting(false);
+        setVerifyError(false);
       }
     } catch {
       if (active.current) setIssueError(true);

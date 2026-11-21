@@ -11,8 +11,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
   useAuth,
-  KakaoConnection,
   AuthScreen,
+  LogoutMenuItem,
   isFirstSetupComplete,
   firstSetupPath,
 } from "@/features/auth/client";
@@ -98,16 +98,14 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
         >
           첫 설정 이어서 하기
         </Link>
-        {mode === "mypage" && (
+        {mode === "mypage" ? (
           <>
-            <KakaoConnection
-              key={`kakao:${account.id}`}
-              accountId={account.id}
-            />
+            <LogoutMenuItem key={account.id} />
             <WithdrawalEntry />
           </>
+        ) : (
+          <AuthScreen />
         )}
-        <AuthScreen />
       </StepLayout>
     );
   const detailPage =
@@ -162,7 +160,13 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
   return (
     <StepLayout
       variant="flow"
-      title={mode === "mypage" ? "마이페이지" : ""}
+      title={
+        mode === "mypage"
+          ? params.get("view") === "account"
+            ? "계정 정보"
+            : "마이페이지"
+          : ""
+      }
       onBack={() => {
         if (mode === "mypage" && params.get("view"))
           return router.replace(
@@ -194,13 +198,10 @@ export function WorkspaceScreen({ mode }: { mode: Mode }) {
       }}
     >
       {mode === "mypage" && params.get("view") === "account" ? (
-        <div className="space-y-8">
-          <AccountSettings key={`settings:${account.id}`} />
-          <AuthScreen />
-          <KakaoConnection key={`kakao:${account.id}`} accountId={account.id} />
-        </div>
+        <AccountSettings key={account.id} />
       ) : mode === "mypage" && params.get("view") !== "groups" ? (
         <AccountNavigation
+          key={account.id}
           groupId={params.get("group")}
           accountId={account.id}
           request={client.request.bind(client)}
