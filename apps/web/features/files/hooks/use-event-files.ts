@@ -11,7 +11,10 @@ import {
   downloadFile,
 } from "../api/files.api";
 import type { FileAccess, FileRecord } from "../types/file.types";
-export function useEventFiles(a: FileAccess) {
+export function useEventFiles(
+  a: FileAccess,
+  onUploaded?: (id: string) => void,
+) {
   const input = useRef<HTMLInputElement>(null);
   const [hasPending, setHasPending] = useState(false);
   const q = useQuery(filesQuery(a)),
@@ -26,17 +29,22 @@ export function useEventFiles(a: FileAccess) {
   const upload = useMutation({
     mutationFn: async () => {
       if (!pending.current) return;
-      await uploadFile(a, pending.current.id, pending.current.file);
+      const { id, file } = pending.current;
+      await uploadFile(a, id, file);
+      return id;
     },
     retry: false,
-    onSuccess: () => {
+    onSuccess: (id) => {
       pending.current = null;
       if (input.current) input.current.value = "";
-      if (active.current) setHasPending(false);
-      if (active.current)
-        setNotice(
-          "행사 자료에 저장했습니다. 지출을 취소해도 행사 자료에 남습니다.",
-        );
+      if (active.current) {
+        setHasPending(false);
+        if (id && onUploaded) onUploaded(id);
+        else
+          setNotice(
+            "행사 자료에 저장했습니다. 지출을 취소해도 행사 자료에 남습니다.",
+          );
+      }
       refresh();
     },
     onError: (error) => {

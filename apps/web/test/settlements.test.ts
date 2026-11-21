@@ -190,11 +190,7 @@ test("deadline dialog opens once on entry, preserves forms after closing and reu
     assert.equal(scope.checked, true);
     const form = scope.closest("form")!;
     await fill(form, "title", "미확인 대상에게 안내");
-    await act(async () =>
-      [...form.querySelectorAll("button")]
-        .find((button) => button.textContent === "취소")!
-        .click(),
-    );
+    await click(form, "취소");
     await click(view.container, "개인별 정산");
     assert.equal(
       view.container.querySelector<HTMLInputElement>('[name="reason"]')!.value,
@@ -310,9 +306,9 @@ for (const lostResponse of [false, true]) {
     const v = await render(createElement(Screen));
     try {
       await until(() =>
-        assert.match(v.container.textContent!, /새 정산문 만들기/),
+        assert.match(v.container.textContent!, /정산문 만들기/),
       );
-      await click(v.container, "새 정산문 만들기");
+      await click(v.container, "정산문 만들기");
       await submit(v.container);
       if (lostResponse) {
         await until(() =>
@@ -478,7 +474,14 @@ test("expense preserves input while roster identity review removes stale selecti
   try {
     await fill(view.container, "name", "한글 지출");
     await fill(view.container, "total", "10000");
+    await click(view.container, "비용을 나눌 사람");
     await click(view.container, "이 차수 참석자를 선택에 반영");
+    await click(view.container, "추가하기");
+    assert.match(
+      view.container.querySelector('[aria-label="선택한 부담자"]')
+        ?.textContent ?? "",
+      /김민수/,
+    );
     await click(view.container, "명단 변경");
     await click(view.container, "최신 내용 확인 · 입력 재검토");
     assert.match(view.container.textContent!, /변경·삭제된 사람의 선택을 해제/);
@@ -488,6 +491,12 @@ test("expense preserves input while roster identity review removes stale selecti
       "한글 지출",
     );
     await submit(view.container);
+    assert.match(
+      view.container.querySelector("dialog")?.textContent ?? "",
+      /비용을 나눌 사람이 없어요/,
+    );
+    assert.equal(writes.length, 0);
+    await click(view.container.querySelector("dialog")!, "초안 저장");
     await until(() => assert.equal(writes.length, 1));
     assert.deepEqual(
       (writes[0] as { command: { payers: unknown[] } }).command.payers,
@@ -727,7 +736,7 @@ test("zero-request notice defaults omit payment requests and preserve direct edi
     };
     const view = await render(createElement(NoticePanel, { access: a, data }));
     try {
-      await click(view.container, "새 정산문 만들기");
+      await click(view.container, "정산문 만들기");
       const message = () =>
         view.container.querySelector<HTMLTextAreaElement>('[name="message"]')!;
       if (target === 0) assert.doesNotMatch(message().value, /입금 부탁/);
@@ -800,9 +809,7 @@ test("deposit conflicts block new notices while stale historical text remains vi
       view.container.textContent!,
       /지출 보완 전 새 정산문을 발행할 수 없습니다/,
     );
-    await act(async () =>
-      button.parentElement!.querySelectorAll("button")[1]!.click(),
-    );
+    await click(view.container, "과거 정산문");
     await until(() =>
       assert.match(view.container.textContent!, /정산 재확인 필요/),
     );
@@ -867,11 +874,13 @@ test("new manager editing an inherited notice preserves its text but must enter 
       /당시 계좌 111-222 원문/,
     );
     for (const label of ["복사하기", "공유하기"])
-      assert.equal(
-        [...v.container.querySelectorAll("button")].find(
-          (button) => button.textContent === label,
-        )?.disabled,
-        false,
+      await until(() =>
+        assert.equal(
+          [...v.container.querySelectorAll("button")].find(
+            (button) => button.textContent === label,
+          )?.disabled,
+          false,
+        ),
       );
     await click(v.container, "입력 내용 수정본 만들기");
     await until(() => assert(v.container.querySelector("[name=account]")));
