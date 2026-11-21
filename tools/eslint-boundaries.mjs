@@ -110,6 +110,7 @@ const apiPublicImports = {
     "NotificationReport",
   ],
   "events/events.service": ["EventsService"],
+  "events/event-roster.service": ["EventRosterService"],
   "restaurants/restaurants.service": ["RestaurantsService"],
   "auth/guards/jwt-access.guard": ["AccessGuard"],
   "auth/phone-verification.service": ["PhoneVerificationService"],

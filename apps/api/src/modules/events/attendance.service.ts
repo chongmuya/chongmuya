@@ -11,8 +11,14 @@ import { EventsService } from "./events.service.js";
 import { Event } from "./entities/event.entity.js";
 import { EventParticipant } from "./entities/event-participant.entity.js";
 import { AttendanceRound } from "./entities/attendance-round.entity.js";
+import { AttendanceRoundExclusion } from "./entities/attendance-round-exclusion.entity.js";
 import { AttendanceResponse } from "./entities/attendance-response.entity.js";
 import { AttendanceReview } from "./entities/attendance-review.entity.js";
+import {
+  attendancePeople,
+  includeInRound,
+  requireAttendanceRound,
+} from "./lib/round-roster.js";
 import {
   identifyAttendance,
   participantDto,
@@ -56,19 +62,11 @@ export class AttendanceService {
     private readonly events: EventsService,
     private readonly groups: GroupsService,
   ) {}
-  private async round(eventId: string, id: string, manager: EntityManager) {
-    const row = await manager.findOneBy(AttendanceRound, { id, eventId });
-    if (!row) throw new NotFoundException();
-    return row;
-  }
   private async detail(
     row: AttendanceRound,
     manager: EntityManager,
   ): Promise<RoundDetailDto> {
-    const participants = await manager.find(EventParticipant, {
-      where: { eventId: row.eventId },
-      order: { position: "ASC", id: "ASC" },
-    });
+    const participants = await attendancePeople(row.eventId, row.id, manager);
     const responses = await manager.findBy(AttendanceResponse, {
       roundId: row.id,
     });
@@ -133,6 +131,7 @@ export class AttendanceService {
         `SELECT r.id, COALESCE(s.attending,0)::int AS attending,
           COALESCE(s.absent,0)::int AS absent,
           ((SELECT count(*) FROM event_participants WHERE event_id=$1)
+            - (SELECT count(*) FROM attendance_round_exclusions WHERE round_id=r.id)
             - COALESCE(s.attending,0) - COALESCE(s.absent,0))::int AS unanswered,
           COALESCE(p.pending,0)::int AS pending
         FROM attendance_rounds r
@@ -168,7 +167,10 @@ export class AttendanceService {
     const db = await this.database.connect();
     return db.transaction("REPEATABLE READ", async (manager) => {
       await this.events.assertOwned(ownerId, eventId, manager);
-      return this.detail(await this.round(eventId, roundId, manager), manager);
+      return this.detail(
+        await requireAttendanceRound(eventId, roundId, manager),
+        manager,
+      );
     });
   }
   async create(ownerId: string, eventId: string, input: CreateRoundInput) {
@@ -184,12 +186,15 @@ export class AttendanceService {
           throw new DomainHttpException("ATTENDANCE_CONFLICT");
         return this.detail(existing, manager);
       }
-      const rounds = await manager.findBy(AttendanceRound, { eventId });
+      const previous = await manager.findOne(AttendanceRound, {
+        where: { eventId },
+        order: { position: "DESC" },
+      });
       const row = manager.create(AttendanceRound, {
         id: randomUUID(),
         eventId,
         title: input.title,
-        position: Math.max(0, ...rounds.map((r) => r.position)) + 1,
+        position: (previous?.position ?? 0) + 1,
         shareId: randomUUID(),
         requestKey: input.requestKey,
         closedAt: null,
@@ -197,6 +202,20 @@ export class AttendanceService {
         createdAt: new Date(),
       });
       await manager.insert(AttendanceRound, row);
+      if (previous) {
+        const exclusions = await manager.findBy(AttendanceRoundExclusion, {
+          roundId: previous.id,
+        });
+        if (exclusions.length)
+          await manager.insert(
+            AttendanceRoundExclusion,
+            exclusions.map(({ participantId }) => ({
+              roundId: row.id,
+              eventId,
+              participantId,
+            })),
+          );
+      }
       return this.detail(row, manager);
     });
   }
@@ -204,7 +223,7 @@ export class AttendanceService {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
       await this.events.assertOwned(ownerId, eventId, manager, true);
-      const row = await this.round(eventId, roundId, manager);
+      const row = await requireAttendanceRound(eventId, roundId, manager);
       if (!row.closedAt) {
         row.closedAt = new Date();
         await manager.save(row);
@@ -225,7 +244,7 @@ export class AttendanceService {
       ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
     });
     if (!event) throw new NotFoundException();
-    const round = await this.round(event.id, found.id, manager);
+    const round = await requireAttendanceRound(event.id, found.id, manager);
     if (round.revokedAt) throw new NotFoundException();
     return { round, event };
   }
@@ -246,13 +265,12 @@ export class AttendanceService {
   }
   private async decision(
     event: Event,
+    roundId: string,
     name: string,
     phone: string,
     manager: EntityManager,
   ) {
-    const people = await manager.findBy(EventParticipant, {
-      eventId: event.id,
-    });
+    const people = await attendancePeople(event.id, roundId, manager);
     const group = event.groupId
       ? await this.groups.membersInTransaction(
           event.ownerId,
@@ -307,6 +325,7 @@ export class AttendanceService {
       if (round.closedAt) throw new DomainHttpException("ATTENDANCE_CLOSED");
       const decision = await this.decision(
         event,
+        round.id,
         name,
         input.phoneLast4,
         manager,
@@ -379,8 +398,17 @@ export class AttendanceService {
       if (access.roundId !== round.id)
         throw new DomainHttpException("ATTENDANCE_ACCESS_INVALID");
       if (round.closedAt) throw new DomainHttpException("ATTENDANCE_CLOSED");
+      if (
+        access.participantId &&
+        (await manager.existsBy(AttendanceRoundExclusion, {
+          roundId: round.id,
+          participantId: access.participantId,
+        }))
+      )
+        throw new DomainHttpException("ATTENDANCE_IDENTITY_CHANGED");
       const decision = await this.decision(
         event,
+        round.id,
         access.name,
         access.phoneLast4,
         manager,
@@ -449,11 +477,15 @@ export class AttendanceService {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
       await this.events.assertOwned(ownerId, eventId, manager, true);
-      const round = await this.round(eventId, roundId, manager);
+      const round = await requireAttendanceRound(eventId, roundId, manager);
       if (
         !(await manager.existsBy(EventParticipant, {
           id: participantId,
           eventId,
+        })) ||
+        (await manager.existsBy(AttendanceRoundExclusion, {
+          roundId,
+          participantId,
         }))
       )
         throw new NotFoundException();
@@ -491,7 +523,7 @@ export class AttendanceService {
     const db = await this.database.connect();
     return db.transaction(async (manager) => {
       await this.events.assertOwned(ownerId, eventId, manager, true);
-      const round = await this.round(eventId, roundId, manager);
+      const round = await requireAttendanceRound(eventId, roundId, manager);
       const review = await manager.findOneBy(AttendanceReview, {
         id,
         eventId,
@@ -523,12 +555,20 @@ export class AttendanceService {
             createdAt: new Date(),
           });
           await manager.insert(EventParticipant, p);
+          await includeInRound(eventId, roundId, [p.id], [], manager);
         } else {
           const found = await manager.findOneBy(EventParticipant, {
             id: input.participantId!,
             eventId,
           });
-          if (!found) throw new NotFoundException();
+          if (
+            !found ||
+            (await manager.existsBy(AttendanceRoundExclusion, {
+              roundId,
+              participantId: found.id,
+            }))
+          )
+            throw new NotFoundException();
           p = found;
           if (p.version !== input.expectedParticipantVersion)
             throw new DomainHttpException("ATTENDANCE_REVIEW_CONFLICT");

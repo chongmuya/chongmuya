@@ -25,6 +25,6 @@ import { PublicAttendanceController } from "./public-attendance.controller.js";
     PublicAttendanceController,
   ],
   providers: [EventsService, AttendanceService, EventRosterService],
-  exports: [EventsService],
+  exports: [EventsService, EventRosterService],
 })
 export class EventsModule {}

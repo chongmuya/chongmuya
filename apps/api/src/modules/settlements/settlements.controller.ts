@@ -2,6 +2,7 @@ import {
   Controller,
   UseGuards,
   Get,
+  Delete,
   Post,
   Param,
   ParseUUIDPipe,
@@ -15,6 +16,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator.js";
 import type { AuthUser } from "../auth/types/auth-user.js";
 import { SettlementsService } from "./settlements.service.js";
 import { SettlementCommandInput } from "./dto/request/settlement.request.dto.js";
+import { RemoveEventParticipantInput } from "./dto/request/remove-event-participant.request.dto.js";
 import { RecordsQuery } from "./dto/request/records.request.dto.js";
 import {
   EventSummariesQuery,
@@ -24,6 +26,24 @@ import {
 @UseGuards(AccessGuard)
 export class SettlementsController {
   constructor(private readonly service: SettlementsService) {}
+  @Delete("events/:eventId/participants/:participantId")
+  @HttpCode(204)
+  @Header("Cache-Control", "no-store")
+  removeParticipant(
+    @CurrentUser() u: AuthUser,
+    @Param("eventId", ParseUUIDPipe) eventId: string,
+    @Param("participantId", ParseUUIDPipe) participantId: string,
+    @Body() input: RemoveEventParticipantInput,
+    @Query("roundId", new ParseUUIDPipe({ optional: true })) roundId?: string,
+  ) {
+    return this.service.removeEventParticipant(
+      u.id,
+      eventId,
+      participantId,
+      input.expectedVersion,
+      roundId,
+    );
+  }
   @Get("settlements/summaries")
   @Header("Cache-Control", "no-store")
   summaries(@CurrentUser() u: AuthUser, @Query() q: EventSummariesQuery) {

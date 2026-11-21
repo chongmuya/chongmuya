@@ -171,6 +171,10 @@ export const messages: Record<
     message:
       "명단이나 응답이 변경됐어요. 최신 내용을 확인한 뒤 다시 저장해 주세요.",
   },
+  ATTENDANCE_PARTICIPANT_HAS_RECORDS: {
+    status: 409,
+    message: "참석 또는 정산 기록이 있는 참여자는 삭제할 수 없어요.",
+  },
   ATTENDANCE_REVIEW_CONFLICT: {
     status: 409,
     message:

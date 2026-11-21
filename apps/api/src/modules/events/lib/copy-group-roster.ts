@@ -12,7 +12,7 @@ export async function copyGroupRoster(
 ) {
   const existing = await manager.find(EventParticipant, {
     where: { eventId },
-    select: { groupMemberId: true, position: true },
+    select: { id: true, groupMemberId: true, position: true },
   });
   const imported = new Set(existing.map((p) => p.groupMemberId));
   const fresh = members.filter((m) => !imported.has(m.id));
@@ -22,21 +22,26 @@ export async function copyGroupRoster(
     (max, p) => Math.max(max, p.position + 1),
     0,
   );
-  if (fresh.length)
-    await manager.insert(
-      EventParticipant,
-      fresh.map((p, i) => ({
-        id: randomUUID(),
-        eventId,
-        groupMemberId: p.id,
-        name: normalizePersonName(p.name),
-        phoneLast4: p.phoneLast4,
-        label: p.label,
-        position: position + i,
-        version: 1,
-        identityVersion: 1,
-        createdAt: new Date(),
-      })),
-    );
-  return { addedCount: fresh.length };
+  const added = fresh.map((p, i) => ({
+    id: randomUUID(),
+    eventId,
+    groupMemberId: p.id,
+    name: normalizePersonName(p.name),
+    phoneLast4: p.phoneLast4,
+    label: p.label,
+    position: position + i,
+    version: 1,
+    identityVersion: 1,
+    createdAt: new Date(),
+  }));
+  if (added.length) await manager.insert(EventParticipant, added);
+  const selected = new Set(members.map(({ id }) => id));
+  return {
+    addedIds: added.map(({ id }) => id),
+    existingIds: existing
+      .filter(
+        (person) => person.groupMemberId && selected.has(person.groupMemberId),
+      )
+      .map(({ id }) => id),
+  };
 }

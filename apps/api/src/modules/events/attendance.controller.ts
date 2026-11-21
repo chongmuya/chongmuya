@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiCookieAuth, ApiTags } from "@nestjs/swagger";
@@ -42,8 +43,9 @@ export class AttendanceController {
   participants(
     @CurrentUser() u: AuthUser,
     @Param("eventId", ParseUUIDPipe) event: string,
+    @Query("roundId", new ParseUUIDPipe({ optional: true })) roundId?: string,
   ) {
-    return this.roster.list(u.id, event);
+    return this.roster.list(u.id, event, roundId);
   }
   @Post("participants")
   @Header("Cache-Control", "no-store")
@@ -51,16 +53,18 @@ export class AttendanceController {
     @CurrentUser() u: AuthUser,
     @Param("eventId", ParseUUIDPipe) event: string,
     @Body() input: AddEventParticipantsInput,
+    @Query("roundId", new ParseUUIDPipe({ optional: true })) roundId?: string,
   ) {
-    return this.roster.add(u.id, event, input);
+    return this.roster.add(u.id, event, input, roundId);
   }
   @Post("participants/import-group")
   @Header("Cache-Control", "no-store")
   importGroup(
     @CurrentUser() u: AuthUser,
     @Param("eventId", ParseUUIDPipe) event: string,
+    @Query("roundId", new ParseUUIDPipe({ optional: true })) roundId?: string,
   ) {
-    return this.roster.importGroup(u.id, event);
+    return this.roster.importGroup(u.id, event, roundId);
   }
   @Post("participants/import-group/selected")
   @Header("Cache-Control", "no-store")
@@ -68,8 +72,9 @@ export class AttendanceController {
     @CurrentUser() u: AuthUser,
     @Param("eventId", ParseUUIDPipe) event: string,
     @Body() input: ImportSelectedGroupMembersInput,
+    @Query("roundId", new ParseUUIDPipe({ optional: true })) roundId?: string,
   ) {
-    return this.roster.importSelectedGroup(u.id, event, input);
+    return this.roster.importSelectedGroup(u.id, event, input, roundId);
   }
   @Patch("participants/:participantId")
   @Header("Cache-Control", "no-store")
@@ -78,8 +83,9 @@ export class AttendanceController {
     @Param("eventId", ParseUUIDPipe) event: string,
     @Param("participantId", ParseUUIDPipe) person: string,
     @Body() input: UpdateEventParticipantInput,
+    @Query("roundId", new ParseUUIDPipe({ optional: true })) roundId?: string,
   ) {
-    return this.roster.update(u.id, event, person, input);
+    return this.roster.update(u.id, event, person, input, roundId);
   }
   @Get("attendance-rounds")
   @Header("Cache-Control", "no-store")

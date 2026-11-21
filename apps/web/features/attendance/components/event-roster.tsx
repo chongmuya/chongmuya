@@ -1,5 +1,7 @@
 "use client";
 import { useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,7 +10,10 @@ import type { SessionRequest } from "@/features/auth/types";
 import { useEvent } from "@/features/events/client";
 import { RosterEditor, personFields } from "@/features/roster/client";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
-import { Button } from "@/shared/ui/button";
+import { Button, buttonStyles } from "@/shared/ui/button";
+import { BottomSheet } from "@/shared/ui/bottom-sheet";
+import { Dialog } from "@/shared/ui/dialog";
+import { IconButton } from "@/shared/ui/icon-button";
 import { StepLayout } from "@/shared/ui/step-layout";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FormField } from "@/shared/ui/form-field";
@@ -17,7 +22,7 @@ import { Input } from "@/shared/ui/input";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import { safeErrorMessage } from "@/shared/http/error-contract";
-import { participantsQuery } from "../api/attendance.api";
+import { participantsQuery, roundsQuery } from "../api/attendance.api";
 import { useAttendanceAction } from "../hooks/use-attendance-action";
 import type { ParticipantDto } from "../types/attendance.types";
 import { ImportGroupRoster } from "./import-group-roster";
@@ -25,6 +30,7 @@ export type OwnerProps = {
   accountId: string;
   eventId: string;
   request: SessionRequest;
+  rosterRoundId?: string;
 };
 export function EventRoster(props: OwnerProps) {
   const { accountId, eventId, request } = props;
@@ -33,12 +39,32 @@ export function EventRoster(props: OwnerProps) {
   const adding = params.get("action") === "add";
   const importing = params.get("action") === "import";
   const editingId = params.get("participant");
-  const close = () => router.replace(`/events?event=${eventId}&view=roster`);
-  const roster = useQuery(participantsQuery(accountId, eventId, request)),
+  const rounds = useQuery({
+    ...roundsQuery(accountId, eventId, request),
+    refetchInterval: false,
+  });
+  const roundId = params.get("round") ?? rounds.data?.rounds?.[0]?.id;
+  const roundTitle = rounds.data?.rounds?.find(
+    (round) => round.id === roundId,
+  )?.title;
+  const scoped = { ...props, rosterRoundId: roundId };
+  const rosterHref = `/events?event=${eventId}&view=roster${roundId ? `&round=${encodeURIComponent(roundId)}` : ""}`;
+  const close = () => router.replace(rosterHref);
+  const roster = useQuery({
+      ...participantsQuery(accountId, eventId, request, roundId),
+      enabled: !!roundId || !!rounds.data,
+    }),
     event = useEvent(accountId, eventId, request);
-  const action = useAttendanceAction(accountId, eventId, request),
+  const needsIdentities = !!roundId && (adding || importing);
+  const identities = useQuery({
+    ...participantsQuery(accountId, eventId, request),
+    enabled: needsIdentities,
+  });
+  const action = useAttendanceAction(accountId, eventId, request, roundId),
     active = useActiveScreen();
   const [notice, setNotice] = useState<string>();
+  const [showAddition, setShowAddition] = useState(false);
+  const [removing, setRemoving] = useState<ParticipantDto>();
   const fallback = (content: ReactNode) =>
     adding || importing || editingId ? (
       <StepLayout title="" onBack={close}>
@@ -47,31 +73,41 @@ export function EventRoster(props: OwnerProps) {
     ) : (
       content
     );
-  const denied = isAccessError(roster.error) || isAccessError(event.error);
+  const denied =
+    isAccessError(roster.error) ||
+    isAccessError(event.error) ||
+    isAccessError(rounds.error) ||
+    (needsIdentities && isAccessError(identities.error));
   if (
     denied ||
     (!roster.data && roster.isError) ||
-    (!event.data && event.isError)
+    (!event.data && event.isError) ||
+    (!roundId && !rounds.data && rounds.isError) ||
+    (needsIdentities && !identities.data && identities.isError)
   )
     return fallback(
       <ErrorState
         retry={() => {
           void roster.refetch();
           void event.refetch();
+          void rounds.refetch();
+          if (needsIdentities) void identities.refetch();
         }}
       >
         {denied ? "이 행사 명단에 접근할 수 없어요." : undefined}
       </ErrorState>,
     );
-  if (!roster.data || !event.data)
+  const identityRows = needsIdentities ? identities.data : roster.data;
+  if (!roster.data || !event.data || !identityRows)
     return fallback(<LoadingState>행사 명단 확인 중…</LoadingState>);
   const editing = roster.data.find((person) => person.id === editingId);
   if (importing && event.data.groupId)
     return (
       <ImportGroupRoster
-        {...props}
+        {...scoped}
         groupId={event.data.groupId}
         existing={roster.data}
+        identities={identityRows}
         onClose={close}
         onImported={() => {
           if (!active.current) return;
@@ -89,12 +125,12 @@ export function EventRoster(props: OwnerProps) {
         {(roster.isError || event.isError) && (
           <p role="alert">최신 명단 조회에 실패했어요. 입력은 유지됩니다.</p>
         )}
-        <RosterAddition {...props} existing={roster.data} onClose={close} />
+        <RosterAddition {...scoped} existing={identityRows} onClose={close} />
       </fieldset>
     );
   if (editingId)
     return (
-      <StepLayout title="행사 참여자 수정" onBack={close}>
+      <StepLayout title="" variant="flow" onBack={close}>
         {(roster.isError || event.isError) && (
           <ErrorState
             retry={() => {
@@ -109,7 +145,7 @@ export function EventRoster(props: OwnerProps) {
           {editing ? (
             <EditParticipant
               key={editing.id}
-              {...props}
+              {...scoped}
               participant={editing}
               onClose={close}
             />
@@ -126,54 +162,33 @@ export function EventRoster(props: OwnerProps) {
           최신 명단을 불러오지 못했어요. 작성 중인 입력은 유지됩니다.
         </p>
       )}
-      <fieldset className="min-w-0 space-y-5">
-        <div>
-          <h2 className="text-xl font-bold">
-            명단 관리 · {roster.data.length}명
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <h2 className="text-lg font-semibold">
+            {roundTitle ? `${roundTitle} 명단` : "명단 관리"} ·{" "}
+            {roster.data.length}명
           </h2>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {event.data.groupId && (
-            <Button
-              disabled={action.isPending}
-              onClick={() =>
-                router.push(
-                  `/events?event=${eventId}&view=roster&action=import`,
-                )
-              }
-            >
-              모임 명단에서 선택
-            </Button>
-          )}
-          {event.data.groupId && (
-            <Button
-              variant="outline"
-              loading={action.isPending}
-              onClick={() =>
-                action.mutate(
-                  { kind: "import" },
-                  {
-                    onSuccess: (result) => {
-                      if (active.current && "addedCount" in result)
-                        setNotice(
-                          `${result.addedCount}명 추가했어요. 이미 가져온 사람의 정보와 응답은 유지됩니다.`,
-                        );
-                    },
-                  },
-                )
-              }
-            >
-              전체 명단 가져오기
-            </Button>
-          )}
           <Button
+            variant="outline"
+            className="gap-2 px-3.5 text-sm"
+            aria-haspopup={event.data.groupId ? "dialog" : undefined}
             disabled={action.isPending}
             onClick={() => {
-              action.reset();
-              router.push(`/events?event=${eventId}&view=roster&action=add`);
+              if (event.data.groupId) {
+                action.reset();
+                setShowAddition(true);
+              } else {
+                router.push(`${rosterHref}&action=add`);
+              }
             }}
           >
-            직접 입력
+            <Image
+              src="/images/groups/roster-add.svg"
+              alt=""
+              width={18}
+              height={18}
+            />
+            명단 추가
           </Button>
         </div>
         {notice && (
@@ -181,37 +196,56 @@ export function EventRoster(props: OwnerProps) {
             {notice}
           </p>
         )}
-        <FormError
-          message={action.error ? safeErrorMessage(action.error) : undefined}
-        />
         {roster.data.length ? (
-          <ol className="divide-y divide-border">
+          <ol className="divide-y divide-border rounded-panel bg-surface px-3 shadow-control">
             {roster.data.map((person) => (
               <li
                 key={person.id}
-                className="flex items-center justify-between gap-3 py-4"
+                className="flex min-h-14 items-center justify-between gap-2 pl-1"
               >
-                <div className="min-w-0">
-                  <strong className="break-words text-sm">{person.name}</strong>
+                <div className="min-w-0 py-2">
+                  <strong className="text-sm wrap-anywhere">
+                    {person.name}
+                  </strong>
                   {(person.phoneLast4 || person.label) && (
-                    <p className="text-xs text-muted">
+                    <p className="text-xs wrap-anywhere text-secondary">
                       {[person.phoneLast4, person.label]
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
                   )}
                 </div>
-                <Button
-                  className="shrink-0"
-                  variant="outline"
-                  onClick={() =>
-                    router.push(
-                      `/events?event=${eventId}&view=roster&participant=${person.id}`,
-                    )
-                  }
-                >
-                  수정
-                </Button>
+                <div className="flex shrink-0 items-center">
+                  <IconButton
+                    href={`${rosterHref}&participant=${person.id}`}
+                    aria-label={`${person.name} 수정`}
+                    className="hover:bg-soft"
+                  >
+                    <Image
+                      src="/images/groups/edit.svg"
+                      alt=""
+                      width={17.0888}
+                      height={17.088}
+                    />
+                  </IconButton>
+                  <IconButton
+                    aria-label={`${person.name} 삭제`}
+                    aria-haspopup="dialog"
+                    className="hover:bg-soft"
+                    disabled={action.isPending}
+                    onClick={() => {
+                      action.reset();
+                      setRemoving(person);
+                    }}
+                  >
+                    <Image
+                      src="/images/groups/roster-remove.svg"
+                      alt=""
+                      width={18}
+                      height={18}
+                    />
+                  </IconButton>
+                </div>
               </li>
             ))}
           </ol>
@@ -220,7 +254,125 @@ export function EventRoster(props: OwnerProps) {
             아직 행사 명단이 없어요. 직접 입력하거나 모임 명단을 가져오세요.
           </p>
         )}
-      </fieldset>
+      </div>
+      {showAddition && (
+        <BottomSheet
+          title="명단 추가"
+          busy={action.isPending}
+          onClose={() => setShowAddition(false)}
+        >
+          <div className="space-y-2">
+            <Link
+              href={`${rosterHref}&action=add`}
+              className={buttonStyles({ className: "w-full" })}
+            >
+              직접 입력
+            </Link>
+            <Link
+              href={`${rosterHref}&action=import`}
+              className={buttonStyles({
+                variant: "outline",
+                className: "w-full",
+              })}
+            >
+              모임 명단에서 선택
+            </Link>
+            <Button
+              variant="outline"
+              className="w-full"
+              loading={action.isPending}
+              onClick={() =>
+                action.mutate(
+                  { kind: "import" },
+                  {
+                    onSuccess: (result) => {
+                      if (
+                        !active.current ||
+                        !result ||
+                        !("addedCount" in result)
+                      )
+                        return;
+                      setShowAddition(false);
+                      setNotice(`${result.addedCount}명 추가했어요.`);
+                    },
+                  },
+                )
+              }
+            >
+              전체 명단 가져오기
+            </Button>
+            <FormError
+              message={
+                action.error ? safeErrorMessage(action.error) : undefined
+              }
+            />
+          </div>
+        </BottomSheet>
+      )}
+      {removing && (
+        <Dialog
+          labelledBy="remove-event-participant-title"
+          describedBy="remove-event-participant-description"
+          busy={action.isPending}
+          onClose={() => setRemoving(undefined)}
+          className="space-y-4"
+        >
+          <h2
+            id="remove-event-participant-title"
+            className="text-lg font-bold wrap-anywhere"
+          >
+            {removing.name} 님을 삭제할까요?
+          </h2>
+          <p
+            id="remove-event-participant-description"
+            className="text-sm text-secondary"
+          >
+            {roundTitle
+              ? `${roundTitle} 명단에서 삭제해요.`
+              : "이 명단에서 삭제해요."}{" "}
+            참석이나 정산 기록이 있으면 삭제할 수 없어요.
+          </p>
+          <FormError
+            message={action.error ? safeErrorMessage(action.error) : undefined}
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              disabled={action.isPending}
+              onClick={() => setRemoving(undefined)}
+            >
+              취소
+            </Button>
+            <Button
+              className="flex-1 border-danger bg-danger not-disabled:hover:bg-danger/90 not-disabled:active:bg-danger/80"
+              loading={action.isPending}
+              onClick={() =>
+                action.mutate(
+                  {
+                    kind: "remove",
+                    participantId: removing.id,
+                    expectedVersion: removing.version,
+                  },
+                  {
+                    onSuccess: () => {
+                      if (!active.current) return;
+                      setRemoving(undefined);
+                      setNotice(
+                        roundTitle
+                          ? `${roundTitle} 명단에서 삭제했어요.`
+                          : "명단에서 삭제했어요.",
+                      );
+                    },
+                  },
+                )
+              }
+            >
+              삭제
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </section>
   );
 }
@@ -243,20 +395,15 @@ function EditParticipant({
       props.accountId,
       props.eventId,
       props.request,
+      props.rosterRoundId,
     ),
     active = useActiveScreen();
   return (
-    <section>
-      <h2 id="participant-edit-title" className="mb-4 text-xl font-bold">
-        행사 참여자 수정
-      </h2>
-      <p className="mb-5 text-sm text-muted">
-        이름이나 뒤 4자리를 바꾸면 이전 정보로 열어 둔 응답은 다시 확인해야
-        해요.
-      </p>
+    <section className="space-y-6">
+      <h1 className="text-2xl font-bold">행사 참여자 수정</h1>
       <form
         noValidate
-        className="space-y-4"
+        className="space-y-5"
         onSubmit={form.handleSubmit((values) =>
           action.mutate(
             {
@@ -277,43 +424,53 @@ function EditParticipant({
           ),
         )}
       >
-        {(["name", "phoneLast4", "label"] as const).map((key) => (
-          <FormField
-            key={key}
-            id={`participant-${key}`}
-            label={
-              {
-                name: "이름",
-                phoneLast4: "뒤 4자리 (선택)",
-                label: "구분 메모 (선택)",
-              }[key]
-            }
-            error={form.formState.errors[key]?.message}
-          >
-            {(attributes) => (
-              <Input
-                {...attributes}
-                {...form.register(key)}
-                autoComplete="off"
-                variant="pill"
-              />
-            )}
-          </FormField>
-        ))}
+        <div className="space-y-4 rounded-card bg-surface p-5 shadow-control">
+          {(["name", "phoneLast4", "label"] as const).map((key) => (
+            <FormField
+              key={key}
+              id={`participant-${key}`}
+              label={
+                {
+                  name: "이름",
+                  phoneLast4: "전화번호 뒤 4자리 (선택)",
+                  label: "구분 메모 (선택)",
+                }[key]
+              }
+              error={form.formState.errors[key]?.message}
+            >
+              {(attributes) => (
+                <Input
+                  {...attributes}
+                  {...form.register(key)}
+                  autoComplete="off"
+                  disabled={action.isPending}
+                  inputMode={key === "phoneLast4" ? "numeric" : undefined}
+                  variant="form"
+                />
+              )}
+            </FormField>
+          ))}
+          <p className="text-xs text-secondary">
+            이름이나 전화번호 뒤 4자리를 바꾸면 이전 정보로 열어 둔 응답을 다시
+            확인해야 해요.
+            {props.rosterRoundId &&
+              " 변경한 정보는 이 행사의 다른 차수에도 적용돼요."}
+          </p>
+        </div>
         <FormError
           message={action.error ? safeErrorMessage(action.error) : undefined}
         />
-        <div className="flex gap-2">
+        <div className="space-y-2">
+          <Button type="submit" className="w-full" loading={action.isPending}>
+            저장
+          </Button>
           <Button
             variant="outline"
-            className="flex-1"
+            className="w-full"
             disabled={action.isPending}
             onClick={onClose}
           >
             취소
-          </Button>
-          <Button type="submit" className="flex-1" loading={action.isPending}>
-            저장
           </Button>
         </div>
       </form>
@@ -332,6 +489,7 @@ function RosterAddition({
       props.accountId,
       props.eventId,
       props.request,
+      props.rosterRoundId,
     ),
     active = useActiveScreen();
   const changed =
