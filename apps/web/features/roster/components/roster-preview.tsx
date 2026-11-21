@@ -1,14 +1,15 @@
 import Image from "next/image";
 import type { RefObject } from "react";
 import type { FieldArrayWithId, UseFormReturn } from "react-hook-form";
-import { useWatch } from "react-hook-form";
-import { Button } from "@/shared/ui/button";
 import { IconButton } from "@/shared/ui/icon-button";
 import { Input } from "@/shared/ui/input";
 import { FormError } from "@/shared/ui/form-error";
 import type { ExistingPerson, RosterRow } from "../lib/parse-roster";
-import { normalizeName, phoneSuffix } from "../lib/parse-roster";
-import { reviewRoster } from "../lib/roster-review";
+import {
+  MAX_ROSTER_MEMBERS,
+  normalizeName,
+  phoneSuffix,
+} from "../lib/parse-roster";
 import type { RosterDraft } from "../schemas/roster.schema";
 
 export function RosterPreview({
@@ -16,11 +17,13 @@ export function RosterPreview({
   directValues,
   existing,
   fields,
+  rows,
+  addedCount,
   duplicates,
   confirmed,
   onConfirm,
   onRemove,
-  onAppend,
+  onInsert,
 }: {
   existing: ExistingPerson[];
   directValues: RefObject<
@@ -28,14 +31,14 @@ export function RosterPreview({
   >;
   form: UseFormReturn<RosterDraft>;
   fields: FieldArrayWithId<RosterDraft, "members">[];
+  rows: RosterRow[];
+  addedCount: number;
   duplicates: string[];
   confirmed: boolean;
   onConfirm: (value: boolean) => void;
   onRemove: (index: number) => void;
-  onAppend: () => void;
+  onInsert: (index: number) => void;
 }) {
-  const rows = useWatch({ control: form.control, name: "members" });
-  const { addedCount } = reviewRoster(rows, existing);
   const {
     register,
     setValue,
@@ -44,12 +47,12 @@ export function RosterPreview({
   return (
     <section className="space-y-5" aria-label="가져온 명단 미리보기">
       <div>
-        <h2 className="text-label">
+        <h1 className="text-label">
           가져온 명단{" "}
           <span className="ml-2 text-control text-brand">
             {fields.length}명
           </span>
-        </h2>
+        </h1>
         <p className="mt-2 text-xs text-muted">
           이름은 필수, 전화번호 뒤 4자리는 선택이에요. 명단을 등록해도 회원
           가입이나 초대가 되지 않아요. 새로 추가할 인원은 {addedCount}명이에요.
@@ -110,7 +113,7 @@ export function RosterPreview({
           return (
             <li key={field.id} className="py-2">
               <span className="sr-only">구성원 {index + 1}</span>
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_44px] items-center gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-1">
                 <div>
                   <label className="sr-only" htmlFor={`${field.id}-name`}>
                     {index + 1}번 이름
@@ -141,7 +144,7 @@ export function RosterPreview({
                     id={`${field.id}-phone`}
                     variant="pill"
                     className="border-0 bg-transparent px-1 text-caption"
-                    placeholder="뒤 4자리 (선택)"
+                    placeholder="뒤 4자리"
                     readOnly={!!selectedExisting}
                     inputMode="numeric"
                     autoComplete="off"
@@ -160,21 +163,31 @@ export function RosterPreview({
                     aria-describedby={`${field.id}-error`}
                   />
                 </div>
-                <IconButton
-                  aria-label={`${index + 1}번 구성원 수정`}
-                  onClick={() =>
-                    form.setFocus(`members.${index}.name`, {
-                      shouldSelect: true,
-                    })
-                  }
-                >
-                  <Image
-                    src="/images/groups/edit.svg"
-                    alt=""
-                    width={17}
-                    height={17}
-                  />
-                </IconButton>
+                <div className="flex">
+                  <IconButton
+                    aria-label={`${index + 1}번 구성원 제외`}
+                    onClick={() => onRemove(index)}
+                  >
+                    <Image
+                      src="/images/groups/roster-remove.svg"
+                      alt=""
+                      width={18}
+                      height={18}
+                    />
+                  </IconButton>
+                  <IconButton
+                    aria-label={`${index + 1}번 아래에 구성원 추가`}
+                    disabled={fields.length >= MAX_ROSTER_MEMBERS}
+                    onClick={() => onInsert(index + 1)}
+                  >
+                    <Image
+                      src="/images/groups/roster-add.svg"
+                      alt=""
+                      width={18}
+                      height={18}
+                    />
+                  </IconButton>
+                </div>
               </div>
               {(matches.length > 0 || stale) && (
                 <div className="mt-2 space-y-1">
@@ -277,28 +290,25 @@ export function RosterPreview({
                   rows[index]?.parseError
                 }
               />
-              <div className="text-right">
-                <button
-                  type="button"
-                  className="min-h-8 px-2 text-xs text-muted underline"
-                  onClick={() => onRemove(index)}
-                  aria-label={`${index + 1}번 구성원 제외`}
-                >
-                  이 행 제외
-                </button>
-              </div>
             </li>
           );
         })}
       </ol>
-      <Button
-        variant="outline"
-        className="w-full"
-        onClick={onAppend}
-        disabled={fields.length >= 500}
-      >
-        구성원 한 명 추가
-      </Button>
+      {!fields.length && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-caption text-muted">
+            명단에 구성원을 추가해 주세요.
+          </p>
+          <IconButton aria-label="구성원 추가" onClick={() => onInsert(0)}>
+            <Image
+              src="/images/groups/roster-add.svg"
+              alt=""
+              width={18}
+              height={18}
+            />
+          </IconButton>
+        </div>
+      )}
       <FormError message={errors.members?.root?.message} />
     </section>
   );

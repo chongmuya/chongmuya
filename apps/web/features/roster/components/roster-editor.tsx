@@ -1,9 +1,11 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useId, useRef, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/lib/cn";
 import { FormField } from "@/shared/ui/form-field";
 import { FormError } from "@/shared/ui/form-error";
 import { safeErrorMessage } from "@/shared/http/error-contract";
@@ -13,6 +15,7 @@ import {
   rosterTable,
   emptyRosterRow,
   MAX_ROSTER_BYTES,
+  MAX_ROSTER_MEMBERS,
   type ExistingPerson,
   type RosterRow,
 } from "../lib/parse-roster";
@@ -23,17 +26,17 @@ import { RosterPreview } from "./roster-preview";
 export function RosterEditor({
   existing = [],
   title = "명단 등록",
+  progress,
   busy = false,
   onSave,
   onBack,
-  skip,
 }: {
   existing?: ExistingPerson[];
   title?: string;
+  progress?: { value: number; max: number };
   busy?: boolean;
   onSave: (rows: RosterRow[], confirmed: boolean) => Promise<void>;
   onBack: () => void;
-  skip?: () => void;
 }) {
   const id = useId(),
     active = useActiveScreen();
@@ -51,11 +54,16 @@ export function RosterEditor({
     defaultValues: { source: "", members: [] },
     shouldUnregister: false,
   });
-  const { fields, append, remove, replace } = useFieldArray({
+  const { fields, append, insert, remove, replace } = useFieldArray({
     control: form.control,
     name: "members",
   });
-  const rows = useWatch({ control: form.control, name: "members" });
+  const watchedRows = useWatch({ control: form.control, name: "members" });
+  // Field array changes render before useWatch receives the new row values.
+  const rows =
+    watchedRows.length === fields.length
+      ? watchedRows
+      : form.getValues("members");
   const review = reviewRoster(rows, existing),
     fingerprint = JSON.stringify([rows, existing]),
     confirmed = confirmedRows === fingerprint;
@@ -84,7 +92,7 @@ export function RosterEditor({
     try {
       const changed = parsedSource.current !== source;
       const next = changed ? parseRoster(source) : form.getValues("members");
-      if (addEmpty && next.length >= 500)
+      if (addEmpty && next.length >= MAX_ROSTER_MEMBERS)
         throw new Error("명단은 한 번에 500명까지 등록할 수 있어요.");
       if (!addEmpty && !next.length)
         throw new Error("명단을 입력하거나 한 명씩 직접 추가해 주세요.");
@@ -167,6 +175,7 @@ export function RosterEditor({
   return (
     <StepLayout
       title={title}
+      progress={progress}
       onBack={() => {
         if (step === "preview") {
           clearErrors("root.server");
@@ -191,26 +200,44 @@ export function RosterEditor({
         }}
       >
         <fieldset disabled={busy || fileBusy} className="min-w-0 px-[17px]">
-          <StepHeading
-            title="구성원을 한 번에 등록해요"
-            description="이름은 필수, 뒤 4자리와 구분 메모는 선택이에요."
-          />
           {step === "input" ? (
-            <div className="space-y-5">
+            <>
+              <StepHeading
+                title="구성원을 한 번에 등록해요"
+                description="명단을 붙여넣거나 파일을 불러오면 여러 명을 한 번에 추가할 수 있어요."
+                className="text-brand-ink"
+                descriptionClassName="mt-2 max-w-[327px] text-control leading-[normal] font-medium text-black/50"
+              />
               <FormField
                 id={`${id}-source`}
-                label="명단 직접 입력 · 붙여넣기"
-                hint="줄바꿈·쉼표·시트에서 복사한 표를 지원해요. 전체 휴대폰 번호는 뒤 4자리만 남겨요."
+                label="명단 붙여넣기"
                 error={errors.source?.message}
+                className="gap-2"
+                labelClassName="text-label text-black/80"
               >
                 {(attributes) => (
-                  <textarea
-                    {...attributes}
-                    {...register("source")}
-                    autoComplete="off"
-                    className="min-h-[200px] w-full resize-y rounded-card bg-surface p-4 text-control shadow-control"
-                    placeholder={"김민수, 이서연 010-1234-0012\n박지훈"}
-                  />
+                  <>
+                    <p
+                      id={`${id}-hint`}
+                      className="text-xs leading-[normal] text-black/80"
+                    >
+                      한 줄에 한 명씩 입력해 주세요. 엑셀이나 구글 시트에서
+                      복사한 명단도 붙여넣을 수 있어요.
+                    </p>
+                    <textarea
+                      {...attributes}
+                      {...register("source")}
+                      aria-describedby={[
+                        `${id}-hint`,
+                        attributes["aria-describedby"],
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      autoComplete="off"
+                      className="mt-3 min-h-[200px] w-full resize-y rounded-card bg-surface px-4 py-3.5 text-control leading-normal shadow-control placeholder:text-placeholder"
+                      placeholder={"김총무\n이회장\n박부장\n김민지"}
+                    />
+                  </>
                 )}
               </FormField>
               <input
@@ -226,21 +253,38 @@ export function RosterEditor({
                 }}
               />
               <Button
-                className="w-full"
+                className="mt-5 min-h-[50px] w-full gap-2 rounded-control text-sm leading-[normal] text-black/80"
                 variant="brand-outline"
                 onClick={() => fileInput.current?.click()}
               >
+                <span aria-hidden="true" className="relative shrink-0">
+                  <Image
+                    src="/images/groups/txt.svg"
+                    alt=""
+                    width={18.1111}
+                    height={23}
+                  />
+                  <span className="absolute top-[14px] left-[2.5px] text-[6px] leading-none font-bold text-black/50">
+                    TXT
+                  </span>
+                </span>
                 {fileBusy ? "파일 읽는 중…" : "TXT 파일로 등록하기"}
               </Button>
-              <Button
-                className="w-full"
-                variant="outline"
-                disabled={rows.length >= 500}
+              <button
+                type="button"
+                className="mx-auto mt-2 flex min-h-control cursor-pointer items-center gap-1.5 rounded-control px-3 text-sm font-medium text-brand-ink disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={rows.length >= MAX_ROSTER_MEMBERS}
                 onClick={() => openPreview(true)}
               >
+                <Image
+                  src="/images/groups/roster-add.svg"
+                  alt=""
+                  width={18}
+                  height={18}
+                />
                 한 명씩 직접 추가하기
-              </Button>
-            </div>
+              </button>
+            </>
           ) : (
             <>
               {table && (
@@ -335,7 +379,9 @@ export function RosterEditor({
                 form={form}
                 existing={existing}
                 fields={fields}
+                rows={rows}
                 directValues={directValues}
+                addedCount={review.addedCount}
                 duplicates={review.duplicates}
                 confirmed={confirmed}
                 onConfirm={(value) =>
@@ -345,15 +391,16 @@ export function RosterEditor({
                   directValues.current.delete(fields[index].id);
                   remove(index);
                 }}
-                onAppend={() => append(emptyRosterRow())}
+                onInsert={(index) => insert(index, emptyRosterRow())}
               />
             </>
           )}
         </fieldset>
-        <div className="mt-auto space-y-2 pt-8 pb-2">
+        <div className="mt-auto space-y-2 pt-8">
           <FormError message={errors.root?.server?.message} />
           <Button
-            className="w-full"
+            className={cn("w-full", step === "input" && "border-2 text-brand")}
+            variant={step === "input" ? "brand-outline" : "solid"}
             type="submit"
             loading={busy}
             disabled={
@@ -365,16 +412,6 @@ export function RosterEditor({
           >
             {step === "input" ? "명단 확인하기" : "등록 완료"}
           </Button>
-          {skip && (
-            <Button
-              className="w-full"
-              variant="outline"
-              disabled={busy || fileBusy}
-              onClick={skip}
-            >
-              명단 없이 모임 만들기
-            </Button>
-          )}
         </div>
       </form>
     </StepLayout>

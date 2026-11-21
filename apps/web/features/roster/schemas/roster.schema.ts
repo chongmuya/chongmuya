@@ -36,6 +36,7 @@ export const rosterSchema = z.object({
   source: z.string(),
   members: z
     .array(rosterRowSchema)
+    .min(1, "명단에 구성원을 추가해 주세요.")
     .max(MAX_ROSTER_MEMBERS, "명단은 500명까지 등록할 수 있어요."),
 });
 export type RosterDraft = z.infer<typeof rosterSchema>;

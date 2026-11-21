@@ -53,10 +53,7 @@ export function StepLayout({
         {progress ? (
           <progress
             aria-label={title || "등록 진행"}
-            className={cn(
-              "ml-[35px] h-1.5 w-[calc(100%-52px)] overflow-hidden rounded-pill border-0 bg-placeholder/20 [&::-webkit-progress-bar]:bg-placeholder/20 [&::-webkit-progress-value]:rounded-pill [&::-webkit-progress-value]:bg-brand [&::-moz-progress-bar]:bg-brand",
-              variant === "owner" && "mr-[17px] w-auto flex-1",
-            )}
+            className="mr-[17px] ml-[35px] h-1.5 w-auto flex-1 overflow-hidden rounded-pill border-0 bg-placeholder/20 [&::-webkit-progress-bar]:bg-placeholder/20 [&::-webkit-progress-value]:rounded-pill [&::-webkit-progress-value]:bg-brand [&::-moz-progress-bar]:bg-brand"
             value={progress.value}
             max={progress.max}
           />

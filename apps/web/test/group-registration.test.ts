@@ -326,7 +326,7 @@ test("TXT upload validates encoding/type and corrected import errors can be save
   }
 });
 
-test("skip saves an empty roster and late creation after leaving never restores cache or navigation", async () => {
+test("empty roster cannot be saved and late creation after leaving never restores cache or navigation", async () => {
   let resolve!: (value: unknown) => void;
   const pending = new Promise((done) => {
     resolve = done;
@@ -340,13 +340,42 @@ test("skip saves an empty roster and late creation after leaving never restores 
     return (await pending) as T;
   };
   const view = await setup(request);
-  await fill(view.container, "name", "모임만");
+  await fill(view.container, "name", "테스트 모임");
   await submit(view.container);
-  await click(view.container, "명단 없이 모임 만들기");
-  assert.deepEqual(body?.members, []);
+  assert.doesNotMatch(view.container.textContent!, /명단 없이 모임 만들기/);
+  await click(view.container, "한 명씩 직접 추가하기");
+  await act(async () =>
+    view.container
+      .querySelector<HTMLButtonElement>('[aria-label="1번 구성원 제외"]')!
+      .click(),
+  );
+  assert.doesNotMatch(view.container.textContent!, /명단 없이 모임 만들기/);
+  assert.match(view.container.textContent!, /새로 추가할 인원은 0명이에요/);
+  await submit(view.container);
+  assert.equal(body, undefined);
+  await act(async () =>
+    view.container
+      .querySelector<HTMLButtonElement>('[aria-label="구성원 추가"]')!
+      .click(),
+  );
+  assert.equal(
+    document.activeElement,
+    view.container.querySelector('[name="members.0.name"]'),
+  );
+  await fill(view.container, "members.0.name", "김총무");
+  await submit(view.container);
+  const sent = () => body;
+  assert.deepEqual(sent()?.members, [
+    { name: "김총무", phoneLast4: null, label: null },
+  ]);
   await view.close();
   await act(async () => {
-    resolve({ id: "late", name: "모임만", groupType: null, memberCount: 0 });
+    resolve({
+      id: "late",
+      name: "테스트 모임",
+      groupType: null,
+      memberCount: 1,
+    });
     await pending;
   });
   assert.equal(view.cache.getQueryCache().getAll().length, 0);
@@ -357,19 +386,31 @@ test("pasted rows plus direct entry are all saved; unchanged source never restor
   const writes: { members: { name: string }[] }[] = [];
   const view = await setup(async <T>(_path: string, options?: RequestInit) => {
     writes.push(JSON.parse(String(options?.body)));
-    return { id: "abc", name: "ABC", groupType: null, memberCount: 3 } as T;
+    return { id: "abc", name: "ABC", groupType: null, memberCount: 4 } as T;
   });
   try {
     await fill(view.container, "name", "ABC");
     await submit(view.container);
     await fill(view.container, "source", "A\nB");
     await click(view.container, "한 명씩 직접 추가하기");
-    await fill(view.container, "members.2.name", "C");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="1번 아래에 구성원 추가"]',
+        )!
+        .click(),
+    );
+    assert.equal(
+      document.activeElement,
+      view.container.querySelector('[name="members.1.name"]'),
+    );
+    await fill(view.container, "members.1.name", "C");
+    await fill(view.container, "members.3.name", "D");
     await submit(view.container);
     await until(() => assert.equal(writes.length, 1));
     assert.deepEqual(
       writes[0].members.map((r) => r.name),
-      ["A", "B", "C"],
+      ["A", "C", "B", "D"],
     );
   } finally {
     await view.close();
@@ -530,7 +571,13 @@ test("existing-person selection restores each stable row's direct phone and opti
           .querySelector<HTMLButtonElement>('[aria-label="1번 구성원 제외"]')!
           .click(),
       );
-      await click(view.container, "구성원 한 명 추가");
+      await act(async () =>
+        view.container
+          .querySelector<HTMLButtonElement>(
+            '[aria-label="2번 아래에 구성원 추가"]',
+          )!
+          .click(),
+      );
       await fill(view.container, "members.2.name", "새로추가");
       if (!directRename) {
         const moved =
