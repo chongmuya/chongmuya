@@ -22,7 +22,7 @@ import {
 } from "../features/auth/schemas/password.schema";
 import { credentialsSchema } from "../features/auth/schemas/credentials.schema";
 import { ApiError } from "../shared/http/api-error";
-import { legalDocumentsVersion } from "../shared/legal/links";
+import { legalDocumentsVersion } from "../shared/legal/documents-2026-11-21";
 import { GettingStartedFlow } from "../features/onboarding/components/getting-started-flow";
 
 async function render(element: ReactElement) {

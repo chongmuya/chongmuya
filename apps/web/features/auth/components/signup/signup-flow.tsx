@@ -19,6 +19,7 @@ export function SignupFlow(
   const flow = useSignupFlow(props);
   const detail = props.terms.find((term) => term.id === flow.detail);
   const detailId = detail?.id ?? null;
+  const showingTerms = !flow.complete && !detail && flow.step === "terms";
   const agree = () => {
     if (detail && detail !== flow.readOnlyPolicy)
       flow.methods.setValue(detail.id, true, {
@@ -52,9 +53,12 @@ export function SignupFlow(
         }
         className={
           detail
-            ? "h-svh min-h-0 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : undefined
+            ? "h-svh min-h-0"
+            : showingTerms
+              ? "pb-[max(44px,env(safe-area-inset-bottom))]"
+              : undefined
         }
+        backVisible={!showingTerms}
         onBack={flow.complete ? props.onComplete : flow.back}
         busy={flow.pending}
       >
@@ -98,7 +102,15 @@ export function SignupFlow(
                       loginHref={props.loginHref}
                     />
                   )}
-                  <div className="mt-auto pt-12">
+                  <div
+                    className={
+                      showingTerms
+                        ? flow.readOnlyPolicy
+                          ? "mt-auto pt-2.5"
+                          : "mt-auto pt-[54px]"
+                        : "mt-auto pt-12"
+                    }
+                  >
                     <FormError
                       className="mb-3"
                       message={
@@ -106,10 +118,12 @@ export function SignupFlow(
                       }
                     />
                     <Button
-                      variant="solid"
+                      variant={showingTerms ? "brand-outline" : "solid"}
                       type="submit"
                       loading={flow.pending}
-                      className="w-full"
+                      className={
+                        showingTerms ? "w-full border-2 text-brand" : "w-full"
+                      }
                     >
                       {flow.pending
                         ? "가입 처리 중…"

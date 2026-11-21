@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { buttonStyles } from "@/shared/ui/button";
 import { NoticeDialog } from "@/shared/ui/notice-dialog";
-import { legalDocumentsHref } from "@/shared/legal/links";
 import { authEntryPath } from "../lib/auth-entry-path";
 import { AuthLayout } from "./auth-layout";
 
@@ -12,13 +11,6 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
   const [guest, setGuest] = useState(false);
   return (
     <AuthLayout title="총무야 시작하기" start>
-      <Link
-        href={authEntryPath("/intro", returnTo)}
-        replace
-        className="absolute top-6 right-5 flex min-h-11 items-center px-2 text-sm font-medium text-brand-ink underline underline-offset-4"
-      >
-        서비스 소개
-      </Link>
       <div className="mt-auto pt-16">
         <div className="flex flex-col gap-2">
           <Link
@@ -41,12 +33,6 @@ export function StartScreen({ returnTo }: { returnTo: string }) {
         >
           회원가입 없이 사용해볼래요
         </button>
-        <Link
-          href={legalDocumentsHref}
-          className="mx-auto mt-4 block w-fit text-caption text-black underline underline-offset-2"
-        >
-          이용약관 및 개인정보 안내
-        </Link>
       </div>
       {guest && (
         <NoticeDialog
