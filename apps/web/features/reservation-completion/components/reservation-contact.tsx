@@ -51,7 +51,7 @@ export function ReservationContactButton({
           labelledBy={titleId}
           dismissOnBackdrop
           onClose={() => setOpen(false)}
-          className="relative mx-auto mt-auto mb-0 min-h-[198px] w-full max-w-[402px] rounded-t-[24px] rounded-b-none px-0 pt-9 pb-[max(28px,env(safe-area-inset-bottom))]"
+          className="fixed inset-x-0 top-auto bottom-0 m-0 mx-auto min-h-[198px] w-full max-w-[402px] rounded-t-[24px] rounded-b-none px-0 pt-9 pb-[max(28px,env(safe-area-inset-bottom))]"
         >
           <button
             type="button"
