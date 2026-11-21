@@ -1,9 +1,10 @@
-import Link from "next/link";
 import { RestaurantPhoto } from "@/features/restaurants/client";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
-import { koreanDateLabel } from "@/shared/lib/korean-date";
+import { koreanDateInput, koreanDateLabel } from "@/shared/lib/korean-date";
 import type { ReservationRequest } from "../types/inquiry.types";
+import { InquiryNotice } from "./inquiry-notice";
+
 export const candidateLabels: Record<string, string> = {
   AWAITING_REPLY: "응답 대기",
   PROPOSED: "선택 가능",
@@ -26,6 +27,15 @@ export const seatingLabels = {
   SEPARATED: "떨어져도 가능",
   ANY: "상관없음",
 };
+
+function money(amount: number | null | undefined) {
+  return amount == null
+    ? "미확인"
+    : amount === 0
+      ? "없음"
+      : `${amount.toLocaleString("ko-KR")}원`;
+}
+
 export function ProposalCard({
   target: t,
   onDecide,
@@ -50,70 +60,78 @@ export function ProposalCard({
         : r
           ? "PROPOSED"
           : "AWAITING_REPLY");
-  const money = (n: number | null | undefined) =>
-    n == null ? "미확인" : n === 0 ? "없음" : `${n.toLocaleString()}원`;
+  const changed = r?.kind === "CHANGE";
+  const decide = t.canSelect ? onDecide : undefined;
+  const originalDate = koreanDateInput(original?.startsAt);
+  const proposedDate = koreanDateInput(p?.startsAt);
+  const sameDay = originalDate.slice(0, 10) === proposedDate.slice(0, 10);
+  const changes =
+    changed && p && original
+      ? [
+          [
+            sameDay ? "시간 변경" : "일시 변경",
+            sameDay
+              ? originalDate.slice(11, 16)
+              : koreanDateLabel(original.startsAt),
+            sameDay ? proposedDate.slice(11, 16) : koreanDateLabel(p.startsAt),
+          ],
+          [
+            "인원 변경",
+            `${original.expectedGuests}명`,
+            `${p.expectedGuests}명`,
+          ],
+          ["공간 변경", spaceLabels[original.space], spaceLabels[p.space]],
+          [
+            "착석 변경",
+            seatingLabels[original.seating],
+            seatingLabels[p.seating],
+          ],
+        ].filter(([, before, after]) => before !== after)
+      : [];
+
   return (
-    <li className="space-y-6 rounded-control bg-surface p-5 shadow-card">
+    <li className="flex flex-col gap-7 rounded-control bg-surface p-5 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="size-[50px] shrink-0 overflow-hidden rounded-control">
+        <div className="flex min-w-0 flex-1 basis-32 items-center gap-3">
+          <div className="size-[50px] shrink-0 overflow-hidden rounded-sm">
             <RestaurantPhoto src={t.photoPath ?? null} alt="" height={50} />
           </div>
-          <h3 className="min-w-0 text-xl font-semibold break-words">
+          <h3 className="min-w-0 text-xl leading-tight font-semibold wrap-break-word">
             {t.restaurantName}
           </h3>
         </div>
         <span
           className={cn(
-            "rounded-pill px-3 py-2 text-xs",
+            "rounded-pill px-3 py-2.5 text-base leading-none font-medium text-muted shadow-control",
             state === "PROPOSED"
-              ? r?.kind === "CHANGE"
+              ? changed
                 ? "bg-choice"
                 : "bg-accent/50"
-              : "bg-soft text-secondary",
+              : "bg-soft",
           )}
         >
           {state === "PROPOSED"
-            ? r?.kind === "CHANGE"
-              ? "조건 변경"
+            ? changed
+              ? "조건 불일치"
               : "조건 일치"
-            : candidateLabels[state]}
+            : (candidateLabels[state] ?? "문의 종료")}
         </span>
       </div>
-      {p && (
-        <>
-          {r?.kind === "CHANGE" && original && (
-            <div className="space-y-2 rounded-control bg-choice px-4 py-3 text-xs">
-              <p className="font-semibold">변경 제안</p>
-              {p.startsAt !== original.startsAt && (
-                <p>
-                  {koreanDateLabel(original.startsAt)} →{" "}
-                  <strong className="text-brand">
-                    {koreanDateLabel(p.startsAt)}
-                  </strong>
-                </p>
-              )}
-              {p.expectedGuests !== original.expectedGuests && (
-                <p>
-                  {original.expectedGuests}명 →{" "}
-                  <strong className="text-brand">{p.expectedGuests}명</strong>
-                </p>
-              )}
-              {original.space !== p.space && (
-                <p>
-                  공간 {spaceLabels[original.space]} →{" "}
-                  <strong>{spaceLabels[p.space]}</strong>
-                </p>
-              )}
-              {original.seating !== p.seating && (
-                <p>
-                  착석 {seatingLabels[original.seating]} →{" "}
-                  <strong>{seatingLabels[p.seating]}</strong>
-                </p>
-              )}
+      {changes.length > 0 && (
+        <dl className="space-y-2 rounded-sm bg-choice px-4 py-3 text-sm leading-tight font-semibold">
+          {changes.map(([label, before, after]) => (
+            <div key={label}>
+              <dt className="mb-2 text-muted">{label}</dt>
+              <dd>
+                {before} → <span className="text-brand">{after}</span>
+              </dd>
             </div>
-          )}
-          <dl className="space-y-4 text-xs [&>div]:grid [&>div]:grid-cols-[5rem_minmax(0,1fr)] [&>div]:gap-3 [&_dt]:text-muted [&_dd]:break-words">
+          ))}
+        </dl>
+      )}
+      {p && (
+        <div className="space-y-4">
+          <dl className="space-y-4 text-xs leading-tight [&>div]:grid [&>div]:grid-cols-[clamp(5rem,24vw,6rem)_minmax(0,1fr)] [&>div]:gap-3 [&_dd]:break-keep [&_dd]:wrap-break-word [&_dt]:text-muted">
             <div>
               <dt>예약금</dt>
               <dd>
@@ -140,76 +158,84 @@ export function ProposalCard({
             </div>
             <div>
               <dt>선택 기한</dt>
-              <dd>{r?.expiresAt ? koreanDateLabel(r.expiresAt) : "미확인"}</dd>
+              <dd>
+                {r?.expiresAt ? (
+                  <time dateTime={r.expiresAt}>
+                    {koreanDateLabel(r.expiresAt)}까지
+                  </time>
+                ) : (
+                  "미확인"
+                )}
+              </dd>
             </div>
-          </dl>
-          <p className="text-xs text-muted">
-            기한까지 해당 날짜·시간·인원에 필요한 좌석을 유지해요. 수락 후
-            메뉴·예약금을 준비해요.
-          </p>
-          <details className="text-xs">
-            <summary className="cursor-pointer font-semibold">
-              메뉴·이용·변경 조건
-            </summary>
-            <dl className="mt-3 space-y-3">
+            {p.minimumSpend != null && (
               <div>
-                <dt>최소 이용금액 / 최소 주문 수량</dt>
-                <dd>
-                  {money(p.minimumSpend)} /{" "}
-                  {p.minimumQuantity == null
-                    ? "미확인"
-                    : `${p.minimumQuantity}개`}
-                </dd>
+                <dt>최소 이용금액</dt>
+                <dd>{money(p.minimumSpend)}</dd>
               </div>
+            )}
+            {p.minimumQuantity != null && (
+              <div>
+                <dt>최소 주문 수량</dt>
+                <dd>{p.minimumQuantity}개</dd>
+              </div>
+            )}
+            {p.menuDeadlineAt && (
               <div>
                 <dt>메뉴 전달 기한</dt>
-                <dd>
-                  {p.menuDeadlineAt
-                    ? koreanDateLabel(p.menuDeadlineAt)
-                    : "미확인"}
-                </dd>
+                <dd>{koreanDateLabel(p.menuDeadlineAt)}까지</dd>
               </div>
+            )}
+            {p.changeCancellationPolicy && (
               <div>
                 <dt>변경·취소·환불 조건</dt>
-                <dd className="whitespace-pre-wrap break-words">
-                  {p.changeCancellationPolicy || "미확인"}
+                <dd className="whitespace-pre-wrap">
+                  {p.changeCancellationPolicy}
                 </dd>
               </div>
-            </dl>
-          </details>
-        </>
+            )}
+          </dl>
+          {decide && (
+            <>
+              <p className="text-xs leading-tight break-keep text-muted">
+                매장이 선택 기한까지 좌석을 유지해요. 수락 후{" "}
+                {p.deposit.kind === "NONE"
+                  ? "메뉴를 준비해 주세요."
+                  : "메뉴와 예약금 안내를 확인해 주세요."}
+              </p>
+              {r?.expiresAt && (
+                <InquiryNotice>
+                  <p>선택 기한이 지나면 이 제안은 자동으로 만료돼요.</p>
+                </InquiryNotice>
+              )}
+            </>
+          )}
+        </div>
       )}
-      {r?.kind === "DECLINE" && (
-        <p className="text-sm break-words">{r.reason}</p>
-      )}
-      {state === "AWAITING_REPLY" && (
-        <p className="text-xs text-muted">
-          아직 매장 답변이 없어요. 자동 불가로 바뀌지 않으며, 응답이 어렵다면
-          운영 확인이 필요해요.
+      {r?.kind === "DECLINE" && r.reason && (
+        <p className="rounded-sm bg-soft px-4 py-3 text-sm wrap-break-word whitespace-pre-wrap">
+          {r.reason}
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <Link
-          href={`/restaurants?restaurant=${t.restaurantId}`}
-          className="text-xs font-semibold text-link underline"
-        >
-          메뉴 · 매장 정보
-        </Link>
-        {t.canSelect && onDecide && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => onDecide("decline", t)}
-            >
-              불가
-            </Button>
-            <Button disabled={busy} onClick={() => onDecide("select", t)}>
-              수락
-            </Button>
-          </div>
-        )}
-      </div>
+      {decide && (
+        <div className="-mt-3 flex justify-end gap-3 border-t border-placeholder pt-4">
+          <Button
+            variant="outline"
+            className="min-h-[50px] border-placeholder px-5 text-sm text-copy"
+            disabled={busy}
+            onClick={() => decide("decline", t)}
+          >
+            불가
+          </Button>
+          <Button
+            className="min-h-[50px] px-5 text-sm"
+            disabled={busy}
+            onClick={() => decide("select", t)}
+          >
+            수락
+          </Button>
+        </div>
+      )}
       {["FAILED", "UNKNOWN", "HELD"].includes(t.deliveryStatus) && (
         <p className="text-xs text-danger">
           문의 문자{" "}
