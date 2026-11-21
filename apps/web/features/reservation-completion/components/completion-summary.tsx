@@ -30,29 +30,14 @@ function summaryDate(value: string, year = false) {
 export function CompletionSummary({
   data: q,
   organizer,
-  compact = false,
   footer,
 }: {
   data: Completion;
   organizer: boolean;
-  compact?: boolean;
   footer?: ReactNode;
 }) {
-  if (compact)
-    return (
-      <div className="space-y-3">
-        <h2 className="text-xl font-bold">
-          {q.cancellation
-            ? progressLabels.CANCELLED
-            : (progressLabels[q.progress] ?? "메뉴·송금 안내")}
-        </h2>
-        {q.progress === "GUIDANCE_PENDING" && (
-          <p className="text-sm text-secondary">
-            예약금 안내를 준비하고 있어요. 메뉴는 임시 저장할 수 있어요.
-          </p>
-        )}
-      </div>
-    );
+  const waitingForAccount =
+    !!q.order && !q.cancellation && q.progress === "GUIDANCE_PENDING";
   return (
     <section className="space-y-8 rounded-control bg-surface px-[29px] pt-10 pb-7 shadow-card max-[360px]:px-5">
       <div className="flex flex-col items-center gap-6 text-center">
@@ -61,14 +46,24 @@ export function CompletionSummary({
           <h2 className="text-2xl leading-[normal] font-bold text-black">
             {q.cancellation
               ? progressLabels.CANCELLED
-              : (progressLabels[q.progress] ?? "예약 진행 확인")}
+              : waitingForAccount
+                ? "메뉴를 보냈어요"
+                : (progressLabels[q.progress] ?? "예약 진행 확인")}
           </h2>
           <p className="mx-auto max-w-[162px] text-xs leading-[normal]">
             {q.progress === "CONFIRMED"
-              ? "필요한 메뉴·입금 확인이 완료됐어요. 이제 참석 명단을 준비해볼까요?"
+              ? q.guidance.kind === "NONE"
+                ? "주문 메뉴를 보냈어요. 이제 참석 명단을 준비해볼까요?"
+                : "필요한 메뉴·입금 확인이 완료됐어요. 이제 참석 명단을 준비해볼까요?"
               : q.cancellation
                 ? "취소 내역을 확인해 주세요."
-                : "매장에서 예약 내용을 확인하고 있어요."}
+                : waitingForAccount
+                  ? q.guidance.kind === "UNKNOWN"
+                    ? "예약금을 확인 중이에요. 필요한 경우 등록한 연락처로 문자 안내를 드려요."
+                    : "계좌와 입금 기한을 확인한 뒤 등록한 연락처로 문자 안내를 드려요."
+                  : q.progress === "PAYMENT_CHECKING" && q.transfer
+                    ? "메뉴와 송금 정보를 보냈어요. 매장이 실제 입금을 확인하면 예약이 확정돼요."
+                    : "매장에서 예약 내용을 확인하고 있어요."}
           </p>
           {organizer && q.progress === "CONFIRMED" && (
             <AttendanceLink eventId={q.eventId} />

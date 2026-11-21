@@ -1057,10 +1057,9 @@ test("reservation completion preserves contracts, scoped links, money evidence a
     },
   );
   await t.test(
-    "unknown guidance blocks completion; SMS hides account; reports are not receipt; receipt then menu confirms once",
+    "SMS hides account and receipt then menu confirms once",
     async () => {
       let v = await fixture("UNKNOWN");
-      await post(v.id, "menu-submit", menu(v), 409);
       const input = guide(v);
       v = await payments.guidance(v.id, operator, input);
       const visible = await view(v.id);
@@ -1098,6 +1097,151 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       assert.equal(v.status, "CHECK_REQUIRED");
       assert(v.confirmation);
       assert.equal(v.receipt!.corrects, correction.corrects);
+    },
+  );
+  await t.test(
+    "menu can precede guidance and the owner's linked account is snapshotted only into verified guidance",
+    async () => {
+      const owner = await existingOwner();
+      const identity = await json<{ id: string }>(await call("auth/me", owner));
+      let v = await fixture("UNKNOWN");
+      const restaurant = await db.manager.findOneByOrFail(Restaurant, {
+        id: v.restaurantId,
+      });
+      const profilePath = "auth/profile/deposit-account";
+      const account = {
+        bank: "테스트은행",
+        account: "000-1234-5678",
+        holder: "테스트 예금주",
+      };
+      await db.manager.update(
+        Restaurant,
+        { id: restaurant.id },
+        { ownerAccountId: identity.id },
+      );
+      try {
+        assert.equal((await call(profilePath, organizer)).status, 403);
+        assert.equal(
+          (
+            await call(profilePath, alien, "PUT", {
+              ...account,
+              expectedRevision: 0,
+            })
+          ).status,
+          403,
+        );
+        await json(
+          await call(profilePath, owner, "PUT", {
+            ...account,
+            expectedRevision: 0,
+          }),
+        );
+        assert.equal(
+          (await call(profilePath, owner)).headers.get("cache-control"),
+          "no-store",
+        );
+        assert(
+          !JSON.stringify(await json(await call("auth/me", owner))).includes(
+            account.account,
+          ),
+        );
+        const ownerView = await json<View>(
+          await call(`owner/reservations/${v.id}`, owner),
+        );
+        assert.deepEqual(ownerView.ownerDepositAccount, {
+          revision: 1,
+          bank: account.bank,
+          lastDigits: "5678",
+        });
+        assert(!JSON.stringify(ownerView).includes(account.account));
+        assert.equal(v.ownerDepositAccount, undefined);
+        await post(
+          v.id,
+          "menu-submit",
+          { ...menu(v), transfer: { payer: "총무", amount: 10000 } },
+          409,
+        );
+        v = await post(v.id, "menu-submit", menu(v));
+        assert(v.order);
+        assert.equal(v.acknowledgedRevision, null);
+        assert.equal(v.progress, "GUIDANCE_PENDING");
+        assert.equal(v.confirmation, null);
+        await post(
+          v.id,
+          "acknowledge",
+          {
+            ...key(v.version),
+            guidanceRevision: v.guidance.revision,
+            confirmed: true,
+          },
+          409,
+        );
+
+        const newAccount = { ...account, account: "000-1234-9012" };
+        await json(
+          await call(profilePath, owner, "PUT", {
+            ...newAccount,
+            expectedRevision: 1,
+          }),
+        );
+        const savedGuidance = {
+          ...guide(v),
+          bank: "",
+          account: "",
+          holder: "",
+          depositAccountRevision: 1,
+        };
+        const ownerGuidance = `owner/reservations/${v.id}/guidance`;
+        await json(
+          await call(ownerGuidance, owner, "POST", { command: savedGuidance }),
+          409,
+        );
+        const issued = await json<View>(
+          await call(ownerGuidance, owner, "POST", {
+            command: {
+              ...savedGuidance,
+              ...key(v.version),
+              depositAccountRevision: 2,
+            },
+          }),
+        );
+        assert.equal(issued.guidance.account, newAccount.account);
+        assert.equal(issued.order?.submittedAt, v.order.submittedAt);
+        v = await view(v.id);
+        assert.equal(v.guidance.account, "");
+        assert.equal(v.progress, "GUIDANCE_REVIEW");
+        await json(
+          await call(profilePath, owner, "PUT", {
+            ...account,
+            expectedRevision: 2,
+          }),
+        );
+        assert.equal(
+          (await json<View>(await call(`owner/reservations/${v.id}`, owner)))
+            .guidance.account,
+          newAccount.account,
+        );
+        v = await post(v.id, "acknowledge", {
+          ...key(v.version),
+          guidanceRevision: v.guidance.revision,
+          confirmed: true,
+        });
+        v = await payments.receipt(v.id, operator, {
+          ...key(v.version),
+          guidanceRevision: v.guidance.revision,
+          amount: 10000,
+          receivedAt: new Date().toISOString(),
+          corrects: null,
+          reason: "테스트 입금 확인",
+        });
+        assert.equal(v.status, "CONFIRMED");
+      } finally {
+        await db.manager.update(
+          Restaurant,
+          { id: restaurant.id },
+          { ownerAccountId: restaurant.ownerAccountId },
+        );
+      }
     },
   );
   await t.test(

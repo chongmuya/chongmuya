@@ -4,6 +4,7 @@ import type {
   ReservationPreparation,
 } from "../types/reservation-completion.js";
 import { smsDate } from "./reservation-sms.js";
+import { guidanceReady } from "./reservation-completion.js";
 
 export function sameGuidance(before: DepositGuidance, after: DepositGuidance) {
   if (before.kind === "NONE" && after.kind === "NONE")
@@ -81,6 +82,10 @@ export function completionSmsPolicy({
         );
       } else if (menu && after.guidance.kind === "NONE") {
         merchant = send("메뉴가 도착했어요. 주문 내용을 확인해 주세요.");
+      } else if (menu && !guidanceReady(after)) {
+        merchant = send(
+          "메뉴가 도착했어요. 주문 내용과 예약금 안내를 확인해 주세요.",
+        );
       } else if (
         menu &&
         after.agreement.menuDeadlineAt &&

@@ -98,6 +98,7 @@ export type Completion = {
   agreement: Agreement;
   agreementRevision: number;
   guidance: Guidance;
+  ownerDepositAccount?: { revision: number; bank: string; lastDigits: string };
   draft: {
     catalogVersion: number;
     items: { id: string; quantity: number }[];

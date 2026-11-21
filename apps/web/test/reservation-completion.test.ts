@@ -595,6 +595,71 @@ test("menu draft preserves quantities; stale catalog needs explicit review and u
     await view.unmount();
   }
 });
+test("menu submission works before deposit guidance and only shows transfer fields for issued guidance", async (t) => {
+  const deposit = {
+    ...fixture().guidance,
+    kind: "REQUIRED" as const,
+    amount: 10000,
+    deadline: "2099-01-01T00:00:00Z",
+    bank: "",
+    account: "",
+    holder: "",
+  };
+  for (const [guidance, showTransfer] of [
+    [fixture().guidance, false],
+    [{ ...deposit, channel: "PENDING" }, false],
+    [{ ...deposit, channel: "WEB" }, false],
+    [{ ...deposit, channel: "SMS" }, true],
+  ] as const) {
+    await t.test(
+      `${guidance.kind} ${guidance.channel ?? "without an account"}`,
+      async () => {
+        const data: Completion = { ...fixture(), guidance };
+        const paths: string[] = [];
+        const access: CompletionAccess = {
+          kind: "organizer",
+          accountId: "organizer",
+          request: async <T>(path: string) => {
+            paths.push(path);
+            return data as T;
+          },
+        };
+        const view = await render(createElement(MenuForm, { data, access }));
+        try {
+          await click(view.container, "테스트 메뉴 수량 늘리기");
+          assert.equal(
+            !!view.container.querySelector('[name="payer"]'),
+            showTransfer,
+          );
+          assert.equal(
+            !!view.container.querySelector('button[type="submit"]'),
+            true,
+          );
+          if (guidance.kind === "REQUIRED" && !showTransfer) {
+            assert(
+              view.container.querySelector(
+                'a[href^="mailto:support@chongmuya.com"]',
+              ),
+            );
+            assert.match(view.container.textContent!, /확인한 뒤 문자로 안내/);
+          }
+          await act(async () =>
+            view.container
+              .querySelector<HTMLInputElement>('[name="confirmed"]')!
+              .click(),
+          );
+          await click(view.container, "메뉴 보내기");
+          await until(() =>
+            assert(paths.some((path) => path.endsWith("/menu-submit"))),
+          );
+        } finally {
+          await view.unmount();
+        }
+      },
+    );
+  }
+});
+
 test("definite conflict preserves input and requires explicit reapplication", async () => {
   const writes: Record<string, unknown>[] = [];
   const access: CompletionAccess = {

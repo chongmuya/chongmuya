@@ -5,6 +5,7 @@ import { z } from "zod";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import { EventsService } from "../events/events.service.js";
+import { AuthService } from "../auth/auth.service.js";
 import { RestaurantsService } from "../restaurants/restaurants.service.js";
 import { NotificationsService } from "../notifications/notifications.service.js";
 import type { NotificationInput } from "../notifications/types/notification.js";
@@ -61,6 +62,7 @@ export class ReservationCompletionService {
     private readonly access: ReservationAccessService,
     private readonly notices: NotificationsService,
     private readonly sender: ReservationNotificationsService,
+    private readonly auth: AuthService,
   ) {}
   audit(p: ReservationPrincipal): ReservationAudit {
     const now = new Date().toISOString();
@@ -205,6 +207,10 @@ export class ReservationCompletionService {
       return result;
     };
     const guidance = safeGuidance(s.guidance);
+    const registeredAccount =
+      p.kind === "owner" && !s.confirmation && !s.cancellation
+        ? await this.auth.ownerDepositAccount(p.user.id, m)
+        : null;
     const changes = await m.find(ReservationChange, {
       where: { reservationId: r.id },
       order: { createdAt: "DESC" },
@@ -249,6 +255,13 @@ export class ReservationCompletionService {
       agreement: s.agreement,
       agreementRevision: s.agreementRevision,
       guidance,
+      ...(registeredAccount && {
+        ownerDepositAccount: {
+          revision: registeredAccount.revision,
+          bank: registeredAccount.bank,
+          lastDigits: registeredAccount.account.replace(/\D/g, "").slice(-4),
+        },
+      }),
       draft: s.draft,
       order: s.order,
       acknowledgedRevision: s.acknowledgedRevision,

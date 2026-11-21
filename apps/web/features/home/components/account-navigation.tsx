@@ -64,6 +64,11 @@ export function AccountNavigation({
       <section className="space-y-1">
         <h2 className="mb-3 text-xl font-semibold">계정 관리</h2>
         <MenuLink href={accountHref}>연락처 인증 및 변경</MenuLink>
+        {owner && (
+          <MenuLink href={`${accountHref}#reservation-deposit-account`}>
+            예약금 계좌
+          </MenuLink>
+        )}
         <MenuLink href={termsHref}>약관 및 개인정보 처리방침</MenuLink>
         <MenuLink href={accountHref}>로그아웃 및 계정 연결</MenuLink>
         <WithdrawalEntry />

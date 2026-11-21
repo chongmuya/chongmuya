@@ -10,6 +10,7 @@ import { isAccessError } from "@/shared/http/access-error";
 import { completionQuery, completionKey } from "../api/completion.api";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { auditLabel } from "../lib/audit-label";
+import { depositGuidanceReady } from "../lib/deposit-guidance";
 import {
   CompletionSummary,
   CompletionFacts,
@@ -119,6 +120,10 @@ function CompletionContent({
     );
   const q = query.data,
     organizer = access.kind === "organizer";
+  const guidanceReady = depositGuidanceReady(q);
+  const paymentInProgress =
+    !guidanceReady ||
+    (q.guidance.kind === "REQUIRED" && !q.transfer && !q.receipt);
   const pending = q.changes.find(
     (c) =>
       c.kind !== "REFUND" &&
@@ -154,11 +159,15 @@ function CompletionContent({
           취소·환불 안내
         </Button>
       )}
-      {!q.cancellation && q.progress !== "CONFIRMED" && q.order && !pending && (
-        <Button className="w-full" onClick={() => setPanel("payments")}>
-          예약금 안내 확인하기
-        </Button>
-      )}
+      {!q.cancellation &&
+        guidanceReady &&
+        q.progress !== "CONFIRMED" &&
+        q.order &&
+        !pending && (
+          <Button className="w-full" onClick={() => setPanel("payments")}>
+            예약금 안내 확인하기
+          </Button>
+        )}
     </div>
   );
   return (
@@ -170,7 +179,7 @@ function CompletionContent({
       )}
       {organizer ? (
         <>
-          <CompletionSteps current={q.order ? 3 : 2} />
+          <CompletionSteps current={q.order && !paymentInProgress ? 3 : 2} />
           {latest ? (
             <ChangeResult
               data={q}
@@ -185,32 +194,32 @@ function CompletionContent({
               footer={footer}
             />
           ) : (
-            <CompletionSummary
-              data={q}
-              organizer
-              compact={!q.order && !q.cancellation}
-              footer={footer}
-            />
+            (q.order || q.cancellation) && (
+              <CompletionSummary data={q} organizer footer={footer} />
+            )
           )}
           {!q.order && !q.cancellation && <MenuForm data={q} access={access} />}
-          {!pending && latest?.status !== "REJECTED" && !q.cancellation && (
-            <section className="space-y-4 rounded-control bg-surface px-5 py-6 shadow-card">
-              <h3 className="text-base font-medium">
-                예약을 바꾸거나 취소하고 싶나요?
-              </h3>
-              <p className="text-xs break-keep text-placeholder">
-                인원이나 메뉴 변경, 취소·환불은 매장에 확인해 주세요. 문의를
-                남겨도 예약이 자동으로 바뀌지는 않아요.
-              </p>
-              <Button
-                variant="outline"
-                className="w-full border-placeholder text-copy"
-                onClick={review}
-              >
-                변경·취소 문의하기
-              </Button>
-            </section>
-          )}
+          {q.order &&
+            !pending &&
+            latest?.status !== "REJECTED" &&
+            !q.cancellation && (
+              <section className="space-y-4 rounded-control bg-surface px-5 py-6 shadow-card">
+                <h3 className="text-base font-medium">
+                  예약을 바꾸거나 취소하고 싶나요?
+                </h3>
+                <p className="text-xs break-keep text-placeholder">
+                  인원이나 메뉴 변경, 취소·환불은 매장에 확인해 주세요. 문의를
+                  남겨도 예약이 자동으로 바뀌지는 않아요.
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full border-placeholder text-copy"
+                  onClick={review}
+                >
+                  변경·취소 문의하기
+                </Button>
+              </section>
+            )}
         </>
       ) : (
         <>
@@ -222,9 +231,11 @@ function CompletionContent({
                   ? "예약 취소 완료"
                   : q.progress === "CONFIRMED"
                     ? "예약 확정"
-                    : q.guidance.kind === "REQUIRED"
-                      ? "입금 확인 필요"
-                      : "예약 준비 중"}
+                    : !guidanceReady
+                      ? "예약금 안내 필요"
+                      : q.guidance.kind === "REQUIRED"
+                        ? "입금 확인 필요"
+                        : "예약 준비 중"}
             </p>
             <div className="space-y-1">
               <h1 className="text-xl font-semibold">
@@ -242,6 +253,7 @@ function CompletionContent({
             latest?.status === "REJECTED" ||
             (!q.cancellation &&
               q.guidance.kind === "REQUIRED" &&
+              guidanceReady &&
               !q.receipt)) && (
             <p className="rounded-[12px] bg-[#fff2e0] px-3.5 py-3 text-xs text-[#b46a00]">
               {pending
@@ -269,9 +281,11 @@ function CompletionContent({
                 ? "취소·환불 안내"
                 : q.confirmation
                   ? "예약 내용 확인하기"
-                  : q.guidance.kind === "REQUIRED"
-                    ? "입금을 확인했어요"
-                    : "예약 안내 확인하기"}
+                  : !guidanceReady
+                    ? "예약금 안내하기"
+                    : q.guidance.kind === "REQUIRED"
+                      ? "입금을 확인했어요"
+                      : "예약 안내 확인하기"}
           </Button>
           {contact}
         </>
@@ -297,7 +311,9 @@ function CompletionContent({
               ? "예약 상세"
               : panel === "changes"
                 ? "예약 변경·취소"
-                : "예약금 확인"}
+                : !organizer && !guidanceReady
+                  ? "예약금 안내"
+                  : "예약금 확인"}
           </h2>
           {panel === "details" ? (
             <div className="space-y-4">

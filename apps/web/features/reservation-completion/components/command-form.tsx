@@ -69,6 +69,11 @@ export function CommandForm({
     ),
   });
   const values = useWatch({ control: form.control });
+  const accountChanged =
+    action === "guidance" &&
+    !base.guidance.account &&
+    base.ownerDepositAccount?.revision !== data.ownerDepositAccount?.revision;
+  const changed = base.version !== data.version || accountChanged;
   const completed = (result: Completion) => {
     if (!mutation.active.current) return;
     setBase(result);
@@ -85,12 +90,7 @@ export function CommandForm({
       noValidate
       className="space-y-4"
       onSubmit={form.handleSubmit(async (v) => {
-        if (
-          !available ||
-          mutation.uncertain ||
-          mutation.isPending ||
-          base.version !== data.version
-        )
+        if (!available || mutation.uncertain || mutation.isPending || changed)
           return;
         try {
           const result = await mutation.mutateAsync({
@@ -183,6 +183,7 @@ export function CommandForm({
           <ReviewCurrent
             data={data}
             baseVersion={base.version}
+            accountChanged={accountChanged}
             onReview={() => {
               setBase(data);
               mutation.reset();
@@ -214,7 +215,7 @@ export function CommandForm({
           <Button
             type="submit"
             className="w-full"
-            disabled={base.version !== data.version}
+            disabled={changed}
             loading={mutation.isPending}
           >
             {title}

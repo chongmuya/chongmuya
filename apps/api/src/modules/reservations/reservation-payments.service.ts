@@ -1,12 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
+import { AuthService } from "../auth/auth.service.js";
 import {
   ReservationCompletionService,
   type CompletionContext,
 } from "./reservation-completion.service.js";
 import {
-  guidanceCommand,
+  issueGuidanceCommand,
   transferCommand,
   receiptCommand,
   acknowledgeCommand,
@@ -15,10 +16,14 @@ import {
   type DepositGuidance,
 } from "./types/reservation-completion.js";
 import { sameGuidance } from "./lib/completion-sms-policy.js";
+import { guidanceReady } from "./lib/reservation-completion.js";
 
 @Injectable()
 export class ReservationPaymentsService {
-  constructor(private readonly completion: ReservationCompletionService) {}
+  constructor(
+    private readonly completion: ReservationCompletionService,
+    private readonly auth: AuthService,
+  ) {}
   validateGuidance(
     c: CompletionContext,
     input: {
@@ -65,14 +70,22 @@ export class ReservationPaymentsService {
       id,
       p,
       "GUIDANCE",
-      guidanceCommand,
+      issueGuidanceCommand,
       raw,
       "merchant",
       async (c, input) => {
         this.completion.active(c);
         if (c.state.confirmation)
           throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
-        const guidance = this.validateGuidance(c, input);
+        let account = null;
+        if (input.depositAccountRevision !== undefined) {
+          if (p.kind !== "owner" || input.kind !== "REQUIRED")
+            throw new DomainHttpException("RESERVATION_ACCESS_INVALID");
+          account = await this.auth.ownerDepositAccount(p.user.id, c.m, true);
+          if (!account || account.revision !== input.depositAccountRevision)
+            throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+        }
+        const guidance = this.validateGuidance(c, { ...input, ...account });
         if (sameGuidance(c.state.guidance, guidance)) return;
         c.state.guidance = guidance;
         c.state.acknowledgedRevision = null;
@@ -98,6 +111,8 @@ export class ReservationPaymentsService {
         this.completion.active(c);
         if (input.guidanceRevision !== c.state.guidance.revision)
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+        if (!guidanceReady(c.state))
+          throw new DomainHttpException("RESERVATION_GUIDANCE_PENDING");
         c.state.acknowledgedRevision = input.guidanceRevision;
         c.state.acknowledgedAt = new Date().toISOString();
       },

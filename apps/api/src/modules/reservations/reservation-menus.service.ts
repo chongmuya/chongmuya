@@ -46,8 +46,14 @@ export class ReservationMenusService {
         const s = c.state;
         if (s.order)
           throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
-        if (!guidanceReady(s) || s.guidance.revision !== input.guidanceRevision)
+        const ready = guidanceReady(s);
+        if (
+          s.guidance.revision !== input.guidanceRevision ||
+          (input.transfer && !ready)
+        )
           throw new DomainHttpException("RESERVATION_GUIDANCE_PENDING");
+        if (input.transfer && s.guidance.kind !== "REQUIRED")
+          throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
         const catalog = await this.restaurants.reservationMenu(
           c.target.restaurantId,
           c.m,
@@ -61,11 +67,9 @@ export class ReservationMenusService {
           1,
         );
         s.draft = null;
-        s.acknowledgedRevision = input.guidanceRevision;
-        s.acknowledgedAt = new Date().toISOString();
+        s.acknowledgedRevision = ready ? input.guidanceRevision : null;
+        s.acknowledgedAt = ready ? new Date().toISOString() : null;
         if (input.transfer) {
-          if (s.guidance.kind !== "REQUIRED")
-            throw new DomainHttpException("RESERVATION_ACTION_BLOCKED");
           s.transfer = {
             ...input.transfer,
             guidanceRevision: input.guidanceRevision,

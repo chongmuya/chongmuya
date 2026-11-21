@@ -32,6 +32,7 @@ import {
 import type { RestaurantDraft, DuplicateResult } from "../types/owner.types";
 import { OwnerChoice, OwnerField } from "./owner-fields";
 import { OwnerPolicyFields } from "./owner-policy-fields";
+import { DepositAccountEntry } from "@/features/account/client";
 import { OwnerSummary, OwnerCompletionSummary } from "./owner-summary";
 import { OwnerSpaceFields } from "./owner-space-fields";
 
@@ -525,7 +526,17 @@ export function OwnerRegistration({
                 onCapacityUnknownChange={setCapacityUnknown}
               />
             )}
-            {(step === 2 || step === 3) && <OwnerPolicyFields step={step} />}
+            {(step === 2 || step === 3) && (
+              <OwnerPolicyFields
+                step={step}
+                depositAccount={
+                  <DepositAccountEntry
+                    accountId={account.id}
+                    request={request}
+                  />
+                }
+              />
+            )}
             {step === 4 && (
               <OwnerSummary
                 data={data}
