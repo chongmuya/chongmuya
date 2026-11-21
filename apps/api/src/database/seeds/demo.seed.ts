@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { DataSource, EntityManager } from "typeorm";
+import { In, type DataSource, type EntityManager } from "typeorm";
 import { Account } from "../../modules/auth/entities/account.entity.js";
 import {
   hashPassword,
@@ -21,6 +21,13 @@ import { MessageDelivery } from "../../modules/reservations/entities/message-del
 import { RequestTarget } from "../../modules/reservations/entities/request-target.entity.js";
 import { MerchantReplyLink } from "../../modules/reservations/entities/merchant-reply-link.entity.js";
 import { MerchantReplyRevision } from "../../modules/reservations/entities/merchant-reply.entity.js";
+import { SelectedReservation } from "../../modules/reservations/entities/selected-reservation.entity.js";
+import {
+  ReservationChange,
+  ReservationCompletionHistory,
+  ReservationProgress,
+} from "../../modules/reservations/entities/reservation-progress.entity.js";
+import { EventSettlement } from "../../modules/settlements/entities/settlement.entity.js";
 import { issueMerchantToken } from "../../modules/reservations/lib/merchant-link-codec.js";
 import { newMessageDelivery } from "../../modules/reservations/lib/message-delivery.js";
 import {
@@ -55,6 +62,28 @@ export class DemoSeedConflict extends Error {
     super(code);
   }
 }
+const demoEvents = [
+  { key: "attendance", name: "동아리 정기 모임", groupIndex: 0 },
+  { key: "waiting", name: "운영팀 회식", groupIndex: 1 },
+  { key: "comparison", name: "친구들과 송년 모임", groupIndex: null },
+  { key: "private-b", name: "다온 정기 모임", groupIndex: 2 },
+  { key: "payment", name: "예약금 입금 확인 대기", groupIndex: 1 },
+  { key: "settlement", name: "지난 모임 정산 기록", groupIndex: 0 },
+] as const;
+
+const setEventId = (set: string, key: string) => demoId(`set:${set}:${key}`);
+const paymentId = (eventId: string) => demoId(`selection:${eventId}`);
+const demoPaymentVersion = 5;
+const demoSetMenu = {
+  id: demoId("menu:set"),
+  name: "단체 모둠 세트",
+  kind: "SET",
+  price: 48000,
+  unit: "4인 세트",
+  position: 1,
+  available: true,
+} as const;
+
 const names = [
   "김민수",
   "이서연",
@@ -176,14 +205,8 @@ export async function seedDemo(
         .into(RestaurantMenu)
         .values([
           {
-            id: demoId("menu:set"),
+            ...demoSetMenu,
             restaurantId: owned.id,
-            name: "단체 모둠 세트",
-            kind: "SET",
-            price: 48000,
-            unit: "4인 세트",
-            position: 1,
-            available: true,
           },
           {
             id: demoId("menu:unknown"),
@@ -253,7 +276,7 @@ export async function seedDemo(
       counts.created++;
     }
     if (options.recreate) await recreateDemoSet(m, options.set);
-    const rootId = demoId(`set:${options.set}:attendance`);
+    const rootId = setEventId(options.set, "attendance");
     const root = await m.findOneBy(Event, { id: rootId });
     if (root) {
       if (root.ownerId !== demoAccounts[0]!.id)
@@ -263,43 +286,41 @@ export async function seedDemo(
       counts.preserved++;
     } else {
       const scheduledAt = new Date(now.getTime() + 14 * 86400_000);
-      for (const [index, key] of [
-        "attendance",
-        "waiting",
-        "comparison",
-        "private-b",
-      ].entries()) {
-        const id = demoId(`set:${options.set}:${key}`),
-          ownerId = demoAccounts[index === 3 ? 1 : 0]!.id;
+      for (const { key, name, groupIndex } of demoEvents) {
+        const id = setEventId(options.set, key);
+        const ownerId = demoAccounts[key === "private-b" ? 1 : 0]!.id;
         if (await m.existsBy(Event, { id }))
           throw new DemoSeedConflict("SET_KEY_CONFLICT");
-        const needsReservation = index === 1 || index === 2;
+        const needsReservation =
+          key === "waiting" || key === "comparison" || key === "payment";
+        const startsAt =
+          key === "settlement"
+            ? new Date(now.getTime() - 7 * 86400_000)
+            : scheduledAt;
         const event = Object.assign(new Event(), {
           id,
           ownerId,
-          groupId: index === 2 ? null : groupIds[index === 3 ? 2 : index]!,
-          version: 1,
+          groupId: groupIndex === null ? null : groupIds[groupIndex]!,
+          version: needsReservation ? 2 : 1,
           expectedGuests: needsReservation ? 20 : null,
-          name: [
-            "동아리 정기 모임",
-            "운영팀 회식",
-            "친구들과 송년 모임",
-            "다온 정기 모임",
-          ][index]!,
-          scheduledAt,
-          createdAt: new Date(now.getTime() + index),
+          reservationScheduleLocked: needsReservation,
+          name,
+          scheduledAt: startsAt,
+          createdAt: key === "settlement" ? startsAt : now,
         });
         await m.insert(Event, event);
-        if (index === 0) await attendance(m, event, options.set, now);
+        if (key === "attendance") await attendance(m, event, options.set, now);
         if (needsReservation)
-          await inquiry(m, event, index === 2, options.encryptionKey, now);
+          await inquiry(m, event, key, options.encryptionKey, now);
+        if (key === "settlement")
+          await seedSettlementRecord(m, event, startsAt);
         counts.created++;
       }
     }
     const events = await m.findBy(
       Event,
-      ["attendance", "waiting", "comparison", "private-b"].map((key) => ({
-        id: demoId(`set:${options.set}:${key}`),
+      demoEvents.map(({ key }) => ({
+        id: setEventId(options.set, key),
       })),
     );
     const links = await m
@@ -416,10 +437,12 @@ async function attendance(
 async function inquiry(
   m: EntityManager,
   event: Event,
-  compare: boolean,
+  scenario: "waiting" | "comparison" | "payment",
   key: Buffer,
   now: Date,
 ) {
+  const compare = scenario === "comparison";
+  const payment = scenario === "payment";
   await m.insert(AttendanceRound, {
     id: demoId(`first-round:${event.id}`),
     eventId: event.id,
@@ -455,7 +478,13 @@ async function inquiry(
     id: demoId(`request:${event.id}`),
     eventId: event.id,
     requestKey: demoId(`request-key:${event.id}`),
-    closedAt: null,
+    closedAt: payment ? now : null,
+    state: payment ? "SELECTED" : "ACTIVE",
+    version: payment ? 3 : compare ? 5 : 1,
+    createdById: event.ownerId,
+    currentContactAccountId: event.ownerId,
+    currentContactName: demoAccounts[0]!.name,
+    currentContactPhone: demoAccounts[0]!.phone,
     digest: digest({
       conditions,
       contact: { name: demoAccounts[0]!.name, phone: demoAccounts[0]!.phone },
@@ -495,7 +524,8 @@ async function inquiry(
       contactPhone: contact.phone,
       consentAt: contact.requestConsentAt,
       deliveryStatus: "ACCEPTED",
-      replyVersion: compare ? (i === 1 ? 2 : 1) : 0,
+      candidateState: payment ? "SELECTED" : "OPEN",
+      replyVersion: compare && i === 1 ? 2 : scenario === "waiting" ? 0 : 1,
     });
     await m.insert(RequestTarget, target);
     const link = Object.assign(new MerchantReplyLink(), {
@@ -524,7 +554,6 @@ async function inquiry(
       providerMessageId: `fake-${delivery.id}`,
     });
     await m.insert(MessageDelivery, delivery);
-    if (!compare) continue;
     for (let revision = 1; revision <= target.replyVersion; revision++) {
       const kind =
         i === 0
@@ -542,8 +571,12 @@ async function inquiry(
               seating: conditions.seating,
               minimumSpend: null,
               separateFee: 0,
-              deposit: { kind: "PER_RESERVATION" as const, amount: null },
-              menuDeadlineAt: null,
+              deposit: payment
+                ? { kind: "FIXED" as const, amount: 20000 }
+                : { kind: "PER_RESERVATION" as const, amount: null },
+              menuDeadlineAt: payment
+                ? new Date(now.getTime() + 7 * 86400_000).toISOString()
+                : null,
               note:
                 i === 1
                   ? "한 공간에 함께 앉으시려면 18명까지 가능해요."
@@ -561,6 +594,11 @@ async function inquiry(
         reason: kind === "DECLINE" ? "해당 일시에 다른 예약이 있어요." : "",
         holdConfirmed: kind !== "DECLINE",
       };
+      const snapshot = {
+        offered: proposal,
+        requested: request.snapshot,
+        holdConfirmed: input.holdConfirmed,
+      };
       await m.insert(MerchantReplyRevision, {
         id: demoId(`reply:${target.id}:${revision}`),
         targetId: target.id,
@@ -568,31 +606,251 @@ async function inquiry(
         requestKey: input.requestKey,
         digest: digest(input),
         kind,
-        snapshot: {
-          offered: proposal,
-          requested: request.snapshot,
-        },
+        snapshot,
         reason: input.reason,
         expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
         actor: { kind: "MERCHANT_LINK", id: `${target.id}:1` },
-        createdAt: new Date(now.getTime() + revision),
+        createdAt: payment ? now : new Date(now.getTime() + revision),
       });
+      if (payment && proposal)
+        await seedPaymentReview(
+          m,
+          event,
+          target,
+          { ...snapshot, offered: proposal },
+          now,
+        );
     }
   }
 }
 
+async function seedPaymentReview(
+  m: EntityManager,
+  event: Event,
+  target: RequestTarget,
+  snapshot: MerchantReplyRevision["snapshot"] & {
+    offered: ReservationProgress["state"]["agreement"];
+  },
+  now: Date,
+) {
+  const reservationId = paymentId(event.id);
+  const at = now.toISOString();
+  const amount = snapshot.offered.deposit.amount!;
+  const ownerId = demoAccounts[3]!.id;
+  const audit = {
+    kind: "OWNER",
+    recorder: ownerId,
+    confirmer: ownerId,
+    method: "WEB",
+    confirmedAt: at,
+    recordedAt: at,
+    reason: "개발용 가상 입금 안내",
+  };
+  const { id, name, unit, price } = demoSetMenu;
+  const quantity = 5;
+  const state: ReservationProgress["state"] = {
+    agreementRevision: 1,
+    agreement: snapshot.offered,
+    guidance: {
+      revision: 2,
+      kind: "REQUIRED",
+      amount,
+      deadline: snapshot.offered.menuDeadlineAt,
+      channel: "SMS",
+      bank: "데모 은행",
+      account: "DEMO-ONLY",
+      holder: "데모 매장",
+      policy: "개발용 가상 예약금 안내",
+      issuedAt: at,
+      audit,
+    },
+    draft: null,
+    order: {
+      revision: 1,
+      catalogVersion: 1,
+      lines: [{ id, name, unit, price, quantity, subtotal: price * quantity }],
+      total: price * quantity,
+      currency: "KRW",
+      submittedAt: at,
+    },
+    acknowledgedRevision: 2,
+    acknowledgedAt: at,
+    transfer: {
+      guidanceRevision: 2,
+      payer: demoAccounts[0]!.name,
+      amount,
+      reportedAt: at,
+    },
+    receipt: null,
+    exceptionResolution: null,
+    confirmation: null,
+    refundExpected: null,
+    refunded: 0,
+    cancellation: null,
+  };
+  await m.insert(SelectedReservation, {
+    id: reservationId,
+    eventId: event.id,
+    requestId: target.requestId,
+    targetId: target.id,
+    revision: target.replyVersion,
+    version: demoPaymentVersion,
+    status: "PREPARING",
+    snapshot,
+    selectedBy: event.ownerId,
+    selectedAt: now,
+  });
+  await m.insert(ReservationProgress, { reservationId, state });
+  const changeId = demoId(`change:${reservationId}`);
+  await m.insert(ReservationChange, {
+    id: changeId,
+    reservationId,
+    kind: "CHANGE",
+    subject: "SCHEDULE",
+    reason: "일정을 한 시간 늦추고 싶어요.",
+    status: "REJECTED",
+    createdAt: now,
+    resolvedAt: now,
+  });
+  const command = {
+    requestKey: demoId(`reject-change:${reservationId}`),
+    expectedVersion: demoPaymentVersion - 1,
+    changeId,
+    reason: "다음 시간대에 다른 예약이 있어요.",
+  };
+  await m.insert(ReservationCompletionHistory, {
+    id: demoId(`history:${reservationId}`),
+    reservationId,
+    requestKey: command.requestKey,
+    digest: digest(command),
+    action: "CHANGE_REJECTED",
+    version: demoPaymentVersion,
+    audit: { ...audit, reason: command.reason },
+    snapshot: state,
+    evidence: { command },
+  });
+}
+
+async function seedSettlementRecord(m: EntityManager, event: Event, day: Date) {
+  const at = day.toISOString();
+  const roundId = demoId(`record-round:${event.id}`);
+  await m.insert(AttendanceRound, {
+    id: roundId,
+    eventId: event.id,
+    title: "1차",
+    position: 1,
+    shareId: demoId(`record-share:${event.id}`),
+    requestKey: demoId(`record-round-key:${event.id}`),
+    closedAt: day,
+    createdAt: day,
+  });
+  const people = names.slice(0, 3).map((name, i) => ({
+    id: demoId(`record-participant:${event.id}:${i}`),
+    name,
+    label: null,
+    phoneLast4: phoneLast4(i),
+    version: 1,
+  }));
+  await m.insert(
+    EventParticipant,
+    people.map((person, position) => ({
+      ...person,
+      eventId: event.id,
+      position,
+      createdAt: day,
+    })),
+  );
+  await m.insert(
+    AttendanceResponse,
+    people.map(({ id }) => ({
+      roundId,
+      eventId: event.id,
+      participantId: id,
+      managerOverride: "ATTENDING",
+      overriddenAt: day,
+    })),
+  );
+  const expense: EventSettlement["state"]["expenses"][number] = {
+    id: demoId(`record-expense:${event.id}`),
+    roundId,
+    name: "모임 간식",
+    total: 10000,
+    deposit: 0,
+    includeDeposit: true,
+    support: 0,
+    reservationId: null,
+    memo: "",
+    payers: people,
+    remainder: null,
+    remainderOrganizerId: event.ownerId,
+    fileIds: [],
+    version: 1,
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+  };
+  const share = Math.floor(expense.total / people.length);
+  const target = share * people.length;
+  const remainder = expense.total - target;
+  await m.insert(EventSettlement, {
+    eventId: event.id,
+    state: {
+      version: 5,
+      calculationVersion: 1,
+      finalizedAt: at,
+      expenses: [expense],
+      payments: people.map((person) => ({
+        id: demoId(`record-receipt:${person.id}`),
+        participant: person,
+        kind: "RECEIPT",
+        amount: share,
+        corrects: null,
+        reason: "개발용 입금 기록",
+        actorId: event.ownerId,
+        at,
+        calculationVersion: 1,
+      })),
+      notices: [
+        {
+          id: demoId(`record-notice:${event.id}`),
+          replaces: null,
+          title: "지난 모임 정산 안내",
+          message: "",
+          bank: null,
+          deadline: null,
+          includePeople: false,
+          scope: "UNCONFIRMED",
+          text: `[지난 모임 정산 안내]\n${expense.name} ${expense.total.toLocaleString("ko-KR")}원 · 총무 부담 ${remainder}원\n추가 입금 요청이 없습니다.`,
+          calculationVersion: 1,
+          createdAt: at,
+          actorId: event.ownerId,
+          snapshot: {
+            expenses: [expense],
+            people: [],
+            total: expense.total,
+            target,
+            organizerRemainder: remainder,
+          },
+        },
+      ],
+      memo: "",
+    },
+  });
+}
+
 // Explicitly scoped local fixture replacement. Shared accounts, catalog and groups never change.
 async function recreateDemoSet(m: EntityManager, set: string) {
-  const ids = ["attendance", "waiting", "comparison", "private-b"].map((key) =>
-    demoId(`set:${set}:${key}`),
-  );
-  const rows = await m.findBy(
-    Event,
-    ids.map((id) => ({ id })),
-  );
+  const ids = demoEvents.map(({ key }) => setEventId(set, key));
+  const rows = await m.find(Event, {
+    where: { id: In(ids) },
+    order: { id: "ASC" },
+    lock: { mode: "pessimistic_write" },
+  });
   if (
     rows.some(
-      (row) => row.ownerId !== demoAccounts[row.id === ids[3] ? 1 : 0]!.id,
+      (row) =>
+        row.ownerId !==
+        demoAccounts[row.id === setEventId(set, "private-b") ? 1 : 0]!.id,
     )
   )
     throw new DemoSeedConflict("SET_OWNER_CONFLICT");
@@ -602,6 +860,44 @@ async function recreateDemoSet(m: EntityManager, set: string) {
   )) as { unsafe: boolean }[];
   if (unsafe?.unsafe)
     throw new DemoSeedConflict("SET_CONTAINS_NON_DEMO_DELIVERY");
+  const reservationId = paymentId(setEventId(set, "payment"));
+  const settlementId = setEventId(set, "settlement");
+  const [record] = (await m.query(
+    `SELECT (
+      EXISTS (SELECT 1 FROM selected_reservations WHERE event_id=ANY($1::uuid[]) AND (id<>$2 OR version<>$3))
+      OR EXISTS (SELECT 1 FROM reservation_decisions d JOIN reservation_requests r ON r.id=d.request_id WHERE r.event_id=ANY($1::uuid[]))
+      OR EXISTS (SELECT 1 FROM event_settlements WHERE event_id=ANY($1::uuid[]) AND event_id<>$4)
+      OR EXISTS (SELECT 1 FROM settlement_commands WHERE event_id=ANY($1::uuid[]))
+      OR EXISTS (SELECT 1 FROM event_files WHERE event_id=ANY($1::uuid[]))
+    ) AS protected`,
+    [ids, reservationId, demoPaymentVersion, settlementId],
+  )) as { protected: boolean }[];
+  if (record?.protected)
+    throw new DemoSeedConflict("SET_HAS_RESERVATION_OR_SETTLEMENT_RECORDS");
+
+  for (const table of [
+    "reservation_completion_history",
+    "reservation_changes",
+    "reservation_progress",
+  ]) {
+    await m.query(`DELETE FROM ${table} WHERE reservation_id=$1`, [
+      reservationId,
+    ]);
+  }
+  await m.delete(SelectedReservation, { id: reservationId });
+  await m.delete(EventSettlement, { eventId: settlementId });
+
+  for (const table of ["notifications", "notification_messages"]) {
+    await m.query(
+      `DELETE FROM ${table} WHERE event_key IN (SELECT event_key FROM notification_facts WHERE event_id=ANY($1::uuid[]))`,
+      [ids],
+    );
+  }
+  await m.query(
+    "DELETE FROM notification_facts WHERE event_id=ANY($1::uuid[])",
+    [ids],
+  );
+
   const targets =
     "SELECT t.id FROM reservation_request_targets t JOIN reservation_requests r ON r.id=t.request_id WHERE r.event_id=ANY($1::uuid[])";
   await m.query(
