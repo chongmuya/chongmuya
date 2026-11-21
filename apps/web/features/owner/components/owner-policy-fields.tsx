@@ -200,7 +200,13 @@ function DeadlineValue({
   );
 }
 
-export function OwnerPolicyFields({ step }: { step: 2 | 3 }) {
+export function OwnerPolicyFields({
+  step,
+  depositAccount,
+}: {
+  step: 2 | 3;
+  depositAccount?: React.ReactNode;
+}) {
   const { control, setValue } = useFormContext<RegistrationData>();
   const p = useWatch({ control, name: "policies" });
   const hasDeposit =
@@ -445,6 +451,7 @@ export function OwnerPolicyFields({ step }: { step: 2 | 3 }) {
             placeholder="예약금 (원)"
           />
         )}
+        {hasDeposit && depositAccount}
       </div>
     </div>
   );

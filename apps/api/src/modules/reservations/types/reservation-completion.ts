@@ -142,6 +142,9 @@ export const guidanceCommand = commandSchema
     webConsent: z.boolean(),
   })
   .strict();
+export const issueGuidanceCommand = guidanceCommand.extend({
+  depositAccountRevision: z.number().int().positive().optional(),
+});
 export const transferCommand = commandSchema
   .extend({
     guidanceRevision: z.number().int().positive(),

@@ -53,4 +53,16 @@ export class Account {
   phoneVerifiedAt!: Date | null;
   @Column({ name: "email_verified_at", type: "timestamptz", nullable: true })
   emailVerifiedAt!: Date | null;
+  @Column({
+    name: "owner_deposit_account",
+    type: "jsonb",
+    nullable: true,
+    select: false,
+  })
+  ownerDepositAccount!: {
+    revision: number;
+    bank: string;
+    account: string;
+    holder: string;
+  } | null;
 }

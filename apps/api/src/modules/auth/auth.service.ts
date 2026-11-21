@@ -58,6 +58,20 @@ export class AuthService {
     if (!active) throw new AuthError("SESSION_INVALID");
   }
 
+  async ownerDepositAccount(id: string, manager: EntityManager, lock = false) {
+    const account = await manager.findOne(Account, {
+      select: { id: true, ownerDepositAccount: true },
+      where: {
+        id,
+        accountType: "owner",
+        withdrawnAt: IsNull(),
+        withdrawalStartedAt: IsNull(),
+      },
+      ...(lock ? { lock: { mode: "pessimistic_write" as const } } : {}),
+    });
+    return account?.ownerDepositAccount ?? null;
+  }
+
   async withdrawalKakaoSubject(id: string, manager: EntityManager) {
     const link = await manager.findOneBy(ExternalIdentity, {
       accountId: id,
@@ -112,6 +126,7 @@ export class AuthService {
         passwordHash: null,
         credentialsChangedAt: now,
         accountType: null,
+        ownerDepositAccount: null,
       },
     );
     await manager.update(

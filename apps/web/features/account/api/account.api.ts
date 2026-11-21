@@ -29,3 +29,24 @@ export const verifyPhone = (request: SessionRequest, p: PhoneChange) =>
     "/api/v1/auth/profile/phone/verify",
     { method: "POST", body: JSON.stringify({ id: p.id, phone: p.phone }) },
   );
+
+type DepositAccountDetails = { bank: string; account: string; holder: string };
+export type DepositAccount = DepositAccountDetails & { revision: number };
+const depositAccountPath = "/api/v1/auth/profile/deposit-account";
+
+export const getDepositAccount = (
+  request: SessionRequest,
+  signal: AbortSignal,
+) =>
+  request<{ depositAccount: DepositAccount | null }>(depositAccountPath, {
+    signal,
+  });
+
+export const saveDepositAccount = (
+  request: SessionRequest,
+  input: DepositAccountDetails & { expectedRevision: number },
+) =>
+  request<{ depositAccount: DepositAccount }>(depositAccountPath, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });

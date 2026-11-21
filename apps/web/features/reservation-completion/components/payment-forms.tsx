@@ -1,24 +1,29 @@
 "use client";
 import { useState, type ComponentProps } from "react";
+import Link from "next/link";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { CommandForm } from "./command-form";
 import { isoDate, localDate } from "../lib/command-values";
 import { guidanceFields, buildGuidance } from "../lib/guidance-fields";
+import { depositGuidanceReady } from "../lib/deposit-guidance";
 // Keep a previously opened command mounted while its eligibility changes.
 function RetainedCommand({
   available,
   disclosure,
+  openInitially = false,
   ...props
 }: ComponentProps<typeof CommandForm> & {
   available: boolean;
   disclosure?: string;
+  openInitially?: boolean;
 }) {
   const [seen, setSeen] = useState(available);
+  const [initialOpen] = useState(openInitially);
   if (available && !seen) setSeen(true);
   if (!seen && !available) return null;
   const form = <CommandForm {...props} available={available} />;
   return disclosure ? (
-    <details className="space-y-4">
+    <details className="space-y-4" open={initialOpen || undefined}>
       <summary className="cursor-pointer font-semibold">{disclosure}</summary>
       {form}
     </details>
@@ -34,6 +39,7 @@ export function PaymentForms({
   access: CompletionAccess;
 }) {
   const props = { data: q, access };
+  const ready = depositGuidanceReady(q);
   if (access.kind === "organizer")
     return (
       <div className="space-y-5">
@@ -41,6 +47,7 @@ export function PaymentForms({
           available={
             !q.cancellation &&
             !!q.order &&
+            ready &&
             q.acknowledgedRevision !== q.guidance.revision
           }
           {...props}
@@ -60,7 +67,10 @@ export function PaymentForms({
         />
         <RetainedCommand
           available={
-            !q.cancellation && !!q.order && q.guidance.kind === "REQUIRED"
+            !q.cancellation &&
+            !!q.order &&
+            ready &&
+            q.guidance.kind === "REQUIRED"
           }
           {...props}
           action="transfer"
@@ -80,15 +90,46 @@ export function PaymentForms({
     );
   return (
     <div className="space-y-5">
+      {access.kind === "owner" && !q.cancellation && !q.confirmation && (
+        <Link
+          href="/mypage?view=account#reservation-deposit-account"
+          className="text-sm font-medium text-link underline"
+        >
+          계정에 연결된 예약금 계좌 관리
+        </Link>
+      )}
       <RetainedCommand
         disclosure="예약금·계좌·변경 조건 안내"
         available={!q.cancellation && !q.confirmation}
+        openInitially={!ready}
         {...props}
         action="guidance"
         title="안내 전달"
         description="웹 공개는 동의한 경우만 선택해 주세요. 문자를 선택하면 총무 화면에는 계좌가 표시되지 않아요. 안내 변경은 총무의 재확인이 필요해요."
-        fields={guidanceFields}
-        build={buildGuidance}
+        fields={(base) =>
+          guidanceFields(
+            base,
+            !base.guidance.account && !!base.ownerDepositAccount,
+          )
+        }
+        build={(values, base) =>
+          buildGuidance(
+            values,
+            base.guidance.account
+              ? undefined
+              : base.ownerDepositAccount?.revision,
+          )
+        }
+        preview={(values, base) =>
+          values.kind === "REQUIRED" &&
+          !base.guidance.account &&
+          base.ownerDepositAccount ? (
+            <p className="rounded-control bg-soft p-3 text-sm">
+              연결된 계좌 · {base.ownerDepositAccount.bank} · 끝자리{" "}
+              {base.ownerDepositAccount.lastDigits}
+            </p>
+          ) : null
+        }
       />
       <RetainedCommand
         available={!q.cancellation && q.guidance.kind === "REQUIRED"}

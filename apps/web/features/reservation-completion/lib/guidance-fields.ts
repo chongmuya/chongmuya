@@ -1,7 +1,10 @@
 import type { Completion } from "../types/completion.types";
 import type { Field } from "../types/command-field";
 import { isoDate, localDate } from "./command-values";
-export const guidanceFields = (q: Completion): Field[] => [
+export const guidanceFields = (
+  q: Completion,
+  useRegisteredAccount = false,
+): Field[] => [
   {
     name: "kind",
     label: "예약금",
@@ -33,27 +36,31 @@ export const guidanceFields = (q: Completion): Field[] => [
       { value: "WEB", label: "이 예약의 총무 화면에 표시" },
     ],
   },
-  {
-    name: "bank",
-    label: "은행 (예약금 있을 때 필수)",
-    value: q.guidance.bank,
-    optional: true,
-    max: 80,
-  },
-  {
-    name: "account",
-    label: "계좌번호 (예약금 있을 때 필수)",
-    value: q.guidance.account,
-    optional: true,
-    max: 100,
-  },
-  {
-    name: "holder",
-    label: "예금주 (예약금 있을 때 필수)",
-    value: q.guidance.holder,
-    optional: true,
-    max: 80,
-  },
+  ...(!useRegisteredAccount
+    ? [
+        {
+          name: "bank",
+          label: "은행 (예약금 있을 때 필수)",
+          value: q.guidance.bank,
+          optional: true,
+          max: 80,
+        },
+        {
+          name: "account",
+          label: "계좌번호 (예약금 있을 때 필수)",
+          value: q.guidance.account,
+          optional: true,
+          max: 100,
+        },
+        {
+          name: "holder",
+          label: "예금주 (예약금 있을 때 필수)",
+          value: q.guidance.holder,
+          optional: true,
+          max: 80,
+        },
+      ]
+    : []),
   {
     name: "policy",
     label: "변경·취소·환불 안내",
@@ -68,14 +75,19 @@ export const guidanceFields = (q: Completion): Field[] => [
     optional: true,
   },
 ];
-export const buildGuidance = (v: Record<string, string>) => ({
+export const buildGuidance = (
+  v: Record<string, string>,
+  depositAccountRevision?: number,
+) => ({
   kind: v.kind,
   amount: Number(v.amount),
   deadline: v.deadline ? isoDate(v.deadline) : null,
   channel: v.channel,
-  bank: v.bank,
-  account: v.account,
-  holder: v.holder,
+  bank: v.bank ?? "",
+  account: v.account ?? "",
+  holder: v.holder ?? "",
   policy: v.policy,
   webConsent: v.webConsent === "yes",
+  ...(v.kind === "REQUIRED" &&
+    depositAccountRevision !== undefined && { depositAccountRevision }),
 });

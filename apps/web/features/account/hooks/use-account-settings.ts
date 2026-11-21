@@ -90,6 +90,7 @@ export function useAccountSettings() {
   };
   return {
     account,
+    request,
     profile,
     save,
     phone,

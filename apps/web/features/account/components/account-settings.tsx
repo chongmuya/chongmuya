@@ -2,9 +2,11 @@
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { useAccountSettings } from "../hooks/use-account-settings";
+import { DepositAccountEntry } from "./deposit-account-entry";
 export function AccountSettings() {
   const {
     account,
+    request,
     profile,
     save,
     phone,
@@ -69,6 +71,19 @@ export function AccountSettings() {
           프로필 저장
         </Button>
       </form>
+      {account.accountType === "owner" && (
+        <section
+          id="reservation-deposit-account"
+          className="space-y-3 scroll-mt-6"
+        >
+          <h2 className="text-xl font-bold">예약금 계좌</h2>
+          <DepositAccountEntry
+            key={account.id}
+            accountId={account.id}
+            request={request}
+          />
+        </section>
+      )}
       <section className="space-y-3">
         <h2 className="text-xl font-bold">연락처 인증 및 변경</h2>
         <p>

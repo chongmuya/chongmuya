@@ -12,12 +12,15 @@ import { OctomoService, OCTOMO_RECEIVER } from "./octomo.service.js";
 import type { AuthUser } from "./types/auth-user.js";
 import { AuthError } from "./exceptions/auth.exception.js";
 import { publicAccount } from "./utils/public-account.js";
+import { AuthService } from "./auth.service.js";
+import type { OwnerDepositAccountInput } from "./dto/request/profile.request.dto.js";
 @Injectable()
 export class ProfileService {
   constructor(
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
     private readonly octomo: OctomoService,
+    private readonly auth: AuthService,
   ) {}
   private async account(m: EntityManager, u: AuthUser) {
     const a = await m.findOne(Account, {
@@ -46,6 +49,51 @@ export class ProfileService {
       }
       await m.save(a);
       return publicAccount(a);
+    });
+  }
+  async depositAccount(u: AuthUser) {
+    if (u.accountType !== "owner")
+      throw new DomainHttpException("OWNER_REQUIRED");
+    const db = await this.database.connect();
+    return {
+      depositAccount: await this.auth.ownerDepositAccount(u.id, db.manager),
+    };
+  }
+
+  async saveDepositAccount(u: AuthUser, input: OwnerDepositAccountInput) {
+    if (u.accountType !== "owner")
+      throw new DomainHttpException("OWNER_REQUIRED");
+    const bank = input.bank.trim(),
+      account = input.account.trim(),
+      holder = input.holder.trim();
+    if (!bank || !holder || account.replace(/\D/g, "").length < 4)
+      throw new DomainHttpException("VALIDATION_FAILED");
+    const db = await this.database.connect();
+    return db.transaction(async (m) => {
+      const owner = await this.account(m, u);
+      if (
+        owner.accountType !== "owner" ||
+        owner.withdrawnAt ||
+        owner.withdrawalStartedAt
+      )
+        throw new DomainHttpException("OWNER_REQUIRED");
+      const current = await this.auth.ownerDepositAccount(u.id, m);
+      if (
+        current?.bank === bank &&
+        current.account === account &&
+        current.holder === holder
+      )
+        return { depositAccount: current };
+      const revision = current?.revision ?? 0;
+      if (revision !== input.expectedRevision)
+        throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+      const depositAccount = { revision: revision + 1, bank, account, holder };
+      await m.update(
+        Account,
+        { id: u.id },
+        { ownerDepositAccount: depositAccount },
+      );
+      return { depositAccount };
     });
   }
   private message(p: PhoneChange) {
