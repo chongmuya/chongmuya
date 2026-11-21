@@ -184,11 +184,11 @@ function CalendarContent({
   return (
     <main className="mx-auto flex min-h-svh w-full max-w-[402px] flex-col px-5 pt-[max(clamp(24px,7.7svh,73px),env(safe-area-inset-top))]">
       <header className="mb-[30px] flex min-h-11 items-center justify-between gap-3">
-        <label className="relative min-w-0 max-w-[calc(100%-106px)]">
+        <label className="min-w-0 max-w-[calc(100%-106px)]">
           <span className="sr-only">{owner ? "매장" : "일정 범위"}</span>
           <select
             className={cn(
-              "min-h-11 max-w-full appearance-none truncate rounded-control bg-transparent py-2 pl-1 pr-6 text-base font-medium",
+              "min-h-11 max-w-full truncate rounded-control bg-transparent py-2 pl-1 text-base font-medium",
               owner && "text-xl font-semibold",
             )}
             value={owner ? (restaurant ?? "") : (returnGroup ?? "")}
@@ -215,16 +215,6 @@ function CalendarContent({
               </>
             )}
           </select>
-          <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2">
-            <Image
-              style={{ height: "auto" }}
-              src="/images/calendar/scope-arrow.svg"
-              width={6.59099}
-              height={11.0607}
-              className="-rotate-90"
-              alt=""
-            />
-          </span>
         </label>
         <div className="-mr-1 flex shrink-0 items-center gap-1.5">
           <NotificationBadge accountId={accountId} request={request} icon />
