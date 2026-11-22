@@ -53,6 +53,7 @@ const environmentInputSchema = z.object({
   // Reject stale deployment settings while accepting old, empty local entries.
   TRUSTED_PROXY_CIDRS: z.literal("").optional(),
   MESSAGE_PROVIDER: z.enum(["fake", "solapi"]).default("fake"),
+  SMS_SEND_ENABLED: z.enum(["true", "false"]).default("true"),
   SOLAPI_API_KEY: z.string().min(1).optional(),
   SOLAPI_API_SECRET: z.string().min(1).optional(),
   SOLAPI_SENDER_NUMBER: z
@@ -188,6 +189,7 @@ const environmentSchema = environmentInputSchema
   .transform((env) => ({
     trustProxyHops: env.TRUST_PROXY_HOPS,
     messageProvider: env.MESSAGE_PROVIDER,
+    smsSendEnabled: env.SMS_SEND_ENABLED === "true",
     filesBucket: env.FILES_S3_BUCKET,
     filesRegion: env.FILES_S3_REGION,
     filesMaxCount: env.FILES_MAX_COUNT,

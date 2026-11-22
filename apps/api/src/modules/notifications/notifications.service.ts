@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { randomUUID, createHash } from "node:crypto";
 import { In, type EntityManager } from "typeorm";
+import { ConfigService } from "../../config/config.service.js";
 import { DatabaseService } from "../../database/database.service.js";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
 import {
@@ -109,7 +110,7 @@ export class NotificationsService {
           contactIdSnapshot: null,
           text: row.text,
           isDemo: row.isDemo,
-          status: "PENDING",
+          ...this.initialSmsStatus(),
           attempts: 0,
           updatedAt: new Date(),
           operations: [],
@@ -120,7 +121,16 @@ export class NotificationsService {
     }
   }
 
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly config: ConfigService,
+  ) {}
+
+  private initialSmsStatus() {
+    return this.config.environment.smsSendEnabled
+      ? { status: "PENDING", errorCode: null }
+      : { status: "HELD", errorCode: "SMS_DISABLED" };
+  }
   // Read-only optimization; record() still owns the final transactional deduplication.
   async recordedEventKeys(eventKeys: string[], m: EntityManager) {
     if (!eventKeys.length) return new Set<string>();
@@ -191,6 +201,7 @@ export class NotificationsService {
             contactIdSnapshot: s.contactId ?? null,
             text: s.text,
             isDemo: s.isDemo,
+            ...this.initialSmsStatus(),
             updatedAt: new Date(),
           })),
         )
@@ -441,6 +452,14 @@ export class NotificationsService {
         !(retry && row.status === "FAILED" && row.failureStage === "SUBMISSION")
       ) {
         if (retry) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+        return null;
+      }
+      if (!this.config.environment.smsSendEnabled) {
+        row.status = "HELD";
+        row.errorCode = "SMS_DISABLED";
+        row.failureStage = null;
+        row.updatedAt = new Date();
+        await m.save(row);
         return null;
       }
       if (real && row.isDemo) {

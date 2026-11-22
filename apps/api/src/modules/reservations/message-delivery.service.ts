@@ -38,11 +38,23 @@ export class MessageDeliveryService {
   ) {
     for (const target of targets) {
       const link = await this.links.create(target, request, m);
-      await m.save(
-        MessageDelivery,
-        newMessageDelivery(request, target, link, "NEW_INQUIRY"),
-      );
+      await this.createDelivery(request, target, link, "NEW_INQUIRY", m);
     }
+  }
+  private async createDelivery(
+    request: ReservationRequest,
+    target: RequestTarget,
+    link: MerchantReplyLink,
+    purpose: string,
+    m: EntityManager,
+  ) {
+    const row = newMessageDelivery(request, target, link, purpose);
+    if (!this.config.environment.smsSendEnabled) {
+      row.status = "HELD";
+      row.errorCode = "SMS_DISABLED";
+    }
+    await this.persist(row, m);
+    return row;
   }
   private async persist(row: MessageDelivery, m: EntityManager) {
     row.updatedAt = new Date();
@@ -91,6 +103,13 @@ export class MessageDeliveryService {
           row.failureStage === "SUBMISSION");
       if (!retryable) {
         if (retry) throw new DomainHttpException("DELIVERY_RETRY_BLOCKED");
+        return null;
+      }
+      if (!this.config.environment.smsSendEnabled) {
+        row.status = "HELD";
+        row.errorCode = "SMS_DISABLED";
+        row.failureStage = null;
+        await this.persist(row, m);
         return null;
       }
       const c = await this.links.context(row.targetId, m);
@@ -333,14 +352,12 @@ export class MessageDeliveryService {
         (c.link?.generation ?? 0) + 1,
         recipient,
       );
-      const row = await m.save(
-        MessageDelivery,
-        newMessageDelivery(c.request, c.target, link, "RECIPIENT_CHANGED"),
-      );
-      await m.update(
-        RequestTarget,
-        { id: targetId },
-        { deliveryStatus: "PENDING" },
+      const row = await this.createDelivery(
+        c.request,
+        c.target,
+        link,
+        "RECIPIENT_CHANGED",
+        m,
       );
       await m.save(ReservationOperation, {
         id: randomUUID(),
@@ -408,14 +425,12 @@ export class MessageDeliveryService {
       );
       // Detect missing encryption configuration before committing invalidation of the old link.
       this.links.url(link);
-      const row = await m.save(
-        MessageDelivery,
-        newMessageDelivery(c.request, c.target, link, "LINK_REGENERATED"),
-      );
-      await m.update(
-        RequestTarget,
-        { id: targetId },
-        { deliveryStatus: "PENDING" },
+      const row = await this.createDelivery(
+        c.request,
+        c.target,
+        link,
+        "LINK_REGENERATED",
+        m,
       );
       await m.save(ReservationOperation, {
         id: randomUUID(),

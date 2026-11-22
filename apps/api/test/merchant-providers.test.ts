@@ -10,7 +10,7 @@ import { textMessageFormat } from "../src/modules/reservations/lib/reservation-s
 import { FakeMessageGateway } from "../src/modules/reservations/providers/fake-message.gateway.js";
 import { safeReturnPath } from "../src/modules/auth/utils/return-path.js";
 const id = "752fb868-6dc0-4ef8-8f4a-0ed7049ff010";
-const config = () =>
+const config = (overrides: NodeJS.ProcessEnv = {}) =>
   ({
     environment: parseEnvironment({
       NODE_ENV: "test",
@@ -25,8 +25,32 @@ const config = () =>
       GEOCODING_PROVIDER: "naver",
       NAVER_MAP_CLIENT_ID: "fake-naver-id",
       NAVER_MAP_CLIENT_SECRET: "fake-naver-secret",
+      ...overrides,
     }),
   }) as ConfigService;
+test("pausing SMS blocks the send endpoint and keeps provider lookup available", async (t) => {
+  const provider = new SolapiMessageGateway(
+    config({ SMS_SEND_ENABLED: "false" }),
+  );
+  const fetch = t.mock.method(globalThis, "fetch", async (url: URL) => {
+    assert.equal(url.pathname, "/messages/v4/list");
+    return Response.json({ messageList: {} });
+  });
+  await assert.rejects(provider.send(id, "01012345678", "안내"), {
+    code: "SMS_DISABLED",
+  });
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.deepEqual(
+    await provider.lookup({
+      deliveryId: id,
+      messageId: "message",
+      to: "01012345678",
+      startedAt: new Date(),
+    }),
+    [],
+  );
+  assert.equal(fetch.mock.callCount(), 1);
+});
 test("direct SOLAPI automatic SMS/LMS contract, scoped endpoint, no automatic retry and filtered lookup", async (t) => {
   const provider = new SolapiMessageGateway(config());
   let calls = 0;

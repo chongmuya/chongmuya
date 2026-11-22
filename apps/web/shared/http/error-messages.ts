@@ -127,6 +127,10 @@ export const messages: Record<
     message:
       "주소 검색에 연결하지 못했어요. 입력 내용을 확인하고 다시 검색해 주세요.",
   },
+  SMS_DISABLED: {
+    status: 503,
+    message: "현재 문자 전송 서비스를 이용할 수 없습니다.",
+  },
   MESSAGE_CONFIGURATION: {
     status: 503,
     message: "문자 발송 설정 확인이 필요해요. 저장된 문의는 유지됩니다.",

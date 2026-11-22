@@ -27,6 +27,7 @@ import {
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
 import { Button, buttonStyles } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
+import { NoticeDialog } from "@/shared/ui/notice-dialog";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { inquiryQuery } from "../api/reservations.api";
@@ -264,6 +265,7 @@ function InquiryFlow({
     refetchIntervalInBackground: false,
     staleTime: 0,
   });
+  const [pausedInquiryId, setPausedInquiryId] = useState<string | null>(null);
   const previous =
     existing.data?.canReinquire && params.get("reinquire") === existing.data.id
       ? existing.data
@@ -325,6 +327,15 @@ function InquiryFlow({
           request={request}
           showEventLink
         />
+        {pausedInquiryId === existing.data.id && (
+          <NoticeDialog
+            title="문자 전송 일시 중지"
+            description="현재 문자 전송 서비스를 이용할 수 없습니다. 문의는 저장됐어요."
+            onClose={() => setPausedInquiryId(null)}
+          >
+            <Button onClick={() => setPausedInquiryId(null)}>확인</Button>
+          </NoticeDialog>
+        )}
       </StepLayout>
     );
   if (event.data.expectedGuests == null)
@@ -376,6 +387,12 @@ function InquiryFlow({
       }}
       request={request}
       browse={browse}
+      onSaved={(inquiry) => {
+        if (
+          inquiry.targets.some((t) => t.delivery?.errorCode === "SMS_DISABLED")
+        )
+          setPausedInquiryId(inquiry.id);
+      }}
     />
   );
 }
@@ -389,6 +406,7 @@ function InquiryDraft({
   event,
   request,
   browse,
+  onSaved,
 }: {
   previous?: ReservationRequest;
   unavailable: boolean;
@@ -404,6 +422,7 @@ function InquiryDraft({
   };
   request: SessionRequest;
   browse: BrowseNavigation;
+  onSaved: (inquiry: ReservationRequest) => void;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -484,7 +503,7 @@ function InquiryDraft({
         : "ready";
   const [confirmationVersion, setConfirmationVersion] = useState(event.version);
   const submitting = useRef(false);
-  const create = useCreateInquiry(account.id, event.id, request);
+  const create = useCreateInquiry(account.id, event.id, request, onSaved);
   const versionChanged = confirmationVersion !== event.version;
   const versionConflict =
     create.error instanceof ApiError &&

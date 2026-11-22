@@ -316,6 +316,69 @@ test("an older event registers its estimate once before inquiry conditions", asy
   assert.equal(fixture.posts.length, 0);
 });
 
+test("a saved inquiry with paused SMS shows a dismissible notice and keeps its receipt", async (t) => {
+  const { container, cache, fixture } = await fixtureForTest(t, "list");
+  await click(container, "문의 담기");
+  await click(container, "문의 진행하기");
+  const now = new Date().toISOString();
+  fixture.send = async () => {
+    fixture.receipt = {
+      id: crypto.randomUUID(),
+      eventId: event.id,
+      createdAt: now,
+      status: "RECEIVED",
+      responseCount: 0,
+      snapshot: {
+        ...fixture.posts[0].conditions,
+        eventName: event.name,
+        groupName: null,
+        groupType: null,
+        expectedGuests: 24,
+      },
+      contact: {
+        name: account.name,
+        maskedPhone: "010****0000",
+        phoneVerifiedAt: null,
+      },
+      targets: [
+        {
+          id: crypto.randomUUID(),
+          restaurantId: a.id,
+          restaurantName: a.name,
+          address: "가상 주소",
+          isDemo: true,
+          deliveryStatus: "HELD",
+          delivery: {
+            provider: null,
+            failureStage: null,
+            errorCode: "SMS_DISABLED",
+            updatedAt: now,
+          },
+          response: null,
+        },
+      ],
+    };
+    return Response.json(fixture.receipt, { status: 201 });
+  };
+  const send = button(sheet(container), "1곳에 문의 보내기");
+  await until(() => assert.equal(send.disabled, false));
+  await click(sheet(container), "1곳에 문의 보내기");
+  await until(() =>
+    assert.match(
+      sheet(container).textContent!,
+      /현재 문자 전송 서비스를 이용할 수 없습니다. 문의는 저장됐어요./,
+    ),
+  );
+  await click(sheet(container), "확인");
+  await act(async () => {
+    await cache.refetchQueries({ queryKey: inquiryKey(account.id, event.id) });
+  });
+  assert.equal(container.querySelector("dialog[open]"), null);
+  assert.match(container.textContent!, /문의 진행 상태/);
+  assert.match(container.textContent!, /문의 문자 발송 중지/);
+  assert.equal(fixture.posts.length, 1);
+});
+
 test("a saved inquiry lets the organizer accept a matching reply while another restaurant is still waiting", async (t) => {
   const { container, cache, fixture } = await fixtureForTest(t, "list");
   const snapshot: ReservationRequest["snapshot"] = {
