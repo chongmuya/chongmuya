@@ -408,8 +408,247 @@ test("merchant sees the existing reservation's receipt action after rejecting a 
     assert.doesNotMatch(view.container.textContent!, /요청에 답하기/);
     await click(view.container, "실입금 확인");
     const dialog = view.container.querySelector("dialog")!;
-    assert.match(dialog.textContent!, /실입금 기록하기/);
+    assert.match(dialog.textContent!, /은행 내역 확인 후 입금 기록/);
+    assert.doesNotMatch(dialog.textContent!, /예약금 안내 편집/);
     assert.equal(dialog.querySelector('[name="reason"]'), null);
+    await click(dialog, "뒤로가기");
+    await click(view.container, "현재 예약 조건 전체 보기");
+    await click(view.container, "예약금 관리");
+    assert.equal(
+      view.container.querySelector("dialog h2")?.textContent,
+      "예약금 관리",
+    );
+    assert.match(
+      view.container.querySelector("dialog")!.textContent!,
+      /예약금 안내 편집/,
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("merchant sees final confirmation only after a receipt save moves the reservation to confirmed", async () => {
+  let data: Completion = {
+    ...rejectedChangeFixture(),
+    confirmation: null,
+    transfer: {
+      guidanceRevision: 1,
+      payer: "테스트 입금자",
+      amount: 10000,
+      reportedAt: "2098-12-30T00:00:00Z",
+    },
+  };
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "owner-confirmation",
+    request: async <T>(_path: string, options?: RequestInit) => {
+      if (options?.method === "POST") {
+        const { command } = JSON.parse(String(options.body));
+        const paidInFull = command.amount === data.guidance.amount;
+        data = {
+          ...data,
+          version: data.version + 1,
+          progress: paidInFull ? "CONFIRMED" : "CHECK_REQUIRED",
+          issues: paidInFull ? [] : ["AMOUNT_REVIEW", "DEPOSIT_UNCONFIRMED"],
+          confirmation: paidInFull
+            ? ({ at: command.receivedAt } as Completion["confirmation"])
+            : null,
+          receivedAmount: command.amount,
+          receipt: {
+            id: `receipt-${data.version}`,
+            amount: command.amount,
+            receivedAt: command.receivedAt,
+            guidanceRevision: data.guidance.revision,
+          } as Completion["receipt"],
+        };
+      }
+      return data as T;
+    },
+  };
+  const view = await render(
+    createElement(CompletionWorkspace, { id: data.id, access }),
+  );
+  try {
+    await until(() => assert.match(view.container.textContent!, /실입금 확인/));
+    await click(view.container, "실입금 확인");
+    const dialog = view.container.querySelector("dialog")!;
+    const receiptForm = dialog.querySelector("form")!;
+    assert.match(receiptForm.textContent!, /테스트 입금자 · 10,000원/);
+    assert.equal(
+      receiptForm.querySelector<HTMLInputElement>('[name="amount"]')!.value,
+      "10000",
+    );
+    assert.equal(receiptForm.querySelector('[type="checkbox"]'), null);
+    await fill(dialog, "amount", "5000");
+    const today = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Asia/Seoul",
+    }).format(new Date());
+    await chooseDate(dialog, "receivedAt", today);
+    await chooseTime(dialog, "receivedAt", "12:30");
+    const checkBankRecord = () =>
+      act(async () =>
+        receiptForm
+          .querySelector<HTMLInputElement>('[type="checkbox"]')!
+          .click(),
+      );
+    await submit(dialog);
+    await until(() =>
+      assert.match(dialog.textContent!, /수령액과 안내한 예약금이 달라요/),
+    );
+    assert.doesNotMatch(dialog.textContent!, /예약이 최종 확정됐어요/);
+    assert.doesNotMatch(dialog.textContent!, /예약금 안내 편집/);
+    assert.equal(
+      receiptForm.querySelector<HTMLInputElement>('[name="amount"]')!.value,
+      "5000",
+    );
+
+    await fill(dialog, "amount", "10000");
+    await act(async () => {
+      const reason =
+        receiptForm.querySelector<HTMLTextAreaElement>('[name="reason"]')!;
+      Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(reason, "은행 내역 대조");
+      reason.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    await checkBankRecord();
+    await submit(dialog);
+    await until(() => {
+      const dialogs = view.container.querySelectorAll("dialog");
+      assert.equal(dialogs.length, 1);
+      assert.match(dialogs[0].textContent!, /예약이 최종 확정됐어요/);
+      assert.match(dialogs[0].textContent!, /DK · .* · 22명/);
+      assert.equal(dialogs[0].querySelector("form"), null);
+    });
+    await click(view.container, "확인");
+    await act(async () => void (await view.cache.refetchQueries()));
+    assert.equal(view.container.querySelector("dialog"), null);
+    assert.match(view.container.textContent!, /예약 확정/);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("merchant ignores transfer defaults from a previous guidance revision", async () => {
+  const data: Completion = {
+    ...rejectedChangeFixture(),
+    guidance: { ...rejectedChangeFixture().guidance, revision: 2 },
+    transfer: {
+      guidanceRevision: 1,
+      payer: "이전 입금자",
+      amount: 10000,
+      reportedAt: "2098-12-30T00:00:00Z",
+    },
+    issues: ["TRANSFER_REVIEW"],
+    progress: "CHECK_REQUIRED",
+  };
+  const view = await render(
+    createElement(CompletionWorkspace, {
+      id: data.id,
+      access: {
+        kind: "owner",
+        accountId: "owner-old-report",
+        request: async <T>() => data as T,
+      },
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /확인할 내용 보기/),
+    );
+    await click(view.container, "확인할 내용 보기");
+    assert.doesNotMatch(view.container.textContent!, /이전 입금자/);
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('input[name="amount"]')!
+        .value,
+      "",
+    );
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("first deposit guidance summarizes the agreed amount and closes only after saving", async () => {
+  const original = rejectedChangeFixture();
+  let data: Completion = {
+    ...original,
+    changes: [],
+    progress: "GUIDANCE_PENDING",
+    issues: ["GUIDANCE_PENDING"],
+    guidance: {
+      ...original.guidance,
+      channel: "PENDING",
+      bank: "테스트 은행",
+      account: "1000-0000",
+      holder: "테스트 매장",
+      policy: "매장과 합의 후 처리",
+    },
+  };
+  const writes: Record<string, unknown>[] = [];
+  const view = await render(
+    createElement(CompletionWorkspace, {
+      id: data.id,
+      access: {
+        kind: "owner",
+        accountId: "owner-first-guidance",
+        request: async <T>(_path: string, options?: RequestInit) => {
+          if (options?.method === "POST") {
+            writes.push(JSON.parse(String(options.body)).command);
+            if (writes.length === 1)
+              throw new ApiError("", 400, "VALIDATION_FAILED");
+            data = {
+              ...data,
+              version: 2,
+              progress: "MENU_REQUIRED",
+              issues: [],
+              guidance: {
+                ...data.guidance,
+                amount: Number(writes.at(-1)?.amount),
+                revision: 2,
+                channel: "SMS",
+              },
+            };
+          }
+          return data as T;
+        },
+      },
+    }),
+  );
+  try {
+    await until(() =>
+      assert.match(view.container.textContent!, /예약금 안내하기/),
+    );
+    await click(view.container, "예약금 안내하기");
+    const dialog = view.container.querySelector("dialog")!;
+    const disclosure = [...dialog.querySelectorAll("details")].find(
+      (item) => item.querySelector("summary")?.textContent === "입금 조건 입력",
+    )!;
+    const amountSummary = disclosure.querySelector("details")!;
+    assert.match(
+      amountSummary.querySelector("summary")!.textContent!,
+      /예약금 10,000원 · 변경/,
+    );
+    assert.equal(amountSummary.open, false);
+    await fill(disclosure, "account", "1234-5678");
+    await submit(disclosure);
+    await until(() => assert.equal(writes.length, 1));
+    assert.equal(writes[0].amount, 10000);
+    assert.equal(view.container.querySelector("dialog"), dialog);
+    assert.equal(
+      disclosure.querySelector<HTMLInputElement>('[name="account"]')!.value,
+      "1234-5678",
+    );
+    await act(() => amountSummary.querySelector("summary")!.click());
+    assert(amountSummary.open);
+    await fill(amountSummary, "amount", "12000");
+    await submit(disclosure);
+    await until(() =>
+      assert.equal(view.container.querySelector("dialog"), null),
+    );
+    assert.equal(writes[1].amount, 12000);
+    assert.match(view.container.textContent!, /예약금 안내를 보냈어요/);
+    assert.match(view.container.textContent!, /입금 대기/);
   } finally {
     await view.unmount();
   }
@@ -495,6 +734,7 @@ test("merchant can send a deposit waiver without amount, account, deadline or co
     guidance: {
       ...rejectedChangeFixture().guidance,
       kind: "UNKNOWN" as const,
+      amount: null,
       policy: "하루 전까지 취소 가능",
     },
   };
@@ -515,6 +755,11 @@ test("merchant can send a deposit waiver without amount, account, deadline or co
     }),
   );
   try {
+    assert.equal(
+      view.container.querySelector<HTMLInputElement>('input[name="amount"]')!
+        .value,
+      "",
+    );
     const kind = view.container.querySelector<HTMLSelectElement>(
       'select[name="kind"]',
     )!;
@@ -729,6 +974,7 @@ for (const lostResponse of [false, true]) {
       ...fixture(),
       guidance: { ...fixture().guidance, kind: "REQUIRED", amount: 100000 },
       confirmation: {} as NonNullable<Completion["confirmation"]>,
+      progress: "CHECK_REQUIRED",
       issues: [],
       receivedAmount: 100000,
       receipt: {
@@ -743,6 +989,7 @@ for (const lostResponse of [false, true]) {
     };
     const writes: Record<string, unknown>[] = [];
     const applied = new Set<string>();
+    let confirmations = 0;
     const access: CompletionAccess = {
       kind: "owner",
       accountId: `receipt-${lostResponse}`,
@@ -755,6 +1002,7 @@ for (const lostResponse of [false, true]) {
           current = {
             ...current,
             version: current.version + 1,
+            progress: "CONFIRMED",
             receivedAmount: command.amount,
             receipt: {
               ...current.receipt!,
@@ -773,7 +1021,11 @@ for (const lostResponse of [false, true]) {
     function Screen() {
       const query = useQuery(completionQuery(current.id, access));
       return query.data
-        ? createElement(PaymentForms, { data: query.data, access })
+        ? createElement(PaymentForms, {
+            data: query.data,
+            access,
+            onConfirmed: () => confirmations++,
+          })
         : null;
     }
     const view = await render(createElement(Screen));
@@ -842,6 +1094,7 @@ for (const lostResponse of [false, true]) {
       assert.equal(next.expectedVersion, 2);
       assert.equal(next.corrects, "receipt-1");
       assert.notEqual(next.requestKey, writes[0].requestKey);
+      assert.equal(confirmations, 0);
     } finally {
       await view.unmount();
     }
