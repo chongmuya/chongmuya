@@ -68,6 +68,7 @@ export type Change = {
   createdAt: string;
   resolvedAt: string | null;
   resolutionReason?: string | null;
+  resolutionBy?: "organizer" | "merchant" | null;
   proposal: {
     agreement: Agreement;
     order: Order | null;

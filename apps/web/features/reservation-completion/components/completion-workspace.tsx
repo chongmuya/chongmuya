@@ -11,6 +11,7 @@ import { isAccessError } from "@/shared/http/access-error";
 import { completionQuery, completionKey } from "../api/completion.api";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { auditLabel } from "../lib/audit-label";
+import { changeOutcome } from "../lib/change-labels";
 import { merchantNextStep } from "../lib/merchant-next-step";
 import { depositGuidanceReady } from "../lib/deposit-guidance";
 import {
@@ -39,6 +40,7 @@ const actionLabels: Record<string, string> = {
   CHANGE_PROPOSED: "처리 내용 제안",
   CHANGE_APPLIED: "합의 적용",
   CHANGE_REJECTED: "처리 불가 안내",
+  CHANGE_DECLINED: "총무가 제안 거절",
   REFUND_RECORDED: "실제 반환 기록",
   REFUND_PROPOSED: "환불 예정액 제안",
   MANAGEMENT_LINK: "예약 관리 링크 변경",
@@ -156,8 +158,8 @@ function CompletionContent({
         Date.parse(q.confirmation.at) >= Date.parse(mostRecent.resolvedAt)))
       ? undefined
       : mostRecent;
-  const rejectionReason =
-    latest?.status === "REJECTED" ? latest.resolutionReason : undefined;
+  const merchantOutcome =
+    !organizer && latest ? changeOutcome(latest) : undefined;
   const merchantStep = organizer ? undefined : merchantNextStep(q);
   const hasPaymentActions = !q.cancellation && q.guidance.kind !== "NONE";
   const isFirstReceipt =
@@ -270,7 +272,8 @@ function CompletionContent({
           {!q.order && !q.cancellation && <MenuForm data={q} access={access} />}
           {q.order &&
             !pending &&
-            latest?.status !== "REJECTED" &&
+            (latest?.status !== "REJECTED" ||
+              latest.resolutionBy === "organizer") &&
             !q.cancellation && (
               <section className="space-y-4 rounded-control bg-surface px-5 py-6 shadow-card">
                 <h3 className="text-base font-medium">
@@ -310,6 +313,30 @@ function CompletionContent({
               )}
             </div>
           </header>
+          {merchantOutcome &&
+            merchantOutcome !== merchantStep.status &&
+            latest && (
+              <section
+                aria-label="최근 변경·취소 결과"
+                className="space-y-1 rounded-control bg-soft p-4 text-sm"
+              >
+                <p className="font-semibold text-brand-ink">
+                  {merchantOutcome}
+                </p>
+                {latest.status === "REJECTED" && (
+                  <p className="whitespace-pre-wrap wrap-anywhere text-muted">
+                    {latest.resolutionReason || "기존 예약 조건이 유지돼요."}
+                  </p>
+                )}
+                {latest.kind === "CHANGE" &&
+                  latest.status === "APPLIED" &&
+                  q.progress === "CHECK_REQUIRED" && (
+                    <p className="text-muted">
+                      변경한 조건을 적용했어요. 남은 예약 확인 사항을 봐 주세요.
+                    </p>
+                  )}
+              </section>
+            )}
           <AgreementTerms
             data={q}
             compact
@@ -320,11 +347,6 @@ function CompletionContent({
           <DepositSummary data={q} merchant />
           {merchantStep.note && (
             <p className="text-sm text-muted">{merchantStep.note}</p>
-          )}
-          {!pending && q.progress !== "CONFIRMED" && rejectionReason && (
-            <p className="text-sm text-muted">
-              변경 불가 답변 · {rejectionReason}
-            </p>
           )}
           <Button
             className="w-full"

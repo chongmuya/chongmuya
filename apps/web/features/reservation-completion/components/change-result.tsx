@@ -4,6 +4,7 @@ import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import type { Change, Completion } from "../types/completion.types";
 import { AttendanceLink, ReservationResultIcon } from "./completion-summary";
+import { changeOutcome, changeSubjectLabels } from "../lib/change-labels";
 export function ChangeResult({
   data: q,
   latest,
@@ -24,6 +25,7 @@ export function ChangeResult({
   const kind = latest.kind === "CANCEL" ? "취소" : "변경";
   const pending = latest.status === "REQUESTED" || latest.status === "PROPOSED";
   const rejected = latest.status === "REJECTED";
+  const declined = latest.resolutionBy === "organizer";
   const title =
     latest.status === "REQUESTED"
       ? organizer
@@ -33,13 +35,7 @@ export function ChangeResult({
         ? organizer
           ? "매장 제안이 도착했어요"
           : "총무의 확인을 기다려요"
-        : rejected
-          ? `예약 ${kind}${latest.kind === "CANCEL" ? "가" : "이"} 어려워요`
-          : q.cancellation
-            ? "예약 취소 완료"
-            : q.progress === "CONFIRMED"
-              ? "예약이 확정됐어요"
-              : "변경 내용이 적용됐어요";
+        : changeOutcome(latest, organizer);
   const caption =
     latest.status === "REQUESTED"
       ? organizer
@@ -48,7 +44,9 @@ export function ChangeResult({
       : latest.status === "PROPOSED"
         ? "총무가 제안을 확인하고 수락해야 적용돼요."
         : rejected
-          ? "기존 예약으로 진행할지 확인해 주세요."
+          ? declined
+            ? "기존 예약 조건이 유지돼요."
+            : "기존 예약으로 진행할지 확인해 주세요."
           : q.cancellation
             ? q.refundedAmount > 0 || (!q.receipt && !q.transfer)
               ? "취소 내역을 확인해 주세요."
@@ -92,20 +90,14 @@ export function ChangeResult({
             {kind} 요청 내용
           </h3>
           <span className="inline-block rounded-pill bg-choice px-2 py-1 text-base leading-[normal] font-medium shadow-control">
-            {{
-              SCHEDULE: "날짜·시간",
-              GUESTS: "인원",
-              MENU: "메뉴",
-              OTHER: "기타",
-              REFUND: "환불 예정액",
-            }[latest.subject] ?? kind}
+            {changeSubjectLabels[latest.subject] ?? kind}
           </span>
           <p className="whitespace-pre-wrap text-base leading-[normal] font-medium break-keep wrap-anywhere">
             {latest.reason}
           </p>
         </div>
       )}
-      {rejected ? (
+      {rejected && !declined ? (
         <div className="space-y-6">
           <div className="space-y-2">
             <h3 className="text-sm leading-[normal] font-semibold">
@@ -136,7 +128,7 @@ export function ChangeResult({
           {organizer ? "바뀐 조건 확인하기" : "예약 변경 확인하기"}
         </Button>
       )}
-      {rejected && (
+      {rejected && !declined && (
         <div className="space-y-2">
           <Button className="w-full" onClick={onContinue}>
             {q.cancellation ? "환불 내역 확인하기" : "기존 예약으로 진행하기"}

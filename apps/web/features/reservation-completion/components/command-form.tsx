@@ -45,6 +45,7 @@ export function CommandForm({
   available?: boolean;
   validate?: (
     values: Record<string, string>,
+    base: Completion,
   ) => { field: string; message: string }[];
   preview?: (values: Record<string, string>, base: Completion) => ReactNode;
   fieldSummary?: (
@@ -61,7 +62,7 @@ export function CommandForm({
     typeof fieldSource === "function" ? fieldSource(current) : fieldSource;
   const fields = fieldsFor(base);
   const schema = commandSchema(fields).superRefine((values, ctx) => {
-    for (const issue of validate?.(values) ?? [])
+    for (const issue of validate?.(values, base) ?? [])
       ctx.addIssue({
         code: "custom",
         path: [issue.field],

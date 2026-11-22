@@ -217,6 +217,16 @@ export class ReservationCompletionService {
     });
     const safeChanges = changes.map((c) => {
       const copy = structuredClone(c);
+      if (copy.proposal) {
+        const { edits, ...proposal } = copy.proposal;
+        copy.proposal = proposal;
+        if (c.status === "PROPOSED" && edits) {
+          copy.proposal.agreement = { ...s.agreement, ...edits.agreement };
+          if (!edits.order) copy.proposal.order = s.order;
+          if (!edits.guidance)
+            copy.proposal.guidance = structuredClone(s.guidance);
+        }
+      }
       if (
         organizer &&
         copy.proposal?.guidance.channel !== "WEB" &&
@@ -281,23 +291,35 @@ export class ReservationCompletionService {
             receivedAmount: s.confirmation.receivedAmount,
           }
         : null,
-      changes: safeChanges.map((change) => ({
-        ...change,
-        // Existing immutable command evidence ties a rejection to its request.
-        resolutionReason:
+      changes: safeChanges.map((change) => {
+        const resolution =
           change.status === "REJECTED"
-            ? (history.find((h) => {
+            ? history.find((h) => {
                 const command = h.evidence.command;
                 return (
-                  h.action === "CHANGE_REJECTED" &&
+                  (h.action === "CHANGE_REJECTED" ||
+                    h.action === "CHANGE_DECLINED") &&
                   command !== null &&
                   typeof command === "object" &&
                   "changeId" in command &&
                   command.changeId === change.id
                 );
-              })?.audit.reason ?? null)
-            : null,
-      })),
+              })
+            : undefined;
+        return {
+          ...change,
+          resolutionReason:
+            resolution?.action === "CHANGE_REJECTED"
+              ? resolution.audit.reason
+              : null,
+          resolutionBy:
+            resolution?.action === "CHANGE_DECLINED"
+              ? ("organizer" as const)
+              : resolution
+                ? ("merchant" as const)
+                : null,
+        };
+      }),
       history: history.map((h) => ({
         version: h.version,
         action: h.action,

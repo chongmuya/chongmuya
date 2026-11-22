@@ -1,6 +1,8 @@
 "use client";
 import { useState, type ReactNode } from "react";
-import { ProposalComparison } from "./proposal-comparison";
+import { ChangedConditions, ProposalComparison } from "./proposal-comparison";
+import { Button } from "@/shared/ui/button";
+import { fromKoreanDateInput } from "@/shared/lib/korean-date";
 import type { Completion, CompletionAccess } from "../types/completion.types";
 import { CommandForm } from "./command-form";
 import { isoDate, localDate } from "../lib/command-values";
@@ -8,11 +10,8 @@ import type { Field } from "../types/command-field";
 import { won } from "./completion-summary";
 import { guidanceFields, buildGuidance } from "../lib/guidance-fields";
 import { proposalAgreement } from "../lib/proposal-agreement";
-import {
-  spaceLabels,
-  seatingLabels,
-  usageLabel,
-} from "../lib/agreement-labels";
+import { changeOutcome, changeSubjectLabels } from "../lib/change-labels";
+import { spaceLabels, seatingLabels } from "../lib/agreement-labels";
 export function ChangeForms({
   data: q,
   access,
@@ -37,31 +36,57 @@ export function ChangeForms({
   const [lastPending, setLastPending] = useState(pending);
   if (pending && lastPending?.id !== pending.id) setLastPending(pending);
   const editable = pending ?? lastPending;
-  const title =
-    pending?.status === "PROPOSED" && organizer
-      ? pending.kind === "CANCEL"
+  const [reply, setReply] = useState<{
+    id: string;
+    action: "propose" | "reject";
+  }>();
+  const [decliningId, setDecliningId] = useState<string>();
+  const replyAction =
+    reply && reply.id === editable?.id ? reply.action : undefined;
+  const deciding = organizer && pending?.status === "PROPOSED";
+  const declining = deciding && decliningId === pending.id;
+  const cancel = pending?.kind === "CANCEL";
+  const title = declining
+    ? "제안을 거절할까요?"
+    : deciding
+      ? cancel
         ? "예약 취소를 수락할까요?"
         : "예약 변경을 수락할까요?"
-      : "예약 변경·취소";
+      : pending?.status === "PROPOSED"
+        ? cancel
+          ? "보낸 취소안"
+          : "보낸 변경안"
+        : pending
+          ? cancel
+            ? "예약 취소 문의"
+            : "예약 변경 문의"
+          : "예약 변경·취소";
   return (
     <section className="space-y-7">
-      {!pending?.proposal && (
+      {(!pending?.proposal || declining) && (
         <h3 className="text-center text-2xl leading-[1.5] font-bold text-brand-ink">
           {title}
         </h3>
       )}
-      {pending && (
-        <div className={pending.proposal ? undefined : "space-y-4 text-sm"}>
+      {pending && !declining && (
+        <div
+          className={
+            pending.proposal
+              ? undefined
+              : "space-y-2 rounded-control bg-soft p-4 text-sm"
+          }
+        >
           {!pending.proposal && (
             <>
-              <p>
-                {pending.kind === "CANCEL" ? "취소" : "변경"} 문의 ·{" "}
-                {pending.status === "REQUESTED"
-                  ? "매장 확인 대기"
-                  : "합의 내용 확인 대기"}
+              <p className="font-semibold">
+                {cancel
+                  ? "취소 요청 내용"
+                  : (changeSubjectLabels[pending.subject] ?? "기타")}
               </p>
               <p className="whitespace-pre-wrap">{pending.reason}</p>
-              <p>문의만으로 예약 조건이나 환불이 바뀌지 않아요.</p>
+              <p className="break-keep text-muted">
+                총무가 처리안을 수락할 때까지 기존 예약이 유지돼요.
+              </p>
             </>
           )}
           {pending.proposal && (
@@ -71,6 +96,7 @@ export function ChangeForms({
               kind={pending.kind}
               onDetails={onDetails}
               title={title}
+              organizer={organizer}
             />
           )}
         </div>
@@ -129,52 +155,111 @@ export function ChangeForms({
           })}
         />
       )}
-      {pending?.status === "PROPOSED" &&
-        organizer &&
-        !(
-          pending.kind === "CHANGE" && pending.proposal?.refundExpected !== null
-        ) && (
+      {deciding &&
+        (declining ? (
           <CommandForm
+            key={`decline-${pending.id}`}
             {...props}
-            action="change-accept"
+            action="change-decline"
             onDone={onClose}
-            title="수락하기"
+            title="거절하고 기존 예약 유지"
             hideTitle
-            onCancel={onClose}
+            description="사장님에게 거절 결과가 표시돼요. 예약 조건은 유지돼요."
+            onCancel={() => setDecliningId(undefined)}
             fields={[]}
-            build={() => ({ changeId: pending.id, confirmed: true })}
+            build={() => ({ changeId: pending.id })}
           />
-        )}
+        ) : (
+          <div className="space-y-3">
+            {!(
+              pending.kind === "CHANGE" &&
+              pending.proposal?.refundExpected !== null
+            ) && (
+              <CommandForm
+                key={`accept-${pending.id}`}
+                {...props}
+                action="change-accept"
+                onDone={onClose}
+                title={cancel ? "수락하고 예약 취소" : "수락하고 예약 변경"}
+                hideTitle
+                fields={[]}
+                build={() => ({ changeId: pending.id, confirmed: true })}
+              />
+            )}
+            <Button
+              variant="brand-outline"
+              className="w-full"
+              onClick={() => setDecliningId(pending.id)}
+            >
+              제안 거절
+            </Button>
+          </div>
+        ))}
       {editable && !organizer && (
         <>
-          {lastPending?.status === "REQUESTED" && (
+          {!replyAction && pending?.status === "REQUESTED" && (
+            <div className="space-y-3">
+              <Button
+                className="w-full"
+                onClick={() => setReply({ id: pending.id, action: "propose" })}
+              >
+                {cancel ? "취소 가능 답변" : "변경안 작성"}
+              </Button>
+              <Button
+                variant="brand-outline"
+                className="w-full"
+                onClick={() => setReply({ id: pending.id, action: "reject" })}
+              >
+                {cancel ? "취소 불가 답변" : "변경 불가 답변"}
+              </Button>
+            </div>
+          )}
+          {!replyAction && pending?.status === "PROPOSED" && (
+            <Button
+              variant="brand-outline"
+              className="w-full"
+              onClick={() => setReply({ id: pending.id, action: "reject" })}
+            >
+              보낸 제안 철회
+            </Button>
+          )}
+          {replyAction === "propose" && (
             <ProposalForm
               key={editable.id}
               {...props}
               changeId={editable.id}
               cancel={editable.kind === "CANCEL"}
+              subject={editable.subject}
               onDone={onClose}
               available={
                 pending?.id === editable.id && pending.status === "REQUESTED"
               }
             />
           )}
-          <CommandForm
-            {...props}
-            available={!!pending}
-            action="change-reject"
-            onDone={onClose}
-            title="문의 불가 결과 안내"
-            fields={[
-              {
-                name: "reason",
-                label: "처리 불가 사유",
-                type: "textarea",
-                max: 500,
-              },
-            ]}
-            build={(v) => ({ changeId: editable.id, reason: v.reason })}
-          />
+          {replyAction === "reject" && (
+            <CommandForm
+              key={`reject-${editable.id}`}
+              {...props}
+              available={pending?.id === editable.id}
+              action="change-reject"
+              onDone={onClose}
+              title={
+                editable.status === "PROPOSED"
+                  ? "제안 철회하기"
+                  : `${editable.kind === "CANCEL" ? "취소" : "변경"} 불가 답변 보내기`
+              }
+              hideTitle
+              fields={[
+                {
+                  name: "reason",
+                  label: "처리 불가 사유",
+                  type: "textarea",
+                  max: 500,
+                },
+              ]}
+              build={(v) => ({ changeId: editable.id, reason: v.reason })}
+            />
+          )}
         </>
       )}
       {q.cancellation && !organizer && (
@@ -208,7 +293,7 @@ export function ChangeForms({
           })}
         />
       )}
-      {onClose && !(pending?.status === "PROPOSED" && organizer) && (
+      {onClose && !declining && (
         <button
           type="button"
           className="min-h-11 w-full text-sm text-muted"
@@ -233,8 +318,8 @@ export function ChangeForms({
                   {
                     REQUESTED: "문의 중",
                     PROPOSED: "제안 중",
-                    APPLIED: "적용 완료",
-                    REJECTED: "처리 불가",
+                    APPLIED: changeOutcome(c, organizer),
+                    REJECTED: changeOutcome(c, organizer),
                   }[c.status]
                 }
                 <p>{c.reason}</p>
@@ -250,11 +335,20 @@ export function ChangeForms({
     </section>
   );
 }
+function proposalMenu(q: Completion) {
+  const catalog = q.catalog.menus;
+  const unavailable = (q.order?.lines ?? [])
+    .filter((line) => !catalog.some((menu) => menu.id === line.id))
+    .map((line) => ({ ...line, available: false }));
+  return [...catalog, ...unavailable];
+}
+
 function ProposalForm({
   data: q,
   access,
   changeId,
   cancel,
+  subject,
   available,
   onDone,
 }: {
@@ -262,14 +356,44 @@ function ProposalForm({
   access: CompletionAccess;
   changeId: string;
   cancel: boolean;
+  subject: string;
   available: boolean;
   onDone?: () => void;
 }) {
-  const fields: Field[] = [
-    { name: "reason", label: "합의할 처리 내용", type: "textarea", max: 500 },
-  ];
-  if (!cancel)
-    fields.push(
+  const primary =
+    subject === "SCHEDULE"
+      ? "startsAt"
+      : subject === "GUESTS"
+        ? "expectedGuests"
+        : undefined;
+  const menuPrimary = subject === "MENU";
+  const related = (values: Partial<Record<string, string>>) =>
+    values.related === "yes";
+  const editMenu = (values: Partial<Record<string, string>>) =>
+    menuPrimary || (related(values) && values.replaceMenu === "yes");
+  const editGuidance = (values: Partial<Record<string, string>>) =>
+    related(values) && values.replaceGuidance === "yes";
+  const agreementEdits = (values: Record<string, string>, base: Completion) =>
+    proposalAgreement(
+      values,
+      base.agreement,
+      (field) => field === primary || related(values),
+    );
+  const menuEdits = (values: Record<string, string>, base: Completion) => {
+    if (!editMenu(values)) return undefined;
+    const items = proposalMenu(base).map((m) => ({
+      id: m.id,
+      quantity: Number(values[`menu_${m.id}`] || 0),
+    }));
+    const original = new Map(
+      base.order?.lines.map((line) => [line.id, line.quantity]),
+    );
+    if (items.every(({ id, quantity }) => quantity === (original.get(id) ?? 0)))
+      return undefined;
+    return { catalogVersion: base.catalog.version, items };
+  };
+  const fields = (q: Completion): Field[] => {
+    const termFields: Field[] = [
       {
         name: "startsAt",
         label: "변경할 일정",
@@ -376,32 +500,67 @@ function ProposalForm({
             : String(q.agreement.separateFee),
         optional: true,
       },
+    ];
+    const menuFields: Field[] = proposalMenu(q).map((m) => ({
+      name: `menu_${m.id}`,
+      label: `${m.name} · ${won(m.price)}${!m.available ? " · 품절" : ""} 수량`,
+      type: "number",
+      when: editMenu,
+      value: String(q.order?.lines.find((l) => l.id === m.id)?.quantity ?? 0),
+      optional: true,
+    }));
+    return [
+      ...(!cancel
+        ? [
+            ...termFields.filter((field) => field.name === primary),
+            ...(menuPrimary ? menuFields : []),
+            {
+              name: "related",
+              label: "관련 조건 추가",
+              type: "checkbox" as const,
+              optional: true,
+            },
+            ...termFields
+              .filter((field) => field.name !== primary)
+              .map((field) => ({
+                ...field,
+                when: (values: Partial<Record<string, string>>) =>
+                  related(values) && field.when?.(values) !== false,
+              })),
+            ...(!menuPrimary
+              ? [
+                  {
+                    name: "replaceMenu",
+                    label: "주문 메뉴도 변경하기",
+                    type: "checkbox" as const,
+                    optional: true,
+                    when: related,
+                  },
+                  ...menuFields,
+                ]
+              : []),
+            {
+              name: "replaceGuidance",
+              label: "예약금 안내도 변경하기",
+              type: "checkbox" as const,
+              optional: true,
+              when: related,
+            },
+            ...guidanceFields(q).map((field) => ({
+              ...field,
+              when: (values: Partial<Record<string, string>>) =>
+                editGuidance(values) && field.when?.(values) !== false,
+            })),
+          ]
+        : []),
       {
-        name: "replaceMenu",
-        label: "주문 메뉴도 변경하기",
-        type: "checkbox",
-        optional: true,
+        name: "reason",
+        label: cancel ? "취소 가능 답변" : "총무에게 전할 내용",
+        type: "textarea",
+        max: 500,
       },
-      ...q.catalog.menus.map((m) => ({
-        name: `menu_${m.id}`,
-        label: `${m.name} · ${won(m.price)}${!m.available ? " · 품절" : ""} 수량`,
-        type: "number" as const,
-        when: (v: Partial<Record<string, string>>) => v.replaceMenu === "yes",
-        value: String(q.order?.lines.find((l) => l.id === m.id)?.quantity ?? 0),
-        optional: true,
-      })),
-      {
-        name: "replaceGuidance",
-        label: "예약금 안내도 변경하기",
-        type: "checkbox",
-        optional: true,
-      },
-      ...guidanceFields(q).map((f) => ({
-        ...f,
-        when: (v: Partial<Record<string, string>>) =>
-          v.replaceGuidance === "yes" && f.when?.(v) !== false,
-      })),
-    );
+    ];
+  };
   return (
     <CommandForm
       data={q}
@@ -409,110 +568,123 @@ function ProposalForm({
       available={available}
       action="change-propose"
       onDone={onDone}
-      title="처리 내용 제안"
-      description="총무가 수락하기 전에는 기존 조건이 유지돼요. 변경 후 메뉴·금액·기한을 다시 검증해요."
+      title={cancel ? "취소안 보내기" : "변경안 보내기"}
+      hideTitle
+      description={cancel ? "총무가 수락하면 예약이 취소돼요." : undefined}
       fields={fields}
       validate={
         cancel
           ? undefined
-          : (v) =>
-              v.usageKind === "MINUTES" &&
-              (!v.usageMinutes ||
-                Number(v.usageMinutes) < 1 ||
-                Number(v.usageMinutes) > 1440)
-                ? [
-                    {
-                      field: "usageMinutes",
-                      message: "이용시간을 1~1440분으로 입력해 주세요.",
-                    },
-                  ]
-                : []
+          : (values, base) => {
+              const errors = [];
+              if (
+                primary &&
+                agreementEdits(values, base)[primary] === undefined
+              )
+                errors.push({
+                  field: primary,
+                  message:
+                    primary === "startsAt"
+                      ? "기존 예약과 다른 날짜 또는 시간을 입력해 주세요."
+                      : "기존 예약과 다른 인원을 입력해 주세요.",
+                });
+              if (menuPrimary && !menuEdits(values, base))
+                errors.push({
+                  field: "root",
+                  message: "기존 주문의 메뉴나 수량을 바꿔 주세요.",
+                });
+              if (
+                related(values) &&
+                values.usageKind === "MINUTES" &&
+                (!values.usageMinutes ||
+                  Number(values.usageMinutes) < 1 ||
+                  Number(values.usageMinutes) > 1440)
+              )
+                errors.push({
+                  field: "usageMinutes",
+                  message: "이용시간을 1~1440분으로 입력해 주세요.",
+                });
+              return errors;
+            }
       }
       preview={
         cancel
           ? undefined
-          : (values, base) => (
-              <div className="space-y-5 rounded-[12px] border border-placeholder px-5 py-6 text-sm">
-                <h4 className="text-xl font-semibold">바꾼 조건</h4>
-                <dl className="space-y-3">
-                  {[
-                    [
-                      "공간",
-                      spaceLabels[base.agreement.space],
-                      spaceLabels[values.space as keyof typeof spaceLabels],
-                    ],
-                    [
-                      "착석",
-                      seatingLabels[base.agreement.seating],
-                      seatingLabels[
-                        values.seating as keyof typeof seatingLabels
-                      ],
-                    ],
-                    [
-                      "이용시간",
-                      usageLabel(base.agreement),
-                      values.usageKind === "UNLIMITED"
-                        ? "제한 없음"
-                        : values.usageKind === "MINUTES"
-                          ? `${values.usageMinutes || "미입력"}분`
-                          : "미확인",
-                    ],
-                    [
-                      "추가 안내",
-                      base.agreement.note || "없음",
-                      values.note || "없음",
-                    ],
-                    [
-                      "변경·취소 조건",
-                      base.agreement.changeCancellationPolicy || "미확인",
-                      values.changeCancellationPolicy || "미확인",
-                    ],
-                  ].map(([label, before, after]) => (
-                    <div
-                      key={label}
-                      className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
-                    >
-                      <dt className="text-muted">{label}</dt>
-                      <dd className="space-y-1 whitespace-pre-wrap wrap-anywhere">
-                        {before === after ? (
-                          <span>{after}</span>
-                        ) : (
-                          <>
-                            <span className="block line-through">{before}</span>
-                            <span className="block text-brand">→ {after}</span>
-                          </>
-                        )}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )
-      }
-      build={(v, b) => ({
-        changeId,
-        reason: v.reason,
-        refundExpected: null,
-        ...(!cancel
-          ? {
-              agreement: proposalAgreement(v, b.agreement),
-              ...(v.replaceMenu === "yes"
+          : (values, base) => {
+              const menu = menuEdits(values, base);
+              const lines = menu?.items.flatMap(({ id, quantity }) => {
+                const item = proposalMenu(base).find(
+                  (entry) => entry.id === id,
+                );
+                return quantity > 0 && item?.price != null
+                  ? [
+                      {
+                        id,
+                        name: item.name,
+                        quantity,
+                        unit: item.unit,
+                        price: item.price,
+                        subtotal: item.price * quantity,
+                      },
+                    ]
+                  : [];
+              });
+              const order = lines
                 ? {
-                    menu: {
-                      catalogVersion: b.catalog.version,
-                      items: b.catalog.menus.map((m) => ({
-                        id: m.id,
-                        quantity: Number(v[`menu_${m.id}`] || 0),
-                      })),
-                    },
+                    revision: (base.order?.revision ?? 0) + 1,
+                    catalogVersion: base.catalog.version,
+                    lines,
+                    total: lines.reduce((sum, line) => sum + line.subtotal, 0),
+                    submittedAt: base.order?.submittedAt ?? "",
+                    currency: "KRW" as const,
                   }
-                : {}),
-              ...(v.replaceGuidance === "yes"
-                ? { guidance: buildGuidance(v) }
-                : {}),
+                : base.order;
+              const editingGuidance =
+                editGuidance(values) &&
+                (values.kind === "NONE" ||
+                  (values.deadline && fromKoreanDateInput(values.deadline)));
+              const guidance = editingGuidance
+                ? {
+                    ...base.guidance,
+                    ...buildGuidance(values),
+                    kind:
+                      values.kind === "NONE"
+                        ? ("NONE" as const)
+                        : ("REQUIRED" as const),
+                    channel:
+                      values.channel === "WEB"
+                        ? ("WEB" as const)
+                        : ("SMS" as const),
+                  }
+                : base.guidance;
+              return (
+                <ChangedConditions
+                  data={base}
+                  proposal={{
+                    agreement: {
+                      ...base.agreement,
+                      ...agreementEdits(values, base),
+                    },
+                    order,
+                    guidance,
+                  }}
+                />
+              );
             }
-          : {}),
-      })}
+      }
+      build={(values, base) => {
+        const agreement = cancel ? {} : agreementEdits(values, base);
+        const menu = cancel ? undefined : menuEdits(values, base);
+        return {
+          changeId,
+          reason: values.reason,
+          refundExpected: null,
+          ...(Object.keys(agreement).length > 0 && { agreement }),
+          ...(menu && { menu }),
+          ...(!cancel &&
+            editGuidance(values) && { guidance: buildGuidance(values) }),
+        };
+      }}
     />
   );
 }
