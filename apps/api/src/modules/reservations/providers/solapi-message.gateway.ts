@@ -74,6 +74,7 @@ export class SolapiMessageGateway extends MessageGateway {
     attempt = 1,
   ): Promise<SendResult> {
     const e = this.config.environment;
+    if (!e.smsSendEnabled) throw new DomainHttpException("SMS_DISABLED");
     if (!e.solapiApiKey || !e.solapiApiSecret || !e.solapiSenderNumber)
       return {
         status: "FAILED",

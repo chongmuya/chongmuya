@@ -243,7 +243,9 @@ export function ProposalCard({
             ? "전달 실패"
             : t.deliveryStatus === "UNKNOWN"
               ? "접수 확인 필요"
-              : "발송 보류"}{" "}
+              : t.delivery?.errorCode === "SMS_DISABLED"
+                ? "발송 중지"
+                : "발송 보류"}{" "}
           · 문의 내용은 저장됐어요.
         </p>
       )}

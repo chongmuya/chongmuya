@@ -122,6 +122,94 @@ test("selection, reinquiry and durable notifications serialize competing command
     },
   });
   await t.test(
+    "paused inquiry and follow-up deliveries stay held after resuming",
+    async (t) => {
+      const environment = app.get(ConfigService).environment;
+      const gateway = app.get(MessageGateway);
+      const send = t.mock.method(gateway, "send");
+      const deliveries = app.get(MessageDeliveryService);
+      const followUps = app.get(ReservationNotificationsService);
+      const preexisting = await fixture();
+      const earlier = await db.manager.findOneByOrFail(MessageDelivery, {
+        targetId: preexisting.request.targets[0].id,
+      });
+      await db.manager.update(
+        MessageDelivery,
+        { id: earlier.id },
+        {
+          status: "FAILED",
+          failureStage: "SUBMISSION",
+        },
+      );
+      send.mock.resetCalls();
+      environment.smsSendEnabled = false;
+      t.after(() => {
+        environment.smsSendEnabled = true;
+      });
+
+      const { event, request } = await fixture();
+      const [target] = request.targets;
+      assert(
+        request.targets.every(
+          (item) =>
+            item.deliveryStatus === "HELD" &&
+            item.delivery?.errorCode === "SMS_DISABLED",
+        ),
+      );
+      await replies.save(target.id, principal, proposal(request), "sms-paused");
+      const saved = await get(event.id);
+      assert.deepEqual(
+        saved.notifications.map(({ status, errorCode }) => ({
+          status,
+          errorCode,
+        })),
+        [{ status: "HELD", errorCode: "SMS_DISABLED" }],
+      );
+      const [notice] = saved.notifications;
+      assert.equal(
+        await db.manager.countBy(Notification, {
+          eventKey: `${request.id}:${target.id}:REPLY_RECEIVED:1`,
+        }),
+        1,
+      );
+      assert.deepEqual(await deliveries.dispatch(earlier.id, principal), {
+        dispatchAttempted: false,
+      });
+      assert.equal(
+        (await db.manager.findOneByOrFail(MessageDelivery, { id: earlier.id }))
+          .errorCode,
+        "SMS_DISABLED",
+      );
+      assert.equal(send.mock.callCount(), 0);
+
+      environment.smsSendEnabled = true;
+      await deliveries.dispatchRequest(request.id);
+      await followUps.dispatchRequest(request.id);
+      await assert.rejects(deliveries.dispatch(earlier.id, principal), {
+        code: "DELIVERY_RETRY_BLOCKED",
+      });
+      await assert.rejects(followUps.dispatch(notice.id, principal), {
+        code: "DELIVERY_RETRY_BLOCKED",
+      });
+      assert.equal(send.mock.callCount(), 0);
+      assert.equal(
+        (
+          await db.manager.findOneByOrFail(NotificationMessage, {
+            id: notice.id,
+          })
+        ).attempts,
+        0,
+      );
+      const fresh = await fixture();
+      assert(
+        fresh.request.targets.every(
+          (item) => item.deliveryStatus === "ACCEPTED",
+        ),
+      );
+      assert.equal(send.mock.callCount(), fresh.request.targets.length);
+    },
+  );
+  await t.test(
     "fake delivery sends one inquiry and only material replies and seat releases",
     async (t) => {
       const gateway = app.get(MessageGateway);
@@ -446,12 +534,13 @@ test("selection, reinquiry and durable notifications serialize competing command
         notices = app.get(NotificationsService);
       const provider = new SolapiMessageGateway({
         environment: {
+          ...app.get(ConfigService).environment,
           solapiApiKey: "fake",
           solapiApiSecret: "fake",
           solapiSenderNumber: "0299999999",
           providerTimeoutMs: 100,
         },
-      } as ConfigService);
+      });
       let mode = 403;
       const originalFetch = globalThis.fetch;
       t.mock.method(

@@ -106,6 +106,7 @@ test("configuration rejects missing/invalid required values without exposing val
     { DATABASE_URL: databaseUrl, NODE_ENV: "staging" },
     { DATABASE_URL: databaseUrl, API_DOCS_ENABLED: "yes" },
     { DATABASE_URL: databaseUrl, API_DOCS_ENABLED: "" },
+    { DATABASE_URL: databaseUrl, SMS_SEND_ENABLED: "yes" },
     { DATABASE_URL: databaseUrl, OCTOMO_API_KEY: "" },
     { DATABASE_URL: databaseUrl, OCTOMO_API_KEY: "private-password bad" },
     { DATABASE_URL: databaseUrl, KAKAO_ADMIN_KEY: "private-password bad" },
@@ -143,6 +144,7 @@ test("configuration rejects missing/invalid required values without exposing val
       filesMaxBytes: 524288000,
       trustProxyHops: 0,
       messageProvider: "fake",
+      smsSendEnabled: true,
       solapiApiKey: undefined,
       solapiApiSecret: undefined,
       solapiSenderNumber: undefined,
@@ -171,6 +173,11 @@ test("configuration rejects missing/invalid required values without exposing val
       databaseUrl,
       docsEnabled: true,
     },
+  );
+  assert.equal(
+    parseEnvironment({ DATABASE_URL: databaseUrl, SMS_SEND_ENABLED: "false" })
+      .smsSendEnabled,
+    false,
   );
   assert.equal(
     parseEnvironment({ DATABASE_URL: databaseUrl, API_DOCS_ENABLED: "false" })

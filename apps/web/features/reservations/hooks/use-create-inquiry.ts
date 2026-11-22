@@ -7,7 +7,7 @@ import {
 import type { SessionRequest } from "@/features/auth/types";
 import { useActiveScreen } from "@/shared/hooks/use-active-screen";
 import { createInquiry, inquiryKey } from "../api/reservations.api";
-import type { CreateInquiry } from "../types/inquiry.types";
+import type { CreateInquiry, ReservationRequest } from "../types/inquiry.types";
 import { ApiError } from "@/shared/http/api-error";
 import { eventKeys } from "@/features/events/client";
 
@@ -15,6 +15,7 @@ export function useCreateInquiry(
   accountId: string,
   eventId: string,
   request: SessionRequest,
+  onSaved: (inquiry: ReservationRequest) => void,
 ) {
   const cache = useQueryClient();
   const active = useActiveScreen();
@@ -31,6 +32,7 @@ export function useCreateInquiry(
         exact: true,
       });
       if (active.current) {
+        onSaved(data);
         cache.setQueryData(inquiryKey(accountId, eventId), data);
         await cache.invalidateQueries({
           refetchType: onlineManager.isOnline() ? "active" : "none",

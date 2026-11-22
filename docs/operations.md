@@ -18,6 +18,10 @@
 
 개발/테스트는 fake 공급자를 사용하며 demo 수신자는 실발송 경계에서 차단한다. 운영은 `MESSAGE_PROVIDER=solapi`, `GEOCODING_PROVIDER=naver`와 관련 키·등록 발신번호·운영 문의 이메일을 설정한다. 설정 이름과 필수 조합은 [환경 예제](../apps/api/.env.example)·[검증 코드](../apps/api/src/config/environment.ts)를 따른다.
 
+서버 문자 발송을 중지하려면 Parameter Store `/chongmuya/prod/SMS_SEND_ENABLED`에 `false`를 설정하고 API 컨테이너를 재배포한다. 기본값은 `true`다. 중지 중에는 문의·예약 기록, 앱 알림함, 기존 문자 결과 조회와 웹훅을 계속 처리한다. 사용자가 직접 보내는 휴대폰 인증 문자에는 적용되지 않는다.
+
+중지 중 생성하거나 발송을 시도한 문자는 `HELD`와 `SMS_DISABLED`로 기록한다. 운영 CLI의 발송·재발송에도 같은 설정을 적용한다. 설정을 다시 `true`로 배포해도 중지된 건은 자동 발송 대상이 되지 않는다. 이미 SOLAPI에 접수된 건은 발송 이력에서 확인한다.
+
 `MERCHANT_REPLY_TOKEN_ENCRYPTION_KEY`는 링크 암호화용 64자리 hex이며 기존 링크를 사용하는 동안 유지한다. 문의 답변 링크의 `MERCHANT_REPLY_TTL_HOURS`와 예약 관리 링크의 `RESERVATION_MANAGEMENT_TTL_HOURS`는 별개이며 기본값은 각각 168시간이다. 문의 답변은 행사 시작 시각도 만료 상한으로 사용한다.
 
 SOLAPI의 공개 callback은 `POST /api/v1/webhooks/solapi`이며 `SOLAPI_WEBHOOK_SECRET`과 원문 본문의 `X-Solapi-Signature`로 검증한다. `SINGLE-REPORT` 연결, 등록 발신번호·잔액·송신 IP·권한은 실제 환경에서 확인한다. `ACCEPTED`는 공급자 접수이며 휴대폰 전달 완료가 아니다.

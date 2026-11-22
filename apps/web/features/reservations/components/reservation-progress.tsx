@@ -214,7 +214,10 @@ function InquiryReceipt({
                     DELIVERED: "전달 완료",
                     FAILED: "전달 실패 · 운영 확인 필요",
                     UNKNOWN: "접수 확인 필요 · 자동 재발송하지 않아요",
-                    HELD: "발송 보류",
+                    HELD:
+                      n.errorCode === "SMS_DISABLED"
+                        ? "발송 중지"
+                        : "발송 보류",
                   } as Record<string, string>
                 )[n.status] ?? n.status}
                 {n.provider === "fake" ? " (체험)" : ""}
