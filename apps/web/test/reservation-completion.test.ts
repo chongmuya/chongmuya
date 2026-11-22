@@ -258,20 +258,26 @@ test("an attendance request initially shows only the requested field and omits h
         .querySelector<HTMLInputElement>('input[type="checkbox"]')!
         .click(),
     );
-    await fill(view.container, "expectedGuests", "17");
-    const rows = [...view.container.querySelectorAll("dt")].map(
-      (row) => row.textContent,
-    );
-    assert.deepEqual(rows, ["인원"]);
     await act(async () => {
       const reason =
         view.container.querySelector<HTMLTextAreaElement>('[name="reason"]')!;
       Object.getOwnPropertyDescriptor(
         window.HTMLTextAreaElement.prototype,
         "value",
-      )!.set!.call(reason, "17명으로 변경할 수 있어요.");
+      )!.set!.call(reason, "변경할 수 있어요.");
       reason.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
+    await submit(view.container);
+    assert.equal(writes.length, 0);
+    assert.match(
+      view.container.textContent!,
+      /기존 예약과 다른 인원을 입력해 주세요/,
+    );
+    await fill(view.container, "expectedGuests", "17");
+    const rows = [...view.container.querySelectorAll("dt")].map(
+      (row) => row.textContent,
+    );
+    assert.deepEqual(rows, ["인원"]);
     await submit(view.container);
     await until(() => assert.equal(writes.length, 1));
     assert.deepEqual(writes[0].agreement, { expectedGuests: 17 });

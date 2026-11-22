@@ -575,19 +575,37 @@ function ProposalForm({
       validate={
         cancel
           ? undefined
-          : (v) =>
-              related(v) &&
-              v.usageKind === "MINUTES" &&
-              (!v.usageMinutes ||
-                Number(v.usageMinutes) < 1 ||
-                Number(v.usageMinutes) > 1440)
-                ? [
-                    {
-                      field: "usageMinutes",
-                      message: "이용시간을 1~1440분으로 입력해 주세요.",
-                    },
-                  ]
-                : []
+          : (values, base) => {
+              const errors = [];
+              if (
+                primary &&
+                agreementEdits(values, base)[primary] === undefined
+              )
+                errors.push({
+                  field: primary,
+                  message:
+                    primary === "startsAt"
+                      ? "기존 예약과 다른 날짜 또는 시간을 입력해 주세요."
+                      : "기존 예약과 다른 인원을 입력해 주세요.",
+                });
+              if (menuPrimary && !menuEdits(values, base))
+                errors.push({
+                  field: "root",
+                  message: "기존 주문의 메뉴나 수량을 바꿔 주세요.",
+                });
+              if (
+                related(values) &&
+                values.usageKind === "MINUTES" &&
+                (!values.usageMinutes ||
+                  Number(values.usageMinutes) < 1 ||
+                  Number(values.usageMinutes) > 1440)
+              )
+                errors.push({
+                  field: "usageMinutes",
+                  message: "이용시간을 1~1440분으로 입력해 주세요.",
+                });
+              return errors;
+            }
       }
       preview={
         cancel

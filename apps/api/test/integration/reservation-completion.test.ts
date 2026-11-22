@@ -13,6 +13,7 @@ import { ReservationPaymentsService } from "../../src/modules/reservations/reser
 import { ReservationChangesService } from "../../src/modules/reservations/reservation-changes.service.js";
 import { ReservationAccessService } from "../../src/modules/reservations/reservation-access.service.js";
 import {
+  ReservationChange,
   ReservationManagementLink,
   ReservationCompletionHistory,
   ReservationProgress,
@@ -1691,6 +1692,168 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       assert.equal(v.agreement.startsAt, proposedStart);
       assert.equal(v.progress, "CONFIRMED");
       assert.equal(v.guidance.revision, v.receipt?.guidanceRevision);
+    },
+  );
+  await t.test(
+    "only a current full receipt carries an unchanged deadline across an earlier schedule",
+    async () => {
+      for (const scenario of ["paid", "partial", "legacy"] as const) {
+        let v = await fixture("UNKNOWN");
+        const startsAt = Date.parse(v.agreement.startsAt);
+        const deadline = new Date(startsAt - 3600_000).toISOString();
+        const earlier = new Date(startsAt - 5400_000).toISOString();
+        const terms = {
+          kind: "REQUIRED" as const,
+          amount: 10000,
+          deadline,
+          channel: "SMS" as const,
+          bank: "테스트은행",
+          account: "1000-0000",
+          holder: "테스트 매장",
+          policy: "합의 후 처리",
+          webConsent: false,
+        };
+        v = await payments.guidance(v.id, operator, {
+          ...key(v.version),
+          ...terms,
+        });
+        v = await post(v.id, "menu-submit", menu(v));
+        v = await payments.receipt(v.id, operator, {
+          ...key(v.version),
+          guidanceRevision: v.guidance.revision,
+          amount: scenario === "partial" ? 9000 : 10000,
+          receivedAt: new Date().toISOString(),
+          corrects: null,
+          reason: "입금 내역 확인",
+        });
+        const before = v;
+        v = await post(v.id, "change-request", {
+          ...key(v.version),
+          kind: "CHANGE",
+          subject: "SCHEDULE",
+          reason: "일정을 앞당겨 주세요.",
+        });
+        const changeId = v.changes[0].id;
+        const input = {
+          ...key(v.version),
+          changeId,
+          reason: "시간 변경 가능",
+          agreement: { startsAt: earlier },
+        };
+        if (scenario === "partial") {
+          await assert.rejects(changes.propose(v.id, operator, input));
+          assert.equal((await view(v.id)).changes[0].status, "REQUESTED");
+          continue;
+        }
+        if (scenario === "legacy") {
+          v = await changes.propose(v.id, operator, {
+            ...input,
+            agreement: {
+              startsAt: new Date(startsAt - 1800_000).toISOString(),
+            },
+          });
+          const change = await db.manager.findOneByOrFail(ReservationChange, {
+            id: changeId,
+          });
+          const proposal = change.proposal!;
+          change.proposal = {
+            ...proposal,
+            agreement: { ...proposal.agreement, startsAt: earlier },
+            guidance: {
+              ...proposal.guidance,
+              revision: before.guidance.revision + 1,
+            },
+            edits: undefined,
+          };
+          await db.manager.save(change);
+        } else {
+          await assert.rejects(
+            changes.propose(v.id, operator, {
+              ...input,
+              guidance: { ...terms, amount: 12000 },
+            }),
+          );
+          v = await changes.propose(v.id, operator, {
+            ...input,
+            guidance: terms,
+          });
+        }
+        v = await post(v.id, "change-accept", {
+          ...key(v.version),
+          changeId,
+          confirmed: true,
+        });
+        assert.equal(v.agreement.startsAt, earlier);
+        assert.equal(v.progress, "CONFIRMED");
+        assert.equal(v.guidance.revision, before.guidance.revision);
+        assert.deepEqual(v.receipt, before.receipt);
+      }
+    },
+  );
+  await t.test(
+    "typed change requests require a changed value on proposal and acceptance",
+    async () => {
+      for (const subject of ["SCHEDULE", "GUESTS", "MENU"] as const) {
+        let v = await fixture();
+        v = await post(v.id, "menu-submit", menu(v));
+        const before = v;
+        v = await post(v.id, "change-request", {
+          ...key(v.version),
+          kind: "CHANGE",
+          subject,
+          reason: "조건 변경 문의",
+        });
+        const changeId = v.changes[0].id;
+        const input = { ...key(v.version), changeId, reason: "가능합니다." };
+        const existingMenu = {
+          catalogVersion: v.catalog.version,
+          items: menu(v).items,
+        };
+        await assert.rejects(
+          changes.propose(v.id, operator, {
+            ...input,
+            agreement: { ...before.agreement, note: "추가 안내" },
+            menu: existingMenu,
+          }),
+        );
+        assert.equal((await view(v.id)).changes[0].status, "REQUESTED");
+        const nextStartsAt = new Date(
+          Date.parse(before.agreement.startsAt) + 1800_000,
+        ).toISOString();
+        const nextMenu = {
+          ...existingMenu,
+          items: existingMenu.items.map((line) => ({ ...line, quantity: 3 })),
+        };
+        v = await changes.propose(v.id, operator, {
+          ...input,
+          ...(subject === "SCHEDULE" && {
+            agreement: { startsAt: nextStartsAt },
+          }),
+          ...(subject === "GUESTS" && { agreement: { expectedGuests: 19 } }),
+          ...(subject === "MENU" && { menu: nextMenu }),
+        });
+        const change = await db.manager.findOneByOrFail(ReservationChange, {
+          id: changeId,
+        });
+        change.proposal = {
+          ...change.proposal!,
+          agreement: before.agreement,
+          order: before.order,
+          edits: undefined,
+        };
+        await db.manager.save(change);
+        await post(
+          v.id,
+          "change-accept",
+          { ...key(v.version), changeId, confirmed: true },
+          400,
+        );
+        const after = await view(v.id);
+        assert.equal(after.changes[0].status, "PROPOSED");
+        assert.equal(after.version, v.version);
+        assert.deepEqual(after.agreement, before.agreement);
+        assert.deepEqual(after.order, before.order);
+      }
     },
   );
   await t.test(

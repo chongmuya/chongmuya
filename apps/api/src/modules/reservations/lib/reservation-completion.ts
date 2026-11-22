@@ -56,16 +56,22 @@ export function guidanceReady(s: ReservationPreparation) {
       !!s.guidance.holder)
   );
 }
+export function hasCurrentFullDepositReceipt(s: ReservationPreparation) {
+  return (
+    s.guidance.kind === "REQUIRED" &&
+    s.receipt?.guidanceRevision === s.guidance.revision &&
+    s.receipt.amount - s.refunded === s.guidance.amount
+  );
+}
 export function completionIssues(s: ReservationPreparation, now = Date.now()) {
   const issues: string[] = [];
   if (s.cancellation) return ["CANCELLED"];
   if (!guidanceReady(s)) issues.push("GUIDANCE_PENDING");
   if (!s.order) issues.push("MENU_REQUIRED");
-  const currentDepositReceived =
-    s.guidance.kind === "REQUIRED" &&
-    s.receipt?.guidanceRevision === s.guidance.revision &&
-    s.receipt.amount - s.refunded === s.guidance.amount;
-  if (!currentDepositReceived && s.acknowledgedRevision !== s.guidance.revision)
+  if (
+    !hasCurrentFullDepositReceipt(s) &&
+    s.acknowledgedRevision !== s.guidance.revision
+  )
     issues.push("GUIDANCE_REVIEW");
   const resolved = s.exceptionResolution
     ? Date.parse(s.exceptionResolution.at)

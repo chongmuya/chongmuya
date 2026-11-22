@@ -19,10 +19,14 @@ import {
   money,
   type DepositGuidance,
   type MenuOrder,
+  type ReservationPreparation,
   type ReservationPrincipal,
 } from "./types/reservation-completion.js";
 import { proposalSchema, type Proposal } from "./types/merchant-reply.js";
-import { calculateOrder } from "./lib/reservation-completion.js";
+import {
+  calculateOrder,
+  hasCurrentFullDepositReceipt,
+} from "./lib/reservation-completion.js";
 import { sameGuidance } from "./lib/completion-sms-policy.js";
 const resultCommand = commandSchema
   .extend({
@@ -61,16 +65,50 @@ function validateOrder(order: MenuOrder | null, agreement: Proposal) {
 }
 
 function validateDepositDeadline(
+  current: ReservationPreparation,
   guidance: DepositGuidance,
   agreement: Proposal,
 ) {
   if (
     guidance.kind === "REQUIRED" &&
     guidance.deadline &&
-    Date.parse(guidance.deadline) > Date.parse(agreement.startsAt)
+    Date.parse(guidance.deadline) > Date.parse(agreement.startsAt) &&
+    !(
+      hasCurrentFullDepositReceipt(current) &&
+      sameDepositTerms(current.guidance, guidance)
+    )
   )
     throw new DomainHttpException("VALIDATION_FAILED", [
       { field: "deadline", code: "INVALID_VALUE" },
+    ]);
+}
+
+function validateRequestedChange(
+  subject: string,
+  current: ReservationPreparation,
+  agreement: Proposal,
+  order: MenuOrder | null,
+) {
+  let field: string | undefined;
+  if (
+    subject === "SCHEDULE" &&
+    Date.parse(agreement.startsAt) === Date.parse(current.agreement.startsAt)
+  )
+    field = "startsAt";
+  if (
+    subject === "GUESTS" &&
+    agreement.expectedGuests === current.agreement.expectedGuests
+  )
+    field = "expectedGuests";
+  if (subject === "MENU") {
+    const quantities = (menu: MenuOrder | null) =>
+      new Map(menu?.lines.map(({ id, quantity }) => [id, quantity]));
+    if (isDeepStrictEqual(quantities(current.order), quantities(order)))
+      field = "items";
+  }
+  if (field)
+    throw new DomainHttpException("VALIDATION_FAILED", [
+      { field, code: "INVALID_VALUE" },
     ]);
 }
 
@@ -180,10 +218,9 @@ export class ReservationChangesService {
           this.validateAgreement(agreement);
         }
         const proposedGuidance = input.guidance
-          ? this.payments.validateGuidance(
-              { ...c, state: { ...c.state, agreement } },
-              input.guidance,
-            )
+          ? this.payments.validateGuidance(c, input.guidance, {
+              checkDeadline: false,
+            })
           : c.state.guidance;
         const guidanceEdited = !sameGuidance(
           c.state.guidance,
@@ -191,7 +228,7 @@ export class ReservationChangesService {
         );
         const guidance = guidanceEdited ? proposedGuidance : c.state.guidance;
         if (change.kind === "CHANGE")
-          validateDepositDeadline(guidance, agreement);
+          validateDepositDeadline(c.state, guidance, agreement);
         let order = c.state.order;
         if (input.menu)
           order = calculateOrder(
@@ -213,6 +250,7 @@ export class ReservationChangesService {
         )
           throw new DomainHttpException("VALIDATION_FAILED");
         if (change.kind === "CHANGE") {
+          validateRequestedChange(change.subject, c.state, agreement, order);
           await this.locks.responsibleAccounts(c.request, c.m);
         }
         change.proposal = {
@@ -320,7 +358,8 @@ export class ReservationChangesService {
             edits && !edits.guidance ? s.guidance : proposal.guidance;
           this.validateAgreement(agreement);
           validateOrder(order, agreement);
-          validateDepositDeadline(guidance, agreement);
+          validateDepositDeadline(s, guidance, agreement);
+          validateRequestedChange(change.subject, s, agreement, order);
           await this.locks.responsibleAccounts(c.request, c.m);
           const scheduleChanged = agreement.startsAt !== s.agreement.startsAt;
           const guidanceChanged = !sameGuidance(s.guidance, guidance);

@@ -37,12 +37,15 @@ export class ReservationPaymentsService {
       policy: string;
       webConsent: boolean;
     },
+    { checkDeadline = true }: { checkDeadline?: boolean } = {},
   ): DepositGuidance {
     if (
       input.kind === "REQUIRED" &&
       (!input.amount ||
         !input.deadline ||
-        Date.parse(input.deadline) > Date.parse(c.state.agreement.startsAt) ||
+        (checkDeadline &&
+          Date.parse(input.deadline) >
+            Date.parse(c.state.agreement.startsAt)) ||
         !input.bank ||
         !input.account ||
         !input.holder ||
