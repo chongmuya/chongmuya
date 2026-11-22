@@ -24,13 +24,13 @@ export function merchantNextStep(q: Completion): {
   );
   if (pending?.status === "REQUESTED")
     return {
-      status: "변경·취소 요청",
+      status: pending.kind === "CANCEL" ? "예약 취소 요청" : "예약 변경 요청",
       label: "요청에 답하기",
       panel: "changes",
     };
   if (pending?.status === "PROPOSED")
     return {
-      status: "총무 답변 대기",
+      status: "총무 수락 대기",
       label: "보낸 처리안 보기",
       panel: "changes",
     };

@@ -1446,7 +1446,8 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       });
       assert.equal(v.agreement.expectedGuests, 18);
       assert.equal(v.selectionSnapshot.offered!.expectedGuests, 20);
-      assert.equal(v.progress, "CHECK_REQUIRED");
+      assert.equal(v.progress, "CONFIRMED");
+      assert.equal(v.guidance.revision, v.receipt?.guidanceRevision);
       v = await post(v.id, "change-request", {
         ...key(v.version),
         kind: "CANCEL",
@@ -1663,7 +1664,7 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       v = await changes.propose(v.id, operator, {
         ...key(v.version),
         changeId,
-        agreement: { ...v.agreement, startsAt: proposedStart },
+        agreement: { startsAt: proposedStart },
         reason: "시간 변경 가능",
       });
       v = await payments.receipt(v.id, operator, {
@@ -1688,7 +1689,47 @@ test("reservation completion preserves contracts, scoped links, money evidence a
       });
       assert.equal(v.changes[0].status, "APPLIED");
       assert.equal(v.agreement.startsAt, proposedStart);
-      assert(v.issues.includes("RECEIPT_REVIEW"));
+      assert.equal(v.progress, "CONFIRMED");
+      assert.equal(v.guidance.revision, v.receipt?.guidanceRevision);
+    },
+  );
+  await t.test(
+    "organizer can decline a proposal without applying its conditions",
+    async () => {
+      let v = await fixture();
+      v = await post(v.id, "menu-submit", menu(v));
+      const before = v;
+      v = await post(v.id, "change-request", {
+        ...key(v.version),
+        kind: "CHANGE",
+        subject: "GUESTS",
+        reason: "인원 변경 문의",
+      });
+      const changeId = v.changes[0].id;
+      await post(v.id, "change-decline", { ...key(v.version), changeId }, 409);
+      v = await changes.propose(v.id, operator, {
+        ...key(v.version),
+        changeId,
+        reason: "17명은 가능해요.",
+        agreement: { expectedGuests: 17 },
+      });
+      const request = { ...key(v.version), changeId };
+      v = await post(v.id, "change-decline", request);
+      assert.equal(v.changes[0].status, "REJECTED");
+      assert.equal(v.changes[0].resolutionBy, "organizer");
+      assert.deepEqual(v.agreement, before.agreement);
+      assert.deepEqual(v.confirmation, before.confirmation);
+      assert.equal(v.progress, "CONFIRMED");
+      assert.equal(
+        (await post(v.id, "change-decline", request)).version,
+        v.version,
+      );
+      await post(
+        v.id,
+        "change-accept",
+        { ...key(v.version), changeId, confirmed: true },
+        409,
+      );
     },
   );
   await t.test(

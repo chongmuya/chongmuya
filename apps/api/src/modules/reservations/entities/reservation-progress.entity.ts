@@ -67,6 +67,11 @@ export class ReservationChange {
     refundExpected: number | null;
     reason: string;
     audit: ReservationAudit;
+    edits?: {
+      agreement: Partial<ReservationPreparation["agreement"]>;
+      order: boolean;
+      guidance: boolean;
+    };
   } | null;
   @Column({ type: "timestamptz", name: "created_at" }) createdAt!: Date;
   @Column({ type: "timestamptz", name: "resolved_at", nullable: true })

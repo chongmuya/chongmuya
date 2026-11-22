@@ -47,6 +47,7 @@ export class ReservationCommands {
       "change-request": () => this.changes.request(id, p, input),
       "change-propose": () => this.changes.propose(id, p, input),
       "change-accept": () => this.changes.accept(id, p, input),
+      "change-decline": () => this.changes.decline(id, p, input),
       "change-reject": () => this.changes.reject(id, p, input),
       refund: () => this.changes.refund(id, p, input),
       "refund-plan": () => this.changes.refundPlan(id, p, input),

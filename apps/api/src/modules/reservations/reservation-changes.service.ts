@@ -1,6 +1,7 @@
 import { ReservationLocksService } from "./reservation-locks.service.js";
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { In } from "typeorm";
 import { z } from "zod";
 import { DomainHttpException } from "../../common/http/domain-http.exception.js";
@@ -16,15 +17,18 @@ import {
   guidanceCommand,
   itemsSchema,
   money,
+  type DepositGuidance,
+  type MenuOrder,
   type ReservationPrincipal,
 } from "./types/reservation-completion.js";
 import { proposalSchema, type Proposal } from "./types/merchant-reply.js";
 import { calculateOrder } from "./lib/reservation-completion.js";
+import { sameGuidance } from "./lib/completion-sms-policy.js";
 const resultCommand = commandSchema
   .extend({
     changeId: z.uuid(),
     reason: z.string().trim().min(1).max(500),
-    agreement: proposalSchema.optional(),
+    agreement: proposalSchema.partial().optional(),
     menu: z
       .object({
         catalogVersion: z.number().int().positive(),
@@ -44,6 +48,39 @@ const acceptCommand = commandSchema
 const rejectCommand = commandSchema
   .extend({ changeId: z.uuid(), reason: z.string().trim().min(1).max(500) })
   .strict();
+const declineCommand = commandSchema.extend({ changeId: z.uuid() }).strict();
+
+function validateOrder(order: MenuOrder | null, agreement: Proposal) {
+  if (
+    order &&
+    (order.total < (agreement.minimumSpend ?? 0) ||
+      order.lines.reduce((n, line) => n + line.quantity, 0) <
+        (agreement.minimumQuantity ?? 0))
+  )
+    throw new DomainHttpException("RESERVATION_MENU_INVALID");
+}
+
+function validateDepositDeadline(
+  guidance: DepositGuidance,
+  agreement: Proposal,
+) {
+  if (
+    guidance.kind === "REQUIRED" &&
+    guidance.deadline &&
+    Date.parse(guidance.deadline) > Date.parse(agreement.startsAt)
+  )
+    throw new DomainHttpException("VALIDATION_FAILED", [
+      { field: "deadline", code: "INVALID_VALUE" },
+    ]);
+}
+
+function sameDepositTerms(current: DepositGuidance, next: DepositGuidance) {
+  return sameGuidance(current, {
+    ...next,
+    channel: current.channel,
+    policy: current.policy,
+  });
+}
 @Injectable()
 export class ReservationChangesService {
   constructor(
@@ -118,7 +155,23 @@ export class ReservationChangesService {
         });
         if (!change)
           throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
-        const agreement = input.agreement ?? c.state.agreement;
+        if (
+          change.kind === "CANCEL" &&
+          (input.agreement || input.menu || input.guidance)
+        )
+          throw new DomainHttpException("VALIDATION_FAILED");
+        const agreementEdits = Object.fromEntries(
+          (Object.keys(input.agreement ?? {}) as (keyof Proposal)[])
+            .filter(
+              (field) =>
+                !isDeepStrictEqual(
+                  input.agreement?.[field],
+                  c.state.agreement[field],
+                ),
+            )
+            .map((field) => [field, input.agreement?.[field]]),
+        ) as Partial<Proposal>;
+        const agreement = { ...c.state.agreement, ...agreementEdits };
         if (change.kind === "CHANGE") {
           if (input.refundExpected !== null)
             throw new DomainHttpException("VALIDATION_FAILED", [
@@ -126,12 +179,19 @@ export class ReservationChangesService {
             ]);
           this.validateAgreement(agreement);
         }
-        const guidance = input.guidance
+        const proposedGuidance = input.guidance
           ? this.payments.validateGuidance(
               { ...c, state: { ...c.state, agreement } },
               input.guidance,
             )
-          : { ...c.state.guidance, revision: c.state.guidance.revision + 1 };
+          : c.state.guidance;
+        const guidanceEdited = !sameGuidance(
+          c.state.guidance,
+          proposedGuidance,
+        );
+        const guidance = guidanceEdited ? proposedGuidance : c.state.guidance;
+        if (change.kind === "CHANGE")
+          validateDepositDeadline(guidance, agreement);
         let order = c.state.order;
         if (input.menu)
           order = calculateOrder(
@@ -145,22 +205,11 @@ export class ReservationChangesService {
             agreement,
             (order?.revision ?? 0) + 1,
           );
-        if (
-          order &&
-          (order.total < (agreement.minimumSpend ?? 0) ||
-            order.lines.reduce((n, l) => n + l.quantity, 0) <
-              (agreement.minimumQuantity ?? 0))
-        )
-          throw new DomainHttpException("RESERVATION_MENU_INVALID");
+        validateOrder(order, agreement);
         if (
           input.refundExpected !== null &&
           (input.refundExpected > (c.state.receipt?.amount ?? 0) ||
             input.refundExpected < c.state.refunded)
-        )
-          throw new DomainHttpException("VALIDATION_FAILED");
-        if (
-          change.kind === "CANCEL" &&
-          (input.agreement || input.menu || input.guidance)
         )
           throw new DomainHttpException("VALIDATION_FAILED");
         if (change.kind === "CHANGE") {
@@ -173,6 +222,13 @@ export class ReservationChangesService {
           refundExpected: input.refundExpected,
           reason: input.reason,
           audit: c.audit,
+          ...(change.kind === "CHANGE" && {
+            edits: {
+              agreement: agreementEdits,
+              order: !!input.menu,
+              guidance: guidanceEdited,
+            },
+          }),
         };
         change.status = "PROPOSED";
         c.change = await c.m.save(change);
@@ -255,23 +311,50 @@ export class ReservationChangesService {
           this.completion.active(c);
           if (proposal.refundExpected !== null)
             throw new DomainHttpException("VALIDATION_FAILED");
-          this.validateAgreement(proposal.agreement);
+          const edits = proposal.edits;
+          const agreement = edits
+            ? { ...s.agreement, ...edits.agreement }
+            : proposal.agreement;
+          const order = edits && !edits.order ? s.order : proposal.order;
+          const guidance =
+            edits && !edits.guidance ? s.guidance : proposal.guidance;
+          this.validateAgreement(agreement);
+          validateOrder(order, agreement);
+          validateDepositDeadline(guidance, agreement);
           await this.locks.responsibleAccounts(c.request, c.m);
-          s.agreement = proposal.agreement;
-          s.agreementRevision++;
-          s.guidance = proposal.guidance;
-          s.order = proposal.order;
-          s.acknowledgedRevision = s.guidance.revision;
-          s.acknowledgedAt = new Date().toISOString();
-          s.exceptionResolution = null;
-          // Confirmation snapshots stay in history. The revised agreement must meet its own conditions.
-          s.confirmation = null;
-          await this.events.setReservationSchedule(
-            c.selection.eventId,
-            s.agreement.startsAt,
-            true,
-            c.m,
-          );
+          const scheduleChanged = agreement.startsAt !== s.agreement.startsAt;
+          const guidanceChanged = !sameGuidance(s.guidance, guidance);
+          const conditionsChanged =
+            !isDeepStrictEqual(agreement, s.agreement) ||
+            order !== s.order ||
+            guidanceChanged;
+          const depositChanged = !sameDepositTerms(s.guidance, guidance);
+          if (
+            depositChanged ||
+            agreement.menuDeadlineAt !== s.agreement.menuDeadlineAt
+          )
+            s.exceptionResolution = null;
+          if (guidanceChanged) {
+            s.guidance = {
+              ...guidance,
+              revision: s.guidance.revision + (depositChanged ? 1 : 0),
+            };
+            s.acknowledgedRevision = s.guidance.revision;
+            s.acknowledgedAt = new Date().toISOString();
+          }
+          s.agreement = agreement;
+          s.order = order;
+          if (conditionsChanged) {
+            s.agreementRevision++;
+            s.confirmation = null;
+          }
+          if (scheduleChanged)
+            await this.events.setReservationSchedule(
+              c.selection.eventId,
+              s.agreement.startsAt,
+              true,
+              c.m,
+            );
         }
         change.status = "APPLIED";
         change.resolvedAt = new Date();
@@ -285,6 +368,36 @@ export class ReservationChangesService {
               ? "예약 취소가 완료됐어요. 환불은 전화로 협의해 주세요."
               : "총무가 변경 제안을 수락했어요. 새 합의 조건과 남은 확인 사항을 확인해 주세요.",
           "both",
+        );
+      },
+    );
+  }
+  decline(id: string, p: ReservationPrincipal, raw: unknown) {
+    return this.completion.write(
+      id,
+      p,
+      "CHANGE_DECLINED",
+      declineCommand,
+      raw,
+      "organizer",
+      async (c, input) => {
+        this.completion.active(c);
+        const change = await c.m.findOneBy(ReservationChange, {
+          id: input.changeId,
+          reservationId: id,
+          kind: In(["CHANGE", "CANCEL"]),
+          status: "PROPOSED",
+        });
+        if (!change)
+          throw new DomainHttpException("RESERVATION_STATE_CONFLICT");
+        change.status = "REJECTED";
+        change.resolvedAt = new Date();
+        c.change = await c.m.save(change);
+        await this.completion.notify(
+          c,
+          "CHANGE_DECLINED",
+          "총무가 제안을 거절했어요. 기존 예약 조건으로 진행해 주세요.",
+          "merchant",
         );
       },
     );

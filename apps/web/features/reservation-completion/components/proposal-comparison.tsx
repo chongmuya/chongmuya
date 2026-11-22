@@ -33,18 +33,15 @@ const channel = (g: Guidance) =>
     : g.channel === "WEB"
       ? `${g.bank} ${g.account} ${g.holder}`
       : "안내 준비 중";
-export function ProposalComparison({
+export function ChangedConditions({
   data: q,
   proposal: p,
-  kind,
-  onDetails,
-  title,
 }: {
   data: Completion;
-  kind: Change["kind"];
-  proposal: NonNullable<Change["proposal"]>;
-  onDetails?: () => void;
-  title?: string;
+  proposal: Pick<
+    NonNullable<Change["proposal"]>,
+    "agreement" | "order" | "guidance"
+  >;
 }) {
   const a = q.agreement,
     b = p.agreement;
@@ -73,8 +70,8 @@ export function ProposalComparison({
     ["전달 메뉴", menu(q.order), menu(p.order)],
     [
       "제안 기준 예약금",
-      a.deposit.kind === "NONE" ? "없음" : won(a.deposit.amount),
-      b.deposit.kind === "NONE" ? "없음" : won(b.deposit.amount),
+      a.deposit?.kind === "NONE" ? "없음" : won(a.deposit?.amount),
+      b.deposit?.kind === "NONE" ? "없음" : won(b.deposit?.amount),
     ],
     ["예약금", deposit(q.guidance), deposit(p.guidance)],
     ["입금 기한", date(q.guidance.deadline), date(p.guidance.deadline)],
@@ -87,13 +84,50 @@ export function ProposalComparison({
     ],
     ["매장 추가 안내", a.note || "없음", b.note || "없음"],
   ];
-  const visibleRows =
-    kind === "CHANGE"
-      ? rows.filter(
-          ([label, before, after]) =>
-            before !== after || ["날짜·시간", "인원", "공간"].includes(label),
-        )
-      : [];
+  const changed = rows.filter(([, before, after]) => before !== after);
+  if (!changed.length) return null;
+  return (
+    <div className="space-y-5 rounded-[12px] border border-placeholder px-5 py-6">
+      <h4 className="text-xl leading-[normal] font-semibold">바꾼 조건</h4>
+      <dl className="space-y-4 leading-[normal] font-medium">
+        {changed.map(([label, before, after]) => (
+          <div
+            key={label}
+            className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
+          >
+            <dt className="text-muted">{label}</dt>
+            <dd
+              className={cn(
+                "space-y-2 whitespace-pre-wrap",
+                label === "날짜·시간" ? "break-keep" : "wrap-anywhere",
+              )}
+            >
+              <del className="block">{before}</del>
+              <span className="block text-brand">→ {after}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+export function ProposalComparison({
+  data: q,
+  proposal: p,
+  kind,
+  onDetails,
+  title,
+  organizer = true,
+}: {
+  data: Completion;
+  kind: Change["kind"];
+  proposal: NonNullable<Change["proposal"]>;
+  onDetails?: () => void;
+  title?: string;
+  organizer?: boolean;
+}) {
+  const actor = organizer ? "" : "총무가 ";
   return (
     <div className="space-y-7 text-base">
       <header className="space-y-2 text-center">
@@ -106,8 +140,8 @@ export function ProposalComparison({
           <p className="whitespace-pre-wrap">{p.reason}</p>
           <p>
             {kind === "CANCEL"
-              ? "수락하면 예약이 취소돼요."
-              : "수락하면 바꾼 조건대로 예약이 수정돼요."}
+              ? `${actor}수락하면 예약이 취소돼요.`
+              : `${actor}수락하면 바꾼 조건대로 예약이 수정돼요.`}
           </p>
         </div>
       </header>
@@ -118,38 +152,7 @@ export function ProposalComparison({
         </p>
       )}
       <div className="space-y-4">
-        {visibleRows.length > 0 && (
-          <div className="space-y-5 rounded-[12px] border border-placeholder px-5 py-6">
-            <h4 className="text-xl leading-[normal] font-semibold">
-              바꾼 조건
-            </h4>
-            <dl className="space-y-4 leading-[normal] font-medium">
-              {visibleRows.map(([label, before, after]) => (
-                <div
-                  key={label}
-                  className="grid grid-cols-[72px_minmax(0,1fr)] gap-3"
-                >
-                  <dt className="text-muted">{label}</dt>
-                  <dd
-                    className={cn(
-                      "space-y-2 whitespace-pre-wrap",
-                      label === "날짜·시간" ? "break-keep" : "wrap-anywhere",
-                    )}
-                  >
-                    {before === after ? (
-                      after
-                    ) : (
-                      <>
-                        <del className="block">{before}</del>
-                        <span className="block text-brand">→ {after}</span>
-                      </>
-                    )}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        )}
+        {kind === "CHANGE" && <ChangedConditions data={q} proposal={p} />}
         {onDetails && (
           <button
             type="button"

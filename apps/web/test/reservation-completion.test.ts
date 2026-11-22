@@ -143,6 +143,12 @@ test("merchant can edit space, seating, usage and notes while a lost response re
     });
   };
   try {
+    await click(view.container, "변경안 작성");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[type="checkbox"]')!
+        .click(),
+    );
     assert.equal(
       view.container.querySelector<HTMLSelectElement>('[name="space"]')!.value,
       "HALL",
@@ -164,14 +170,11 @@ test("merchant can edit space, seating, usage and notes while a lost response re
     await until(() => assert.equal(writes.length, 2));
     assert.deepEqual(writes[0], writes[1]);
     assert.deepEqual(writes[0].agreement, {
-      ...data.agreement,
-      startsAt: "2099-01-01T09:00:00.000Z",
       space: "ROOM",
       seating: "CLOSE",
       usageTime: { kind: "MINUTES", minutes: 90 },
       note: "룸에서 함께 착석",
       changeCancellationPolicy: "하루 전 협의",
-      minimumQuantity: null,
     });
   } finally {
     await view.unmount();
@@ -220,6 +223,61 @@ const rejectedChangeFixture = (): Completion => ({
       proposal: null,
     },
   ],
+});
+
+test("an attendance request initially shows only the requested field and omits hidden edits", async () => {
+  const data = rejectedChangeFixture();
+  data.changes[0] = {
+    ...data.changes[0],
+    subject: "GUESTS",
+    status: "REQUESTED",
+  };
+  const writes: Record<string, unknown>[] = [];
+  const access: CompletionAccess = {
+    kind: "owner",
+    accountId: "owner-guest-proposal",
+    request: async <T>(_path: string, options?: RequestInit) => {
+      writes.push(JSON.parse(String(options?.body)).command);
+      return { ...data, version: 2 } as T;
+    },
+  };
+  const view = await render(createElement(ChangeForms, { data, access }));
+  try {
+    assert.equal(view.container.querySelector("form"), null);
+    await click(view.container, "변경안 작성");
+    assert(view.container.querySelector('[name="expectedGuests"]'));
+    assert.equal(view.container.querySelector('[name="minimumSpend"]'), null);
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[type="checkbox"]')!
+        .click(),
+    );
+    await fill(view.container, "minimumSpend", "15000");
+    await act(async () =>
+      view.container
+        .querySelector<HTMLInputElement>('input[type="checkbox"]')!
+        .click(),
+    );
+    await fill(view.container, "expectedGuests", "17");
+    const rows = [...view.container.querySelectorAll("dt")].map(
+      (row) => row.textContent,
+    );
+    assert.deepEqual(rows, ["인원"]);
+    await act(async () => {
+      const reason =
+        view.container.querySelector<HTMLTextAreaElement>('[name="reason"]')!;
+      Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(reason, "17명으로 변경할 수 있어요.");
+      reason.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    await submit(view.container);
+    await until(() => assert.equal(writes.length, 1));
+    assert.deepEqual(writes[0].agreement, { expectedGuests: 17 });
+  } finally {
+    await view.unmount();
+  }
 });
 
 test("organizer can resume the existing reservation and request another change after rejection", async () => {
@@ -401,7 +459,7 @@ test("merchant sees the existing reservation's receipt action after rejecting a 
     await until(() =>
       assert.match(
         view.container.textContent!,
-        /변경 불가 답변 · 다른 예약이 있어요/,
+        /변경 불가 답변 완료.*다른 예약이 있어요/,
       ),
     );
     assert.match(view.container.textContent!, /은행 내역에서 입금이 확인되면/);
@@ -1726,6 +1784,7 @@ test("change and cancellation proposals keep refund amounts out of the form and 
         kind === "CANCEL",
       );
       if (kind === "CANCEL") {
+        await click(view.container, "취소 가능 답변");
         const reason = view.container.querySelector<HTMLTextAreaElement>(
           'textarea[name="reason"]',
         )!;
@@ -1739,6 +1798,7 @@ test("change and cancellation proposals keep refund amounts out of the form and 
         await submit(view.container);
         await until(() => assert.equal(proposals.length, 1));
         assert.equal(proposals[0].refundExpected, null);
+        assert.equal(proposals[0].agreement, undefined);
       }
     } finally {
       await view.unmount();
@@ -1812,8 +1872,9 @@ test("external change resolution retains the merchant proposal draft without acc
       {
         id: "change",
         kind: "CHANGE",
+        subject: "GUESTS",
         status: "REQUESTED",
-        reason: "일정 변경",
+        reason: "인원 변경",
       },
     ],
   } as Completion;
@@ -1839,6 +1900,7 @@ test("external change resolution retains the merchant proposal draft without acc
   }
   const view = await render(createElement(Screen));
   try {
+    await click(view.container, "변경안 작성");
     await fill(view.container, "expectedGuests", "17");
     await click(view.container, "다른 기기 처리");
     assert.equal(
