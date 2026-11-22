@@ -1,11 +1,14 @@
 import type { Completion } from "../types/completion.types";
-import { depositGuidanceReady } from "./deposit-guidance";
+import {
+  currentDepositTransfer,
+  depositGuidanceReady,
+} from "./deposit-guidance";
 import { progressLabels } from "./progress-labels";
 
 export function merchantNextStep(q: Completion): {
   status: string;
   label: string;
-  panel: "changes" | "payments" | "details";
+  panel: "changes" | "payments" | "receipt" | "details";
   note?: string;
 } {
   if (q.cancellation)
@@ -41,13 +44,13 @@ export function merchantNextStep(q: Completion): {
     return {
       status: "확인 필요",
       label: "확인할 내용 보기",
-      panel: "payments",
+      panel: "receipt",
     };
   if (q.guidance.kind === "REQUIRED" && !q.receipt)
     return {
-      status: q.transfer ? "송금 신고 접수" : "입금 대기",
+      status: currentDepositTransfer(q) ? "송금 신고 접수" : "입금 대기",
       label: "실입금 확인",
-      panel: "payments",
+      panel: "receipt",
       note: "은행 내역에서 입금이 확인되면 수령액을 기록해 주세요.",
     };
   return {

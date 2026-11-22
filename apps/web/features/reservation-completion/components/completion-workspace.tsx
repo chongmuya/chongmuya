@@ -5,6 +5,7 @@ import { usePageVisible } from "@/shared/hooks/use-page-visible";
 import { koreanDateLabel } from "@/shared/lib/korean-date";
 import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
+import { NoticeDialog } from "@/shared/ui/notice-dialog";
 import { ErrorState, LoadingState } from "@/shared/ui/states";
 import { isAccessError } from "@/shared/http/access-error";
 import { completionQuery, completionKey } from "../api/completion.api";
@@ -102,13 +103,20 @@ function CompletionContent({
   const visible = usePageVisible(),
     titleId = useId();
   const [panel, setPanel] = useState<
-    "details" | "changes" | "payments" | "sentInquiry" | null
+    | "details"
+    | "changes"
+    | "payments"
+    | "receipt"
+    | "sentInquiry"
+    | "confirmed"
+    | null
   >(null);
   const dialogTitle = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (panel) dialogTitle.current?.focus();
   }, [panel]);
   const [cancelFirst, setCancelFirst] = useState(false);
+  const [guidanceSent, setGuidanceSent] = useState(false);
   const [continuedChangeId, setContinuedChangeId] = useState<string>();
   const query = useQuery(completionQuery(id, access, visible));
   const denied = isAccessError(query.error);
@@ -167,9 +175,12 @@ function CompletionContent({
         ? "예약 진행 확인"
         : !guidanceReady
           ? "예약금 안내"
-          : isFirstReceipt
-            ? "실입금 확인"
-            : "예약금 관리",
+          : "예약금 관리",
+    receipt: isFirstReceipt
+      ? "실입금 확인"
+      : q.guidance.kind === "NONE"
+        ? "예약 진행 확인"
+        : "예약금 관리",
     sentInquiry: "보낸 예약 문의",
   };
   const review = () => {
@@ -282,6 +293,11 @@ function CompletionContent({
       ) : merchantStep ? (
         <>
           <header className="space-y-4">
+            {guidanceSent && (
+              <p role="status" className="text-sm font-medium text-brand-ink">
+                예약금 안내를 보냈어요
+              </p>
+            )}
             <p className="w-fit rounded-pill bg-soft px-3 py-1.5 text-xs font-semibold text-brand-ink">
               {merchantStep.status}
             </p>
@@ -312,14 +328,29 @@ function CompletionContent({
           )}
           <Button
             className="w-full"
-            onClick={() => setPanel(merchantStep.panel)}
+            onClick={() => {
+              setGuidanceSent(false);
+              setPanel(merchantStep.panel);
+            }}
           >
             {merchantStep.label}
           </Button>
           {contact}
         </>
       ) : null}
-      {panel && (
+      {panel === "confirmed" ? (
+        <NoticeDialog
+          title={
+            <span className="inline-block text-balance break-keep">
+              예약이 최종 확정됐어요
+            </span>
+          }
+          description={`${q.eventName} · ${koreanDateLabel(q.agreement.startsAt)} · ${q.agreement.expectedGuests}명`}
+          onClose={() => setPanel(null)}
+        >
+          <Button onClick={() => setPanel(null)}>확인</Button>
+        </NoticeDialog>
+      ) : panel ? (
         <Dialog
           labelledBy={titleId}
           initialFocusRef={dialogTitle}
@@ -404,10 +435,19 @@ function CompletionContent({
               {(organizer ||
                 (q.guidance.kind !== "NONE" &&
                   guidanceReady &&
-                  !isFirstReceipt)) && (
+                  (panel === "payments" || !isFirstReceipt))) && (
                 <GuidanceSummary data={q} merchant={!organizer} />
               )}
-              <PaymentForms data={q} access={access} />
+              <PaymentForms
+                data={q}
+                access={access}
+                showGuidance={panel === "payments"}
+                onConfirmed={() => setPanel("confirmed")}
+                onGuidanceSent={() => {
+                  setPanel(null);
+                  setGuidanceSent(true);
+                }}
+              />
             </div>
           )}
           {panel !== "changes" && (
@@ -420,7 +460,7 @@ function CompletionContent({
             </Button>
           )}
         </Dialog>
-      )}
+      ) : null}
     </div>
   );
 }

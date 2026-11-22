@@ -1,5 +1,12 @@
 import type { Completion } from "../types/completion.types";
 
+export function currentDepositTransfer({ guidance, transfer }: Completion) {
+  return guidance.kind === "REQUIRED" &&
+    transfer?.guidanceRevision === guidance.revision
+    ? transfer
+    : null;
+}
+
 export function depositGuidanceReady({
   guidance,
   issues,

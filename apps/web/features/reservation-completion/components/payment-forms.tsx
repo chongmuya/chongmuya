@@ -6,7 +6,10 @@ import { CommandForm } from "./command-form";
 import { isoDate, localDate } from "../lib/command-values";
 import { won } from "../lib/agreement-labels";
 import { guidanceFields, buildGuidance } from "../lib/guidance-fields";
-import { depositGuidanceReady } from "../lib/deposit-guidance";
+import {
+  currentDepositTransfer,
+  depositGuidanceReady,
+} from "../lib/deposit-guidance";
 const exceptionLabels = new Map([
   ["EVENT_STARTED", "예약 시간이 지났어요."],
   ["MENU_LATE", "메뉴 전달 기한을 확인해 주세요."],
@@ -46,14 +49,29 @@ function RetainedCommand({
 export function PaymentForms({
   data: q,
   access,
+  onConfirmed,
+  onGuidanceSent,
+  showGuidance = true,
 }: {
   data: Completion;
   access: CompletionAccess;
+  onConfirmed?: () => void;
+  onGuidanceSent?: () => void;
+  showGuidance?: boolean;
 }) {
   const props = { data: q, access };
   const ready = depositGuidanceReady(q);
   if (access.kind === "organizer") return <OrganizerPayment {...props} />;
   const exceptions = q.issues.filter((issue) => exceptionLabels.has(issue));
+  const transfer = currentDepositTransfer(q);
+  const onDone = (result: Completion, previous: Completion) => {
+    if (
+      !previous.confirmation &&
+      result.confirmation &&
+      result.progress === "CONFIRMED"
+    )
+      onConfirmed?.();
+  };
   return (
     <div className="space-y-5">
       {!q.cancellation &&
@@ -81,11 +99,14 @@ export function PaymentForms({
         available={!q.cancellation && q.guidance.kind === "REQUIRED"}
         {...props}
         action="receipt"
-        title={q.receipt ? "입금 기록 정정 저장" : "실입금 기록하기"}
+        onDone={onDone}
+        title={
+          q.receipt ? "입금 기록 정정 저장" : "은행 내역 확인 후 입금 기록"
+        }
         hideTitle
         description={
-          q.transfer
-            ? `총무 송금 신고 · ${q.transfer.payer} · ${won(q.transfer.amount)}. 은행 내역과 대조해 주세요.`
+          transfer
+            ? `총무 송금 신고 · ${transfer.payer} · ${won(transfer.amount)}. 은행 내역과 대조해 주세요.`
             : `예약금 ${won(q.guidance.amount)} · 은행에서 확인한 전체 수령액을 입력해 주세요.`
         }
         fields={(current) => [
@@ -93,7 +114,11 @@ export function PaymentForms({
             name: "amount",
             label: "실제 수령 총액 (원)",
             type: "number",
-            value: current.receipt ? String(current.receivedAmount) : "",
+            value: String(
+              current.receipt?.amount ??
+                currentDepositTransfer(current)?.amount ??
+                "",
+            ),
           },
           {
             name: "receivedAt",
@@ -111,6 +136,7 @@ export function PaymentForms({
           {
             name: "checked",
             label: "은행 내역을 확인했고 실제 수령 총액이 맞아요",
+            when: () => !!current.receipt,
             type: "checkbox",
           },
         ]}
@@ -126,6 +152,7 @@ export function PaymentForms({
         available={!q.cancellation && exceptions.length > 0}
         {...props}
         action="resolve"
+        onDone={onDone}
         title="확인 내용을 기록하고 진행하기"
         description="기한이나 금액이 달라진 이유를 총무와 확인해 주세요."
         fields={[
@@ -141,11 +168,18 @@ export function PaymentForms({
       <RetainedCommand
         disclosure={ready ? "예약금 안내 편집" : "입금 조건 입력"}
         available={
-          !q.cancellation && !q.confirmation && q.guidance.kind !== "NONE"
+          showGuidance &&
+          !q.cancellation &&
+          !q.confirmation &&
+          q.guidance.kind !== "NONE"
         }
         openInitially={!ready}
         {...props}
         action="guidance"
+        onDone={(result, previous) => {
+          if (!depositGuidanceReady(previous) && depositGuidanceReady(result))
+            onGuidanceSent?.();
+        }}
         title="예약금 안내 보내기"
         hideTitle
         description="총무에게 입금 조건과 변경·취소·환불 안내를 보내요."
@@ -153,8 +187,30 @@ export function PaymentForms({
           guidanceFields(
             base,
             !base.guidance.account && !!base.ownerDepositAccount,
+          ).map((field) =>
+            field.name === "amount" && base.guidance.kind === "UNKNOWN"
+              ? { ...field, when: (values) => values.kind !== "NONE" }
+              : field,
           )
         }
+        fieldSummary={(base, values) => {
+          if (
+            depositGuidanceReady(base) ||
+            base.guidance.kind !== "REQUIRED" ||
+            !base.guidance.amount
+          )
+            return undefined;
+          const amount = Number(values.amount);
+          return {
+            names: ["kind", "amount"],
+            text:
+              values.kind === "NONE"
+                ? "예약금 없음"
+                : amount > 0
+                  ? `예약금 ${won(amount)}`
+                  : "예약금",
+          };
+        }}
         build={(values, base) =>
           buildGuidance(
             values,

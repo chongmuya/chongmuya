@@ -5,6 +5,7 @@ import { koreanDateLabel } from "@/shared/lib/korean-date";
 import type { Completion } from "../types/completion.types";
 import { won } from "../lib/agreement-labels";
 import { progressLabels } from "../lib/progress-labels";
+import { currentDepositTransfer } from "../lib/deposit-guidance";
 export { won } from "../lib/agreement-labels";
 
 function summaryDate(value: string, year = false) {
@@ -228,11 +229,13 @@ export function DepositSummary({
   data: Completion;
   merchant?: boolean;
 }) {
+  const transfer =
+    merchant && !q.cancellation ? currentDepositTransfer(q) : q.transfer;
   const rows: [string, string][] = [
     ["금액", q.guidance.kind === "NONE" ? "없음" : won(q.guidance.amount)],
   ];
-  if (!merchant || q.transfer?.payer)
-    rows.push(["입금자", q.transfer?.payer || "미확인"]);
+  if (!merchant || transfer?.payer)
+    rows.push(["입금자", transfer?.payer || "미확인"]);
   if (!merchant || q.guidance.kind !== "NONE" || q.cancellation)
     rows.push([
       "상태",
@@ -240,7 +243,7 @@ export function DepositSummary({
         ? progressLabels.CANCELLED
         : q.receipt
           ? `실제 수령 ${won(q.receivedAmount)}`
-          : q.transfer
+          : transfer
             ? "총무가 입금했다고 알림"
             : q.guidance.kind === "NONE"
               ? "예약금 없음"

@@ -7,7 +7,7 @@ export function NoticeDialog({
   children,
   onClose,
 }: {
-  title: string;
+  title: ReactNode;
   description: string;
   children: ReactNode;
   onClose: () => void;
