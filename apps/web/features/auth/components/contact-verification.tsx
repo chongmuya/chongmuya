@@ -1,10 +1,17 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { buttonStyles } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
-import type { VerificationState } from "../types/verification.types";
-import { PhoneVerificationQr } from "./phone-verification-qr";
-import { VerificationRequestButton } from "./verification-request-button";
+import type {
+  VerificationResult,
+  VerificationState,
+} from "../types/verification.types";
+import { PhoneVerificationPrompt } from "./phone-verification-prompt";
+import {
+  VerificationRequestButton,
+  verificationRequestClassName,
+} from "./verification-request-button";
 
 const messages = {
   requesting: "인증 요청을 처리하고 있어요.",
@@ -14,6 +21,25 @@ const messages = {
   idle: undefined,
   pending: undefined,
 };
+
+type SmsPlatform = "ios" | "android";
+
+const subscribeToPlatform = () => () => {};
+
+function getSmsPlatform(): SmsPlatform | undefined {
+  const { userAgent, maxTouchPoints } = navigator;
+  if (
+    /iPhone|iPad|iPod/.test(userAgent) ||
+    (/Macintosh/.test(userAgent) && maxTouchPoints > 1)
+  )
+    return "ios";
+  if (/Android/.test(userAgent)) return "android";
+}
+
+function smsHref(platform: SmsPlatform, receiver: string, message: string) {
+  const separator = platform === "ios" ? "&" : "?";
+  return `sms:${receiver}${separator}body=${encodeURIComponent(message)}`;
+}
 
 export function ContactVerification({
   state,
@@ -29,13 +55,18 @@ export function ContactVerification({
   now: number;
   error?: string;
   available: boolean;
-  onRequest: () => void;
+  onRequest: (onIssued?: (result: VerificationResult) => void) => void;
   onCheck?: () => void;
   disabled?: boolean;
   renderField: (requestButton: ReactNode) => ReactNode;
 }) {
   const requestRef = useRef<HTMLButtonElement>(null);
   const [dismissedId, setDismissedId] = useState<string>();
+  const smsPlatform = useSyncExternalStore(
+    subscribeToPlatform,
+    getSmsPlatform,
+    () => undefined,
+  );
   const { id, status, qrCode, receiver, message } = state;
   const busy = status === "requesting";
   const verified = status === "verified";
@@ -57,31 +88,61 @@ export function ContactVerification({
     : verified
       ? "인증 완료"
       : challenge
-        ? "인증 다시 열기"
+        ? smsPlatform
+          ? "문자 앱 열기"
+          : "인증 다시 열기"
         : "인증 요청";
   const statusMessage =
     exhausted && status === "pending"
       ? "인증을 다시 요청해 주세요."
       : messages[status];
 
+  const requestVerification = () => {
+    if (!smsPlatform) {
+      if (challenge) setDismissedId(undefined);
+      else onRequest();
+      return;
+    }
+    const button = requestRef.current;
+    onRequest(({ status, receiver, message }) => {
+      if (
+        button?.isConnected &&
+        document.visibilityState === "visible" &&
+        status === "pending" &&
+        receiver &&
+        message
+      )
+        window.location.assign(smsHref(smsPlatform, receiver, message));
+    });
+  };
+
   return (
     <div>
       {renderField(
-        <VerificationRequestButton
-          ref={requestRef}
-          aria-label={`휴대폰 ${requestLabel}`}
-          aria-haspopup={verified ? undefined : "dialog"}
-          loading={busy}
-          disabled={
-            disabled || !available || verified || (!challenge && retryIn > 0)
-          }
-          onClick={() => {
-            if (challenge) setDismissedId(undefined);
-            else onRequest();
-          }}
-        >
-          {requestLabel}
-        </VerificationRequestButton>,
+        smsPlatform && challenge && available && !disabled && !busy ? (
+          <a
+            aria-label={`휴대폰 ${requestLabel}`}
+            className={buttonStyles({
+              className: verificationRequestClassName,
+            })}
+            href={smsHref(smsPlatform, challenge.receiver, challenge.message)}
+          >
+            {requestLabel}
+          </a>
+        ) : (
+          <VerificationRequestButton
+            ref={requestRef}
+            aria-label={`휴대폰 ${requestLabel}`}
+            aria-haspopup={verified || smsPlatform ? undefined : "dialog"}
+            loading={busy}
+            disabled={
+              disabled || !available || verified || (!challenge && retryIn > 0)
+            }
+            onClick={requestVerification}
+          >
+            {requestLabel}
+          </VerificationRequestButton>
+        ),
       )}
       {!challenge && statusMessage && (
         <p role="status" className="mt-3 text-caption text-muted wrap-anywhere">
@@ -92,12 +153,10 @@ export function ContactVerification({
       {!challenge && !verified && retryIn > 0 && (
         <p className="mt-3 text-caption text-muted">재요청까지 {retryIn}초</p>
       )}
-      {challenge && challenge.id !== dismissedId && (
-        <PhoneVerificationQr
+      {challenge && (smsPlatform || challenge.id !== dismissedId) && (
+        <PhoneVerificationPrompt
           key={challenge.id}
-          qrCode={challenge.qrCode}
-          receiver={challenge.receiver}
-          message={challenge.message}
+          qrCode={smsPlatform ? undefined : challenge.qrCode}
           remainingSeconds={Math.max(
             0,
             Math.ceil(((state.expiresAt ?? now) - now) / 1000),

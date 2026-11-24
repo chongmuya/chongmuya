@@ -902,10 +902,6 @@ test("real signup screen requires phone receipt, recovers errors, keeps secrets 
     assert.doesNotMatch(view.container.textContent!, /private/);
     await click(view.container, "휴대폰 인증 요청");
     await until(() => assert(view.container.querySelector("dialog[open]")));
-    assert.match(
-      view.container.querySelector('a[href^="sms:"]')!.getAttribute("href")!,
-      /body=/,
-    );
     assert(
       view.container.querySelector('img[alt="휴대폰 문자 앱을 여는 QR 코드"]'),
     );

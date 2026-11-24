@@ -106,9 +106,9 @@ export function SignupInformation({
         )}
         <ContactVerification
           {...phone}
-          onRequest={() => {
+          onRequest={(onIssued) => {
             void trigger("phone", { shouldFocus: true }).then((valid) => {
-              if (valid) void phone.request();
+              if (valid) void phone.request(onIssued);
             });
           }}
           onCheck={phone.check}
