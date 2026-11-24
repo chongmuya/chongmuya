@@ -6,6 +6,7 @@ import { ApiError } from "@/shared/http/api-error";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import type {
   VerificationActions,
+  VerificationResult,
   VerificationState,
 } from "../types/verification.types";
 
@@ -102,7 +103,11 @@ export function useContactVerification(
     !!stored.expiresAt &&
     clock.current.server + performance.now() - clock.current.received <
       stored.expiresAt;
-  const run = async (kind: "request" | "check", code?: string) => {
+  const run = async (
+    kind: "request" | "check",
+    code?: string,
+    onIssued?: (result: VerificationResult) => void,
+  ) => {
     const action = actions?.[kind];
     const target = getCurrentValue();
     if (!action || !target.trim() || running.current) return;
@@ -140,6 +145,7 @@ export function useContactVerification(
         setNow(clock.current.server);
         currentId.current = result.id;
         setStored({ ...(kind === "check" ? state : {}), ...result });
+        if (kind === "request") onIssued?.(result);
       } catch (cause) {
         if (
           ticket !== generation.current ||
@@ -191,7 +197,8 @@ export function useContactVerification(
     },
     isVerified,
     reset,
-    request: () => run("request"),
+    request: (onIssued?: (result: VerificationResult) => void) =>
+      run("request", undefined, onIssued),
     check: actions?.check ? (code?: string) => run("check", code) : undefined,
     available: !!actions,
   };

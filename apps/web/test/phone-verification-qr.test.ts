@@ -148,23 +148,38 @@ test("expiry, editing the phone, or exhausting checks returns to requesting veri
   }
 });
 
-test("the dialog keeps the mobile SMS link and waits for the server check interval", async () => {
+test("mobile checks SMS in the form without showing the QR dialog", async () => {
+  Object.defineProperty(navigator, "userAgent", {
+    configurable: true,
+    value: "Mozilla/5.0 (Linux; Android 15)",
+  });
   const state = { ...pending, nextCheckAt: 10000 };
   const view = await setup(state);
   try {
-    const dialog = view.container.querySelector("dialog[open]")!;
-    assert(dialog);
+    assert.equal(view.container.querySelector("dialog, img"), null);
+    const openSms = view.container.querySelector(
+      'a[aria-label="휴대폰 문자 앱 열기"]',
+    );
+    assert(openSms);
     assert.equal(
-      dialog.querySelector('a[href^="sms:"]')?.getAttribute("href"),
+      openSms.getAttribute("href"),
       `sms:${pending.receiver}?body=${encodeURIComponent(pending.message!)}`,
     );
-    assert.match(dialog.textContent!, /10초 후 확인할 수 있어요/);
-    await click(dialog as HTMLElement, "문자 보냈어요");
+    assert.equal(openSms.hasAttribute("aria-haspopup"), false);
+    assert.match(view.container.textContent!, /10초 후 확인할 수 있어요/);
+    await click(view.container, "문자 보냈어요");
     assert.equal(view.checks(), 0);
     await view.update(state, 10000);
-    await click(dialog as HTMLElement, "문자 보냈어요");
+    await click(view.container, "문자 보냈어요");
     assert.equal(view.checks(), 1);
+    await view.update({ ...state, status: "verified" }, 10000);
+    assert.doesNotMatch(
+      view.container.textContent!,
+      /문자 앱 열기|문자 보냈어요/,
+    );
+    assert.match(view.container.textContent!, /휴대폰 인증이 완료/);
   } finally {
     await view.close();
+    Reflect.deleteProperty(navigator, "userAgent");
   }
 });
