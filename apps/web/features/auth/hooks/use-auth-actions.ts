@@ -3,14 +3,12 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
-import { notifySessionChange, useAuth } from "../components/auth-provider";
-import { useActiveScreen } from "@/shared/hooks/use-active-screen";
+import { useAuth } from "../components/auth-provider";
 import type { Credentials } from "../schemas/credentials.schema";
 
 export function useAuthActions() {
   const { client } = useAuth();
   const router = useRouter();
-  const active = useActiveScreen();
   const submitting = useRef(false);
   // Passwords must not be retained in Query's mutation variables / Devtools.
   const credentials = useRef<Credentials | null>(null);
@@ -22,9 +20,6 @@ export function useAuthActions() {
       try {
         const { email, password } = input;
         await client.login(email, password);
-        if (client.getSnapshot().status !== "authenticated") return;
-        notifySessionChange();
-        if (active.current) router.refresh();
       } finally {
         submitting.current = false;
       }
@@ -35,8 +30,7 @@ export function useAuthActions() {
   const logout = useMutation({
     mutationFn: async () => {
       await client.logout();
-      notifySessionChange();
-      router.refresh();
+      if (client.getSnapshot().status === "anonymous") router.replace("/auth");
     },
     retry: false,
   });

@@ -78,7 +78,7 @@ export function RecoveryScreen({ reset = false }: { reset?: boolean }) {
           signal,
         );
         token.current = "";
-        notifySessionChange();
+        notifySessionChange(client.instanceId, "recheck");
         // Restore checks the actual cookie owner; resetting A must not log out B.
         void client.restore().catch(() => undefined);
       }}

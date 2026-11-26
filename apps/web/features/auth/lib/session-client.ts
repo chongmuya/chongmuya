@@ -9,6 +9,7 @@ import type {
 } from "../types/signup.types";
 type Transport = typeof requestJson;
 type Lock = <T>(action: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
+const expectedAccountHeader = "X-Expected-Account";
 
 // Instance belongs to the mounted provider, never to a server-wide singleton.
 export class SessionClient {
@@ -61,12 +62,14 @@ export class SessionClient {
   private restoring?: Promise<void>;
   private refreshing?: Promise<void>;
   private preparingSignup?: Promise<void>;
-  private authenticating?: Promise<Session>;
+  private authenticating?: Promise<Account>;
   private generation = 0;
+  private accountCheckGeneration?: number;
   private revision = 0;
   // Same-account profile writes do not rotate credentials or invalidate requests.
   private profileRevision = 0;
   private ending = false;
+  private logoutAccountId?: string;
   constructor(
     private readonly clearUserCache: () => void,
     private readonly transport: Transport = requestJson,
@@ -76,6 +79,8 @@ export class SessionClient {
       resourceIds: string[],
       denied: boolean,
     ) => void = () => undefined,
+    private readonly onSessionChange: (source: string) => void = () =>
+      undefined,
   ) {}
   invalidateAuthority = (resourceId: string, denied = true) => {
     const accountId = this.state.account?.id;
@@ -107,6 +112,11 @@ export class SessionClient {
     this.state = state;
     this.listeners.forEach((listener) => listener());
   }
+  private clearAccountData() {
+    this.resourceGroups.clear();
+    this.authorityRevisions.clear();
+    this.clearUserCache();
+  }
   private apply(session: Session, readProfileRevision = this.profileRevision) {
     const account =
       session.authenticated &&
@@ -116,9 +126,7 @@ export class SessionClient {
         : session.account;
     if (this.state.account?.id !== session.account?.id && this.state.account) {
       this.generation++;
-      this.resourceGroups.clear();
-      this.authorityRevisions.clear();
-      this.clearUserCache();
+      this.clearAccountData();
     }
     this.set({
       status: session.authenticated ? "authenticated" : "anonymous",
@@ -127,22 +135,37 @@ export class SessionClient {
   }
   private invalid() {
     this.generation++;
-    this.clearUserCache();
+    this.clearAccountData();
     this.set({ status: "anonymous", account: null });
   }
-  restore = (): Promise<void> => {
+  async restoreAfterSessionChange() {
+    if (this.ending) return;
+    if (this.authenticating) {
+      await this.authenticating.catch(() => undefined);
+      if (this.ending) return;
+    }
+    // An existing restore may have read the old cookie before this event.
+    const generation = ++this.generation;
+    this.accountCheckGeneration = generation;
+    if (this.state.account) this.clearAccountData();
+    this.set(this.serverSnapshot);
+    if (this.restoring || this.refreshing)
+      await Promise.allSettled([this.restoring, this.refreshing]);
+    if (generation === this.generation) await this.restore();
+  }
+  restore = ({ background = false } = {}): Promise<void> => {
     if (this.ending) return Promise.resolve();
     if (!this.restoring) {
-      this.restoring = this.restoreSession().finally(() => {
+      this.restoring = this.restoreSession(background).finally(() => {
         this.restoring = undefined;
       });
     }
     return this.restoring;
   };
-  private async restoreSession() {
+  private async restoreSession(background: boolean) {
     const generation = this.generation;
     try {
-      // The request's timeout starts only after the tab acquires the lock.
+      // Bound the lock wait separately from the transport's timeout.
       const signal = AbortSignal.timeout(10_000);
       await this.lock(async () => {
         if (generation !== this.generation) return;
@@ -156,7 +179,7 @@ export class SessionClient {
           this.apply(session, profileRevision);
       }, signal);
     } catch (error) {
-      if (generation === this.generation)
+      if (!background && generation === this.generation)
         this.set({ status: "unavailable", account: this.state.account });
       throw error;
     }
@@ -211,6 +234,21 @@ export class SessionClient {
     const authorityRevision = this.authorityClock;
     if (this.ending)
       throw new ApiError("로그아웃 처리 중입니다.", 401, "SESSION_INVALID");
+    if (
+      this.state.status === "loading" &&
+      this.accountCheckGeneration === generation
+    )
+      throw new ApiError(
+        "로그인 상태를 확인 중입니다.",
+        409,
+        "SESSION_CHANGED",
+      );
+    const accountId = this.state.account?.id;
+    if (accountId) {
+      const headers = new Headers(options.headers);
+      headers.set(expectedAccountHeader, accountId);
+      options = { ...options, headers };
+    }
     try {
       let result: T;
       try {
@@ -252,12 +290,11 @@ export class SessionClient {
         error.code === "GROUP_AUTHORITY_CHANGED"
       )
         this.invalidateAuthority(resourceId);
-      if (
-        generation === this.generation &&
-        error instanceof ApiError &&
-        error.code === "SESSION_INVALID"
-      )
-        this.invalid();
+      if (generation === this.generation && error instanceof ApiError) {
+        if (error.code === "SESSION_INVALID") this.invalid();
+        if (error.code === "SESSION_CHANGED")
+          void this.restoreAfterSessionChange().catch(() => undefined);
+      }
       throw error;
     }
   }
@@ -327,19 +364,15 @@ export class SessionClient {
     signal?: AbortSignal,
   ) {
     const generation = ++this.generation;
-    const pending = this.lock(() => {
+    const pending = this.lock(async () => {
       if (signal?.aborted || generation !== this.generation || this.ending)
         throw new ApiError("요청이 취소되었습니다.", 401, "SESSION_INVALID");
-      return this.transport<Session>(`/api/v1/auth/${kind}`, {
+      // Once sent, the response can set cookies even if the form has closed.
+      const session = await this.transport<Session>(`/api/v1/auth/${kind}`, {
         method: "POST",
         body: JSON.stringify(input),
-        signal,
       });
-    });
-    this.authenticating = pending;
-    try {
-      const session = await pending;
-      if (signal?.aborted || generation !== this.generation || this.ending)
+      if (generation !== this.generation || this.ending)
         throw new ApiError("세션이 변경되었습니다.", 401, "SESSION_INVALID");
       if (!session.authenticated || !session.account)
         throw new ApiError(
@@ -347,24 +380,33 @@ export class SessionClient {
           200,
           "INVALID_RESPONSE",
         );
-      this.ending = false;
-      this.clearUserCache();
-      this.apply(session);
+      this.generation++;
+      this.clearAccountData();
+      this.set({ status: "authenticated", account: session.account });
+      this.onSessionChange(this.instanceId);
       return session.account;
+    }, signal);
+    this.authenticating = pending;
+    try {
+      const account = await pending;
+      signal?.throwIfAborted();
+      return account;
     } finally {
       if (this.authenticating === pending) this.authenticating = undefined;
     }
   }
   endWithdrawnSession(accountId: string) {
     if (this.state.account?.id !== accountId) return;
-    this.resourceGroups.clear();
-    this.authorityRevisions.clear();
     this.invalid();
   }
   async logout() {
+    if (!this.ending)
+      this.logoutAccountId = this.authenticating
+        ? undefined
+        : this.state.account?.id;
     this.ending = true;
     ++this.generation;
-    this.clearUserCache();
+    this.clearAccountData();
     this.set({ status: "logging-out", account: null });
     try {
       // Wait for cookie-setting work, then revoke the resulting session and clear cookies.
@@ -374,11 +416,24 @@ export class SessionClient {
         this.authenticating,
       ]);
       await this.lock(() =>
-        this.transport<void>("/api/v1/auth/logout", { method: "POST" }),
+        this.transport<void>("/api/v1/auth/logout", {
+          method: "POST",
+          headers: this.logoutAccountId
+            ? { [expectedAccountHeader]: this.logoutAccountId }
+            : undefined,
+        }),
       );
       this.set({ status: "anonymous", account: null });
       this.ending = false;
+      this.logoutAccountId = undefined;
+      this.onSessionChange(this.instanceId);
     } catch (error) {
+      if (error instanceof ApiError && error.code === "SESSION_CHANGED") {
+        this.ending = false;
+        this.logoutAccountId = undefined;
+        await this.restoreAfterSessionChange();
+        return;
+      }
       // Keep ending=true: a failed logout must not silently restore authentication.
       this.set({ status: "logout-failed", account: null });
       throw error;

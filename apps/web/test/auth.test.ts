@@ -21,9 +21,134 @@ const session: Session = {
 const expired = () => new ApiError("", 401, "ACCESS_EXPIRED");
 const invalid = () => new ApiError("", 401, "SESSION_INVALID");
 const network = () => new ApiError("", 0, "NETWORK_ERROR");
-function transport(handler: (path: string) => Promise<unknown>) {
+function transport(
+  handler: (path: string, options?: RequestInit) => Promise<unknown>,
+) {
   return handler as typeof requestJson;
 }
+
+const otherSession: Session = {
+  authenticated: true,
+  account: { ...session.account!, id: "b", email: "b@example.com" },
+};
+
+test("a tab's session change discards a pending restore and the previous account's responses", async () => {
+  let restoreCalls = 0;
+  let clears = 0;
+  let finishRestore!: (value: Session) => void;
+  let finishRead!: (value: unknown) => void;
+  const client = new SessionClient(
+    () => clears++,
+    transport(async (path) => {
+      if (!path.endsWith("restore"))
+        return new Promise((resolve) => {
+          finishRead = resolve;
+        });
+      restoreCalls++;
+      if (restoreCalls === 1) return session;
+      if (restoreCalls === 2)
+        return new Promise<Session>((resolve) => {
+          finishRestore = resolve;
+        });
+      return otherSession;
+    }),
+  );
+  await client.restore();
+  const oldRead = assert.rejects(client.request("/api/v1/resource"), {
+    code: "SESSION_INVALID",
+  });
+  const oldRestore = client.restore();
+  const sync = client.restoreAfterSessionChange();
+  assert.deepEqual(client.getSnapshot(), { status: "loading", account: null });
+  assert.equal(clears, 1);
+  await assert.rejects(client.request("/api/v1/resource", { method: "POST" }), {
+    code: "SESSION_CHANGED",
+  });
+  finishRead("previous account's data");
+  finishRestore(session);
+  await Promise.all([oldRestore, oldRead, sync]);
+  assert.equal(restoreCalls, 3);
+  assert.equal(client.getSnapshot().account?.id, "b");
+});
+
+test("an account mismatch restores the current cookie and never repeats the previous tab's write", async () => {
+  let current = session;
+  let writes = 0;
+  const client = new SessionClient(
+    () => {},
+    transport(async (path, options) => {
+      if (path.endsWith("restore")) return current;
+      writes++;
+      const headers = new Headers(options?.headers);
+      assert.equal(headers.get("X-Expected-Account"), "a");
+      assert.equal(headers.get("X-Existing-Header"), "present");
+      throw new ApiError("", 409, "SESSION_CHANGED");
+    }),
+  );
+  await client.restore();
+  current = otherSession;
+  await assert.rejects(
+    client.request("/api/v1/resource", {
+      method: "POST",
+      headers: { "X-Existing-Header": "present" },
+    }),
+    { code: "SESSION_CHANGED" },
+  );
+  await client.restore();
+  assert.equal(client.getSnapshot().account?.id, "b");
+  assert.equal(writes, 1);
+});
+
+test("retrying logout for the old account does not log out the new account in another tab", async () => {
+  let current = session;
+  let logoutCalls = 0;
+  const client = new SessionClient(
+    () => {},
+    transport(async (path, options) => {
+      if (path.endsWith("restore")) return current;
+      assert.equal(
+        new Headers(options?.headers).get("X-Expected-Account"),
+        "a",
+      );
+      if (++logoutCalls === 1) throw network();
+      throw new ApiError("", 409, "SESSION_CHANGED");
+    }),
+  );
+  await client.restore();
+  await assert.rejects(client.logout());
+  current = otherSession;
+  await client.logout();
+  assert.equal(logoutCalls, 2);
+  assert.equal(client.getSnapshot().account?.id, "b");
+});
+
+test("closing an in-flight Kakao login still synchronizes the cookies without completing the old screen", async () => {
+  let finishLogin!: (value: Session) => void;
+  let announced: string | undefined;
+  const client = new SessionClient(
+    () => {},
+    transport(
+      async () =>
+        new Promise<Session>((resolve) => {
+          finishLogin = resolve;
+        }),
+    ),
+    undefined,
+    undefined,
+    (source) => {
+      announced = source;
+    },
+  );
+  const controller = new AbortController();
+  const login = assert.rejects(client.kakaoLogin(controller.signal), {
+    name: "AbortError",
+  });
+  controller.abort();
+  finishLogin(otherSession);
+  await login;
+  assert.equal(client.getSnapshot().account?.id, "b");
+  assert.equal(announced, client.instanceId);
+});
 
 test("account withdrawal stays reachable before first setup", () => {
   assert.equal(

@@ -66,21 +66,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           void queryClient.cancelQueries(filter);
           queryClient.removeQueries(filter);
         },
+        notifySessionChange,
       ),
   );
   useEffect(() => {
     void client.restore().catch(() => undefined);
-    const channel = new BroadcastChannel("chongmuya-auth");
-    channel.onmessage = () => {
-      void client.restore().catch(() => undefined);
+    const recheck = () => {
+      const status = client.getSnapshot().status;
+      if (status === "authenticated" || status === "anonymous")
+        void client.restore({ background: true }).catch(() => undefined);
     };
-    const authorityChannel = new BroadcastChannel("chongmuya-group-authority");
-    authorityChannel.onmessage = (event) => {
-      client.receiveAuthorityChange(event.data);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") recheck();
     };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) recheck();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", onPageShow);
+
+    const channel = openSessionChannel();
+    if (channel)
+      channel.onmessage = ({ data }) => {
+        if (
+          data === "changed" ||
+          (data?.source !== client.instanceId && data?.kind === "changed")
+        )
+          void client.restoreAfterSessionChange().catch(() => undefined);
+        else if (data?.source !== client.instanceId && data?.kind === "recheck")
+          recheck();
+      };
+    const authorityChannel =
+      typeof BroadcastChannel === "undefined"
+        ? undefined
+        : new BroadcastChannel("chongmuya-group-authority");
+    if (authorityChannel)
+      authorityChannel.onmessage = (event) => {
+        client.receiveAuthorityChange(event.data);
+      };
     return () => {
-      channel.close();
-      authorityChannel.close();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", onPageShow);
+      channel?.close();
+      authorityChannel?.close();
     };
   }, [client]);
   return (
@@ -140,8 +168,16 @@ export function useAuth() {
   );
   return { client, ...state };
 }
-export function notifySessionChange() {
-  const channel = new BroadcastChannel("chongmuya-auth");
-  channel.postMessage("changed");
+function openSessionChannel() {
+  if (typeof BroadcastChannel !== "undefined")
+    return new BroadcastChannel("chongmuya-auth");
+}
+export function notifySessionChange(
+  source: string,
+  kind: "changed" | "recheck" = "changed",
+) {
+  const channel = openSessionChannel();
+  if (!channel) return;
+  channel.postMessage({ source, kind });
   channel.close();
 }

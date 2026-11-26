@@ -12,7 +12,7 @@ import { NoticeDialog } from "@/shared/ui/notice-dialog";
 import { LoadingState } from "@/shared/ui/states";
 import { safeErrorMessage } from "@/shared/http/error-contract";
 import { ApiError } from "@/shared/http/api-error";
-import { useAuth, notifySessionChange } from "../auth-provider";
+import { useAuth } from "../auth-provider";
 import { AuthScreen } from "../auth-screen";
 import { postLoginPath, firstSetupPath } from "../../lib/first-setup";
 import { safeReturnPath } from "../../lib/return-path";
@@ -104,7 +104,6 @@ function SignupScreenContent({
       if (!active.current || current.signal.aborted)
         throw new Error("Signup cancelled");
       setCreatedAccount(identity.id);
-      notifySessionChange();
       // Do not return credentials or the verification ID into Query's cache.
     },
     retry: false,
