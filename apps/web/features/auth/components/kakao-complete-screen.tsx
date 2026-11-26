@@ -8,7 +8,7 @@ import { Button } from "@/shared/ui/button";
 import { FormError } from "@/shared/ui/form-error";
 import { StepLayout, StepHeading } from "@/shared/ui/step-layout";
 import { safeErrorMessage } from "@/shared/http/error-contract";
-import { useAuth, notifySessionChange } from "./auth-provider";
+import { useAuth } from "./auth-provider";
 import { KakaoButton } from "./kakao-button";
 import { KakaoSignupScreen } from "./signup/signup-screen";
 import { usePrivateAuthAction } from "../hooks/use-private-auth-action";
@@ -101,7 +101,6 @@ export function KakaoCompleteScreen() {
                     !signal.aborted &&
                     client.getSnapshot().account?.id === identity.id
                   ) {
-                    notifySessionChange();
                     router.replace(postLoginPath(identity, result.data!.next));
                   }
                 }

@@ -65,12 +65,12 @@ export function AccountWithdrawalScreen() {
   }, [processing, status]);
   const onComplete = (attempt: { accountId: string; key: string }) => {
     client.endWithdrawnSession(attempt.accountId);
-    notifySessionChange();
+    notifySessionChange(client.instanceId);
     setReceipt({ ...attempt, state: "completed" });
   };
   const onPending = (attempt: { accountId: string; key: string }) => {
     client.endWithdrawnSession(attempt.accountId);
-    notifySessionChange();
+    notifySessionChange(client.instanceId);
     setReceipt({ ...attempt, state: "pending" });
   };
   const receiptCheck = useWithdrawalReceipt({ onComplete, onPending });

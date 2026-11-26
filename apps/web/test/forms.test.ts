@@ -364,7 +364,7 @@ test("late group and event mutations after leaving the screen never recreate cac
   }
 });
 
-test("account panel preserves failed-logout recovery and provides login navigation afterwards", async () => {
+test("account panel preserves failed-logout recovery and opens a fresh login afterwards", async () => {
   const original = globalThis.fetch;
   let logoutCalls = 0;
   let authenticated = true;
@@ -409,9 +409,7 @@ test("account panel preserves failed-logout recovery and provides login navigati
         .every((query) => query.state.data === undefined),
     );
     await click(view.container, "로그아웃 다시 시도");
-    await until(() =>
-      assert(view.container.querySelector('a[href^="/auth?next="]')),
-    );
+    await until(() => assert.deepEqual(view.navigations, ["/auth"]));
     assert.equal(logoutCalls, 2);
   } finally {
     await view.unmount();
