@@ -66,6 +66,20 @@ test("production HTTP setup preserves health, validation, errors, request IDs an
     preflight.headers.get("access-control-allow-headers") ?? "",
     /x-csrf-protection/i,
   );
+  const accountPreflight = await fetch(`${url}/api/v1/auth/me`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "http://localhost:3000",
+      "Access-Control-Request-Method": "GET",
+      "Access-Control-Request-Headers": "x-expected-account",
+    },
+  });
+  assert.equal(accountPreflight.status, 204);
+  assertCors(accountPreflight);
+  assert.match(
+    accountPreflight.headers.get("access-control-allow-headers") ?? "",
+    /x-expected-account/i,
+  );
   for (const origin of [
     "http://localhost:3000.evil.test",
     "http://127.0.0.1:3000",

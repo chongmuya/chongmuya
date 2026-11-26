@@ -362,6 +362,10 @@ export const messages: Record<
   },
   ACCESS_EXPIRED: { status: 401, message: "로그인 상태를 다시 확인해 주세요." },
   SESSION_INVALID: { status: 401, message: "다시 로그인해 주세요." },
+  SESSION_CHANGED: {
+    status: 409,
+    message: "로그인 계정이 변경됐어요. 현재 계정을 다시 확인해 주세요.",
+  },
   INVALID_CREDENTIALS: {
     status: 401,
     message: "이메일 또는 비밀번호를 확인해 주세요.",

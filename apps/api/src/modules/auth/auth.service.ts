@@ -346,7 +346,7 @@ export class AuthService {
     if (!result) throw new AuthError("SESSION_INVALID");
     return this.sessions.issue(result.session, result.account, next);
   }
-  async logout(raw?: string) {
+  async logout(raw?: string, expectedAccount?: string) {
     if (!raw) return;
     const db = await this.database.connect();
     await db.transaction(async (manager) => {
@@ -358,6 +358,8 @@ export class AuthService {
         id: token.sessionId,
       });
       if (!hint) return null;
+      if (expectedAccount !== undefined && expectedAccount !== hint.accountId)
+        throw new DomainHttpException("SESSION_CHANGED");
       await manager.findOneOrFail(Account, {
         where: { id: hint.accountId },
         lock: { mode: "pessimistic_write" },

@@ -211,6 +211,28 @@ test("authentication PostgreSQL HTTP lifecycle, rotation, replay, CSRF, authoriz
     401,
   );
   assert.equal((await me(first)).status, 200);
+  const wrongAccount = { "X-Expected-Account": randomUUID() };
+  const staleRead = await fetch(`${url}/api/v1/auth/me`, {
+    headers: { Cookie: first, ...wrongAccount },
+  });
+  assert.equal(staleRead.status, 409);
+  assert.equal((await staleRead.json()).code, "SESSION_CHANGED");
+  const staleWrite = await fetch(`${url}/api/v1/auth/first-setup`, {
+    method: "PATCH",
+    headers: { ...headers, Cookie: first, ...wrongAccount },
+    body: JSON.stringify({ accountType: "owner" }),
+  });
+  assert.equal(staleWrite.status, 409);
+  assert.equal((await staleWrite.json()).code, "SESSION_CHANGED");
+  const staleLogout = await post("logout", first, undefined, wrongAccount);
+  assert.equal(staleLogout.status, 409);
+  assert.equal((await staleLogout.json()).code, "SESSION_CHANGED");
+  assert.deepEqual(staleLogout.headers.getSetCookie(), []);
+  const accountRead = await fetch(`${url}/api/v1/auth/me`, {
+    headers: { Cookie: first, "X-Expected-Account": identity.account.id },
+  });
+  assert.equal(accountRead.status, 200);
+  assert.equal((await accountRead.json()).accountType, null);
   assert.equal((await me("access=forged")).status, 401);
   const refreshOnly = first
     .split("; ")

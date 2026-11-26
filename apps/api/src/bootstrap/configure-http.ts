@@ -30,6 +30,7 @@ export function configureHttp(
     allowedHeaders: [
       "Content-Type",
       "X-CSRF-Protection",
+      "X-Expected-Account",
       "X-Merchant-Access",
       "X-Reservation-Access",
     ],
