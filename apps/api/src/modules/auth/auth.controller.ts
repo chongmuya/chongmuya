@@ -195,8 +195,11 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
+    await this.auth.logout(
+      cookie(request, this.names.refresh),
+      request.get("X-Expected-Account"),
+    );
     await this.kakao.cancel(cookie(request, kakaoCookieName(this.production)));
-    await this.auth.logout(cookie(request, this.names.refresh));
     this.clear(response);
   }
 }

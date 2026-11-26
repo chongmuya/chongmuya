@@ -1,6 +1,7 @@
 import { ExecutionContext, Injectable } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import type { Request } from "express";
+import { DomainHttpException } from "../../../common/http/domain-http.exception.js";
 import { ConfigService } from "../../../config/config.service.js";
 import { cookie, cookieNames } from "../utils/auth-cookies.js";
 import { AuthError } from "../exceptions/auth.exception.js";
@@ -17,8 +18,15 @@ export class AccessGuard extends AuthGuard("jwt-access") {
     context: ExecutionContext,
   ): TUser {
     if (error) throw error;
-    if (user) return user;
     const request = context.switchToHttp().getRequest<Request>();
+    if (user) {
+      const expectedAccount = request.get("X-Expected-Account");
+      const accountId =
+        typeof user === "object" && "id" in user ? user.id : undefined;
+      if (expectedAccount !== undefined && expectedAccount !== accountId)
+        throw new DomainHttpException("SESSION_CHANGED");
+      return user;
+    }
     const names = cookieNames(this.config.environment.nodeEnv === "production");
     const expired = info instanceof Error && info.name === "TokenExpiredError";
     const missingAccess =

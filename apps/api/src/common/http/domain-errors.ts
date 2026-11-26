@@ -1,4 +1,8 @@
 export const domainErrors = {
+  SESSION_CHANGED: {
+    status: 409,
+    message: "로그인 계정이 변경됐어요. 현재 계정을 다시 확인해 주세요.",
+  },
   GROUP_TARGET_UNAVAILABLE: {
     status: 400,
     message: "인수인계 대상 총무 계정의 인증 상태를 확인해 주세요.",
